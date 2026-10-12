@@ -1,0 +1,182 @@
+/* Generated from contracts.schema.json. Do not edit. */
+
+export type StockIntelligenceWorkstationContractsV01 =
+  | InstrumentRef
+  | PriceBar
+  | SourceCapabilities
+  | SourceRecord
+  | BrokerConfirmedExecution
+  | ManualExecution
+  | BacktestFill
+  | ScenarioDefinition
+  | IndicatorDefinition
+  | AgentEvidence
+  | BacktestRunConfig;
+export type SchemaVersion = "0.1";
+export type Identifier = string;
+export type UtcTimestamp = string;
+export type NonNegativeDecimalString = string;
+export type Side = "buy" | "sell";
+
+export interface InstrumentRef {
+  kind: "instrument_ref";
+  schema_version: SchemaVersion;
+  instrument_id: Identifier;
+  symbol: string;
+  venue: Identifier;
+  asset_class: "us_equity";
+  currency: "USD";
+  identity_as_of: UtcTimestamp;
+  identity_source: Identifier;
+}
+export interface PriceBar {
+  kind: "price_bar";
+  schema_version: SchemaVersion;
+  instrument_id: Identifier;
+  timeframe: "1m" | "5m" | "15m" | "30m" | "60m" | "1d";
+  interval_start_utc: UtcTimestamp;
+  interval_end_utc: UtcTimestamp;
+  open: NonNegativeDecimalString;
+  high: NonNegativeDecimalString;
+  low: NonNegativeDecimalString;
+  close: NonNegativeDecimalString;
+  volume: NonNegativeDecimalString;
+  volume_unit: "shares" | "provider_units";
+  session: "pre" | "regular" | "post" | "closed" | "unknown";
+  is_final: boolean;
+  adjustment: "raw" | "split_adjusted" | "fully_adjusted" | "unknown";
+  source_id: Identifier;
+  source_feed_scope: Identifier;
+  dataset_revision: Identifier;
+  available_at_utc: UtcTimestamp;
+}
+export interface SourceCapabilities {
+  kind: "source_capabilities";
+  schema_version: SchemaVersion;
+  source_id: Identifier;
+  source_type:
+    "paid_market" | "broker_market" | "official_public" | "permitted_web";
+  verification_status: "unknown" | "documented" | "integration_tested";
+  entitlement_status: "unknown" | "not_entitled" | "entitled";
+  license_status: "unknown" | "not_licensed" | "licensed";
+  feeds: string[];
+  rights_local_retention: "unknown" | "prohibited" | "allowed";
+  observed_at_utc: UtcTimestamp;
+}
+export interface SourceRecord {
+  kind: "source_record";
+  schema_version: SchemaVersion;
+  source_id: Identifier;
+  record_ref: Identifier;
+  payload_sha256: string;
+  event_at_utc?: UtcTimestamp;
+  published_at_utc?: UtcTimestamp;
+  available_at_utc?: UtcTimestamp;
+  retrieved_at_utc: UtcTimestamp;
+  parser_version: Identifier;
+}
+export interface BrokerConfirmedExecution {
+  kind: "broker_confirmed_execution";
+  schema_version: SchemaVersion;
+  execution_id: Identifier;
+  instrument_id: Identifier;
+  side: Side;
+  quantity: NonNegativeDecimalString;
+  price: NonNegativeDecimalString;
+  currency: "USD";
+  executed_at_utc: UtcTimestamp;
+  broker_id: Identifier;
+  broker_account_ref: Identifier;
+  broker_execution_id: Identifier;
+  verification_status: "broker_confirmed";
+  source_record_ref: Identifier;
+  corrects_execution_id?: Identifier;
+}
+export interface ManualExecution {
+  kind: "manual_execution";
+  schema_version: SchemaVersion;
+  execution_id: Identifier;
+  instrument_id: Identifier;
+  side: Side;
+  quantity: NonNegativeDecimalString;
+  price: NonNegativeDecimalString;
+  currency: "USD";
+  asserted_at_utc: UtcTimestamp;
+  time_precision: "exact" | "minute" | "approximate" | "unknown";
+  selected_interval_start_utc: UtcTimestamp;
+  selected_interval_end_utc: UtcTimestamp;
+  evidence_status: "unverified" | "supported" | "reconciled";
+}
+export interface BacktestFill {
+  kind: "backtest_fill";
+  schema_version: SchemaVersion;
+  fill_id: Identifier;
+  run_id: Identifier;
+  order_id: Identifier;
+  instrument_id: Identifier;
+  side: Side;
+  quantity: NonNegativeDecimalString;
+  price: NonNegativeDecimalString;
+  currency: "USD";
+  filled_at_utc: UtcTimestamp;
+  fill_model_version: Identifier;
+  fill_reason: Identifier;
+}
+export interface ScenarioDefinition {
+  kind: "scenario_definition";
+  schema_version: SchemaVersion;
+  scenario_id: Identifier;
+  version: number;
+  instrument_id: Identifier;
+  origin: "hypothetical";
+  entry_price: NonNegativeDecimalString;
+  exit_price: NonNegativeDecimalString;
+  quantity: NonNegativeDecimalString;
+  currency: "USD";
+  fee_assumption: NonNegativeDecimalString;
+  slippage_assumption: NonNegativeDecimalString;
+}
+export interface IndicatorDefinition {
+  kind: "indicator_definition";
+  schema_version: SchemaVersion;
+  indicator_id: Identifier;
+  version: Identifier;
+  authoring_type: "built_in" | "python" | "visual";
+  parameters: {
+    [k: string]: unknown;
+  };
+  warmup_bars: number;
+  /**
+   * @minItems 1
+   */
+  output_names: [Identifier, ...Identifier[]];
+  point_in_time_policy: "finalized_only" | "partial_allowed_explicitly";
+}
+export interface AgentEvidence {
+  kind: "agent_evidence";
+  schema_version: SchemaVersion;
+  analysis_id: Identifier;
+  agent_version: Identifier;
+  source_record_refs: Identifier[];
+  dataset_revisions: Identifier[];
+  cutoff_utc: UtcTimestamp;
+  observations: string[];
+  inferences: string[];
+  uncertainty: string;
+}
+export interface BacktestRunConfig {
+  kind: "backtest_run_config";
+  schema_version: SchemaVersion;
+  run_id: Identifier;
+  dataset_revision: Identifier;
+  strategy_id: Identifier;
+  strategy_version: Identifier;
+  start_utc: UtcTimestamp;
+  end_utc: UtcTimestamp;
+  initial_capital: NonNegativeDecimalString;
+  currency: "USD";
+  fill_policy: "next_eligible_bar_open";
+  fee_assumption: NonNegativeDecimalString;
+  slippage_assumption: NonNegativeDecimalString;
+  seed: number;
+}

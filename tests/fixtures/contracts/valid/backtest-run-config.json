@@ -1,0 +1,16 @@
+{
+  "kind": "backtest_run_config",
+  "schema_version": "0.1",
+  "run_id": "run-1",
+  "dataset_revision": "fixture-r1",
+  "strategy_id": "fixture-strategy",
+  "strategy_version": "1",
+  "start_utc": "2026-10-01T00:00:00Z",
+  "end_utc": "2026-10-10T00:00:00Z",
+  "initial_capital": "100000.00",
+  "currency": "USD",
+  "fill_policy": "next_eligible_bar_open",
+  "fee_assumption": "1.00",
+  "slippage_assumption": "0.05",
+  "seed": 7
+}

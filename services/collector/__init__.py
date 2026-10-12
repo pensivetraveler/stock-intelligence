@@ -1,0 +1,1 @@
+"""Independent collector process boundary."""

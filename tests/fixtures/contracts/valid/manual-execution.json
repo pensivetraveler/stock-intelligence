@@ -1,0 +1,15 @@
+{
+  "kind": "manual_execution",
+  "schema_version": "0.1",
+  "execution_id": "exec-manual-1",
+  "instrument_id": "us:aapl:xnas:2026",
+  "side": "sell",
+  "quantity": "5",
+  "price": "251.00",
+  "currency": "USD",
+  "asserted_at_utc": "2026-10-12T00:00:00Z",
+  "time_precision": "approximate",
+  "selected_interval_start_utc": "2026-10-09T14:00:00Z",
+  "selected_interval_end_utc": "2026-10-09T14:01:00Z",
+  "evidence_status": "unverified"
+}

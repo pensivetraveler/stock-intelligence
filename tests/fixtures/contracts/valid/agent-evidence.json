@@ -1,0 +1,12 @@
+{
+  "kind": "agent_evidence",
+  "schema_version": "0.1",
+  "analysis_id": "analysis-1",
+  "agent_version": "fixture-agent-1",
+  "source_record_refs": ["fixture:record:1"],
+  "dataset_revisions": ["fixture-r1"],
+  "cutoff_utc": "2026-10-09T14:00:00Z",
+  "observations": ["Fixture observation"],
+  "inferences": ["Fixture inference"],
+  "uncertainty": "Synthetic data only"
+}

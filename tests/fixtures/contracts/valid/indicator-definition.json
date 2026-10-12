@@ -1,0 +1,11 @@
+{
+  "kind": "indicator_definition",
+  "schema_version": "0.1",
+  "indicator_id": "sma",
+  "version": "1",
+  "authoring_type": "built_in",
+  "parameters": { "period": 20 },
+  "warmup_bars": 20,
+  "output_names": ["sma"],
+  "point_in_time_policy": "finalized_only"
+}

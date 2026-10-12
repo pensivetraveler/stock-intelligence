@@ -1,0 +1,99 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { checkApiHealth, type ApiConnectionState } from "./api-health";
+import "./styles.css";
+
+const APP_VERSION = "0.1.0-dev";
+
+interface AppProps {
+  apiBaseUrl?: string;
+  fetcher?: typeof fetch;
+  retryMs?: number;
+  timeoutMs?: number;
+}
+
+export function App({
+  apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000",
+  fetcher = fetch,
+  retryMs = 5_000,
+  timeoutMs = 5_000,
+}: AppProps) {
+  const [state, setState] = useState<ApiConnectionState>("checking");
+  const [message, setMessage] = useState("Checking API health");
+  const [lastSuccess, setLastSuccess] = useState<string | null>(null);
+  const retryTimer = useRef<number | null>(null);
+  const mounted = useRef(true);
+
+  const runCheck = useCallback(async () => {
+    if (retryTimer.current !== null) {
+      window.clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+    }
+    setState("checking");
+    setMessage("Checking API health");
+    const result = await checkApiHealth(apiBaseUrl, fetcher, timeoutMs);
+    if (!mounted.current) {
+      return;
+    }
+    setState(result.state);
+    setMessage(result.message);
+    if (result.state === "connected") {
+      setLastSuccess(new Date().toISOString());
+    }
+    retryTimer.current = window.setTimeout(() => void runCheck(), retryMs);
+  }, [apiBaseUrl, fetcher, retryMs, timeoutMs]);
+
+  useEffect(() => {
+    mounted.current = true;
+    void runCheck();
+    return () => {
+      mounted.current = false;
+      if (retryTimer.current !== null) {
+        window.clearTimeout(retryTimer.current);
+      }
+    };
+  }, [runCheck]);
+
+  return (
+    <main>
+      <section className="shell" aria-labelledby="app-title">
+        <p className="eyebrow">PHASE 0 DEVELOPMENT SHELL</p>
+        <h1 id="app-title">Stock Intelligence Workstation</h1>
+        <p className="subtitle">
+          Local-first foundation. No market data or brokerage connection.
+        </p>
+
+        <dl>
+          <div>
+            <dt>App version</dt>
+            <dd>{APP_VERSION}</dd>
+          </div>
+          <div>
+            <dt>API endpoint</dt>
+            <dd>{apiBaseUrl}</dd>
+          </div>
+          <div>
+            <dt>Connection</dt>
+            <dd>
+              <span className={`status status-${state}`}>{state}</span>
+            </dd>
+          </div>
+        </dl>
+
+        <div className="health" role="status" aria-live="polite">
+          <strong>/health</strong>
+          <span>{message}</span>
+          {lastSuccess ? <small>Last success: {lastSuccess}</small> : null}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void runCheck()}
+          disabled={state === "checking"}
+        >
+          Retry now
+        </button>
+      </section>
+    </main>
+  );
+}

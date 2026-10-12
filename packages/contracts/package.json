@@ -1,0 +1,21 @@
+{
+  "name": "@siw/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "json2ts -i schemas/contracts.schema.json -o generated/contracts.d.ts --bannerComment '/* Generated from contracts.schema.json. Do not edit. */' && prettier --write generated/contracts.d.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.6",
+    "json-schema-to-typescript": "^15.0.4",
+    "vitest": "^3.2.4"
+  }
+}

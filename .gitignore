@@ -1,0 +1,38 @@
+# Secrets and local runtime settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+.uv-cache/
+*.pyc
+*.egg-info/
+
+# Node / Rust / desktop
+node_modules/
+.pnpm-store/
+dist/
+build/
+src-tauri/target/
+coverage/
+*.log
+
+# Local datasets and credentials
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.parquet
+secrets/
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/

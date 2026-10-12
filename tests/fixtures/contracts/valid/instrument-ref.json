@@ -1,0 +1,11 @@
+{
+  "kind": "instrument_ref",
+  "schema_version": "0.1",
+  "instrument_id": "us:aapl:xnas:2026",
+  "symbol": "AAPL",
+  "venue": "XNAS",
+  "asset_class": "us_equity",
+  "currency": "USD",
+  "identity_as_of": "2026-10-12T00:00:00Z",
+  "identity_source": "fixture"
+}

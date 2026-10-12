@@ -1,0 +1,21 @@
+{
+  "kind": "price_bar",
+  "schema_version": "0.1",
+  "instrument_id": "us:aapl:xnas:2026",
+  "timeframe": "1m",
+  "interval_start_utc": "2026-10-09T13:30:00",
+  "interval_end_utc": "2026-10-09T13:31:00Z",
+  "open": "250.10",
+  "high": "250.50",
+  "low": "249.90",
+  "close": "250.25",
+  "volume": "12345",
+  "volume_unit": "shares",
+  "session": "regular",
+  "is_final": true,
+  "adjustment": "raw",
+  "source_id": "synthetic-fixture",
+  "source_feed_scope": "synthetic",
+  "dataset_revision": "fixture-r1",
+  "available_at_utc": "2026-10-09T13:31:02Z"
+}

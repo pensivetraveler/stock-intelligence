@@ -1,0 +1,12 @@
+{
+  "kind": "source_capabilities",
+  "schema_version": "0.1",
+  "source_id": "alpaca-placeholder",
+  "source_type": "paid_market",
+  "verification_status": "documented",
+  "entitlement_status": "unknown",
+  "license_status": "unknown",
+  "feeds": ["iex", "sip"],
+  "rights_local_retention": "unknown",
+  "observed_at_utc": "2026-10-12T00:00:00Z"
+}

@@ -1,0 +1,14 @@
+{
+  "kind": "scenario_definition",
+  "schema_version": "0.1",
+  "scenario_id": "scenario-1",
+  "version": 1,
+  "instrument_id": "us:aapl:xnas:2026",
+  "origin": "hypothetical",
+  "entry_price": "250.00",
+  "exit_price": "255.00",
+  "quantity": "10",
+  "currency": "USD",
+  "fee_assumption": "1.00",
+  "slippage_assumption": "0.05"
+}

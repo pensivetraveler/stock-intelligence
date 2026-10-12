@@ -1,0 +1,430 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.stock-intelligence-workstation/contracts/v0.1/contracts.schema.json",
+  "title": "Stock Intelligence Workstation Contracts v0.1",
+  "oneOf": [
+    { "$ref": "#/$defs/InstrumentRef" },
+    { "$ref": "#/$defs/PriceBar" },
+    { "$ref": "#/$defs/SourceCapabilities" },
+    { "$ref": "#/$defs/SourceRecord" },
+    { "$ref": "#/$defs/BrokerConfirmedExecution" },
+    { "$ref": "#/$defs/ManualExecution" },
+    { "$ref": "#/$defs/BacktestFill" },
+    { "$ref": "#/$defs/ScenarioDefinition" },
+    { "$ref": "#/$defs/IndicatorDefinition" },
+    { "$ref": "#/$defs/AgentEvidence" },
+    { "$ref": "#/$defs/BacktestRunConfig" }
+  ],
+  "$defs": {
+    "SchemaVersion": { "const": "0.1" },
+    "Identifier": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "UtcTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "DecimalString": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    },
+    "NonNegativeDecimalString": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    },
+    "Side": { "enum": ["buy", "sell"] },
+    "InstrumentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "instrument_id",
+        "symbol",
+        "venue",
+        "asset_class",
+        "currency",
+        "identity_as_of",
+        "identity_source"
+      ],
+      "properties": {
+        "kind": { "const": "instrument_ref" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "instrument_id": { "$ref": "#/$defs/Identifier" },
+        "symbol": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "venue": { "$ref": "#/$defs/Identifier" },
+        "asset_class": { "const": "us_equity" },
+        "currency": { "const": "USD" },
+        "identity_as_of": { "$ref": "#/$defs/UtcTimestamp" },
+        "identity_source": { "$ref": "#/$defs/Identifier" }
+      }
+    },
+    "PriceBar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "instrument_id",
+        "timeframe",
+        "interval_start_utc",
+        "interval_end_utc",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "volume_unit",
+        "session",
+        "is_final",
+        "adjustment",
+        "source_id",
+        "source_feed_scope",
+        "dataset_revision",
+        "available_at_utc"
+      ],
+      "properties": {
+        "kind": { "const": "price_bar" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "instrument_id": { "$ref": "#/$defs/Identifier" },
+        "timeframe": { "enum": ["1m", "5m", "15m", "30m", "60m", "1d"] },
+        "interval_start_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "interval_end_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "open": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "high": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "low": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "close": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "volume": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "volume_unit": { "enum": ["shares", "provider_units"] },
+        "session": { "enum": ["pre", "regular", "post", "closed", "unknown"] },
+        "is_final": { "type": "boolean" },
+        "adjustment": {
+          "enum": ["raw", "split_adjusted", "fully_adjusted", "unknown"]
+        },
+        "source_id": { "$ref": "#/$defs/Identifier" },
+        "source_feed_scope": { "$ref": "#/$defs/Identifier" },
+        "dataset_revision": { "$ref": "#/$defs/Identifier" },
+        "available_at_utc": { "$ref": "#/$defs/UtcTimestamp" }
+      }
+    },
+    "SourceCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "source_id",
+        "source_type",
+        "verification_status",
+        "entitlement_status",
+        "license_status",
+        "feeds",
+        "rights_local_retention",
+        "observed_at_utc"
+      ],
+      "properties": {
+        "kind": { "const": "source_capabilities" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "source_id": { "$ref": "#/$defs/Identifier" },
+        "source_type": {
+          "enum": [
+            "paid_market",
+            "broker_market",
+            "official_public",
+            "permitted_web"
+          ]
+        },
+        "verification_status": {
+          "enum": ["unknown", "documented", "integration_tested"]
+        },
+        "entitlement_status": {
+          "enum": ["unknown", "not_entitled", "entitled"]
+        },
+        "license_status": { "enum": ["unknown", "not_licensed", "licensed"] },
+        "feeds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "rights_local_retention": {
+          "enum": ["unknown", "prohibited", "allowed"]
+        },
+        "observed_at_utc": { "$ref": "#/$defs/UtcTimestamp" }
+      }
+    },
+    "SourceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "source_id",
+        "record_ref",
+        "payload_sha256",
+        "retrieved_at_utc",
+        "parser_version"
+      ],
+      "properties": {
+        "kind": { "const": "source_record" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "source_id": { "$ref": "#/$defs/Identifier" },
+        "record_ref": { "$ref": "#/$defs/Identifier" },
+        "payload_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "event_at_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "published_at_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "available_at_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "retrieved_at_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "parser_version": { "$ref": "#/$defs/Identifier" }
+      }
+    },
+    "BrokerConfirmedExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "execution_id",
+        "instrument_id",
+        "side",
+        "quantity",
+        "price",
+        "currency",
+        "executed_at_utc",
+        "broker_id",
+        "broker_account_ref",
+        "broker_execution_id",
+        "verification_status",
+        "source_record_ref"
+      ],
+      "properties": {
+        "kind": { "const": "broker_confirmed_execution" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "execution_id": { "$ref": "#/$defs/Identifier" },
+        "instrument_id": { "$ref": "#/$defs/Identifier" },
+        "side": { "$ref": "#/$defs/Side" },
+        "quantity": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "price": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "currency": { "const": "USD" },
+        "executed_at_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "broker_id": { "$ref": "#/$defs/Identifier" },
+        "broker_account_ref": { "$ref": "#/$defs/Identifier" },
+        "broker_execution_id": { "$ref": "#/$defs/Identifier" },
+        "verification_status": { "const": "broker_confirmed" },
+        "source_record_ref": { "$ref": "#/$defs/Identifier" },
+        "corrects_execution_id": { "$ref": "#/$defs/Identifier" }
+      }
+    },
+    "ManualExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "execution_id",
+        "instrument_id",
+        "side",
+        "quantity",
+        "price",
+        "currency",
+        "asserted_at_utc",
+        "time_precision",
+        "selected_interval_start_utc",
+        "selected_interval_end_utc",
+        "evidence_status"
+      ],
+      "properties": {
+        "kind": { "const": "manual_execution" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "execution_id": { "$ref": "#/$defs/Identifier" },
+        "instrument_id": { "$ref": "#/$defs/Identifier" },
+        "side": { "$ref": "#/$defs/Side" },
+        "quantity": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "price": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "currency": { "const": "USD" },
+        "asserted_at_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "time_precision": {
+          "enum": ["exact", "minute", "approximate", "unknown"]
+        },
+        "selected_interval_start_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "selected_interval_end_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "evidence_status": { "enum": ["unverified", "supported", "reconciled"] }
+      }
+    },
+    "BacktestFill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "fill_id",
+        "run_id",
+        "order_id",
+        "instrument_id",
+        "side",
+        "quantity",
+        "price",
+        "currency",
+        "filled_at_utc",
+        "fill_model_version",
+        "fill_reason"
+      ],
+      "properties": {
+        "kind": { "const": "backtest_fill" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "fill_id": { "$ref": "#/$defs/Identifier" },
+        "run_id": { "$ref": "#/$defs/Identifier" },
+        "order_id": { "$ref": "#/$defs/Identifier" },
+        "instrument_id": { "$ref": "#/$defs/Identifier" },
+        "side": { "$ref": "#/$defs/Side" },
+        "quantity": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "price": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "currency": { "const": "USD" },
+        "filled_at_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "fill_model_version": { "$ref": "#/$defs/Identifier" },
+        "fill_reason": { "$ref": "#/$defs/Identifier" }
+      }
+    },
+    "ScenarioDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "scenario_id",
+        "version",
+        "instrument_id",
+        "origin",
+        "entry_price",
+        "exit_price",
+        "quantity",
+        "currency",
+        "fee_assumption",
+        "slippage_assumption"
+      ],
+      "properties": {
+        "kind": { "const": "scenario_definition" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "scenario_id": { "$ref": "#/$defs/Identifier" },
+        "version": { "type": "integer", "minimum": 1 },
+        "instrument_id": { "$ref": "#/$defs/Identifier" },
+        "origin": { "const": "hypothetical" },
+        "entry_price": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "exit_price": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "quantity": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "currency": { "const": "USD" },
+        "fee_assumption": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "slippage_assumption": { "$ref": "#/$defs/NonNegativeDecimalString" }
+      }
+    },
+    "IndicatorDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "indicator_id",
+        "version",
+        "authoring_type",
+        "parameters",
+        "warmup_bars",
+        "output_names",
+        "point_in_time_policy"
+      ],
+      "properties": {
+        "kind": { "const": "indicator_definition" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "indicator_id": { "$ref": "#/$defs/Identifier" },
+        "version": { "$ref": "#/$defs/Identifier" },
+        "authoring_type": { "enum": ["built_in", "python", "visual"] },
+        "parameters": { "type": "object" },
+        "warmup_bars": { "type": "integer", "minimum": 0 },
+        "output_names": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Identifier" },
+          "uniqueItems": true
+        },
+        "point_in_time_policy": {
+          "enum": ["finalized_only", "partial_allowed_explicitly"]
+        }
+      }
+    },
+    "AgentEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "analysis_id",
+        "agent_version",
+        "source_record_refs",
+        "dataset_revisions",
+        "cutoff_utc",
+        "observations",
+        "inferences",
+        "uncertainty"
+      ],
+      "properties": {
+        "kind": { "const": "agent_evidence" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "analysis_id": { "$ref": "#/$defs/Identifier" },
+        "agent_version": { "$ref": "#/$defs/Identifier" },
+        "source_record_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Identifier" },
+          "uniqueItems": true
+        },
+        "dataset_revisions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Identifier" },
+          "uniqueItems": true
+        },
+        "cutoff_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "observations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "inferences": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "uncertainty": { "type": "string", "minLength": 1 }
+      }
+    },
+    "BacktestRunConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "run_id",
+        "dataset_revision",
+        "strategy_id",
+        "strategy_version",
+        "start_utc",
+        "end_utc",
+        "initial_capital",
+        "currency",
+        "fill_policy",
+        "fee_assumption",
+        "slippage_assumption",
+        "seed"
+      ],
+      "properties": {
+        "kind": { "const": "backtest_run_config" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "run_id": { "$ref": "#/$defs/Identifier" },
+        "dataset_revision": { "$ref": "#/$defs/Identifier" },
+        "strategy_id": { "$ref": "#/$defs/Identifier" },
+        "strategy_version": { "$ref": "#/$defs/Identifier" },
+        "start_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "end_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "initial_capital": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "currency": { "const": "USD" },
+        "fill_policy": { "const": "next_eligible_bar_open" },
+        "fee_assumption": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "slippage_assumption": { "$ref": "#/$defs/NonNegativeDecimalString" },
+        "seed": { "type": "integer" }
+      }
+    }
+  }
+}
