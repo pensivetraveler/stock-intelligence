@@ -57,10 +57,12 @@
 
 ## 단계 1B — 로컬 저장·Coverage 기반
 
-- SQLite metadata/job/coverage schema와 migration
-- Parquet 1분봉 partition과 atomic write
-- idempotent cache read/write, gap detection, revision pinning
-- 재시작·중단·중복·disk failure 테스트
+**상태:** 2026-10-12 구현 및 로컬 검증 완료
+
+- [x] SQLite metadata/job/coverage schema와 migration
+- [x] Parquet 1분봉 partition과 atomic write
+- [x] idempotent cache read/write, gap detection, revision pinning
+- [x] 재시작·중단·중복·disk failure 테스트
 
 **다음 단계 승인 질문:** Phase 1C 시간대·세션·집계를 진행할지 확인한다.
 

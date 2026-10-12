@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Awaitable, Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
 
@@ -20,9 +21,10 @@ from services.market_data.provider import (
     InvalidBarsQueryError,
     MarketDataProvider,
 )
+from services.market_data.storage import CachedMarketDataProvider, LocalMarketDataStore
 
 APP_NAME = "stock-intelligence-workstation-api"
-APP_VERSION = "0.2.0-dev"
+APP_VERSION = "0.3.0-dev"
 API_VERSION = "v1"
 DEFAULT_CORS_ORIGINS = (
     "http://127.0.0.1:5173",
@@ -56,9 +58,17 @@ def _error_response(request: Request, status_code: int, code: str, message: str)
     )
 
 
+def _default_market_data_provider() -> MarketDataProvider:
+    upstream = FakeMarketDataProvider.from_path()
+    configured_data_dir = os.getenv("SIW_DATA_DIR", "").strip()
+    if not configured_data_dir:
+        return upstream
+    return CachedMarketDataProvider(upstream, LocalMarketDataStore(Path(configured_data_dir)))
+
+
 def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAPI:
     application = FastAPI(title=APP_NAME, version=APP_VERSION)
-    provider = market_data_provider or FakeMarketDataProvider.from_path()
+    provider = market_data_provider or _default_market_data_provider()
     application.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),

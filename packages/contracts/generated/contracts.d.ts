@@ -60,6 +60,7 @@ export interface CoverageManifest {
   requested_start_utc: UtcTimestamp;
   requested_end_utc: UtcTimestamp;
   coverage_status: "complete" | "partial" | "empty";
+  verification_status: "unverified" | "verified";
   observed_interval_count: number;
   expected_interval_count: number;
   missing_intervals: {

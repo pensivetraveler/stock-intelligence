@@ -1,6 +1,6 @@
 # Repository Structure — 초기 제안 v1.5
 
-이 디렉터리는 **Phase 0 구현이 완료된 실행 가능한 기반 구조**다. API·Collector·웹 개발 셸·계약 검증과 CI가 구성되어 있다. `packages/indicator-sdk`만 후속 Phase 4를 위한 빈 자리표시자로 유지한다.
+이 디렉터리는 Phase 0 기반과 Phase 1A~1B 시장 데이터 수직 슬라이스가 구현된 구조다. API·Collector·웹 개발 셸·계약 검증, 합성 Provider, 로컬 SQLite/Parquet cache와 CI가 구성되어 있다. `packages/indicator-sdk`만 후속 Phase 4를 위한 빈 자리표시자로 유지한다.
 
 ```text
 stock-intelligence-workstation/
@@ -16,7 +16,7 @@ stock-intelligence-workstation/
 ├── services/
 │   ├── api/                         # FastAPI, 계약 검증, health/version
 │   ├── collector/                   # 별도 프로세스 시작점
-│   └── market_data/                 # Provider protocol과 합성 fixture adapter
+│   └── market_data/                 # Provider, migration, SQLite/Parquet cache
 ├── packages/
 │   ├── contracts/                   # JSON Schema 2020-12, 버전, TS/Python 변환 검사
 │   └── indicator-sdk/               # 미래 Python 지표 SDK 자리, 실행 엔진은 Phase 4
@@ -51,6 +51,6 @@ stock-intelligence-workstation/
 
 - FastAPI/Python과 React/TypeScript는 현재 macOS 환경에서 실행·테스트했다. Tauri CLI와 구성은 존재하지만 Rust/Cargo가 없어 네이티브 dev/build는 `blocked: prerequisite`다.
 - Python은 uv 단일 lock, JavaScript는 pnpm workspace 단일 lock을 사용한다. 선택 이유와 재검토 조건은 ADR 0001에 기록했다.
-- SQLite·Parquet·DuckDB는 후속 단계의 제안 기술이며 Phase 0에는 데이터베이스·migration·ingestion을 추가하지 않았다.
+- SQLite는 migration·Coverage·작업·pin·복구 journal을, PyArrow Parquet는 immutable 1분봉 part를 담당한다. 상세 결정은 ADR 0002에 기록했다. DuckDB는 도입하지 않았다.
 - `.env.example`에는 비밀키를 쓰지 않는다. 외부 연동은 Phase 0에서 꺼둔다.
 - 원격 Collector 단계에서는 별도 인증 API를 통해 통신하며 SQLite 파일의 직접 네트워크 공유는 설계하지 않는다.

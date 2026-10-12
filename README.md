@@ -2,7 +2,7 @@
 
 미국 주식 차트·매매 복기·백테스팅·전문 Agent 연구 환경을 위한 **로컬 개발 착수 패키지**.
 
-**현재 상태:** Phase 0 기반과 Phase 1A 합성 시장 데이터 수직 슬라이스 구현 완료. FastAPI API, React/TypeScript 개발 셸, 독립 Collector 진단 경로, 교차 언어 계약/fixture, `FakeMarketDataProvider`, 품질 게이트와 CI가 구성되어 있다. 실제 공급업체·DB/cache는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
+**현재 상태:** Phase 0 기반, Phase 1A 합성 시장 데이터 경로와 Phase 1B 로컬 cache 기반 구현 완료. FastAPI API, React/TypeScript 개발 셸, 독립 Collector 진단 경로, 교차 언어 계약/fixture, `FakeMarketDataProvider`, SQLite Coverage/작업 메타데이터와 immutable Parquet 저장소가 구성되어 있다. 실제 공급업체는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
 
 ## 시작 순서
 
@@ -57,6 +57,14 @@ curl --get http://127.0.0.1:8000/v1/market/bars \
   --data-urlencode 'end_utc=2026-10-09T13:34:00Z' \
   --data-urlencode 'timeframe=1m'
 ```
+
+영속 cache를 사용하려면 쓰기 가능한 로컬 디렉터리를 명시한다. 설정하지 않으면 API는 파일을 생성하지 않고 합성 Provider를 직접 사용한다.
+
+```bash
+SIW_DATA_DIR=data uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8000
+```
+
+`data/metadata.sqlite3`에는 migration·Coverage·수집 작업·revision pin·복구 journal이 저장되고, bar는 `data/bars/` 아래 source/instrument/timeframe/UTC date/revision별 Parquet part로 저장된다. 이 디렉터리는 Git에서 제외되며 네트워크 파일 공유용이 아니다.
 
 포트 `8000`이 사용 중이면 API와 데스크톱을 같은 대체 포트로 맞춘다.
 

@@ -167,6 +167,7 @@ class FakeMarketDataProvider:
             "requested_start_utc": _format_utc(query.start_utc),
             "requested_end_utc": _format_utc(query.end_utc),
             "coverage_status": coverage_status,
+            "verification_status": "verified",
             "observed_interval_count": len(visible),
             "expected_interval_count": len(expected_starts),
             "missing_intervals": missing,

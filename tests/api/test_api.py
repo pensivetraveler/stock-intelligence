@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -133,3 +135,26 @@ async def test_market_bars_rejects_future_cutoff() -> None:
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "invalid_market_data_query"
+
+
+async def test_configured_data_directory_persists_api_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SIW_DATA_DIR", str(tmp_path))
+    cached_app = create_app()
+    params = {
+        "instrument_id": "us:aapl:xnas:2026",
+        "start_utc": "2026-10-09T13:30:00Z",
+        "end_utc": "2026-10-09T13:34:00Z",
+    }
+
+    async with AsyncClient(
+        transport=ASGITransport(app=cached_app), base_url="http://test"
+    ) as test_client:
+        first = await test_client.get("/v1/market/bars", params=params)
+        second = await test_client.get("/v1/market/bars", params=params)
+
+    assert first.status_code == 200
+    assert second.json() == first.json()
+    assert len(list(tmp_path.rglob("*.parquet"))) == 1
+    assert (tmp_path / "metadata.sqlite3").is_file()

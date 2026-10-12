@@ -119,6 +119,7 @@
         "requested_start_utc",
         "requested_end_utc",
         "coverage_status",
+        "verification_status",
         "observed_interval_count",
         "expected_interval_count",
         "missing_intervals",
@@ -136,6 +137,7 @@
         "requested_start_utc": { "$ref": "#/$defs/UtcTimestamp" },
         "requested_end_utc": { "$ref": "#/$defs/UtcTimestamp" },
         "coverage_status": { "enum": ["complete", "partial", "empty"] },
+        "verification_status": { "enum": ["unverified", "verified"] },
         "observed_interval_count": { "type": "integer", "minimum": 0 },
         "expected_interval_count": { "type": "integer", "minimum": 1 },
         "missing_intervals": {

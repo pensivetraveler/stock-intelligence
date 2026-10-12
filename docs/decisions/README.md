@@ -13,3 +13,6 @@ Revisit when: 어느 조건에서 재검토하나
 ```
 
 불필요한 자잘한 결정을 ADR로 남기지 않는다. 사용자와 합의된 `Alpaca + Massive 미선정` 상태를 구현 편의로 변경하지 않는다.
+
+- `0001-phase-0-toolchain-and-contract-source.md`: Phase 0 toolchain과 canonical contract source
+- `0002-local-market-data-storage.md`: SQLite metadata, immutable Parquet와 복구 journal
