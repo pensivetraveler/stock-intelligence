@@ -119,6 +119,20 @@ def test_unknown_instrument_is_rejected() -> None:
         provider().get_bars(query(instrument_id="us:missing:xnas:2026"))
 
 
+def test_exchange_holiday_is_empty_coverage_not_missing_minutes() -> None:
+    result = provider().get_bars(
+        query(
+            start_utc=datetime(2026, 11, 26, 14, 30, tzinfo=timezone.utc),
+            end_utc=datetime(2026, 11, 26, 15, 30, tzinfo=timezone.utc),
+        )
+    )
+
+    assert result.bars == ()
+    assert result.coverage["coverage_status"] == "empty"
+    assert result.coverage["expected_interval_count"] == 0
+    assert result.coverage["missing_intervals"] == []
+
+
 def test_provider_path_performs_no_network_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     def reject_network(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("network access is forbidden for FakeMarketDataProvider")

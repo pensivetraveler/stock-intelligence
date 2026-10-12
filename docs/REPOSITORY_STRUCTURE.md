@@ -1,6 +1,6 @@
 # Repository Structure — 초기 제안 v1.5
 
-이 디렉터리는 Phase 0 기반과 Phase 1A~1B 시장 데이터 수직 슬라이스가 구현된 구조다. API·Collector·웹 개발 셸·계약 검증, 합성 Provider, 로컬 SQLite/Parquet cache와 CI가 구성되어 있다. `packages/indicator-sdk`만 후속 Phase 4를 위한 빈 자리표시자로 유지한다.
+이 디렉터리는 Phase 0 기반과 Phase 1A~1C 시장 데이터 수직 슬라이스가 구현된 구조다. API·Collector·웹 개발 셸·계약 검증, 합성 Provider, 로컬 SQLite/Parquet cache, 거래 캘린더·집계와 CI가 구성되어 있다. `packages/indicator-sdk`만 후속 Phase 4를 위한 빈 자리표시자로 유지한다.
 
 ```text
 stock-intelligence-workstation/
@@ -16,7 +16,7 @@ stock-intelligence-workstation/
 ├── services/
 │   ├── api/                         # FastAPI, 계약 검증, health/version
 │   ├── collector/                   # 별도 프로세스 시작점
-│   └── market_data/                 # Provider, migration, SQLite/Parquet cache
+│   └── market_data/                 # Provider, cache, calendar, aggregation
 ├── packages/
 │   ├── contracts/                   # JSON Schema 2020-12, 버전, TS/Python 변환 검사
 │   └── indicator-sdk/               # 미래 Python 지표 SDK 자리, 실행 엔진은 Phase 4

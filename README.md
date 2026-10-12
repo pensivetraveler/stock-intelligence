@@ -2,7 +2,7 @@
 
 미국 주식 차트·매매 복기·백테스팅·전문 Agent 연구 환경을 위한 **로컬 개발 착수 패키지**.
 
-**현재 상태:** Phase 0 기반, Phase 1A 합성 시장 데이터 경로와 Phase 1B 로컬 cache 기반 구현 완료. FastAPI API, React/TypeScript 개발 셸, 독립 Collector 진단 경로, 교차 언어 계약/fixture, `FakeMarketDataProvider`, SQLite Coverage/작업 메타데이터와 immutable Parquet 저장소가 구성되어 있다. 실제 공급업체는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
+**현재 상태:** Phase 0 기반과 Phase 1A~1C 시장 데이터 기반 구현 완료. FastAPI API, React/TypeScript 개발 셸, 독립 Collector 진단 경로, 합성 Provider, SQLite/Parquet cache, XNAS/XNYS 거래 캘린더 및 session-aligned 1m 집계가 구성되어 있다. 실제 공급업체는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
 
 ## 시작 순서
 
@@ -65,6 +65,13 @@ SIW_DATA_DIR=data uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8
 ```
 
 `data/metadata.sqlite3`에는 migration·Coverage·수집 작업·revision pin·복구 journal이 저장되고, bar는 `data/bars/` 아래 source/instrument/timeframe/UTC date/revision별 Parquet part로 저장된다. 이 디렉터리는 Git에서 제외되며 네트워크 파일 공유용이 아니다.
+
+### 거래 세션과 집계
+
+- 정규장·휴장·반장은 `exchange-calendars`의 XNAS→XNYS 일정으로 계산한다.
+- pre/regular/post는 `America/New_York` 기준의 버전된 정책이며 공급업체 entitlement를 의미하지 않는다.
+- 5m/15m/30m/60m는 세션 시작에 맞춰 집계하고 세션을 넘겨 합치지 않는다.
+- 파생 bar의 `quality`와 `lineage`에는 결측·미확정 상태, source revision, 기대/관측 1분봉 수와 calendar version이 남는다.
 
 포트 `8000`이 사용 중이면 API와 데스크톱을 같은 대체 포트로 맞춘다.
 

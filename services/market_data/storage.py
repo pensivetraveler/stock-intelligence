@@ -36,6 +36,21 @@ PARQUET_SCHEMA = pa.schema(
         ("volume_unit", pa.string()),
         ("session", pa.string()),
         ("is_final", pa.bool_()),
+        ("quality", pa.string()),
+        (
+            "lineage",
+            pa.struct(
+                [
+                    ("kind", pa.string()),
+                    ("source_timeframe", pa.string()),
+                    ("expected_source_bar_count", pa.int64()),
+                    ("observed_source_bar_count", pa.int64()),
+                    ("source_dataset_revision", pa.string()),
+                    ("calendar_id", pa.string()),
+                    ("calendar_version", pa.string()),
+                ]
+            ),
+        ),
         ("adjustment", pa.string()),
         ("source_id", pa.string()),
         ("source_feed_scope", pa.string()),

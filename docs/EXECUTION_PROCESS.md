@@ -68,10 +68,12 @@
 
 ## 단계 1C — 시간대·세션·집계·정정
 
-- 미국 거래소 calendar, DST, 반장
-- pre/regular/post 세션 구분
-- 1m→5m/15m/30m/60m 집계
-- partial/missing/correction 품질 전파
+**상태:** 2026-10-12 구현 및 로컬 검증 완료
+
+- [x] 미국 거래소 calendar, DST, 반장
+- [x] pre/regular/post 세션 구분
+- [x] 1m→5m/15m/30m/60m 집계
+- [x] partial/missing/correction 품질 전파
 
 **다음 단계 승인 질문:** 실제 Provider PoC 준비 또는 Phase 2 차트 중 어느 경로를 우선할지 확인한다.
 

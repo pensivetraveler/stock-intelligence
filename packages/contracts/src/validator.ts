@@ -40,6 +40,41 @@ export function semanticErrors(document: Document): string[] {
     if (low > Math.min(open, close, high)) {
       errors.push("low must be less than or equal to open, close, and high");
     }
+    const lineage = document.lineage as Document;
+    const expected = lineage.expected_source_bar_count as number;
+    const observed = lineage.observed_source_bar_count as number;
+    if (observed > expected) {
+      errors.push(
+        "observed source bar count cannot exceed expected source bar count",
+      );
+    }
+    if (
+      document.quality === "complete" &&
+      (observed !== expected || document.is_final !== true)
+    ) {
+      errors.push(
+        "complete bar quality requires all source bars and finalization",
+      );
+    }
+    if (document.quality === "provisional" && document.is_final === true) {
+      errors.push("provisional bar quality cannot be final");
+    }
+    if (
+      lineage.kind === "provider" &&
+      (expected !== 1 ||
+        observed !== 1 ||
+        lineage.source_dataset_revision !== null)
+    ) {
+      errors.push("provider lineage must represent one direct source bar");
+    }
+    if (
+      lineage.kind === "aggregated_1m" &&
+      (document.timeframe === "1m" || lineage.source_dataset_revision === null)
+    ) {
+      errors.push(
+        "aggregated lineage requires a derived timeframe and source revision",
+      );
+    }
   }
 
   if (document.kind === "manual_execution") {

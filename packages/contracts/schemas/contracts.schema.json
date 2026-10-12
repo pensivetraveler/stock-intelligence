@@ -78,6 +78,8 @@
         "volume_unit",
         "session",
         "is_final",
+        "quality",
+        "lineage",
         "adjustment",
         "source_id",
         "source_feed_scope",
@@ -99,6 +101,33 @@
         "volume_unit": { "enum": ["shares", "provider_units"] },
         "session": { "enum": ["pre", "regular", "post", "closed", "unknown"] },
         "is_final": { "type": "boolean" },
+        "quality": {
+          "enum": ["complete", "partial", "provisional", "unknown"]
+        },
+        "lineage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "source_timeframe",
+            "expected_source_bar_count",
+            "observed_source_bar_count",
+            "source_dataset_revision",
+            "calendar_id",
+            "calendar_version"
+          ],
+          "properties": {
+            "kind": { "enum": ["provider", "aggregated_1m"] },
+            "source_timeframe": { "const": "1m" },
+            "expected_source_bar_count": { "type": "integer", "minimum": 1 },
+            "observed_source_bar_count": { "type": "integer", "minimum": 0 },
+            "source_dataset_revision": {
+              "anyOf": [{ "$ref": "#/$defs/Identifier" }, { "type": "null" }]
+            },
+            "calendar_id": { "$ref": "#/$defs/Identifier" },
+            "calendar_version": { "$ref": "#/$defs/Identifier" }
+          }
+        },
         "adjustment": {
           "enum": ["raw", "split_adjusted", "fully_adjusted", "unknown"]
         },
@@ -139,7 +168,7 @@
         "coverage_status": { "enum": ["complete", "partial", "empty"] },
         "verification_status": { "enum": ["unverified", "verified"] },
         "observed_interval_count": { "type": "integer", "minimum": 0 },
-        "expected_interval_count": { "type": "integer", "minimum": 1 },
+        "expected_interval_count": { "type": "integer", "minimum": 0 },
         "missing_intervals": {
           "type": "array",
           "items": {

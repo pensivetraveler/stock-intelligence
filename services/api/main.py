@@ -24,7 +24,7 @@ from services.market_data.provider import (
 from services.market_data.storage import CachedMarketDataProvider, LocalMarketDataStore
 
 APP_NAME = "stock-intelligence-workstation-api"
-APP_VERSION = "0.3.0-dev"
+APP_VERSION = "0.4.0-dev"
 API_VERSION = "v1"
 DEFAULT_CORS_ORIGINS = (
     "http://127.0.0.1:5173",

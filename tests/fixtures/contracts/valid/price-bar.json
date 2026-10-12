@@ -13,6 +13,16 @@
   "volume_unit": "shares",
   "session": "regular",
   "is_final": true,
+  "quality": "complete",
+  "lineage": {
+    "kind": "provider",
+    "source_timeframe": "1m",
+    "expected_source_bar_count": 1,
+    "observed_source_bar_count": 1,
+    "source_dataset_revision": null,
+    "calendar_id": "XNAS",
+    "calendar_version": "exchange-calendars-4.13.2"
+  },
   "adjustment": "raw",
   "source_id": "synthetic-fixture",
   "source_feed_scope": "synthetic",

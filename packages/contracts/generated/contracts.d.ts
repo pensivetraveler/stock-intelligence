@@ -46,6 +46,16 @@ export interface PriceBar {
   volume_unit: "shares" | "provider_units";
   session: "pre" | "regular" | "post" | "closed" | "unknown";
   is_final: boolean;
+  quality: "complete" | "partial" | "provisional" | "unknown";
+  lineage: {
+    kind: "provider" | "aggregated_1m";
+    source_timeframe: "1m";
+    expected_source_bar_count: number;
+    observed_source_bar_count: number;
+    source_dataset_revision: Identifier | null;
+    calendar_id: Identifier;
+    calendar_version: Identifier;
+  };
   adjustment: "raw" | "split_adjusted" | "fully_adjusted" | "unknown";
   source_id: Identifier;
   source_feed_scope: Identifier;

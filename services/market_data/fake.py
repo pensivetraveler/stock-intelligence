@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from packages.contracts.validator import validate_document
+from services.market_data.calendar import UsEquityCalendar
 from services.market_data.provider import (
     BarsQuery,
     BarsResult,
@@ -47,6 +48,7 @@ class FakeMarketDataProvider:
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._now = now or (lambda: datetime.now(timezone.utc))
+        self._calendar = UsEquityCalendar("XNAS")
         self._capabilities = self._object(document, "capabilities")
         bars_value = document.get("bars")
         if not isinstance(bars_value, list) or not bars_value:
@@ -130,8 +132,13 @@ class FakeMarketDataProvider:
         ]
 
         expected_starts = tuple(
-            query.start_utc + timedelta(minutes=offset)
+            start
             for offset in range(int((query.end_utc - query.start_utc).total_seconds() // 60))
+            if self._calendar.classify_interval(
+                (start := query.start_utc + timedelta(minutes=offset)),
+                start + timedelta(minutes=1),
+            )
+            in {"pre", "regular", "post"}
         )
         visible_by_start = {
             _parse_utc(cast(str, bar["interval_start_utc"])): bar for bar in visible
@@ -154,7 +161,9 @@ class FakeMarketDataProvider:
                 }
             )
 
-        coverage_status = "complete" if not missing else ("partial" if visible else "empty")
+        coverage_status = (
+            "complete" if visible and not missing else ("partial" if visible else "empty")
+        )
         exemplar = matching_instrument[0]
         revisions = {cast(str, bar["dataset_revision"]) for bar in matching_instrument}
         if len(revisions) != 1:

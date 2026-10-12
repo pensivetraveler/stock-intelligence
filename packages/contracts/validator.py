@@ -42,6 +42,23 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
             errors.append("high must be greater than or equal to open, close, and low")
         if low > min(open_price, close, high):
             errors.append("low must be less than or equal to open, close, and high")
+        lineage = cast(dict[str, Any], document["lineage"])
+        expected = cast(int, lineage["expected_source_bar_count"])
+        observed = cast(int, lineage["observed_source_bar_count"])
+        if observed > expected:
+            errors.append("observed source bar count cannot exceed expected source bar count")
+        if document["quality"] == "complete" and (observed != expected or not document["is_final"]):
+            errors.append("complete bar quality requires all source bars and finalization")
+        if document["quality"] == "provisional" and document["is_final"]:
+            errors.append("provisional bar quality cannot be final")
+        if lineage["kind"] == "provider" and (
+            expected != 1 or observed != 1 or lineage["source_dataset_revision"] is not None
+        ):
+            errors.append("provider lineage must represent one direct source bar")
+        if lineage["kind"] == "aggregated_1m" and (
+            document["timeframe"] == "1m" or lineage["source_dataset_revision"] is None
+        ):
+            errors.append("aggregated lineage requires a derived timeframe and source revision")
 
     if kind == "manual_execution":
         start = _utc(document["selected_interval_start_utc"])

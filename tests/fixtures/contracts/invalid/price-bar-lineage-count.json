@@ -1,0 +1,31 @@
+{
+  "kind": "price_bar",
+  "schema_version": "0.1",
+  "instrument_id": "us:aapl:xnas:2026",
+  "timeframe": "5m",
+  "interval_start_utc": "2026-10-09T13:30:00Z",
+  "interval_end_utc": "2026-10-09T13:35:00Z",
+  "open": "250.10",
+  "high": "251.00",
+  "low": "249.90",
+  "close": "250.80",
+  "volume": "50000",
+  "volume_unit": "shares",
+  "session": "regular",
+  "is_final": true,
+  "quality": "complete",
+  "lineage": {
+    "kind": "aggregated_1m",
+    "source_timeframe": "1m",
+    "expected_source_bar_count": 5,
+    "observed_source_bar_count": 6,
+    "source_dataset_revision": "fake-aapl-20261009-r1",
+    "calendar_id": "XNAS",
+    "calendar_version": "exchange-calendars-4.13.2"
+  },
+  "adjustment": "raw",
+  "source_id": "fake-market-data",
+  "source_feed_scope": "synthetic-us-equity-1m",
+  "dataset_revision": "fake-aapl-20261009-r1:agg:5m:us-equity-extended-hours-v1-2026-10-12",
+  "available_at_utc": "2026-10-09T13:35:02Z"
+}
