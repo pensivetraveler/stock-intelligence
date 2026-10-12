@@ -52,6 +52,41 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
     if kind == "backtest_run_config" and _utc(document["end_utc"]) <= _utc(document["start_utc"]):
         errors.append("backtest end_utc must be after start_utc")
 
+    if kind == "coverage_manifest":
+        if _utc(document["requested_end_utc"]) <= _utc(document["requested_start_utc"]):
+            errors.append("coverage requested_end_utc must be after requested_start_utc")
+        observed = cast(int, document["observed_interval_count"])
+        expected = cast(int, document["expected_interval_count"])
+        missing = cast(list[object], document["missing_intervals"])
+        status = document["coverage_status"]
+        if observed + len(missing) != expected:
+            errors.append("coverage observed plus missing intervals must equal expected intervals")
+        if status == "complete" and (observed != expected or missing):
+            errors.append("complete coverage must contain every expected interval")
+        if status == "partial" and not (0 < observed < expected):
+            errors.append("partial coverage must contain some but not all expected intervals")
+        if status == "empty" and observed != 0:
+            errors.append("empty coverage must not contain observed intervals")
+
+    if kind == "market_bars_response":
+        bars = cast(list[dict[str, Any]], document["bars"])
+        coverage = cast(dict[str, Any], document["coverage"])
+        errors.extend(semantic_errors(coverage))
+        for bar in bars:
+            errors.extend(semantic_errors(bar))
+            for key in (
+                "instrument_id",
+                "timeframe",
+                "source_id",
+                "source_feed_scope",
+                "adjustment",
+                "dataset_revision",
+            ):
+                if bar[key] != coverage[key]:
+                    errors.append(f"response bar {key} must match coverage")
+        if len(bars) != coverage["observed_interval_count"]:
+            errors.append("response bar count must match observed coverage interval count")
+
     return errors
 
 

@@ -58,6 +58,67 @@ export function semanticErrors(document: Document): string[] {
     }
   }
 
+  if (document.kind === "coverage_manifest") {
+    const start = Date.parse(asString(document, "requested_start_utc"));
+    const end = Date.parse(asString(document, "requested_end_utc"));
+    if (end <= start) {
+      errors.push(
+        "coverage requested_end_utc must be after requested_start_utc",
+      );
+    }
+    const observed = document.observed_interval_count as number;
+    const expected = document.expected_interval_count as number;
+    const missing = document.missing_intervals as unknown[];
+    if (observed + missing.length !== expected) {
+      errors.push(
+        "coverage observed plus missing intervals must equal expected intervals",
+      );
+    }
+    if (
+      document.coverage_status === "complete" &&
+      (observed !== expected || missing.length > 0)
+    ) {
+      errors.push("complete coverage must contain every expected interval");
+    }
+    if (
+      document.coverage_status === "partial" &&
+      !(observed > 0 && observed < expected)
+    ) {
+      errors.push(
+        "partial coverage must contain some but not all expected intervals",
+      );
+    }
+    if (document.coverage_status === "empty" && observed !== 0) {
+      errors.push("empty coverage must not contain observed intervals");
+    }
+  }
+
+  if (document.kind === "market_bars_response") {
+    const bars = document.bars as Document[];
+    const coverage = document.coverage as Document;
+    errors.push(...semanticErrors(coverage));
+    for (const bar of bars) {
+      errors.push(...semanticErrors(bar));
+      for (const key of [
+        "instrument_id",
+        "timeframe",
+        "source_id",
+        "source_feed_scope",
+        "adjustment",
+        "dataset_revision",
+      ]) {
+        if (bar[key] !== coverage[key]) {
+          errors.push(`response bar ${key} must match coverage`);
+        }
+      }
+    }
+    if (bars.length !== coverage.observed_interval_count) {
+      errors.push(
+        "response bar count must match observed coverage interval count",
+      );
+    }
+  }
+
   return errors;
 }
 

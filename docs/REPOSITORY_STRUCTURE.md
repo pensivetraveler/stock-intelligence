@@ -15,7 +15,8 @@ stock-intelligence-workstation/
 │   └── desktop/                     # Tauri 2 + React/TypeScript (Phase 0: 개발 셸)
 ├── services/
 │   ├── api/                         # FastAPI, 계약 검증, health/version
-│   └── collector/                   # 별도 프로세스 시작점, 실제 데이터 수집은 Phase 1
+│   ├── collector/                   # 별도 프로세스 시작점
+│   └── market_data/                 # Provider protocol과 합성 fixture adapter
 ├── packages/
 │   ├── contracts/                   # JSON Schema 2020-12, 버전, TS/Python 변환 검사
 │   └── indicator-sdk/               # 미래 Python 지표 SDK 자리, 실행 엔진은 Phase 4

@@ -10,6 +10,9 @@ uv run mypy services packages/contracts tests/contracts
 uv run pytest
 
 pnpm install --frozen-lockfile
+generated_contract_snapshot="$(mktemp)"
+trap 'rm -f "$generated_contract_snapshot"' EXIT
+cp packages/contracts/generated/contracts.d.ts "$generated_contract_snapshot"
 pnpm contracts:generate
 pnpm format:check
 pnpm lint
@@ -17,8 +20,8 @@ pnpm typecheck
 pnpm test
 pnpm build
 
-if ! git diff --quiet -- packages/contracts/generated/contracts.d.ts; then
+if ! cmp -s "$generated_contract_snapshot" packages/contracts/generated/contracts.d.ts; then
   echo "Generated TypeScript contracts are stale." >&2
-  git diff -- packages/contracts/generated/contracts.d.ts
+  diff -u "$generated_contract_snapshot" packages/contracts/generated/contracts.d.ts || true
   exit 1
 fi

@@ -2,7 +2,7 @@
 
 미국 주식 차트·매매 복기·백테스팅·전문 Agent 연구 환경을 위한 **로컬 개발 착수 패키지**.
 
-**현재 상태:** Phase 0 기반 구현 완료. FastAPI API, React/TypeScript 개발 셸, 독립 Collector 진단 경로, 교차 언어 계약/fixture, 품질 게이트와 CI가 구성되어 있다. 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
+**현재 상태:** Phase 0 기반과 Phase 1A 합성 시장 데이터 수직 슬라이스 구현 완료. FastAPI API, React/TypeScript 개발 셸, 독립 Collector 진단 경로, 교차 언어 계약/fixture, `FakeMarketDataProvider`, 품질 게이트와 CI가 구성되어 있다. 실제 공급업체·DB/cache는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
 
 ## 시작 순서
 
@@ -46,6 +46,16 @@ pnpm install --frozen-lockfile
 uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8000
 curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8000/version
+```
+
+합성 AAPL 1분봉과 Coverage 계약은 다음처럼 확인한다. 이 경로는 로컬 fixture만 읽고 외부 네트워크를 호출하지 않는다.
+
+```bash
+curl --get http://127.0.0.1:8000/v1/market/bars \
+  --data-urlencode 'instrument_id=us:aapl:xnas:2026' \
+  --data-urlencode 'start_utc=2026-10-09T13:30:00Z' \
+  --data-urlencode 'end_utc=2026-10-09T13:34:00Z' \
+  --data-urlencode 'timeframe=1m'
 ```
 
 포트 `8000`이 사용 중이면 API와 데스크톱을 같은 대체 포트로 맞춘다.

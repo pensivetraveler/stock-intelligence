@@ -35,15 +35,17 @@
 
 ## 단계 1A — FakeMarketDataProvider 수직 슬라이스
 
+**상태:** 2026-10-12 구현 및 로컬 검증 완료
+
 목적: 외부 API·DB 없이 합성 1분봉이 canonical 계약을 통해 API까지 흐르는 첫 시장 데이터 경로를 만든다.
 
-- 요청·응답 및 `CoverageManifest` 최소 계약 확정
-- 합성 미국 주식 1분봉 fixture 작성
-- `MarketDataProvider` protocol과 `FakeMarketDataProvider` 구현
-- `GET /v1/market/bars` 구현
-- UTC, 세션, source/feed scope, revision, finalized 상태 보존
-- 잘못된 종목·기간·timeframe, 결측·중복·미래 cutoff 음성 테스트
-- 외부 네트워크 호출이 없음을 검증
+- [x] 요청·응답 및 `CoverageManifest` 최소 계약 확정
+- [x] 합성 미국 주식 1분봉 fixture 작성
+- [x] `MarketDataProvider` protocol과 `FakeMarketDataProvider` 구현
+- [x] `GET /v1/market/bars` 구현
+- [x] UTC, 세션, source/feed scope, revision, finalized 상태 보존
+- [x] 잘못된 종목·기간·timeframe, 결측·중복·미래 cutoff 음성 테스트
+- [x] 외부 네트워크 호출이 없음을 검증
 
 완료 Gate:
 

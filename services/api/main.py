@@ -2,17 +2,27 @@ from __future__ import annotations
 
 import os
 from collections.abc import Awaitable, Callable
+from datetime import datetime
+from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 
+from services.market_data.fake import FakeMarketDataProvider
+from services.market_data.provider import (
+    BarsQuery,
+    InstrumentNotFoundError,
+    InvalidBarsQueryError,
+    MarketDataProvider,
+)
+
 APP_NAME = "stock-intelligence-workstation-api"
-APP_VERSION = "0.1.0-dev"
+APP_VERSION = "0.2.0-dev"
 API_VERSION = "v1"
 DEFAULT_CORS_ORIGINS = (
     "http://127.0.0.1:5173",
@@ -46,8 +56,9 @@ def _error_response(request: Request, status_code: int, code: str, message: str)
     )
 
 
-def create_app() -> FastAPI:
+def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAPI:
     application = FastAPI(title=APP_NAME, version=APP_VERSION)
+    provider = market_data_provider or FakeMarketDataProvider.from_path()
     application.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),
@@ -88,6 +99,36 @@ def create_app() -> FastAPI:
             "api_version": API_VERSION,
             "app_version": APP_VERSION,
         }
+
+    @application.get("/v1/market/bars", response_model=None)
+    async def market_bars(
+        request: Request,
+        instrument_id: Annotated[str, Query(min_length=1, max_length=200)],
+        start_utc: Annotated[datetime, Query()],
+        end_utc: Annotated[datetime, Query()],
+        timeframe: Annotated[Literal["1m"], Query()] = "1m",
+        as_of_utc: Annotated[datetime | None, Query()] = None,
+    ) -> Response:
+        try:
+            result = provider.get_bars(
+                BarsQuery(
+                    instrument_id=instrument_id,
+                    timeframe=timeframe,
+                    start_utc=start_utc,
+                    end_utc=end_utc,
+                    as_of_utc=as_of_utc,
+                )
+            )
+        except InstrumentNotFoundError:
+            return _error_response(
+                request,
+                404,
+                "instrument_not_found",
+                "Instrument is not available from the configured provider",
+            )
+        except InvalidBarsQueryError as exc:
+            return _error_response(request, 422, "invalid_market_data_query", str(exc))
+        return JSONResponse(content=result.to_document())
 
     return application
 

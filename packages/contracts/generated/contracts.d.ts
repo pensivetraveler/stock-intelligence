@@ -3,6 +3,8 @@
 export type StockIntelligenceWorkstationContractsV01 =
   | InstrumentRef
   | PriceBar
+  | CoverageManifest
+  | MarketBarsResponse
   | SourceCapabilities
   | SourceRecord
   | BrokerConfirmedExecution
@@ -50,12 +52,43 @@ export interface PriceBar {
   dataset_revision: Identifier;
   available_at_utc: UtcTimestamp;
 }
+export interface CoverageManifest {
+  kind: "coverage_manifest";
+  schema_version: SchemaVersion;
+  instrument_id: Identifier;
+  timeframe: "1m";
+  requested_start_utc: UtcTimestamp;
+  requested_end_utc: UtcTimestamp;
+  coverage_status: "complete" | "partial" | "empty";
+  observed_interval_count: number;
+  expected_interval_count: number;
+  missing_intervals: {
+    start_utc: UtcTimestamp;
+    end_utc: UtcTimestamp;
+    reason: "fixture_missing" | "not_available_as_of_cutoff";
+  }[];
+  source_id: Identifier;
+  source_feed_scope: Identifier;
+  adjustment: "raw" | "split_adjusted" | "fully_adjusted" | "unknown";
+  dataset_revision: Identifier;
+  point_in_time_cutoff_utc: UtcTimestamp | null;
+}
+export interface MarketBarsResponse {
+  kind: "market_bars_response";
+  schema_version: SchemaVersion;
+  bars: PriceBar[];
+  coverage: CoverageManifest;
+}
 export interface SourceCapabilities {
   kind: "source_capabilities";
   schema_version: SchemaVersion;
   source_id: Identifier;
   source_type:
-    "paid_market" | "broker_market" | "official_public" | "permitted_web";
+    | "paid_market"
+    | "broker_market"
+    | "official_public"
+    | "permitted_web"
+    | "synthetic";
   verification_status: "unknown" | "documented" | "integration_tested";
   entitlement_status: "unknown" | "not_entitled" | "entitled";
   license_status: "unknown" | "not_licensed" | "licensed";

@@ -5,6 +5,8 @@
   "oneOf": [
     { "$ref": "#/$defs/InstrumentRef" },
     { "$ref": "#/$defs/PriceBar" },
+    { "$ref": "#/$defs/CoverageManifest" },
+    { "$ref": "#/$defs/MarketBarsResponse" },
     { "$ref": "#/$defs/SourceCapabilities" },
     { "$ref": "#/$defs/SourceRecord" },
     { "$ref": "#/$defs/BrokerConfirmedExecution" },
@@ -106,6 +108,73 @@
         "available_at_utc": { "$ref": "#/$defs/UtcTimestamp" }
       }
     },
+    "CoverageManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "instrument_id",
+        "timeframe",
+        "requested_start_utc",
+        "requested_end_utc",
+        "coverage_status",
+        "observed_interval_count",
+        "expected_interval_count",
+        "missing_intervals",
+        "source_id",
+        "source_feed_scope",
+        "adjustment",
+        "dataset_revision",
+        "point_in_time_cutoff_utc"
+      ],
+      "properties": {
+        "kind": { "const": "coverage_manifest" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "instrument_id": { "$ref": "#/$defs/Identifier" },
+        "timeframe": { "const": "1m" },
+        "requested_start_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "requested_end_utc": { "$ref": "#/$defs/UtcTimestamp" },
+        "coverage_status": { "enum": ["complete", "partial", "empty"] },
+        "observed_interval_count": { "type": "integer", "minimum": 0 },
+        "expected_interval_count": { "type": "integer", "minimum": 1 },
+        "missing_intervals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start_utc", "end_utc", "reason"],
+            "properties": {
+              "start_utc": { "$ref": "#/$defs/UtcTimestamp" },
+              "end_utc": { "$ref": "#/$defs/UtcTimestamp" },
+              "reason": {
+                "enum": ["fixture_missing", "not_available_as_of_cutoff"]
+              }
+            }
+          }
+        },
+        "source_id": { "$ref": "#/$defs/Identifier" },
+        "source_feed_scope": { "$ref": "#/$defs/Identifier" },
+        "adjustment": {
+          "enum": ["raw", "split_adjusted", "fully_adjusted", "unknown"]
+        },
+        "dataset_revision": { "$ref": "#/$defs/Identifier" },
+        "point_in_time_cutoff_utc": {
+          "anyOf": [{ "$ref": "#/$defs/UtcTimestamp" }, { "type": "null" }]
+        }
+      }
+    },
+    "MarketBarsResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "bars", "coverage"],
+      "properties": {
+        "kind": { "const": "market_bars_response" },
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "bars": { "type": "array", "items": { "$ref": "#/$defs/PriceBar" } },
+        "coverage": { "$ref": "#/$defs/CoverageManifest" }
+      }
+    },
     "SourceCapabilities": {
       "type": "object",
       "additionalProperties": false,
@@ -130,7 +199,8 @@
             "paid_market",
             "broker_market",
             "official_public",
-            "permitted_web"
+            "permitted_web",
+            "synthetic"
           ]
         },
         "verification_status": {
