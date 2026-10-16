@@ -74,7 +74,6 @@ class MinuteBarAggregator:
         grouped: defaultdict[
             tuple[str, TradingSessionName, datetime, datetime], list[dict[str, Any]]
         ] = defaultdict(list)
-        target_minutes = TARGET_MINUTES[timeframe]
 
         for bar in visible:
             start = _parse_utc(cast(str, bar["interval_start_utc"]))
@@ -86,29 +85,42 @@ class MinuteBarAggregator:
                 raise AggregationError("duplicate source minute")
             identities.add(identity)
 
-            classified = self.calendar.classify_interval(start, end)
-            if classified not in {"pre", "regular", "post"}:
-                raise AggregationError("source bar is outside a supported trading session")
-            session = cast(TradingSessionName, classified)
+            session_date, session, bucket_start, bucket_end = self.bucket_bounds(start, timeframe)
             if bar["session"] != session:
                 raise AggregationError("declared bar session conflicts with exchange calendar")
-            window = self.calendar.window_for_timestamp(start)
-            if window is None:
-                raise AggregationError("source bar has no exchange session")
-            session_start, session_end = window.bounds(session)
-            offset_minutes = int((start - session_start).total_seconds() // 60)
-            bucket_start = session_start + timedelta(
-                minutes=(offset_minutes // target_minutes) * target_minutes
-            )
-            bucket_end = min(bucket_start + timedelta(minutes=target_minutes), session_end)
-            grouped[(window.session_date.isoformat(), session, bucket_start, bucket_end)].append(
-                bar
-            )
+            grouped[(session_date, session, bucket_start, bucket_end)].append(bar)
 
         return tuple(
             self._aggregate_bucket(group, timeframe, session, bucket_start, bucket_end)
-            for (_date, session, bucket_start, bucket_end), group in sorted(grouped.items())
+            # Order by time: sorting the keys would order sessions by name (post < pre).
+            for (_date, session, bucket_start, bucket_end), group in sorted(
+                grouped.items(), key=lambda item: item[0][2]
+            )
         )
+
+    def bucket_bounds(
+        self, start_utc: datetime, timeframe: AggregateTimeframe
+    ) -> tuple[str, TradingSessionName, datetime, datetime]:
+        """Session date, session and [start, end) of the bucket holding one source minute."""
+        end_utc = start_utc + timedelta(minutes=1)
+        classified = self.calendar.classify_interval(start_utc, end_utc)
+        if classified not in {"pre", "regular", "post"}:
+            raise AggregationError("source bar is outside a supported trading session")
+        session = cast(TradingSessionName, classified)
+        window = self.calendar.window_for_timestamp(start_utc)
+        if window is None:
+            raise AggregationError("source bar has no exchange session")
+        session_start, session_end = window.bounds(session)
+        target_minutes = TARGET_MINUTES[timeframe]
+        offset_minutes = int((start_utc - session_start).total_seconds() // 60)
+        bucket_start = session_start + timedelta(
+            minutes=(offset_minutes // target_minutes) * target_minutes
+        )
+        bucket_end = min(bucket_start + timedelta(minutes=target_minutes), session_end)
+        return window.session_date.isoformat(), session, bucket_start, bucket_end
+
+    def derived_revision(self, source_revision: str, timeframe: AggregateTimeframe) -> str:
+        return f"{source_revision}:agg:{timeframe}:{self.calendar.extended_hours_policy_version}"
 
     def _validate_common_lineage(self, bars: list[dict[str, Any]]) -> None:
         keys = (
@@ -188,9 +200,7 @@ class MinuteBarAggregator:
             "adjustment": first["adjustment"],
             "source_id": first["source_id"],
             "source_feed_scope": first["source_feed_scope"],
-            "dataset_revision": (
-                f"{source_revision}:agg:{timeframe}:{self.calendar.extended_hours_policy_version}"
-            ),
+            "dataset_revision": self.derived_revision(source_revision, timeframe),
             # Compare instants, not text: "...:00.5Z" sorts before "...:00Z" as a string.
             "available_at_utc": max(
                 ordered, key=lambda bar: _parse_utc(cast(str, bar["available_at_utc"]))

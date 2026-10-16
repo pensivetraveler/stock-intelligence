@@ -166,6 +166,49 @@ export function semanticErrors(document: Document): string[] {
     }
   }
 
+  if (document.kind === "session_window") {
+    const boundaries = [
+      "pre_open_utc",
+      "regular_open_utc",
+      "regular_close_utc",
+      "post_close_utc",
+    ].map((key) => document[key]);
+    if (document.is_trading_day !== true) {
+      if (
+        boundaries.some((value) => value !== null) ||
+        document.is_early_close === true
+      ) {
+        errors.push(
+          "a non-trading day has no session boundaries or early close",
+        );
+      }
+    } else if (boundaries.some((value) => value === null)) {
+      errors.push("a trading day requires every session boundary");
+    } else {
+      const [preOpen, regularOpen, regularClose, postClose] = boundaries.map(
+        (value) => Date.parse(value as string),
+      );
+      if (!(
+        preOpen <= regularOpen &&
+        regularOpen < regularClose &&
+        regularClose <= postClose
+      )) {
+        errors.push(
+          "session boundaries must be ordered pre <= open < close <= post",
+        );
+      }
+    }
+  }
+
+  if (document.kind === "market_instruments_response") {
+    const identifiers = (document.instruments as Document[]).map(
+      (item) => (item.instrument as Document).instrument_id,
+    );
+    if (new Set(identifiers).size !== identifiers.length) {
+      errors.push("instrument_id must be unique within the response");
+    }
+  }
+
   if (document.kind === "backtest_run_config") {
     const start = Date.parse(asString(document, "start_utc"));
     const end = Date.parse(asString(document, "end_utc"));

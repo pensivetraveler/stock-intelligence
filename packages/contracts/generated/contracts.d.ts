@@ -13,7 +13,9 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ScenarioDefinition
   | IndicatorDefinition
   | AgentEvidence
-  | BacktestRunConfig;
+  | BacktestRunConfig
+  | SessionWindow
+  | MarketInstrumentsResponse;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -66,7 +68,7 @@ export interface CoverageManifest {
   kind: "coverage_manifest";
   schema_version: SchemaVersion;
   instrument_id: Identifier;
-  timeframe: "1m";
+  timeframe: "1m" | "5m" | "15m" | "30m" | "60m";
   requested_start_utc: UtcTimestamp;
   requested_end_utc: UtcTimestamp;
   coverage_status: "complete" | "partial" | "empty";
@@ -223,4 +225,28 @@ export interface BacktestRunConfig {
   fee_assumption: NonNegativeDecimalString;
   slippage_assumption: NonNegativeDecimalString;
   seed: number;
+}
+export interface SessionWindow {
+  kind: "session_window";
+  schema_version: SchemaVersion;
+  calendar_id: Identifier;
+  session_date: string;
+  is_trading_day: boolean;
+  is_early_close: boolean;
+  pre_open_utc: UtcTimestamp | null;
+  regular_open_utc: UtcTimestamp | null;
+  regular_close_utc: UtcTimestamp | null;
+  post_close_utc: UtcTimestamp | null;
+  calendar_version: Identifier;
+  extended_hours_policy_version: Identifier;
+}
+export interface MarketInstrumentsResponse {
+  kind: "market_instruments_response";
+  schema_version: SchemaVersion;
+  instruments: {
+    instrument: InstrumentRef;
+    source_id: Identifier;
+    dataset_revision: Identifier;
+    session_dates: string[];
+  }[];
 }

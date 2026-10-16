@@ -152,13 +152,17 @@ class _ExclusiveFileLock:
             os.close(descriptor)
 
 
+def _parse_utc(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 def _session_date(bar: dict[str, Any]) -> str:
     """US exchange-local date of the bar start.
 
     Partitioning by UTC date would split a winter post-market session (19:00-20:00 ET
     is 00:00-01:00 UTC the next day) across two partitions.
     """
-    start = datetime.fromisoformat(cast(str, bar["interval_start_utc"]).replace("Z", "+00:00"))
+    start = _parse_utc(cast(str, bar["interval_start_utc"]))
     return start.astimezone(EXCHANGE_TIMEZONE).date().isoformat()
 
 
@@ -467,6 +471,81 @@ class LocalMarketDataStore:
             bars.extend(self._read_verified_parquet(relative_path))
         bars.sort(key=lambda bar: cast(str, bar["interval_start_utc"]))
         result = BarsResult(tuple(bars), manifest)
+        validate_document(result.to_document())
+        return result
+
+    def read_composed(self, query: BarsQuery, source_id: str) -> BarsResult | None:
+        """Serve a range from several cached results without calling upstream.
+
+        Only cached results with the same source, timeframe and point-in-time cutoff
+        and no missing intervals are combined. Each covers every interval its provider
+        expected in its own range, so the union of their bars inside the query range is
+        the full expected set. Returns None, which means "fetch upstream", when:
+        - the candidates span several revisions (no implicit choice),
+        - they leave any part of the range uncovered,
+        - their bars disagree, or any bar is not final.
+        """
+        cutoff = _format_utc(query.as_of_utc) if query.as_of_utc is not None else None
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT manifest_json, parquet_paths_json FROM coverage_manifests "
+                "WHERE instrument_id = ? AND timeframe = ? AND source_id = ? "
+                "AND point_in_time_cutoff_utc IS ?",
+                (query.instrument_id, query.timeframe, source_id, cutoff),
+            ).fetchall()
+        candidates: list[tuple[dict[str, Any], list[str], datetime, datetime]] = []
+        for row in rows:
+            manifest = cast(dict[str, Any], json.loads(cast(str, row["manifest_json"])))
+            start = _parse_utc(cast(str, manifest["requested_start_utc"]))
+            end = _parse_utc(cast(str, manifest["requested_end_utc"]))
+            if manifest["missing_intervals"] or end <= query.start_utc or start >= query.end_utc:
+                continue
+            paths = cast(list[str], json.loads(cast(str, row["parquet_paths_json"])))
+            candidates.append((manifest, paths, start, end))
+        if not candidates:
+            return None
+        identity_keys = ("dataset_revision", "source_feed_scope", "adjustment")
+        if len({tuple(c[0][key] for key in identity_keys) for c in candidates}) != 1:
+            return None
+        covered_until = query.start_utc
+        for _manifest, _paths, start, end in sorted(candidates, key=lambda c: c[2]):
+            if start > covered_until:
+                return None
+            covered_until = max(covered_until, end)
+        if covered_until < query.end_utc:
+            return None
+
+        bars_by_start: dict[str, dict[str, Any]] = {}
+        for _manifest, paths, _start, _end in candidates:
+            for relative_path in paths:
+                for bar in self._read_verified_parquet(relative_path):
+                    bar_start = _parse_utc(cast(str, bar["interval_start_utc"]))
+                    if not query.start_utc <= bar_start < query.end_utc:
+                        continue
+                    key = cast(str, bar["interval_start_utc"])
+                    existing = bars_by_start.setdefault(key, bar)
+                    if existing != bar:
+                        raise CacheIntegrityError("cached results disagree on one interval")
+        bars = tuple(bars_by_start[key] for key in sorted(bars_by_start))
+        if not all(cast(bool, bar["is_final"]) for bar in bars):
+            return None
+
+        exemplar = candidates[0][0]
+        coverage: dict[str, Any] = {
+            **exemplar,
+            "requested_start_utc": _format_utc(query.start_utc),
+            "requested_end_utc": _format_utc(query.end_utc),
+            "coverage_status": "complete" if bars else "empty",
+            "verification_status": (
+                "verified"
+                if all(c[0]["verification_status"] == "verified" for c in candidates)
+                else "unverified"
+            ),
+            "observed_interval_count": len(bars),
+            "expected_interval_count": len(bars),
+            "missing_intervals": [],
+        }
+        result = BarsResult(bars, coverage)
         validate_document(result.to_document())
         return result
 
@@ -933,6 +1012,9 @@ class CachedMarketDataProvider:
     def capabilities(self) -> dict[str, Any]:
         return self.upstream.capabilities()
 
+    def instruments(self) -> list[dict[str, Any]]:
+        return self.upstream.instruments()
+
     def get_bars(self, query: BarsQuery) -> BarsResult:
         validate_bars_query(query)
         try:
@@ -943,6 +1025,9 @@ class CachedMarketDataProvider:
             cached = None
         if cached is not None and self._is_reusable(cached):
             return cached
+        composed = self.store.read_composed(query, self.source_id)
+        if composed is not None:
+            return composed
         fetched = self.upstream.get_bars(query)
         self.store.write_result(fetched)
         stored = self.store.read_exact(

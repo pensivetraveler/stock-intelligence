@@ -1,0 +1,14 @@
+{
+  "kind": "session_window",
+  "schema_version": "0.1",
+  "calendar_id": "XNAS",
+  "session_date": "2026-11-27",
+  "is_trading_day": true,
+  "is_early_close": true,
+  "pre_open_utc": "2026-11-27T09:00:00Z",
+  "regular_open_utc": "2026-11-27T14:30:00Z",
+  "regular_close_utc": "2026-11-27T14:30:00Z",
+  "post_close_utc": "2026-11-27T22:00:00Z",
+  "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8",
+  "extended_hours_policy_version": "us-equity-extended-hours-v1-2026-10-12"
+}

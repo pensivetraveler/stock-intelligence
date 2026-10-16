@@ -2,7 +2,7 @@
 
 - **정리일:** 2026-10-15
 - **대조 기준:** 현재 코드, 테스트 파일, Git 이력, [PROJECT_STATE.md](PROJECT_STATE.md)의 당시 검증 기록
-- **구현 기준 커밋:** `fc96cc3` (`main`)와 그 위의 2026-10-16 운영 보강 변경(커밋 시 갱신)
+- **구현 기준 커밋:** `ef2dbac` (`main`)
 - **읽는 방법:** 아래 테스트 수와 서버 기동 결과는 2026-10-12의 기록이다. 2026-10-15 문서 정리에서 기능 테스트나 실제 서버 기동을 다시 수행한 결과로 해석하지 않는다.
 
 ## 1. 누적 작업 요약
@@ -16,7 +16,9 @@
 | 문서 현행화               | 이번 문서 변경 | 문서 색인·누적 이력 추가, 상태·로드맵·진행 규칙 정합성 수정            | 문서 포맷·diff 검사; 기능 테스트 미실행      | 2026-10-15                          |
 | 검토 결함·데이터 안전성   | `980e973`      | API 오류 envelope, 검증기 캐시, 다중 프로세스 복구, point-in-time 계약 | Python 88, TS 계약 26, UI 4; 전체 검증 통과  | 완료                                |
 | 남은 데이터 위험·job 종료 | `fc96cc3`      | cache 전 query 검증, calendar fingerprint, TS decimal, job 종료        | Python 98, TS 계약 34, UI 4; 전체 검증 통과  | 완료                                |
-| 운영 보강                 | 커밋 전        | 세션 날짜 partition, 연결 close, API lazy 시작, request ID, 단일 버전  | Python 110, TS 계약 34, UI 6; 전체 검증 통과 | 2026-10-16                          |
+| 운영 보강                 | `ef2dbac`      | 세션 날짜 partition, 연결 close, API lazy 시작, request ID, 단일 버전  | Python 110, TS 계약 34, UI 6; 전체 검증 통과 | 2026-10-16                          |
+| Phase 1 내부 마무리(1E)   | 커밋 전        | 공개 5m~60m 집계 API, cache 범위 조합, 재개 가능한 backfill            | Python 134, TS 계약 35, UI 6; 전체 검증 통과 | 2026-10-16                          |
+| Phase 2A 차트 workspace   | 커밋 전        | 차트 2개·독립 설정·동기화·레이아웃 저장, 합성 SYNTH, 종목·세션 API     | 전체 검증·브라우저 확인                      | 2026-10-16                          |
 
 Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 정정·재시도·공급업체 비교 등 장기 로드맵의 나머지 요구사항은 후속 작업이다.
 
@@ -79,7 +81,7 @@ Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 �
 
 **당시 실행 근거:** 전체 검증 명령 통과. 실제 Python 실행으로 2026-03-09 정규장 open `13:30Z`, 2026-11-27 반장 close `18:00Z`, 4/5 source 분봉의 집계 `partial`을 확인했다.
 
-**현재 한계:** 공개 API의 `timeframe`은 `1m`만 허용한다. 큰 timeframe은 내부 집계 모듈에만 구현되어 있다. 공급업체 사후 정정 수집·reconciliation과 Nasdaq overnight/23시간 세션은 미구현이다. 리비전 보존·혼합 거부를 실제 정정 처리 완료로 해석하지 않는다. 이전 schema의 로컬 합성 cache는 자동 변환하지 않는다([ADR 0003](decisions/0003-us-equity-calendar-and-aggregation.md)).
+**1C 당시 한계:** 공개 API의 `timeframe`은 `1m`만 허용했고 큰 timeframe은 내부 집계 모듈에만 있었다(공개 API 연결은 1E에서 완료). 공급업체 사후 정정 수집·reconciliation과 Nasdaq overnight/23시간 세션은 미구현이다. 리비전 보존·혼합 거부를 실제 정정 처리 완료로 해석하지 않는다. 이전 schema의 로컬 합성 cache는 자동 변환하지 않는다([ADR 0003](decisions/0003-us-equity-calendar-and-aggregation.md)).
 
 ## 6. 검토 후속 보강 — 2026-10-16
 
@@ -99,7 +101,7 @@ Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 �
   - 집계 공개 시각을 시각 기준으로 비교한다.
   - TS 검증기가 decimal을 정확히 비교한다.
   - job `succeeded`/`failed` 종료와 owner 제한을 추가했다([ADR 0005](decisions/0005-calendar-fingerprint-query-boundary-and-job-lifecycle.md)).
-- **운영 보강(커밋 전):**
+- **운영 보강 (`ef2dbac`):**
   - Parquet `session_date` partition, SQLite 연결 close, 실패한 복구의 임시 파일 정리
   - API provider lazy 생성과 lifespan warm-up, 합성 fixture를 `services/market_data/fixtures/`로 이동
   - `X-Request-ID` 형식 검증
@@ -114,19 +116,33 @@ Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 �
 
 **영향:** 이 변경 전에 만든 로컬 cache는 옛 calendar version lineage 때문에 새 bar와 집계되지 않는다. 기존 `date=` partition의 Parquet는 읽을 수 있지만, 새 쓰기는 `session_date=` 경로를 쓴다.
 
+**Phase 1 내부 마무리(1E, 커밋 전):**
+
+- `MarketBarsService`가 공개 API에서 5m/15m/30m/60m을 세션 bucket 기준으로 집계한다.
+- 결측 없는 cache 결과 여러 개로 다른 요청 범위에 응답한다.
+- Collector `backfill`이 job·chunk·checkpoint·재개·재시도·throttle을 제공한다.
+- 근거: [ADR 0007](decisions/0007-aggregated-api-cache-composition-and-backfill.md)
+
+**Phase 2A 차트 workspace(커밋 전):**
+
+- 독립 설정 차트 2개, 시간 범위 동기화, 레이아웃 저장·복원
+- Coverage·품질·lineage·결측의 ET 표시
+- 합성 `SYNTH` 하루치와 종목·세션 API
+- 브라우저 검증에서 집계 순서·500 CORS·모바일 viewport 결함을 찾아 고쳤다([ADR 0008](decisions/0008-chart-workspace-slice.md)).
+
 ## 7. 현재 가능한 사용과 남은 작업
 
 | 항목                                 | 현재 범위                           | 다음에 필요한 작업                                    |
 | ------------------------------------ | ----------------------------------- | ----------------------------------------------------- |
 | 데이터 조회                          | 합성 AAPL 1m API, 선택적 로컬 cache | 다종목·충분한 fixture, 실제 Provider는 권한·권리 검증 |
-| 큰 timeframe                         | 내부 집계 함수                      | API 계약 확장과 응답·Coverage 통합 검증               |
-| 화면                                 | API 상태를 표시하는 웹 개발 셸      | 차트 렌더링, 종목/timeframe 선택, workspace           |
+| 큰 timeframe                         | 공개 API 5m~60m 집계                | 일봉(`1d`)과 차트 연결                                |
+| 화면                                 | 차트 2개 workspace(합성 데이터)     | 프리셋·named workspace, 지표·거래 표시                |
 | 네이티브 앱                          | Tauri 구성                          | Rust/Cargo 등 prerequisite 설치 후 실행·빌드 검증     |
-| 데이터 운영                          | 로컬 저장·중단 복구·pin             | 실제 backfill/retry/throttle, 정정 처리, retention    |
+| 데이터 운영                          | 로컬 저장·복구·pin, 합성 backfill   | 실제 Provider 수집, 정정 처리, retention              |
 | 원격 CI                              | workflow 파일                       | Git 원격·CI 실행 환경 구성 및 실행 증거               |
 | 매매 복기·지표·Replay·백테스트·Agent | 초기 계약 또는 장기 요구사항        | 해당 Phase 구현과 별도 수락 검증                      |
 
-후속 선택지는 **Phase 2의 합성 데이터 기반 차트 수직 슬라이스** 또는 **Phase 1D 실제 Provider PoC**다. Phase 2를 선택하면 첫 차트에서 source·session·quality·Coverage를 표시하고, 큰 timeframe API 연결은 명시적인 하위 작업으로 포함할 수 있다. Phase 1D는 사용할 계정·읽기 전용 권한·데이터 저장권·비용 범위 확인이 선행된다. 두 경로 모두 아직 착수하지 않았다.
+후속 선택지는 **Phase 2의 합성 데이터 기반 차트 수직 슬라이스** 또는 **Phase 1D 실제 Provider PoC**다. Phase 2를 선택하면 첫 차트에서 source·session·quality·Coverage를 표시하며, 이미 공개된 5m~60m 집계 API를 사용할 수 있다. Phase 1D는 사용할 계정·읽기 전용 권한·데이터 저장권·비용 범위 확인이 선행된다. 두 경로 모두 아직 착수하지 않았다.
 
 ## 8. 이력 확인과 갱신
 
@@ -138,6 +154,7 @@ git show --stat 94aa4c2
 git show --stat 1113ec2
 git show --stat 980e973
 git show --stat fc96cc3
+git show --stat ef2dbac
 ./scripts/verify.sh
 ```
 

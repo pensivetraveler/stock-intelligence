@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { version as APP_VERSION } from "../package.json";
 import { checkApiHealth, type ApiConnectionState } from "./api-health";
+import { createMarketApi } from "./market-api";
 import "./styles.css";
+import { Workspace } from "./Workspace";
 
 interface AppProps {
   apiBaseUrl?: string;
@@ -20,6 +22,10 @@ export function App({
   const [state, setState] = useState<ApiConnectionState>("checking");
   const [message, setMessage] = useState("Checking API health");
   const [lastSuccess, setLastSuccess] = useState<string | null>(null);
+  const api = useMemo(
+    () => createMarketApi(apiBaseUrl, fetcher),
+    [apiBaseUrl, fetcher],
+  );
   const retryTimer = useRef<number | null>(null);
   const mounted = useRef(true);
   // Bumped whenever the polling loop is replaced (props change or unmount), so a
@@ -61,15 +67,17 @@ export function App({
   }, [runCheck]);
 
   return (
-    <main>
-      <section className="shell" aria-labelledby="app-title">
-        <p className="eyebrow">PHASE 0 DEVELOPMENT SHELL</p>
-        <h1 id="app-title">Stock Intelligence Workstation</h1>
-        <p className="subtitle">
-          Local-first foundation. No market data or brokerage connection.
-        </p>
-
-        <dl>
+    <main className="app">
+      <header className="app-bar" aria-labelledby="app-title">
+        <div>
+          <p className="eyebrow">PHASE 2A CHART WORKSPACE</p>
+          <h1 id="app-title">Stock Intelligence Workstation</h1>
+          <p className="subtitle">
+            Local-first and read-only. Synthetic market data; no brokerage
+            connection.
+          </p>
+        </div>
+        <dl className="app-facts">
           <div>
             <dt>App version</dt>
             <dd>{APP_VERSION}</dd>
@@ -85,21 +93,20 @@ export function App({
             </dd>
           </div>
         </dl>
-
         <div className="health" role="status" aria-live="polite">
           <strong>/health</strong>
           <span>{message}</span>
           {lastSuccess ? <small>Last success: {lastSuccess}</small> : null}
+          <button
+            type="button"
+            onClick={() => void runCheck()}
+            disabled={state === "checking"}
+          >
+            Retry now
+          </button>
         </div>
-
-        <button
-          type="button"
-          onClick={() => void runCheck()}
-          disabled={state === "checking"}
-        >
-          Retry now
-        </button>
-      </section>
+      </header>
+      {lastSuccess ? <Workspace api={api} /> : null}
     </main>
   );
 }

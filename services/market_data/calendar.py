@@ -136,6 +136,28 @@ class UsEquityCalendar:
             extended_hours_policy_version=self.extended_hours_policy_version,
         )
 
+    def session_window_document(self, session_date: date) -> dict[str, Any]:
+        """Contract `session_window` for one exchange-local date (null bounds when closed)."""
+        window = self.window_for_date(session_date)
+
+        def text(value: datetime | None) -> str | None:
+            return None if value is None else _utc_text(value)
+
+        return {
+            "kind": "session_window",
+            "schema_version": "0.1",
+            "calendar_id": self.calendar_id,
+            "session_date": session_date.isoformat(),
+            "is_trading_day": window is not None,
+            "is_early_close": window.is_early_close if window else False,
+            "pre_open_utc": text(window.pre_open_utc if window else None),
+            "regular_open_utc": text(window.regular_open_utc if window else None),
+            "regular_close_utc": text(window.regular_close_utc if window else None),
+            "post_close_utc": text(window.post_close_utc if window else None),
+            "calendar_version": self.calendar_version,
+            "extended_hours_policy_version": self.extended_hours_policy_version,
+        }
+
     def window_for_timestamp(self, timestamp_utc: datetime) -> SessionWindow | None:
         self._require_utc(timestamp_utc, "timestamp_utc")
         return self.window_for_date(timestamp_utc.astimezone(NEW_YORK).date())
@@ -161,6 +183,21 @@ class UsEquityCalendar:
             if start_utc < boundary < end_utc:
                 return "unknown"
         return "closed"
+
+    def trading_minutes(
+        self, start_utc: datetime, end_utc: datetime
+    ) -> tuple[tuple[datetime, TradingSessionName], ...]:
+        """Start of every one-minute interval in [start, end) inside pre/regular/post."""
+        self._require_utc(start_utc, "start_utc")
+        self._require_utc(end_utc, "end_utc")
+        minutes: list[tuple[datetime, TradingSessionName]] = []
+        start = start_utc
+        while start < end_utc:
+            session = self.classify_interval(start, start + timedelta(minutes=1))
+            if session in ("pre", "regular", "post"):
+                minutes.append((start, session))
+            start += timedelta(minutes=1)
+        return tuple(minutes)
 
     @staticmethod
     def _as_datetime(value: object) -> datetime:

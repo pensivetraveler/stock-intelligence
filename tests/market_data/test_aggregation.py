@@ -189,3 +189,15 @@ def test_available_at_uses_latest_instant_not_latest_text() -> None:
     result = MinuteBarAggregator().aggregate(bars, "5m")
 
     assert result[0]["available_at_utc"] == "2026-10-09T13:35:00.500Z"
+
+
+def test_extended_day_buckets_are_returned_in_time_order() -> None:
+    pre = make_bars(utc(2026, 10, 9, 13, 25), 5, session="pre")
+    regular = make_bars(utc(2026, 10, 9, 13, 30), 5, session="regular")
+    post = make_bars(utc(2026, 10, 9, 20, 0), 5, session="post")
+
+    result = MinuteBarAggregator().aggregate([*post, *regular, *pre], "5m")
+
+    assert [bar["session"] for bar in result] == ["pre", "regular", "post"]
+    starts = [bar["interval_start_utc"] for bar in result]
+    assert starts == sorted(starts)

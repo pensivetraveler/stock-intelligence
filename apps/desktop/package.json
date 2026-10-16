@@ -11,7 +11,9 @@
     "build": "tsc --noEmit && vite build"
   },
   "dependencies": {
+    "@siw/contracts": "workspace:*",
     "@tauri-apps/api": "^2.8.0",
+    "lightweight-charts": "5.2.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

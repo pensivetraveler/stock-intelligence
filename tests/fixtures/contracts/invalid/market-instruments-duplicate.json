@@ -1,0 +1,54 @@
+{
+  "kind": "market_instruments_response",
+  "schema_version": "0.1",
+  "instruments": [
+    {
+      "instrument": {
+        "kind": "instrument_ref",
+        "schema_version": "0.1",
+        "instrument_id": "us:aapl:xnas:2026",
+        "symbol": "AAPL",
+        "venue": "XNAS",
+        "asset_class": "us_equity",
+        "currency": "USD",
+        "identity_as_of": "2026-10-09T00:00:00Z",
+        "identity_source": "synthetic-fixture"
+      },
+      "source_id": "fake-market-data",
+      "dataset_revision": "fake-aapl-20261009-r1",
+      "session_dates": ["2026-10-09"]
+    },
+    {
+      "instrument": {
+        "kind": "instrument_ref",
+        "schema_version": "0.1",
+        "instrument_id": "us:synth:xnas:2026",
+        "symbol": "SYNTH",
+        "venue": "XNAS",
+        "asset_class": "us_equity",
+        "currency": "USD",
+        "identity_as_of": "2026-10-09T00:00:00Z",
+        "identity_source": "synthetic-fixture"
+      },
+      "source_id": "fake-market-data",
+      "dataset_revision": "synthetic-synth-20261009-r1",
+      "session_dates": ["2026-10-09"]
+    },
+    {
+      "instrument": {
+        "kind": "instrument_ref",
+        "schema_version": "0.1",
+        "instrument_id": "us:aapl:xnas:2026",
+        "symbol": "AAPL",
+        "venue": "XNAS",
+        "asset_class": "us_equity",
+        "currency": "USD",
+        "identity_as_of": "2026-10-09T00:00:00Z",
+        "identity_source": "synthetic-fixture"
+      },
+      "source_id": "fake-market-data",
+      "dataset_revision": "fake-aapl-20261009-r1",
+      "session_dates": ["2026-10-09"]
+    }
+  ]
+}

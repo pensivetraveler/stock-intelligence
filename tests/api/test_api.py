@@ -118,7 +118,7 @@ async def test_market_bars_rejects_invalid_timeframe_and_range() -> None:
     }
     async with client() as test_client:
         timeframe_response = await test_client.get(
-            "/v1/market/bars", params={**base_params, "timeframe": "5m"}
+            "/v1/market/bars", params={**base_params, "timeframe": "1d"}
         )
         range_response = await test_client.get(
             "/v1/market/bars",
@@ -323,3 +323,113 @@ async def test_unsafe_request_id_is_replaced(header: str) -> None:
     assert returned != header
     assert response.json()["error"]["request_id"] == returned
     assert re.fullmatch(r"[0-9a-f-]{36}", returned)
+
+
+async def test_market_bars_aggregates_fifteen_minute_buckets() -> None:
+    async with client() as test_client:
+        response = await test_client.get(
+            "/v1/market/bars",
+            params={
+                "instrument_id": "us:aapl:xnas:2026",
+                "start_utc": "2026-10-09T13:30:00Z",
+                "end_utc": "2026-10-09T13:45:00Z",
+                "timeframe": "15m",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["coverage"]["timeframe"] == "15m"
+    assert len(body["bars"]) == 1
+    assert body["bars"][0]["quality"] == "partial"
+    assert body["bars"][0]["lineage"]["observed_source_bar_count"] == 4
+
+
+async def test_market_bars_rejects_misaligned_aggregate_range() -> None:
+    async with client() as test_client:
+        response = await test_client.get(
+            "/v1/market/bars",
+            params={
+                "instrument_id": "us:aapl:xnas:2026",
+                "start_utc": "2026-10-09T13:31:00Z",
+                "end_utc": "2026-10-09T13:46:00Z",
+                "timeframe": "15m",
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_market_data_query"
+
+
+async def test_market_instruments_lists_synthetic_instruments() -> None:
+    async with client() as test_client:
+        response = await test_client.get("/v1/market/instruments")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["kind"] == "market_instruments_response"
+    assert [item["instrument"]["symbol"] for item in body["instruments"]] == ["AAPL", "SYNTH"]
+
+
+@pytest.mark.parametrize(
+    ("session_date", "trading", "early", "regular_close"),
+    [
+        ("2026-10-09", True, False, "2026-10-09T20:00:00Z"),
+        ("2026-11-27", True, True, "2026-11-27T18:00:00Z"),
+        ("2026-11-26", False, False, None),
+    ],
+)
+async def test_market_session_window_follows_exchange_calendar(
+    session_date: str, trading: bool, early: bool, regular_close: str | None
+) -> None:
+    async with client() as test_client:
+        response = await test_client.get(f"/v1/market/sessions/{session_date}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["is_trading_day"], body["is_early_close"]) == (trading, early)
+    assert body["regular_close_utc"] == regular_close
+
+
+@pytest.mark.parametrize(
+    ("path", "code"),
+    [
+        ("/v1/market/sessions/1990-01-03", "invalid_market_data_query"),
+        ("/v1/market/sessions/not-a-date", "validation_error"),
+        ("/v1/market/sessions/2026-10-09?calendar_id=XLON", "validation_error"),
+    ],
+)
+async def test_market_session_window_rejects_bad_requests(path: str, code: str) -> None:
+    async with client() as test_client:
+        response = await test_client.get(path)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == code
+
+
+async def test_unexpected_failure_response_keeps_cors_headers() -> None:
+    async with _raising_client(RuntimeError("boom")) as test_client:
+        response = await test_client.get(
+            "/v1/market/bars", params=BARS_PARAMS, headers={"Origin": "http://127.0.0.1:5173"}
+        )
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+
+
+async def test_extended_session_aggregate_is_served() -> None:
+    async with client() as test_client:
+        response = await test_client.get(
+            "/v1/market/bars",
+            params={
+                "instrument_id": "us:synth:xnas:2026",
+                "start_utc": "2026-10-09T08:00:00Z",
+                "end_utc": "2026-10-10T00:00:00Z",
+                "timeframe": "5m",
+            },
+        )
+
+    assert response.status_code == 200
+    sessions = [bar["session"] for bar in response.json()["bars"]]
+    assert sessions[0] == "pre" and sessions[-1] == "post"

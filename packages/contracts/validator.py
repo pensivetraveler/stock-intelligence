@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from decimal import Decimal
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
 from typing import Any, cast
 
@@ -21,6 +21,24 @@ def schema_validator() -> Draft202012Validator:
     schema = load_schema()
     Draft202012Validator.check_schema(schema)
     return Draft202012Validator(schema, format_checker=FormatChecker())
+
+
+@cache
+def _kind_validator(kind: str) -> Draft202012Validator | None:
+    """Validator for one contract kind, or None when the kind is unknown.
+
+    The root schema is a `oneOf` over every kind, so validating a bar tries all
+    of them. Each branch pins `kind` with `const`, so checking only the matching
+    definition accepts and rejects exactly the same documents, about ten times faster.
+    """
+    schema = load_schema()
+    for branch in schema["oneOf"]:
+        name = cast(str, branch["$ref"]).rsplit("/", 1)[-1]
+        if schema["$defs"][name]["properties"]["kind"].get("const") == kind:
+            return Draft202012Validator(
+                {**schema, "oneOf": [branch]}, format_checker=FormatChecker()
+            )
+    return None
 
 
 def _utc(value: str) -> datetime:
@@ -90,6 +108,26 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
         if end <= start:
             errors.append("selected interval end must be after start")
 
+    if kind == "session_window":
+        boundaries = [
+            document[key]
+            for key in ("pre_open_utc", "regular_open_utc", "regular_close_utc", "post_close_utc")
+        ]
+        if not document["is_trading_day"]:
+            if any(value is not None for value in boundaries) or document["is_early_close"]:
+                errors.append("a non-trading day has no session boundaries or early close")
+        elif any(value is None for value in boundaries):
+            errors.append("a trading day requires every session boundary")
+        else:
+            pre_open, regular_open, regular_close, post_close = (_utc(v) for v in boundaries)
+            if not pre_open <= regular_open < regular_close <= post_close:
+                errors.append("session boundaries must be ordered pre <= open < close <= post")
+
+    if kind == "market_instruments_response":
+        identifiers = [item["instrument"]["instrument_id"] for item in document["instruments"]]
+        if len(identifiers) != len(set(identifiers)):
+            errors.append("instrument_id must be unique within the response")
+
     if kind == "backtest_run_config" and _utc(document["end_utc"]) <= _utc(document["start_utc"]):
         errors.append("backtest end_utc must be after start_utc")
 
@@ -133,7 +171,8 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
 
 
 def validation_errors(document: dict[str, Any]) -> list[str]:
-    validator = schema_validator()
+    kind = document.get("kind") if isinstance(document, dict) else None
+    validator = (_kind_validator(kind) if isinstance(kind, str) else None) or schema_validator()
     schema_errors = sorted(validator.iter_errors(document), key=lambda error: list(error.path))
     if schema_errors:
         return [error.message for error in schema_errors]

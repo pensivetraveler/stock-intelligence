@@ -12,11 +12,11 @@ stock-intelligence-workstation/
 ├── package.json / pnpm-lock.yaml     # JS workspace·품질 도구 잠금
 ├── .github/workflows/ci.yml          # 로컬 verify 경로를 실행하는 CI
 ├── apps/
-│   └── desktop/                     # Tauri 2 + React/TypeScript (Phase 0: 개발 셸)
+│   └── desktop/                     # Tauri 2 + React/TypeScript: API 상태, 차트 2개 workspace(Phase 2A)
 ├── services/
 │   ├── api/                         # FastAPI, 계약 검증, health/version
-│   ├── collector/                   # 별도 프로세스 시작점
-│   └── market_data/                 # Provider, cache, calendar, aggregation
+│   ├── collector/                   # 별도 프로세스: doctor/run, 합성 데이터 backfill job
+│   └── market_data/                 # Provider, 합성 fixture, cache, calendar, aggregation, bars service
 ├── packages/
 │   ├── contracts/                   # JSON Schema 2020-12, 버전, TS/Python 변환 검사
 │   └── indicator-sdk/               # 미래 Python 지표 SDK 자리, 실행 엔진은 Phase 4
@@ -44,7 +44,7 @@ stock-intelligence-workstation/
 | ------------------------ | ------------------------------------------ | --------------------------------------- |
 | `apps/desktop`           | 데스크톱 화면/사용자 조작                  | DB 직접 접근, Provider별 API 키 저장    |
 | `services/api`           | 공통 HTTP 계약·검증·도메인 서비스 진입점   | 신뢰하지 않은 Python 플러그인 직접 실행 |
-| `services/collector`     | 수집 Job·외부 Provider Adapter (후속 단계) | 프런트 UI, 증권사 주문 실행             |
+| `services/collector`     | 수집 Job(합성 backfill), 외부 Adapter는 1D | 프런트 UI, 증권사 주문 실행             |
 | `packages/contracts`     | 단일 버전의 언어 중립 데이터 계약          | 비즈니스 로직·네트워크 요청             |
 | `packages/indicator-sdk` | 사용자 지표 계약 (후속 단계)               | Phase 0에서 외부 Python 실행 허용       |
 | `tests`                  | 고정 Fixture·계약/통합 검증                | 고객 계좌·실거래 원본 자료 포함         |

@@ -11,7 +11,7 @@
 1. 한 번에 현재 승인된 단계만 수행한다.
 2. 각 단계 종료 시 변경 파일, 실제 실행 명령과 결과, 실패·미실행 항목, 남은 위험을 `PROJECT_STATE.md`와 대화창에 보고한다.
 3. 이미 승인된 범위 안의 하위 작업은 재확인 없이 진행한다. 사용자의 “내 확인 없이 시간대·집계·품질 구현까지 진행” 지시는 Phase 1C까지 적용되며 이 범위는 완료했다.
-4. 승인된 범위의 종료 시 결과를 보고하고, 범위 밖의 다음 단계 진행 여부를 묻는다. Phase 1D와 Phase 2 중 다음 경로는 아직 정해지지 않았다.
+4. 승인된 범위의 종료 시 결과를 보고하고, 범위 밖의 다음 단계 진행 여부를 묻는다. Phase 1 내부 마무리(1E)와 Phase 2A 차트 workspace는 완료했다. 다음 경로(2B·3·1D)는 아직 정해지지 않았다.
 5. 외부 계정, 유료 서비스, Broker, 주문, 크롤링 또는 credential이 필요한 단계는 일반 단계 승인과 별도로 구체적인 권한을 확인한다.
 
 ## 단계 0 — Phase 0 기준선 확정
@@ -77,9 +77,34 @@
 - [x] 결측·미확정 입력의 partial/provisional 품질 전파
 - [x] source/calendar lineage·revision 보존과 혼합 입력 거부
 
-집계는 내부 모듈까지 완료했으며 공개 API는 `1m`만 지원한다. 실제 공급업체 사후 정정 수집·재집계 자동화는 후속 범위다.
+집계는 이 단계에서 내부 모듈까지 구현했다. 공개 API 연결은 단계 1E에서 완료했다. 실제 공급업체 사후 정정 수집·재집계 자동화는 후속 범위다.
 
 **다음 단계 승인 질문:** 실제 Provider PoC 준비 또는 Phase 2 차트 중 어느 경로를 우선할지 확인한다.
+
+## 단계 1E — Phase 1 내부 마무리 (합성 데이터)
+
+**상태:** 2026-10-16 구현 및 로컬 검증 완료. 사용자가 1D·2보다 먼저 진행하도록 승인했다.
+
+- [x] 공개 API의 5m/15m/30m/60m 집계, bucket 정렬 검증과 집계 Coverage
+- [x] 완료된 cache 범위 조합과 결측 범위 재조회
+- [x] Collector backfill: job·chunk·checkpoint·재개·재시도·throttle
+- [x] 실제 CLI subprocess와 uvicorn 서버로 런타임 확인
+
+**다음 단계 승인 질문:** Phase 2 차트 또는 Phase 1D 실제 Provider PoC 중 어느 경로로 갈지 확인한다.
+
+## 단계 2A — 차트 workspace 수직 슬라이스 (합성 데이터)
+
+**상태:** 2026-10-16 구현 및 로컬·브라우저 검증 완료. 사용자가 1D보다 먼저 진행하도록 승인했다.
+
+- [x] 합성 `SYNTH` 하루치(연장장·결측·provisional 포함)와 생성기·drift 검사
+- [x] `GET /v1/market/instruments`, `GET /v1/market/sessions/{date}`와 공통 계약
+- [x] 독립 설정 차트 2개, 시간 범위 동기화, 레이아웃 저장·복원
+- [x] Coverage·품질·세션·lineage·결측 표시, ET 시간 축
+- [x] 실제 API·Vite 서버와 in-app browser로 동작 확인(데스크톱·375 px)
+
+**후속 후보:** 프리셋·named workspace(2B), 지표(Phase 4), 거래 기록 표시(Phase 3), Tauri native 검증.
+
+**다음 단계 승인 질문:** Phase 2B, Phase 3, 또는 Phase 1D 중 어느 경로로 갈지 확인한다.
 
 ## 단계 1D — 실제 Provider PoC (별도 권한 필요)
 
@@ -96,7 +121,7 @@
 
 아래 단계는 모두 미착수다. 누적 구현·검증·제약은 [구현 이력](IMPLEMENTATION_HISTORY.md)에 정리한다.
 
-- Phase 2: 차트와 workspace
+- Phase 2: 차트와 workspace — 2A 완료, 프리셋·named workspace 등은 남음
 - Phase 3: 실제/수동/가상 거래 기록과 복기
 - Phase 4: 지표 플랫폼과 격리 실행
 - Phase 5: Replay와 Agent evidence

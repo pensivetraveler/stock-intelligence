@@ -13,6 +13,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from packages.contracts.validator import validate_document
 from services.market_data.fake import DEFAULT_FIXTURE_PATH, FakeMarketDataProvider
 from services.market_data.provider import BarsQuery, BarsResult, InvalidBarsQueryError
 from services.market_data.storage import (
@@ -412,7 +413,8 @@ def test_cache_wrapper_refetches_complete_coverage_with_provisional_bars(
     tmp_path: Path,
 ) -> None:
     document = fixture_document()
-    document["bars"][-1].update(is_final=False, quality="provisional")
+    last_aapl_bar = [bar for bar in document["bars"] if bar["instrument_id"] == INSTRUMENT_ID][-1]
+    last_aapl_bar.update(is_final=False, quality="provisional")
     calls: list[BarsQuery] = []
     upstream = fake_provider(document)
 
@@ -605,3 +607,90 @@ def test_failed_recovery_removes_its_temp_files_only(tmp_path: Path) -> None:
     assert not temp_path.exists()
     assert outside.read_bytes() == b"keep"
     outside.unlink()
+
+
+class _CountingUpstream:
+    def __init__(self, document: dict[str, Any]) -> None:
+        self.provider = fake_provider(document)
+        self.calls: list[BarsQuery] = []
+
+    @property
+    def source_id(self) -> str:
+        return self.provider.source_id
+
+    def capabilities(self) -> dict[str, Any]:
+        return self.provider.capabilities()
+
+    def get_bars(self, requested: BarsQuery) -> BarsResult:
+        self.calls.append(requested)
+        return self.provider.get_bars(requested)
+
+
+def _range(start_minute: int, end_minute: int) -> BarsQuery:
+    return BarsQuery(
+        INSTRUMENT_ID,
+        "1m",
+        START + timedelta(minutes=start_minute),
+        START + timedelta(minutes=end_minute),
+    )
+
+
+def test_overlapping_range_is_composed_from_cached_chunks(
+    tmp_path: Path, synthetic_document: Any
+) -> None:
+    upstream = _CountingUpstream(synthetic_document(60))
+    with store(tmp_path) as market_store:
+        cached = CachedMarketDataProvider(upstream, market_store)
+        cached.get_bars(_range(0, 30))
+        cached.get_bars(_range(30, 60))
+
+        composed = cached.get_bars(_range(15, 45))
+
+    assert len(upstream.calls) == 2
+    validate_document(composed.to_document())
+    assert len(composed.bars) == 30
+    assert composed.bars[0]["interval_start_utc"] == "2026-10-09T13:45:00Z"
+    assert composed.coverage["requested_start_utc"] == "2026-10-09T13:45:00Z"
+    assert composed.coverage["coverage_status"] == "complete"
+
+
+@pytest.mark.parametrize(
+    "case", ["gap_in_chunk", "uncovered_range", "provisional_bar", "other_cutoff"]
+)
+def test_composition_falls_back_to_upstream(
+    tmp_path: Path, synthetic_document: Any, case: str
+) -> None:
+    document = synthetic_document(
+        60,
+        skip={40} if case == "gap_in_chunk" else (),
+        provisional={35} if case == "provisional_bar" else (),
+    )
+    upstream = _CountingUpstream(document)
+    with store(tmp_path) as market_store:
+        cached = CachedMarketDataProvider(upstream, market_store)
+        cached.get_bars(_range(0, 30))
+        if case != "uncovered_range":
+            cached.get_bars(_range(30, 60))
+        target = _range(15, 45)
+        if case == "other_cutoff":
+            target = BarsQuery(INSTRUMENT_ID, "1m", target.start_utc, target.end_utc, NOW)
+        calls_before = len(upstream.calls)
+
+        cached.get_bars(target)
+
+    assert len(upstream.calls) == calls_before + 1
+
+
+def test_composition_refuses_to_mix_revisions(tmp_path: Path, synthetic_document: Any) -> None:
+    with store(tmp_path) as market_store:
+        CachedMarketDataProvider(_CountingUpstream(synthetic_document(60)), market_store).get_bars(
+            _range(0, 30)
+        )
+        revised = _CountingUpstream(synthetic_document(60, revision="fake-aapl-20261009-r2"))
+        cached = CachedMarketDataProvider(revised, market_store)
+        cached.get_bars(_range(30, 60))
+
+        result = cached.get_bars(_range(15, 45))
+
+    assert revised.calls[-1] == _range(15, 45)
+    assert {bar["dataset_revision"] for bar in result.bars} == {"fake-aapl-20261009-r2"}

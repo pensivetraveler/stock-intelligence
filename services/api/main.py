@@ -5,7 +5,7 @@ import re
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -15,8 +15,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
+from packages.contracts.validator import validate_document
+from services.market_data.aggregation import AggregationError
+from services.market_data.bars_service import MarketBarsService
+from services.market_data.calendar import CalendarError, UsEquityCalendar
 from services.market_data.fake import FakeMarketDataProvider
 from services.market_data.provider import (
     BarsQuery,
@@ -110,6 +115,19 @@ def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAP
         yield
 
     application = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
+
+    async def unexpected_errors_inside_cors(
+        request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        # Exception handlers for `Exception` run outside every middleware, so their
+        # response lacks CORS headers and a browser reports only a network failure.
+        # Converting the error here, inside CORSMiddleware, keeps the envelope readable.
+        try:
+            return await call_next(request)
+        except Exception:
+            return _error_response(request, 500, "internal_error", "Internal server error")
+
+    application.add_middleware(BaseHTTPMiddleware, dispatch=unexpected_errors_inside_cors)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),
@@ -155,6 +173,29 @@ def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAP
             "app_version": APP_VERSION,
         }
 
+    @application.get("/v1/market/instruments", response_model=None)
+    def market_instruments() -> Response:
+        document = {
+            "kind": "market_instruments_response",
+            "schema_version": "0.1",
+            "instruments": provider.get().instruments(),
+        }
+        validate_document(document)
+        return JSONResponse(content=document)
+
+    @application.get("/v1/market/sessions/{session_date}", response_model=None)
+    def market_session(
+        request: Request,
+        session_date: date,
+        calendar_id: Annotated[Literal["XNAS", "XNYS"], Query()] = "XNAS",
+    ) -> Response:
+        try:
+            document = UsEquityCalendar(calendar_id).session_window_document(session_date)
+        except CalendarError as exc:
+            return _error_response(request, 422, "invalid_market_data_query", str(exc))
+        validate_document(document)
+        return JSONResponse(content=document)
+
     # Provider and cache I/O are blocking; a sync endpoint runs in FastAPI's threadpool
     # instead of stalling the event loop.
     @application.get("/v1/market/bars", response_model=None)
@@ -163,11 +204,11 @@ def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAP
         instrument_id: Annotated[str, Query(min_length=1, max_length=200)],
         start_utc: Annotated[datetime, Query()],
         end_utc: Annotated[datetime, Query()],
-        timeframe: Annotated[Literal["1m"], Query()] = "1m",
+        timeframe: Annotated[Literal["1m", "5m", "15m", "30m", "60m"], Query()] = "1m",
         as_of_utc: Annotated[datetime | None, Query()] = None,
     ) -> Response:
         try:
-            result = provider.get().get_bars(
+            result = MarketBarsService(provider.get()).get_bars(
                 BarsQuery(
                     instrument_id=instrument_id,
                     timeframe=timeframe,
@@ -185,6 +226,13 @@ def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAP
             )
         except InvalidBarsQueryError as exc:
             return _error_response(request, 422, "invalid_market_data_query", str(exc))
+        except AggregationError:
+            return _error_response(
+                request,
+                500,
+                "market_data_integrity_error",
+                "Source bars could not be aggregated under one lineage",
+            )
         except StorageError:
             return _error_response(
                 request,

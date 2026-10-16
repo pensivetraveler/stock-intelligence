@@ -2,7 +2,7 @@
 
 미국 주식 차트·매매 복기·백테스팅·전문 Agent 연구 환경을 위한 **로컬 개발 착수 패키지**.
 
-**현재 상태:** Phase 0 기반과 Phase 1A~1C 시장 데이터 기반 구현 완료. FastAPI API, React/TypeScript 개발 셸, 독립 Collector 진단 경로, 합성 Provider, SQLite/Parquet cache, XNAS/XNYS 거래 캘린더 및 session-aligned 1m 집계가 구성되어 있다. 실제 공급업체는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
+**현재 상태:** Phase 0 기반, Phase 1A~1C·1E 시장 데이터 기반, Phase 2A 차트 workspace(차트 2개) 구현 완료. FastAPI API, React/TypeScript 차트 workspace, 독립 Collector 진단 경로, 합성 Provider, SQLite/Parquet cache, XNAS/XNYS 거래 캘린더, 공개 API의 session-aligned 5m/15m/30m/60m 집계, 재개 가능한 합성 데이터 backfill이 구성되어 있다. 실제 공급업체는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
 
 ## 시작 순서
 
@@ -76,7 +76,15 @@ SIW_DATA_DIR=data uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8
 - 5m/15m/30m/60m는 세션 시작에 맞춰 집계하고 세션을 넘겨 합치지 않는다.
 - 파생 bar의 `quality`와 `lineage`에는 결측·미확정 상태, source revision, 기대/관측 1분봉 수와 calendar version이 남는다. calendar version은 라이브러리 버전이 아니라 고정 범위 일정의 SHA-256 fingerprint다([ADR 0005](docs/decisions/0005-calendar-fingerprint-query-boundary-and-job-lifecycle.md)).
 
-큰 timeframe 집계는 현재 내부 모듈에서 제공한다. 공개 `GET /v1/market/bars`는 `timeframe=1m`만 지원한다.
+`GET /v1/market/bars`는 `timeframe=1m|5m|15m|30m|60m`을 지원한다. 큰 timeframe은 같은 cache·cutoff의 1분봉을 요청마다 세션 기준으로 집계한다. 요청 범위는 세션 bucket 경계에 맞아야 하며, 맞지 않으면 422를 반환한다. 일부 1분봉만 있는 bucket은 `quality: partial`로 표시된다([ADR 0007](docs/decisions/0007-aggregated-api-cache-composition-and-backfill.md)).
+
+```bash
+curl --get http://127.0.0.1:8000/v1/market/bars \
+  --data-urlencode 'instrument_id=us:aapl:xnas:2026' \
+  --data-urlencode 'start_utc=2026-10-09T13:30:00Z' \
+  --data-urlencode 'end_utc=2026-10-09T13:45:00Z' \
+  --data-urlencode 'timeframe=15m'
+```
 
 포트 `8000`이 사용 중이면 API와 데스크톱을 같은 대체 포트로 맞춘다.
 
@@ -91,16 +99,36 @@ VITE_API_BASE_URL=http://127.0.0.1:8123 pnpm dev
 pnpm dev
 ```
 
-기본 주소는 `http://127.0.0.1:5173`이다. Tauri 2 전제조건을 설치한 환경에서는 `pnpm desktop:tauri`를 사용한다.
+기본 주소는 `http://127.0.0.1:5173`이다. API(`uv run uvicorn services.api.main:app --port 8000`)에 연결되면 차트 2개가 있는 workspace가 열린다([ADR 0008](docs/decisions/0008-chart-workspace-slice.md)).
+
+- 각 차트는 종목(합성 `SYNTH`, AAPL 표본), timeframe(1m~60m), 세션 날짜, 정규장/연장장을 따로 설정한다.
+- 시간 축과 결측 구간은 미국 동부시간(ET)으로 표시한다. 세션 경계는 API의 `GET /v1/market/sessions/{date}`에서 받는다.
+- 일부만 관측된 bar와 미확정(provisional) bar는 회색으로 그린다. 각 차트 아래에 Coverage, 품질, 세션, source·revision lineage, 결측 구간이 표시된다.
+- `Sync visible time range`를 켜면 두 차트의 보이는 시간 범위가 함께 움직인다. 레이아웃은 이 기기의 브라우저 저장소에 저장되고 새로고침 후 복원된다.
+- 종목 목록은 `GET /v1/market/instruments`에서 받는다. `SYNTH`는 `uv run python -m services.market_data.synthetic && pnpm format`으로 다시 생성하는, 실존하지 않는 합성 데이터다.
+
+Tauri 2 전제조건을 설치한 환경에서는 `pnpm desktop:tauri`를 사용한다.
 
 ### Collector
 
 ```bash
 uv run python -m services.collector doctor
 uv run python -m services.collector run
+uv run python -m services.collector backfill --data-dir data \
+  --instrument-id us:aapl:xnas:2026 \
+  --start-utc 2026-10-09T13:30:00Z --end-utc 2026-10-09T13:40:00Z \
+  --chunk-minutes 5
 ```
 
 `doctor`는 외부 API를 호출하지 않으며 성공 시 JSON과 exit code `0`을 반환한다. `run`은 SIGINT/SIGTERM으로 정상 종료한다.
+
+`backfill`은 합성 Provider만 사용하며, 범위 하나를 재개 가능한 수집 job 하나로 실행한다.
+
+- **chunk 처리:** chunk마다 cache를 먼저 확인하고 checkpoint를 남긴다. 결측이 있는 chunk는 다시 조회한다.
+- **재실행:** 이미 성공한 범위는 아무 작업도 하지 않는다. 중단되거나 실패한 job은 checkpoint부터 이어서 실행한다.
+- **재시도와 간격:** 일시적 upstream 오류만 지수 backoff로 재시도한다(`--max-attempts`). upstream 호출 간격은 `--min-request-interval-seconds`로 둔다.
+- **데이터 경로:** `--data-dir`가 없으면 `SIW_DATA_DIR`를 쓴다. API를 같은 디렉터리로 띄우면, 여러 chunk에 걸친 요청 범위도 upstream 호출 없이 cache에서 조합해 응답한다.
+- **종료 코드:** `0` 성공·이미 성공·중단, `1` 실패, `2` 잘못된 인자·설정, `3` 다른 프로세스가 같은 job을 실행 중.
 
 ### 전체 검증
 

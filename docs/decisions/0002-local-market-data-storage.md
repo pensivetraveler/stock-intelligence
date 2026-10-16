@@ -1,6 +1,6 @@
 # ADR 0002 — Local market-data storage and recovery boundary
 
-- **Status:** accepted; partition key amended by ADR 0006 (exchange session date)
+- **Status:** accepted; partition key amended by ADR 0006 (exchange session date); exact-only lookup amended by ADR 0007 (composition of complete cached ranges)
 - **Date:** 2026-10-12
 
 ## Context

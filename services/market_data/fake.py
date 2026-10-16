@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from packages.contracts.validator import validate_document
-from services.market_data.calendar import CalendarError, UsEquityCalendar
+from services.market_data.calendar import NEW_YORK, CalendarError, UsEquityCalendar
 from services.market_data.provider import (
     BarsQuery,
     BarsResult,
@@ -77,6 +77,18 @@ class FakeMarketDataProvider:
             bars.append(deepcopy(bar))
 
         self._bars = tuple(sorted(bars, key=lambda bar: cast(str, bar["interval_start_utc"])))
+        refs = document.get("instruments", [])
+        if not isinstance(refs, list):
+            raise FixtureIntegrityError("fixture instruments must be an array")
+        self._instrument_refs: list[dict[str, Any]] = []
+        for ref in refs:
+            if not isinstance(ref, dict):
+                raise FixtureIntegrityError("each fixture instrument must be an object")
+            try:
+                validate_document(cast(dict[str, Any], ref))
+            except ValueError as exc:
+                raise FixtureIntegrityError(f"invalid instrument: {exc}") from exc
+            self._instrument_refs.append(deepcopy(cast(dict[str, Any], ref)))
         source_ids = {cast(str, bar["source_id"]) for bar in self._bars}
         if source_ids != {self.source_id}:
             raise FixtureIntegrityError("all bars must match the capability source_id")
@@ -107,6 +119,35 @@ class FakeMarketDataProvider:
     def capabilities(self) -> dict[str, Any]:
         return deepcopy(self._capabilities)
 
+    def instruments(self) -> list[dict[str, Any]]:
+        """Listed instruments that have bars, with their revision and exchange dates."""
+        items: list[dict[str, Any]] = []
+        for ref in self._instrument_refs:
+            bars = [bar for bar in self._bars if bar["instrument_id"] == ref["instrument_id"]]
+            if not bars:
+                continue
+            revisions = sorted({cast(str, bar["dataset_revision"]) for bar in bars})
+            if len(revisions) != 1:
+                raise FixtureIntegrityError("fake provider requires one pinned dataset revision")
+            session_dates = sorted(
+                {
+                    _parse_utc(cast(str, bar["interval_start_utc"]))
+                    .astimezone(NEW_YORK)
+                    .date()
+                    .isoformat()
+                    for bar in bars
+                }
+            )
+            items.append(
+                {
+                    "instrument": deepcopy(ref),
+                    "source_id": self.source_id,
+                    "dataset_revision": revisions[0],
+                    "session_dates": session_dates,
+                }
+            )
+        return items
+
     def get_bars(self, query: BarsQuery) -> BarsResult:
         self._validate_query(query)
         matching_instrument = [
@@ -130,12 +171,9 @@ class FakeMarketDataProvider:
         try:
             expected_starts = tuple(
                 start
-                for offset in range(int((query.end_utc - query.start_utc).total_seconds() // 60))
-                if self._calendar.classify_interval(
-                    (start := query.start_utc + timedelta(minutes=offset)),
-                    start + timedelta(minutes=1),
+                for start, _session in self._calendar.trading_minutes(
+                    query.start_utc, query.end_utc
                 )
-                in {"pre", "regular", "post"}
             )
         except CalendarError as exc:
             raise InvalidBarsQueryError(str(exc)) from exc
