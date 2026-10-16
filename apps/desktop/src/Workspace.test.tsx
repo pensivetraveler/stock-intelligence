@@ -1,6 +1,8 @@
 import type {
+  ManualExecution,
   MarketBarsResponse,
   MarketInstrumentsResponse,
+  ScenarioDefinition,
   SessionWindow,
 } from "@siw/contracts/types";
 import { fireEvent, render, screen, within } from "@testing-library/react";
@@ -8,8 +10,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-import type { BarsRequest, MarketApi } from "./market-api";
+import {
+  MarketApiError,
+  type BarsRequest,
+  type ManualExecutionRequest,
+  type MarketApi,
+  type ScenarioRequest,
+} from "./market-api";
 import { Workspace } from "./Workspace";
+import { LIBRARY_STORAGE_KEY } from "./workspace-library";
 import { DEFAULT_WORKSPACE, WORKSPACE_STORAGE_KEY } from "./workspace-state";
 
 // The real chart draws on canvas, which jsdom does not implement.
@@ -17,10 +26,22 @@ vi.mock("./PriceChart", () => ({
   PriceChart: ({
     chartId,
     candles,
+    markers = [],
+    onCandleClick,
   }: {
     chartId: string;
-    candles: unknown[];
-  }) => <div data-testid={`chart-${chartId}`}>{candles.length} candles</div>,
+    candles: { time: number }[];
+    markers?: { text: string }[];
+    onCandleClick?: (time: number) => void;
+  }) => (
+    <div data-testid={`chart-${chartId}`}>
+      {candles.length} candles ·{" "}
+      {markers.map((marker) => marker.text).join(", ") || "no markers"}
+      <button type="button" onClick={() => onCandleClick?.(candles[0].time)}>
+        click first candle of {chartId}
+      </button>
+    </div>
+  ),
 }));
 
 const fixtures = resolve(
@@ -30,11 +51,25 @@ const fixtures = resolve(
 const fixture = <T,>(name: string): T =>
   JSON.parse(readFileSync(resolve(fixtures, name), "utf8")) as T;
 
-function fakeApi(): MarketApi & { barsCalls: BarsRequest[] } {
+function fakeApi(options: { journalOff?: boolean } = {}): MarketApi & {
+  barsCalls: BarsRequest[];
+  manualRequests: ManualExecutionRequest[];
+  scenarioRequests: ScenarioRequest[];
+} {
   const session = fixture<SessionWindow>("session-window-early-close.json");
   const barsCalls: BarsRequest[] = [];
+  const manualRequests: ManualExecutionRequest[] = [];
+  const scenarioRequests: ScenarioRequest[] = [];
+  const manual: ManualExecution[] = [];
+  const scenarios: ScenarioDefinition[] = [];
+  const off = () =>
+    Promise.reject(
+      new MarketApiError("Set SIW_DATA_DIR", "journal_storage_unconfigured"),
+    );
   return {
     barsCalls,
+    manualRequests,
+    scenarioRequests,
     instruments: () =>
       Promise.resolve(
         fixture<MarketInstrumentsResponse>("market-instruments-response.json")
@@ -48,9 +83,88 @@ function fakeApi(): MarketApi & { barsCalls: BarsRequest[] } {
       ),
     bars: (request) => {
       barsCalls.push(request);
-      return Promise.resolve(
-        fixture<MarketBarsResponse>("market-bars-response-aggregated.json"),
+      const response = fixture<MarketBarsResponse>(
+        "market-bars-response-aggregated.json",
       );
+      // Serve the requested instrument, as the real API does.
+      return Promise.resolve({
+        ...response,
+        bars: response.bars.map((bar) => ({
+          ...bar,
+          instrument_id: request.instrumentId,
+        })),
+        coverage: { ...response.coverage, instrument_id: request.instrumentId },
+      });
+    },
+    manualLedger: () =>
+      options.journalOff
+        ? off()
+        : Promise.resolve({
+            kind: "manual_ledger_response",
+            schema_version: "0.1",
+            ledger: "manual_actual",
+            executions: [...manual],
+            positions: [],
+          }),
+    scenarioLedger: () =>
+      options.journalOff
+        ? off()
+        : Promise.resolve({
+            kind: "scenario_ledger_response",
+            schema_version: "0.1",
+            ledger: "hypothetical",
+            scenarios: scenarios.map((scenario) => ({
+              scenario,
+              gross_pnl: "10",
+              costs: "1",
+              net_pnl: "9",
+            })),
+          }),
+    recordManual: (request) => {
+      manualRequests.push(request);
+      const record: ManualExecution = {
+        kind: "manual_execution",
+        schema_version: "0.1",
+        execution_id: request.execution_id,
+        instrument_id: request.instrument_id,
+        side: request.side,
+        quantity: request.quantity,
+        price: request.price,
+        currency: "USD",
+        asserted_at_utc: "2026-10-12T00:00:00Z",
+        time_precision: request.time_precision,
+        executed_at_utc: "2026-10-09T13:31:00Z",
+        selected_interval_start_utc: request.selected_interval_start_utc,
+        selected_interval_end_utc: request.selected_interval_end_utc,
+        evidence_status: "unverified",
+        fees: request.fees,
+        memo: request.memo,
+      };
+      manual.push(record);
+      return Promise.resolve(record);
+    },
+    recordScenario: (request) => {
+      scenarioRequests.push(request);
+      const record: ScenarioDefinition = {
+        kind: "scenario_definition",
+        schema_version: "0.1",
+        scenario_id: request.scenario_id,
+        version: 1,
+        instrument_id: request.instrument_id,
+        origin: "hypothetical",
+        direction: request.direction,
+        entry_price: request.entry_price,
+        exit_price: request.exit_price,
+        quantity: request.quantity,
+        currency: "USD",
+        fee_assumption: request.fee_assumption,
+        slippage_assumption: request.slippage_assumption,
+        entry_interval_start_utc: request.entry_interval_start_utc,
+        exit_interval_start_utc: "2026-10-09T13:34:00Z",
+        created_at_utc: "2026-10-12T00:00:00Z",
+      };
+      scenarios.push(record);
+      return Promise.resolve(record);
     },
   };
 }
@@ -67,6 +181,13 @@ function memoryStorage(): Storage {
     removeItem: (key) => void values.delete(key),
     setItem: (key, value) => void values.set(key, value),
   };
+}
+
+function savedLayout(storage: Storage) {
+  const library = JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? "{}");
+  return library.workspaces.find(
+    (item: { id: string }) => item.id === library.activeId,
+  ).layout;
 }
 
 describe("chart workspace", () => {
@@ -97,7 +218,7 @@ describe("chart workspace", () => {
     });
     await screen.findByRole("region", { name: /Chart 1: .* 60m/ });
 
-    const saved = JSON.parse(storage.getItem(WORKSPACE_STORAGE_KEY) ?? "{}");
+    const saved = savedLayout(storage);
     expect(saved.charts[0].timeframe).toBe("60m");
     expect(saved.charts[1]).toEqual(DEFAULT_WORKSPACE.charts[1]);
     expect(api.barsCalls.at(-1)?.timeframe).toBe("60m");
@@ -130,8 +251,187 @@ describe("chart workspace", () => {
 
     fireEvent.click(screen.getByLabelText("Sync visible time range"));
 
+    expect(savedLayout(storage).syncTimeRange).toBe(false);
+  });
+
+  it("applies a template to both charts explicitly and can undo it", async () => {
+    const api = fakeApi();
+    render(
+      <Workspace api={api} storage={memoryStorage()} newId={sequence()} />,
+    );
+    await screen.findByTestId("chart-chart-1");
+
+    fireEvent.change(screen.getByLabelText("Layout template"), {
+      target: { value: "review" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Apply to both charts" }),
+    );
+
     expect(
-      JSON.parse(storage.getItem(WORKSPACE_STORAGE_KEY) ?? "{}").syncTimeRange,
-    ).toBe(false);
+      await screen.findByRole("region", { name: /Chart 1: .* 5m/ }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("region", { name: /Chart 2: .* 60m/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Sync visible time range")).toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+
+    expect(
+      await screen.findByRole("region", { name: /Chart 2: .* 1m/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+  });
+
+  it("saves, switches, renames and deletes named workspaces", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
+    await screen.findByTestId("chart-chart-1");
+    const first = () => screen.getByRole("region", { name: /Chart 1/ });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
+    fireEvent.change(screen.getByLabelText("New workspace name"), {
+      target: { value: "default" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("already exists");
+
+    fireEvent.change(screen.getByLabelText("New workspace name"), {
+      target: { value: "Scalping" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.change(within(first()).getByLabelText("Timeframe"), {
+      target: { value: "30m" },
+    });
+    await screen.findByRole("region", { name: /Chart 1: .* 30m/ });
+
+    fireEvent.change(screen.getByLabelText("Workspace"), {
+      target: { value: "id-1" },
+    });
+    expect(
+      await screen.findByRole("region", { name: /Chart 1: .* 5m/ }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    fireEvent.change(screen.getByLabelText("Workspace name"), {
+      target: { value: "Main" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+    expect(screen.getByRole("option", { name: "Main" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(
+      await screen.findByRole("region", { name: /Chart 1: .* 30m/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+    const library = JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? "{}");
+    expect(
+      library.workspaces.map((item: { name: string }) => item.name),
+    ).toEqual(["Scalping"]);
+  });
+
+  it("records an actual execution from a candle without treating the candle as the fill", async () => {
+    const api = fakeApi();
+    render(
+      <Workspace api={api} storage={memoryStorage()} newId={sequence()} />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "click first candle of chart-1",
+      }),
+    );
+
+    const form = screen.getByRole("form", { name: "Trade entry" });
+    expect(within(form).getByText(/Context only/)).toBeInTheDocument();
+    expect(within(form).getByLabelText("Fill price (USD)")).toHaveValue("");
+    fireEvent.change(within(form).getByLabelText("Quantity"), {
+      target: { value: "10" },
+    });
+    fireEvent.change(within(form).getByLabelText("Fill price (USD)"), {
+      target: { value: "250.20" },
+    });
+    fireEvent.change(within(form).getByLabelText("Fill time (ET)"), {
+      target: { value: "09:31" },
+    });
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Record actual execution" }),
+    );
+
+    // Both charts show the same instrument and day, so both carry the marker.
+    expect(await screen.findAllByText(/M buy 10/)).toHaveLength(2);
+    expect(api.manualRequests[0]).toMatchObject({
+      price: "250.20",
+      executed_date_et: "2026-10-09",
+      executed_time_et: "09:31",
+      selected_interval_start_utc: "2026-10-09T13:30:00Z",
+    });
+    const actual = screen.getByRole("region", { name: "Trade journal" });
+    expect(within(actual).getByText("250.20")).toBeInTheDocument();
+    expect(
+      within(actual).getByText("No hypothetical scenarios yet."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps hypothetical scenarios in their own ledger", async () => {
+    const api = fakeApi();
+    render(
+      <Workspace api={api} storage={memoryStorage()} newId={sequence()} />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "click first candle of chart-1",
+      }),
+    );
+
+    const form = screen.getByRole("form", { name: "Trade entry" });
+    fireEvent.click(
+      within(form).getByRole("tab", { name: "Hypothetical scenario" }),
+    );
+    fireEvent.change(within(form).getByLabelText("Quantity"), {
+      target: { value: "5" },
+    });
+    fireEvent.change(within(form).getByLabelText("Entry price"), {
+      target: { value: "250" },
+    });
+    fireEvent.change(within(form).getByLabelText("Exit price"), {
+      target: { value: "251" },
+    });
+    fireEvent.change(within(form).getByLabelText(/Exit time/), {
+      target: { value: "09:34" },
+    });
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Save hypothetical scenario" }),
+    );
+
+    expect(
+      await screen.findByText(/9 USD \(gross 10, costs 1\)/),
+    ).toBeInTheDocument();
+    expect(api.manualRequests).toEqual([]);
+    expect(api.scenarioRequests[0]).toMatchObject({
+      entry_interval_start_utc: "2026-10-09T13:30:00Z",
+      exit_time_et: "09:34",
+    });
+    expect(
+      screen.getByText(
+        "No actual executions recorded. Click a candle to add one.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("says plainly when the journal is off", async () => {
+    render(
+      <Workspace
+        api={fakeApi({ journalOff: true })}
+        storage={memoryStorage()}
+      />,
+    );
+
+    expect(await screen.findByText(/Trade journal is off/)).toBeInTheDocument();
   });
 });
+
+function sequence(): () => string {
+  let next = 0;
+  return () => `id-${++next}`;
+}

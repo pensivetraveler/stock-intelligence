@@ -5,7 +5,7 @@ import re
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -19,6 +19,8 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response
 
 from packages.contracts.validator import validate_document
+from services.api.journal_routes import register_journal_routes
+from services.journal.store import JournalStore
 from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
 from services.market_data.calendar import CalendarError, UsEquityCalendar
@@ -104,8 +106,34 @@ class _LazyProvider:
             return self._provider
 
 
-def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAPI:
+class _LazyJournal:
+    """Open the journal store on first use; None when no data directory is configured."""
+
+    def __init__(self, store: JournalStore | None) -> None:
+        self._store = store
+        self._lock = threading.Lock()
+
+    def get(self) -> JournalStore | None:
+        with self._lock:
+            if self._store is None:
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                if configured:
+                    self._store = JournalStore(Path(configured))
+            return self._store
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def create_app(
+    market_data_provider: MarketDataProvider | None = None,
+    *,
+    journal_store: JournalStore | None = None,
+    clock: Callable[[], datetime] = _utc_now,
+) -> FastAPI:
     provider = _LazyProvider(market_data_provider)
+    journal = _LazyJournal(journal_store)
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI) -> AsyncIterator[None]:
@@ -132,7 +160,7 @@ def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAP
         CORSMiddleware,
         allow_origins=_cors_origins(),
         allow_credentials=False,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["Accept", "Content-Type", "X-Request-ID"],
     )
 
@@ -195,6 +223,16 @@ def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAP
             return _error_response(request, 422, "invalid_market_data_query", str(exc))
         validate_document(document)
         return JSONResponse(content=document)
+
+    register_journal_routes(
+        application,
+        journal=journal.get,
+        known_instruments=lambda: {
+            item["instrument"]["instrument_id"] for item in provider.get().instruments()
+        },
+        now=clock,
+        error_response=_error_response,
+    )
 
     # Provider and cache I/O are blocking; a sync endpoint runs in FastAPI's threadpool
     # instead of stalling the event loop.

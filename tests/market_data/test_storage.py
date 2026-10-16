@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import subprocess
@@ -161,6 +162,29 @@ def test_cache_read_rejects_parquet_content_hash_mismatch(tmp_path: Path) -> Non
     pq.write_table(pa.Table.from_pylist(bars, schema=PARQUET_SCHEMA), parquet_path)
 
     with pytest.raises(CacheIntegrityError, match="checksum mismatch"):
+        market_store.read_exact(query(), SOURCE_ID, REVISION)
+
+
+def test_cache_read_rejects_contract_invalid_part_even_with_matching_hash(
+    tmp_path: Path,
+) -> None:
+    market_store = store(tmp_path)
+    receipt = market_store.write_result(fake_result())
+    original = tmp_path / receipt.parquet_paths[0]
+    bars = cast(list[dict[str, Any]], pq.ParquetFile(original).read().to_pylist())
+    bars[0]["high"] = "1.00"  # below open and close: violates the price bar contract
+    payload_sha256 = hashlib.sha256(
+        json.dumps(tuple(bars), separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
+    forged = original.with_name(f"part-{payload_sha256}.parquet")
+    pq.write_table(pa.Table.from_pylist(bars, schema=PARQUET_SCHEMA), forged)
+    with sqlite3.connect(market_store.database_path) as connection:
+        connection.execute(
+            "UPDATE coverage_manifests SET parquet_paths_json = ?",
+            (json.dumps([forged.relative_to(tmp_path).as_posix()]),),
+        )
+
+    with pytest.raises(CacheIntegrityError, match="violates the contract"):
         market_store.read_exact(query(), SOURCE_ID, REVISION)
 
 

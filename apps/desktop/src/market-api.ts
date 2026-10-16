@@ -1,6 +1,10 @@
 import type {
+  ManualExecution,
+  ManualLedgerResponse,
   MarketBarsResponse,
   MarketInstrumentsResponse,
+  ScenarioDefinition,
+  ScenarioLedgerResponse,
   SessionWindow,
 } from "@siw/contracts/types";
 
@@ -31,6 +35,40 @@ export interface MarketApi {
   instruments(): Promise<InstrumentListing[]>;
   session(sessionDate: string): Promise<SessionWindow>;
   bars(request: BarsRequest): Promise<MarketBarsResponse>;
+  manualLedger(): Promise<ManualLedgerResponse>;
+  scenarioLedger(): Promise<ScenarioLedgerResponse>;
+  recordManual(request: ManualExecutionRequest): Promise<ManualExecution>;
+  recordScenario(request: ScenarioRequest): Promise<ScenarioDefinition>;
+}
+
+/** What the user asserts about their own fill; the clicked candle is context only. */
+export interface ManualExecutionRequest {
+  execution_id: string;
+  instrument_id: string;
+  side: "buy" | "sell";
+  quantity: string;
+  price: string;
+  fees: string;
+  time_precision: "exact" | "minute" | "approximate" | "unknown";
+  executed_date_et: string | null;
+  executed_time_et: string | null;
+  selected_interval_start_utc: string;
+  selected_interval_end_utc: string;
+  memo: string;
+}
+
+export interface ScenarioRequest {
+  scenario_id: string;
+  instrument_id: string;
+  direction: "long" | "short";
+  quantity: string;
+  entry_price: string;
+  exit_price: string;
+  fee_assumption: string;
+  slippage_assumption: string;
+  entry_interval_start_utc: string;
+  exit_date_et: string;
+  exit_time_et: string;
 }
 
 export interface BarsRequest {
@@ -64,12 +102,20 @@ export function createMarketApi(
   async function get<T extends { kind: string }>(
     path: string,
     kind: T["kind"],
+    body?: unknown,
   ): Promise<T> {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetcher(`${baseUrl}${path}`, {
         signal: controller.signal,
+        ...(body === undefined
+          ? {}
+          : {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            }),
       });
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) {
@@ -127,6 +173,32 @@ export function createMarketApi(
       return get<MarketBarsResponse>(
         `/v1/market/bars?${query.toString()}`,
         "market_bars_response",
+      );
+    },
+    manualLedger() {
+      return get<ManualLedgerResponse>(
+        "/v1/trades/manual",
+        "manual_ledger_response",
+      );
+    },
+    scenarioLedger() {
+      return get<ScenarioLedgerResponse>(
+        "/v1/scenarios",
+        "scenario_ledger_response",
+      );
+    },
+    recordManual(request) {
+      return get<ManualExecution>(
+        "/v1/trades/manual",
+        "manual_execution",
+        request,
+      );
+    },
+    recordScenario(request) {
+      return get<ScenarioDefinition>(
+        "/v1/scenarios",
+        "scenario_definition",
+        request,
       );
     },
   };

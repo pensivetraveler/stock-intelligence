@@ -164,6 +164,56 @@ export function semanticErrors(document: Document): string[] {
     if (end <= start) {
       errors.push("selected interval end must be after start");
     }
+    if (
+      compareDecimal(asString(document, "quantity"), "0") <= 0 ||
+      compareDecimal(asString(document, "price"), "0") <= 0
+    ) {
+      errors.push("manual execution quantity and price must be positive");
+    }
+    const executedAt = document.executed_at_utc;
+    if ((executedAt === null) !== (document.time_precision === "unknown")) {
+      errors.push(
+        "executed_at_utc is null exactly when time_precision is unknown",
+      );
+    }
+    if (
+      typeof executedAt === "string" &&
+      Date.parse(executedAt) > Date.parse(asString(document, "asserted_at_utc"))
+    ) {
+      errors.push(
+        "an execution cannot be claimed for a time after it was recorded",
+      );
+    }
+  }
+
+  if (document.kind === "scenario_definition") {
+    if (compareDecimal(asString(document, "quantity"), "0") <= 0) {
+      errors.push("scenario quantity must be positive");
+    }
+    if (
+      compareDecimal(asString(document, "entry_price"), "0") <= 0 ||
+      compareDecimal(asString(document, "exit_price"), "0") <= 0
+    ) {
+      errors.push("scenario entry and exit prices must be positive");
+    }
+    if (
+      Date.parse(asString(document, "exit_interval_start_utc")) <=
+      Date.parse(asString(document, "entry_interval_start_utc"))
+    ) {
+      errors.push("scenario exit must come after its entry");
+    }
+  }
+
+  if (document.kind === "manual_ledger_response") {
+    for (const execution of document.executions as Document[]) {
+      errors.push(...semanticErrors(execution));
+    }
+  }
+
+  if (document.kind === "scenario_ledger_response") {
+    for (const item of document.scenarios as Document[]) {
+      errors.push(...semanticErrors(item.scenario as Document));
+    }
   }
 
   if (document.kind === "session_window") {

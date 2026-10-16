@@ -15,12 +15,15 @@ export type StockIntelligenceWorkstationContractsV01 =
   | AgentEvidence
   | BacktestRunConfig
   | SessionWindow
-  | MarketInstrumentsResponse;
+  | MarketInstrumentsResponse
+  | ManualLedgerResponse
+  | ScenarioLedgerResponse;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
 export type NonNegativeDecimalString = string;
 export type Side = "buy" | "sell";
+export type DecimalString = string;
 
 export interface InstrumentRef {
   kind: "instrument_ref";
@@ -147,11 +150,23 @@ export interface ManualExecution {
   quantity: NonNegativeDecimalString;
   price: NonNegativeDecimalString;
   currency: "USD";
-  asserted_at_utc: UtcTimestamp;
+  /**
+   * When the server recorded the user's assertion.
+   */
+  asserted_at_utc: string;
   time_precision: "exact" | "minute" | "approximate" | "unknown";
-  selected_interval_start_utc: UtcTimestamp;
+  /**
+   * Candle the user clicked: context only, never the execution time.
+   */
+  selected_interval_start_utc: string;
   selected_interval_end_utc: UtcTimestamp;
   evidence_status: "unverified" | "supported" | "reconciled";
+  /**
+   * User-claimed execution time; null only when time_precision is unknown. Independent of the selected interval.
+   */
+  executed_at_utc: UtcTimestamp | null;
+  fees: NonNegativeDecimalString;
+  memo: string;
 }
 export interface BacktestFill {
   kind: "backtest_fill";
@@ -179,8 +194,18 @@ export interface ScenarioDefinition {
   exit_price: NonNegativeDecimalString;
   quantity: NonNegativeDecimalString;
   currency: "USD";
-  fee_assumption: NonNegativeDecimalString;
-  slippage_assumption: NonNegativeDecimalString;
+  /**
+   * Total fees for the round trip.
+   */
+  fee_assumption: string;
+  /**
+   * Adverse price slippage per share, applied at entry and at exit.
+   */
+  slippage_assumption: string;
+  direction: "long" | "short";
+  entry_interval_start_utc: UtcTimestamp;
+  exit_interval_start_utc: UtcTimestamp;
+  created_at_utc: UtcTimestamp;
 }
 export interface IndicatorDefinition {
   kind: "indicator_definition";
@@ -248,5 +273,30 @@ export interface MarketInstrumentsResponse {
     source_id: Identifier;
     dataset_revision: Identifier;
     session_dates: string[];
+  }[];
+}
+export interface ManualLedgerResponse {
+  kind: "manual_ledger_response";
+  schema_version: SchemaVersion;
+  ledger: "manual_actual";
+  executions: ManualExecution[];
+  positions: {
+    instrument_id: Identifier;
+    open_quantity: DecimalString;
+    average_cost: NonNegativeDecimalString | null;
+    realized_pnl: DecimalString;
+    fees: NonNegativeDecimalString;
+    unordered_execution_ids: Identifier[];
+  }[];
+}
+export interface ScenarioLedgerResponse {
+  kind: "scenario_ledger_response";
+  schema_version: SchemaVersion;
+  ledger: "hypothetical";
+  scenarios: {
+    scenario: ScenarioDefinition;
+    gross_pnl: DecimalString;
+    costs: NonNegativeDecimalString;
+    net_pnl: DecimalString;
   }[];
 }

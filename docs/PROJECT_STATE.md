@@ -204,6 +204,33 @@
 - **검증:** `./scripts/verify.sh` 통과(exit 0) — pytest 153개, Vitest 계약 41개·데스크톱 27개, lint·typecheck·build, 생성 타입 drift 검사. 실제 uvicorn·Vite와 in-app browser로 차트 렌더, 동기화, 종목·날짜 변경, 휴장일 안내, 새로고침 후 복원, 375 px 무가로스크롤을 확인했다.
 - **미검증:** Tauri native(CSP에서의 차트·attribution 링크 포함), Windows, 원격 CI.
 
+## Phase 2B·3A — 2026-10-16
+
+- **변경 파일:**
+  - 백엔드: `services/journal/{store,ledger,migrations/0001_journal.sql}`, `services/api/{main,journal_routes}.py`, `services/market_data/{storage,aggregation,bars_service,provider}.py`
+  - 계약: `packages/contracts/{schemas,generated,validator.py,src/validator.ts}`, 계약 fixture
+  - 데스크톱: `apps/desktop/src/{Workspace,ChartPanel,PriceChart,TradeEntry,JournalPanel}.tsx`, `src/{workspace-library,journal-markers,market-api}.ts`와 테스트
+  - 문서: ADR 0009·0010, ADR 0008 상태, README, EXECUTION_PROCESS, ROADMAP, REPOSITORY_STRUCTURE, IMPLEMENTATION_HISTORY
+- **2B:**
+  - 이름 붙인 workspace(저장·전환·이름 변경·삭제, v1 이전)
+  - Trading Terminal·Trade Review 템플릿의 명시적 적용과 독립 복사, 되돌리기(최대 20단계)
+- **3A:**
+  - 캔들 클릭으로 수동(실제, 미검증)·가상 기록을 남긴다. 캔들은 참고 정보이며, 가격·시각은 사용자가 입력한다.
+  - 기록은 별도 `journal.sqlite3`에 append-only로 저장한다. 같은 요청의 재시도는 멱등하게 처리하고, 같은 ID에 다른 내용이면 409다.
+  - ET 시각을 서버에서 UTC로 바꾸고, DST 공백·중복 시각은 거부한다.
+  - 수동 원장은 FIFO P&L, 가상 원장은 시나리오별 P&L을 따로 계산해 따로 표시한다. 마커 모양·색도 원장마다 다르다.
+- **성능:**
+  - 브라우저에서 bars 요청이 약 4초 걸렸다. Parquet 재검증(내용 hash와 문서 검증이 대신 보장)과 provider가 검증한 집계 입력의 재검증을 없앴다.
+  - 계약 `$ref`를 인라인해 서버 측 0.5~0.7초로 줄였다.
+  - 계약 위반 cache part는 `CacheIntegrityError`로 거부한다(회귀 테스트 추가).
+- **검증:** `./scripts/verify.sh` 통과(exit 0) — pytest 180개, Vitest 계약 45개·데스크톱 39개, lint·typecheck·build, 생성 타입 drift 검사. 실제 API(임시 `SIW_DATA_DIR`)와 in-app browser로 다음을 확인했다:
+  - 템플릿 적용
+  - 수동 매수 기록과 두 차트의 마커
+  - 숏 시나리오(순 2.00 = 3.00 − 1.00)
+  - 새로고침 후 유지
+  - 12:47 ET → 16:47Z 저장
+- **남은 범위:** 기록 정정·무효화, CSV/XLSX 가져오기, broker 확인 체결·대사, 계좌 구분, Tauri native·Windows·원격 CI 미검증.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:

@@ -57,7 +57,10 @@ class MarketBarsService:
         buckets = self._expected_buckets(query, timeframe)
 
         source = self.provider.get_bars(replace(query, timeframe="1m"))
-        bars = self.aggregator.aggregate(source.bars, timeframe, as_of_utc=query.as_of_utc)
+        # Providers return contract-validated responses, so the 1m bars are not re-validated.
+        bars = self.aggregator.aggregate(
+            source.bars, timeframe, as_of_utc=query.as_of_utc, source_validated=True
+        )
         observed = {cast(str, bar["interval_start_utc"]) for bar in bars}
         source_missing = cast(list[dict[str, str]], source.coverage["missing_intervals"])
         missing = [

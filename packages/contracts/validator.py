@@ -29,16 +29,36 @@ def _kind_validator(kind: str) -> Draft202012Validator | None:
 
     The root schema is a `oneOf` over every kind, so validating a bar tries all
     of them. Each branch pins `kind` with `const`, so checking only the matching
-    definition accepts and rejects exactly the same documents, about ten times faster.
+    definition accepts and rejects exactly the same documents. Local `$ref`s are
+    also inlined once, which halves the per-document cost again.
     """
     schema = load_schema()
     for branch in schema["oneOf"]:
         name = cast(str, branch["$ref"]).rsplit("/", 1)[-1]
         if schema["$defs"][name]["properties"]["kind"].get("const") == kind:
+            inlined = _inline_refs(schema["$defs"][name], schema["$defs"], (name,))
             return Draft202012Validator(
-                {**schema, "oneOf": [branch]}, format_checker=FormatChecker()
+                {"$schema": schema["$schema"], **inlined}, format_checker=FormatChecker()
             )
     return None
+
+
+def _inline_refs(node: Any, defs: dict[str, Any], stack: tuple[str, ...]) -> Any:
+    """Replace `{"$ref": "#/$defs/X", ...}` with X's definition (no recursive defs)."""
+    if isinstance(node, list):
+        return [_inline_refs(item, defs, stack) for item in node]
+    if not isinstance(node, dict):
+        return node
+    ref = node.get("$ref")
+    if isinstance(ref, str) and ref.startswith("#/$defs/"):
+        name = ref.removeprefix("#/$defs/")
+        if name in stack:
+            raise ValueError(f"recursive contract definition cannot be inlined: {name}")
+        target = _inline_refs(defs[name], defs, (*stack, name))
+        siblings = {key: _inline_refs(value, defs, stack) for key, value in node.items()}
+        siblings.pop("$ref")
+        return {**target, **siblings}
+    return {key: _inline_refs(value, defs, stack) for key, value in node.items()}
 
 
 def _utc(value: str) -> datetime:
@@ -107,6 +127,21 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
         end = _utc(document["selected_interval_end_utc"])
         if end <= start:
             errors.append("selected interval end must be after start")
+        if Decimal(document["quantity"]) <= 0 or Decimal(document["price"]) <= 0:
+            errors.append("manual execution quantity and price must be positive")
+        executed_at = document["executed_at_utc"]
+        if (executed_at is None) != (document["time_precision"] == "unknown"):
+            errors.append("executed_at_utc is null exactly when time_precision is unknown")
+        if executed_at is not None and _utc(executed_at) > _utc(document["asserted_at_utc"]):
+            errors.append("an execution cannot be claimed for a time after it was recorded")
+
+    if kind == "scenario_definition":
+        if Decimal(document["quantity"]) <= 0:
+            errors.append("scenario quantity must be positive")
+        if Decimal(document["entry_price"]) <= 0 or Decimal(document["exit_price"]) <= 0:
+            errors.append("scenario entry and exit prices must be positive")
+        if _utc(document["exit_interval_start_utc"]) <= _utc(document["entry_interval_start_utc"]):
+            errors.append("scenario exit must come after its entry")
 
     if kind == "session_window":
         boundaries = [
@@ -146,6 +181,14 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
             errors.append("partial coverage must contain some but not all expected intervals")
         if status == "empty" and observed != 0:
             errors.append("empty coverage must not contain observed intervals")
+
+    if kind == "manual_ledger_response":
+        for execution in document["executions"]:
+            errors.extend(semantic_errors(execution))
+
+    if kind == "scenario_ledger_response":
+        for item in document["scenarios"]:
+            errors.extend(semantic_errors(item["scenario"]))
 
     if kind == "market_bars_response":
         bars = cast(list[dict[str, Any]], document["bars"])

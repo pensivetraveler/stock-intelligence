@@ -10,5 +10,9 @@
   "quantity": "10",
   "currency": "USD",
   "fee_assumption": "1.00",
-  "slippage_assumption": "0.05"
+  "slippage_assumption": "0.05",
+  "direction": "long",
+  "entry_interval_start_utc": "2026-10-09T14:00:00Z",
+  "exit_interval_start_utc": "2026-10-09T15:00:00Z",
+  "created_at_utc": "2026-10-12T00:00:00Z"
 }

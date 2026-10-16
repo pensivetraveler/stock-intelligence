@@ -1,8 +1,15 @@
-import type { MarketBarsResponse, SessionWindow } from "@siw/contracts/types";
-import { useEffect, useMemo, useState } from "react";
+import type {
+  ManualExecution,
+  MarketBarsResponse,
+  PriceBar,
+  ScenarioDefinition,
+  SessionWindow,
+} from "@siw/contracts/types";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { summarize, toSeries } from "./chart-data";
 import type { ChartSyncGroup } from "./chart-sync";
+import { journalMarkers } from "./journal-markers";
 import {
   MarketApiError,
   TIMEFRAMES,
@@ -11,6 +18,7 @@ import {
   type Timeframe,
 } from "./market-api";
 import { PriceChart } from "./PriceChart";
+import { TradeEntry } from "./TradeEntry";
 import {
   sessionRange,
   type ChartConfig,
@@ -31,6 +39,8 @@ interface ChartPanelProps {
   instruments: InstrumentListing[];
   sync: ChartSyncGroup;
   onChange: (config: ChartConfig) => void;
+  journal: { manual: ManualExecution[]; scenarios: ScenarioDefinition[] };
+  onJournalChange: () => void;
 }
 
 function describeError(error: unknown): string {
@@ -50,13 +60,17 @@ export function ChartPanel({
   instruments,
   sync,
   onChange,
+  journal,
+  onJournalChange,
 }: ChartPanelProps) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
+  const [selected, setSelected] = useState<PriceBar | null>(null);
   const { instrumentId, timeframe, sessionDate, sessionScope } = config;
 
   useEffect(() => {
     let current = true;
     setLoad({ status: "loading" });
+    setSelected(null);
     void (async () => {
       try {
         const session = await api.session(sessionDate);
@@ -82,6 +96,24 @@ export function ChartPanel({
     [load],
   );
   const summary = load.status === "ready" ? summarize(load.response) : null;
+  const bars = load.status === "ready" ? load.response.bars : null;
+  const markers = useMemo(
+    () =>
+      bars
+        ? journalMarkers(bars, instrumentId, journal.manual, journal.scenarios)
+        : [],
+    [bars, instrumentId, journal],
+  );
+  const selectCandle = useCallback(
+    (time: number) => {
+      const bar = bars?.find(
+        (item) =>
+          Math.floor(Date.parse(item.interval_start_utc) / 1000) === time,
+      );
+      if (bar) setSelected(bar);
+    },
+    [bars],
+  );
   const symbol =
     instruments.find((item) => item.instrument.instrument_id === instrumentId)
       ?.instrument.symbol ?? instrumentId;
@@ -167,6 +199,8 @@ export function ChartPanel({
             candles={series.candles}
             volume={series.volume}
             sync={sync}
+            markers={markers}
+            onCandleClick={selectCandle}
           />
         ) : (
           <p
@@ -180,6 +214,23 @@ export function ChartPanel({
           </p>
         )}
       </div>
+
+      {selected ? (
+        <TradeEntry
+          key={selected.interval_start_utc}
+          api={api}
+          bar={selected}
+          symbol={symbol}
+          sessionDate={sessionDate}
+          onRecorded={onJournalChange}
+          onClose={() => setSelected(null)}
+        />
+      ) : load.status === "ready" ? (
+        <p className="workspace-note">
+          Click a candle to record an actual execution or a hypothetical
+          scenario.
+        </p>
+      ) : null}
 
       {summary && load.status === "ready" ? (
         <dl className="chart-meta">

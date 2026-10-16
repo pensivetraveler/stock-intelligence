@@ -1,6 +1,6 @@
 # ADR 0008 — Phase 2A chart workspace slice
 
-- **Status:** accepted
+- **Status:** accepted; single saved layout amended by ADR 0010 (named workspaces)
 - **Date:** 2026-10-16
 
 ## Context

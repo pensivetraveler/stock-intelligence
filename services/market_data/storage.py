@@ -471,7 +471,7 @@ class LocalMarketDataStore:
             bars.extend(self._read_verified_parquet(relative_path))
         bars.sort(key=lambda bar: cast(str, bar["interval_start_utc"]))
         result = BarsResult(tuple(bars), manifest)
-        validate_document(result.to_document())
+        self._validate_cached(result)
         return result
 
     def read_composed(self, query: BarsQuery, source_id: str) -> BarsResult | None:
@@ -546,7 +546,7 @@ class LocalMarketDataStore:
             "missing_intervals": [],
         }
         result = BarsResult(bars, coverage)
-        validate_document(result.to_document())
+        self._validate_cached(result)
         return result
 
     def detect_gaps(
@@ -884,6 +884,13 @@ class LocalMarketDataStore:
                 )
 
     @staticmethod
+    def _validate_cached(result: BarsResult) -> None:
+        try:
+            validate_document(result.to_document())
+        except ValueError as exc:
+            raise CacheIntegrityError(f"cached result violates the contract: {exc}") from exc
+
+    @staticmethod
     def _coverage_key(manifest: dict[str, Any]) -> str:
         identity = {
             key: manifest[key]
@@ -954,14 +961,14 @@ class LocalMarketDataStore:
 
     @staticmethod
     def _read_parquet(path: Path) -> list[dict[str, Any]]:
+        # Bars are not re-validated one by one here: callers compare the content hash
+        # with the name the part was written under, and every result assembled from
+        # parts is validated as a whole contract document before it is returned.
         if not path.is_file():
             raise CacheIntegrityError(f"Parquet part is missing: {path}")
         try:
             table = pq.ParquetFile(path).read()
-            bars = cast(list[dict[str, Any]], table.to_pylist())
-            for bar in bars:
-                validate_document(bar)
-            return bars
+            return cast(list[dict[str, Any]], table.to_pylist())
         except Exception as exc:
             if isinstance(exc, CacheIntegrityError):
                 raise

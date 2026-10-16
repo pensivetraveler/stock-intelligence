@@ -22,3 +22,5 @@ Revisit when: 어느 조건에서 재검토하나
 - `0006-session-partitions-api-startup-and-single-version.md`: 세션 날짜 partition, 부작용 없는 API import, 단일 제품 버전
 - `0007-aggregated-api-cache-composition-and-backfill.md`: 공개 집계 timeframe, cache 범위 조합, 재개 가능한 backfill
 - `0008-chart-workspace-slice.md`: Phase 2A 차트 2개 workspace, 합성 SYNTH 데이터, 세션·종목 API
+- `0009-manual-and-hypothetical-trade-ledgers.md`: 수동(실제)·가상 거래 원장, 멱등 기록, ET 시간 변환, 분리된 P&L
+- `0010-named-workspaces-and-layout-templates.md`: 이름 붙인 workspace, Terminal/Review 템플릿, 되돌리기

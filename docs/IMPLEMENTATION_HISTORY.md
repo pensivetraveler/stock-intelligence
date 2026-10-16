@@ -17,8 +17,9 @@
 | 검토 결함·데이터 안전성   | `980e973`      | API 오류 envelope, 검증기 캐시, 다중 프로세스 복구, point-in-time 계약 | Python 88, TS 계약 26, UI 4; 전체 검증 통과  | 완료                                |
 | 남은 데이터 위험·job 종료 | `fc96cc3`      | cache 전 query 검증, calendar fingerprint, TS decimal, job 종료        | Python 98, TS 계약 34, UI 4; 전체 검증 통과  | 완료                                |
 | 운영 보강                 | `ef2dbac`      | 세션 날짜 partition, 연결 close, API lazy 시작, request ID, 단일 버전  | Python 110, TS 계약 34, UI 6; 전체 검증 통과 | 2026-10-16                          |
-| Phase 1 내부 마무리(1E)   | 커밋 전        | 공개 5m~60m 집계 API, cache 범위 조합, 재개 가능한 backfill            | Python 134, TS 계약 35, UI 6; 전체 검증 통과 | 2026-10-16                          |
-| Phase 2A 차트 workspace   | 커밋 전        | 차트 2개·독립 설정·동기화·레이아웃 저장, 합성 SYNTH, 종목·세션 API     | 전체 검증·브라우저 확인                      | 2026-10-16                          |
+| Phase 1 내부 마무리(1E)   | `a3c8141`      | 공개 5m~60m 집계 API, cache 범위 조합, 재개 가능한 backfill            | Python 134, TS 계약 35, UI 6; 전체 검증 통과 | 2026-10-16                          |
+| Phase 2A 차트 workspace   | `a3c8141`      | 차트 2개·독립 설정·동기화·레이아웃 저장, 합성 SYNTH, 종목·세션 API     | 전체 검증·브라우저 확인                      | 2026-10-16                          |
+| Phase 2B·3A               | 커밋 전        | 이름 붙인 workspace·템플릿, 수동·가상 거래 원장과 P&L                  | 전체 검증·브라우저 확인                      | 2026-10-16                          |
 
 Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 정정·재시도·공급업체 비교 등 장기 로드맵의 나머지 요구사항은 후속 작업이다.
 
@@ -116,31 +117,38 @@ Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 �
 
 **영향:** 이 변경 전에 만든 로컬 cache는 옛 calendar version lineage 때문에 새 bar와 집계되지 않는다. 기존 `date=` partition의 Parquet는 읽을 수 있지만, 새 쓰기는 `session_date=` 경로를 쓴다.
 
-**Phase 1 내부 마무리(1E, 커밋 전):**
+**Phase 1 내부 마무리(1E, `a3c8141`):**
 
 - `MarketBarsService`가 공개 API에서 5m/15m/30m/60m을 세션 bucket 기준으로 집계한다.
 - 결측 없는 cache 결과 여러 개로 다른 요청 범위에 응답한다.
 - Collector `backfill`이 job·chunk·checkpoint·재개·재시도·throttle을 제공한다.
 - 근거: [ADR 0007](decisions/0007-aggregated-api-cache-composition-and-backfill.md)
 
-**Phase 2A 차트 workspace(커밋 전):**
+**Phase 2A 차트 workspace(`a3c8141`):**
 
 - 독립 설정 차트 2개, 시간 범위 동기화, 레이아웃 저장·복원
 - Coverage·품질·lineage·결측의 ET 표시
 - 합성 `SYNTH` 하루치와 종목·세션 API
 - 브라우저 검증에서 집계 순서·500 CORS·모바일 viewport 결함을 찾아 고쳤다([ADR 0008](decisions/0008-chart-workspace-slice.md)).
 
+**Phase 2B·3A(커밋 전):**
+
+- 이름 붙인 workspace, Terminal/Review 템플릿과 되돌리기([ADR 0010](decisions/0010-named-workspaces-and-layout-templates.md))
+- 캔들 클릭으로 기록하는 수동(실제)·가상 거래 원장과 서로 분리된 P&L, 차트 마커([ADR 0009](decisions/0009-manual-and-hypothetical-trade-ledgers.md))
+- 브라우저 검증에서 bars 요청이 4초 걸리는 문제를 찾았다. 계층마다 중복되던 검증을 제거하고 `$ref`를 인라인해 0.5~0.7초로 줄였다.
+
 ## 7. 현재 가능한 사용과 남은 작업
 
-| 항목                                 | 현재 범위                           | 다음에 필요한 작업                                    |
-| ------------------------------------ | ----------------------------------- | ----------------------------------------------------- |
-| 데이터 조회                          | 합성 AAPL 1m API, 선택적 로컬 cache | 다종목·충분한 fixture, 실제 Provider는 권한·권리 검증 |
-| 큰 timeframe                         | 공개 API 5m~60m 집계                | 일봉(`1d`)과 차트 연결                                |
-| 화면                                 | 차트 2개 workspace(합성 데이터)     | 프리셋·named workspace, 지표·거래 표시                |
-| 네이티브 앱                          | Tauri 구성                          | Rust/Cargo 등 prerequisite 설치 후 실행·빌드 검증     |
-| 데이터 운영                          | 로컬 저장·복구·pin, 합성 backfill   | 실제 Provider 수집, 정정 처리, retention              |
-| 원격 CI                              | workflow 파일                       | Git 원격·CI 실행 환경 구성 및 실행 증거               |
-| 매매 복기·지표·Replay·백테스트·Agent | 초기 계약 또는 장기 요구사항        | 해당 Phase 구현과 별도 수락 검증                      |
+| 항목                       | 현재 범위                            | 다음에 필요한 작업                                    |
+| -------------------------- | ------------------------------------ | ----------------------------------------------------- |
+| 데이터 조회                | 합성 AAPL 1m API, 선택적 로컬 cache  | 다종목·충분한 fixture, 실제 Provider는 권한·권리 검증 |
+| 큰 timeframe               | 공개 API 5m~60m 집계                 | 일봉(`1d`)과 차트 연결                                |
+| 화면                       | 차트 2개, 이름 붙인 workspace·템플릿 | 지표(Phase 4), replay                                 |
+| 네이티브 앱                | Tauri 구성                           | Rust/Cargo 등 prerequisite 설치 후 실행·빌드 검증     |
+| 데이터 운영                | 로컬 저장·복구·pin, 합성 backfill    | 실제 Provider 수집, 정정 처리, retention              |
+| 원격 CI                    | workflow 파일                        | Git 원격·CI 실행 환경 구성 및 실행 증거               |
+| 매매 복기                  | 수동·가상 원장, 마커, 분리 P&L       | CSV 가져오기·중복 검토, 정정, broker 확인, 계좌 구분  |
+| 지표·Replay·백테스트·Agent | 초기 계약 또는 장기 요구사항         | 해당 Phase 구현과 별도 수락 검증                      |
 
 후속 선택지는 **Phase 2의 합성 데이터 기반 차트 수직 슬라이스** 또는 **Phase 1D 실제 Provider PoC**다. Phase 2를 선택하면 첫 차트에서 source·session·quality·Coverage를 표시하며, 이미 공개된 5m~60m 집계 API를 사용할 수 있다. Phase 1D는 사용할 계정·읽기 전용 권한·데이터 저장권·비용 범위 확인이 선행된다. 두 경로 모두 아직 착수하지 않았다.
 

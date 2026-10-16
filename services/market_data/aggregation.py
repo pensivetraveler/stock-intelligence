@@ -50,7 +50,13 @@ class MinuteBarAggregator:
         timeframe: AggregateTimeframe,
         *,
         as_of_utc: datetime | None = None,
+        source_validated: bool = False,
     ) -> tuple[dict[str, Any], ...]:
+        """Aggregate canonical 1m bars into session buckets.
+
+        Pass `source_validated=True` only for bars taken from a contract-validated
+        response; anything else is validated bar by bar first.
+        """
         if timeframe not in TARGET_MINUTES:
             raise AggregationError("target timeframe must be 5m, 15m, 30m, or 60m")
         if as_of_utc is not None and as_of_utc.utcoffset() != timedelta(0):
@@ -60,7 +66,8 @@ class MinuteBarAggregator:
         if not source:
             return ()
         for bar in source:
-            validate_document(bar)
+            if not source_validated:
+                validate_document(bar)
             if bar["timeframe"] != "1m":
                 raise AggregationError("only canonical 1m bars can be aggregated")
         self._validate_common_lineage(source)

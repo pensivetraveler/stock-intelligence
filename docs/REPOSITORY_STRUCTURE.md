@@ -16,6 +16,7 @@ stock-intelligence-workstation/
 ├── services/
 │   ├── api/                         # FastAPI, 계약 검증, health/version
 │   ├── collector/                   # 별도 프로세스: doctor/run, 합성 데이터 backfill job
+│   ├── journal/                     # 수동(실제)·가상 거래 원장: 별도 SQLite, FIFO·시나리오 P&L
 │   └── market_data/                 # Provider, 합성 fixture, cache, calendar, aggregation, bars service
 ├── packages/
 │   ├── contracts/                   # JSON Schema 2020-12, 버전, TS/Python 변환 검사
@@ -45,6 +46,7 @@ stock-intelligence-workstation/
 | `apps/desktop`           | 데스크톱 화면/사용자 조작                  | DB 직접 접근, Provider별 API 키 저장    |
 | `services/api`           | 공통 HTTP 계약·검증·도메인 서비스 진입점   | 신뢰하지 않은 Python 플러그인 직접 실행 |
 | `services/collector`     | 수집 Job(합성 backfill), 외부 Adapter는 1D | 프런트 UI, 증권사 주문 실행             |
+| `services/journal`       | 수동·가상 원장 저장과 P&L(서로 분리)       | 원장 합산, 계좌번호 저장, 주문 실행     |
 | `packages/contracts`     | 단일 버전의 언어 중립 데이터 계약          | 비즈니스 로직·네트워크 요청             |
 | `packages/indicator-sdk` | 사용자 지표 계약 (후속 단계)               | Phase 0에서 외부 Python 실행 허용       |
 | `tests`                  | 고정 Fixture·계약/통합 검증                | 고객 계좌·실거래 원본 자료 포함         |

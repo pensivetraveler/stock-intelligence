@@ -1,0 +1,126 @@
+"""P&L for the manual (actual) and hypothetical ledgers, kept strictly apart."""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import date, datetime, time, timezone
+from decimal import Decimal
+from typing import Any, cast
+from zoneinfo import ZoneInfo
+
+NEW_YORK = ZoneInfo("America/New_York")
+ZERO = Decimal(0)
+
+
+class ExchangeTimeError(ValueError):
+    """A US exchange-local time that does not exist or is ambiguous (DST)."""
+
+
+def exchange_local_to_utc(session_date: date, local_time: time) -> datetime:
+    """Convert an America/New_York wall-clock time on a date to UTC.
+
+    Rejects the skipped hour when clocks spring forward and the repeated hour when
+    they fall back, instead of silently picking one.
+    """
+    naive = datetime.combine(session_date, local_time)
+    first = naive.replace(tzinfo=NEW_YORK, fold=0)
+    as_utc = first.astimezone(timezone.utc)
+    # Check the gap first: inside it, fold=0 and fold=1 also disagree on the offset.
+    if as_utc.astimezone(NEW_YORK).replace(tzinfo=None) != naive:
+        raise ExchangeTimeError(f"{naive.isoformat()} ET does not exist during the DST change")
+    if first.utcoffset() != naive.replace(tzinfo=NEW_YORK, fold=1).utcoffset():
+        raise ExchangeTimeError(f"{naive.isoformat()} ET is ambiguous during the DST change")
+    return as_utc
+
+
+def _text(value: Decimal) -> str:
+    # Any zero, including Decimal("-0.00"), is written as "0".
+    return "0" if value == 0 else format(value, "f")
+
+
+@dataclass
+class _Lot:
+    quantity: Decimal  # positive long, negative short
+    price: Decimal
+
+
+def _parse(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def manual_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """FIFO positions and realized P&L per instrument from manual executions.
+
+    Executions with an unknown time cannot be ordered against the others, so they
+    are listed in `unordered_execution_ids` and left out of the calculation rather
+    than placed at a guessed time.
+    """
+    by_instrument: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+    for execution in executions:
+        by_instrument[cast(str, execution["instrument_id"])].append(execution)
+    positions: list[dict[str, Any]] = []
+    for instrument_id in sorted(by_instrument):
+        items = by_instrument[instrument_id]
+        unordered = sorted(
+            cast(str, item["execution_id"]) for item in items if item["executed_at_utc"] is None
+        )
+        timed = sorted(
+            (item for item in items if item["executed_at_utc"] is not None),
+            key=lambda item: (
+                _parse(cast(str, item["executed_at_utc"])),
+                _parse(cast(str, item["asserted_at_utc"])),
+                cast(str, item["execution_id"]),
+            ),
+        )
+        lots: list[_Lot] = []
+        realized = ZERO
+        fees = ZERO
+        for item in timed:
+            price = Decimal(cast(str, item["price"]))
+            remaining = Decimal(cast(str, item["quantity"])) * (1 if item["side"] == "buy" else -1)
+            fee = Decimal(cast(str, item["fees"]))
+            fees += fee
+            realized -= fee
+            while remaining != 0 and lots and (lots[0].quantity > 0) != (remaining > 0):
+                lot = lots[0]
+                matched = min(abs(remaining), abs(lot.quantity))
+                direction = 1 if lot.quantity > 0 else -1
+                realized += matched * (price - lot.price) * direction
+                lot.quantity -= matched * direction
+                remaining += matched * direction
+                if lot.quantity == 0:
+                    lots.pop(0)
+            if remaining != 0:
+                lots.append(_Lot(remaining, price))
+        open_quantity = sum((lot.quantity for lot in lots), ZERO)
+        open_size = sum((abs(lot.quantity) for lot in lots), ZERO)
+        average_cost = (
+            sum((abs(lot.quantity) * lot.price for lot in lots), ZERO) / open_size
+            if open_size
+            else None
+        )
+        positions.append(
+            {
+                "instrument_id": instrument_id,
+                "open_quantity": _text(open_quantity),
+                "average_cost": None if average_cost is None else _text(average_cost),
+                "realized_pnl": _text(realized),
+                "fees": _text(fees),
+                "unordered_execution_ids": unordered,
+            }
+        )
+    return positions
+
+
+def scenario_pnl(scenario: dict[str, Any]) -> dict[str, str]:
+    """Hypothetical round-trip P&L: slippage is adverse at both entry and exit."""
+    quantity = Decimal(cast(str, scenario["quantity"]))
+    entry = Decimal(cast(str, scenario["entry_price"]))
+    exit_price = Decimal(cast(str, scenario["exit_price"]))
+    slippage = Decimal(cast(str, scenario["slippage_assumption"]))
+    fees = Decimal(cast(str, scenario["fee_assumption"]))
+    direction = 1 if scenario["direction"] == "long" else -1
+    gross = (exit_price - entry) * quantity * direction
+    costs = slippage * 2 * quantity + fees
+    return {"gross_pnl": _text(gross), "costs": _text(costs), "net_pnl": _text(gross - costs)}

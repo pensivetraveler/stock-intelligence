@@ -2,7 +2,7 @@
 
 미국 주식 차트·매매 복기·백테스팅·전문 Agent 연구 환경을 위한 **로컬 개발 착수 패키지**.
 
-**현재 상태:** Phase 0 기반, Phase 1A~1C·1E 시장 데이터 기반, Phase 2A 차트 workspace(차트 2개) 구현 완료. FastAPI API, React/TypeScript 차트 workspace, 독립 Collector 진단 경로, 합성 Provider, SQLite/Parquet cache, XNAS/XNYS 거래 캘린더, 공개 API의 session-aligned 5m/15m/30m/60m 집계, 재개 가능한 합성 데이터 backfill이 구성되어 있다. 실제 공급업체는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
+**현재 상태:** Phase 0 기반, Phase 1A~1C·1E 시장 데이터 기반, Phase 2A·2B 차트 workspace(차트 2개, 이름 붙인 workspace·레이아웃 템플릿), Phase 3A 수동·가상 거래 원장 구현 완료. FastAPI API, React/TypeScript 차트 workspace, 독립 Collector 진단 경로, 합성 Provider, SQLite/Parquet cache, XNAS/XNYS 거래 캘린더, 공개 API의 session-aligned 5m/15m/30m/60m 집계, 재개 가능한 합성 데이터 backfill이 구성되어 있다. 실제 공급업체는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
 
 ## 시작 순서
 
@@ -104,10 +104,27 @@ pnpm dev
 - 각 차트는 종목(합성 `SYNTH`, AAPL 표본), timeframe(1m~60m), 세션 날짜, 정규장/연장장을 따로 설정한다.
 - 시간 축과 결측 구간은 미국 동부시간(ET)으로 표시한다. 세션 경계는 API의 `GET /v1/market/sessions/{date}`에서 받는다.
 - 일부만 관측된 bar와 미확정(provisional) bar는 회색으로 그린다. 각 차트 아래에 Coverage, 품질, 세션, source·revision lineage, 결측 구간이 표시된다.
-- `Sync visible time range`를 켜면 두 차트의 보이는 시간 범위가 함께 움직인다. 레이아웃은 이 기기의 브라우저 저장소에 저장되고 새로고침 후 복원된다.
+- `Sync visible time range`를 켜면 두 차트의 보이는 시간 범위가 함께 움직인다.
+- workspace는 이름을 붙여 저장·전환·이름 변경·삭제할 수 있다. 이 기기의 브라우저 저장소에 저장되고 새로고침 후 복원된다.
+- `Trading Terminal`, `Trade Review` 템플릿은 `Apply to both charts`를 눌러야만 적용된다. 각 차트의 종목·날짜는 유지한 채 설정을 복사하고, `Undo`로 되돌릴 수 있다([ADR 0010](docs/decisions/0010-named-workspaces-and-layout-templates.md)).
 - 종목 목록은 `GET /v1/market/instruments`에서 받는다. `SYNTH`는 `uv run python -m services.market_data.synthetic && pnpm format`으로 다시 생성하는, 실존하지 않는 합성 데이터다.
 
 Tauri 2 전제조건을 설치한 환경에서는 `pnpm desktop:tauri`를 사용한다.
+
+### 거래 기록(수동·가상)
+
+API를 `SIW_DATA_DIR=data`로 실행하면 차트의 캔들을 클릭해 두 종류의 기록을 남길 수 있다([ADR 0009](docs/decisions/0009-manual-and-hypothetical-trade-ledgers.md)). 이 기록은 `data/journal.sqlite3`에 시장 데이터와 분리해 저장된다. `SIW_DATA_DIR` 없이 실행하면 기록 API가 503을 반환하고, 화면에도 기록 기능이 꺼져 있다고 표시된다.
+
+- **Actual execution(수동, 미검증)**
+  - 사용자가 실제로 체결했다고 주장하는 기록이다. 매수·매도, 수량, 체결가, 수수료, 시간 정밀도, ET 체결 시각을 입력한다.
+  - 클릭한 캔들은 참고 정보로만 표시되며, 가격이나 시각을 미리 채우지 않는다. 서머타임 전환 때 존재하지 않거나 모호한 ET 시각은 거부한다.
+- **Hypothetical scenario(가상)**
+  - 롱/숏 방향, 진입·청산가, 수량, 총수수료, 주당 슬리피지를 입력한다. 진입 시점은 클릭한 캔들이고, 청산 시점은 ET로 입력한다.
+- **표시와 P&L**
+  - 두 원장은 별도 표와 별도 P&L로 표시하며 합산하지 않는다. 수동 원장은 FIFO 실현손익을 계산하고, 시각을 모르는 체결은 계산에서 뺀다.
+  - 차트 마커는 수동 기록이 파란 화살표, 가상 기록이 보라색 원(진입)·사각형(청산)이다.
+- **API:** `POST/GET /v1/trades/manual`, `POST/GET /v1/scenarios`. 같은 ID로 같은 요청을 다시 보내면 저장된 기록을 돌려주고, 다른 내용이면 409로 거부한다.
+- **계좌:** 계좌 정보는 받지 않는다. 메모에도 계좌번호나 인증 정보를 쓰지 않는다.
 
 ### Collector
 

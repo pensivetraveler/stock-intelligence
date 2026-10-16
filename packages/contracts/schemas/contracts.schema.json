@@ -47,6 +47,12 @@
     },
     {
       "$ref": "#/$defs/MarketInstrumentsResponse"
+    },
+    {
+      "$ref": "#/$defs/ManualLedgerResponse"
+    },
+    {
+      "$ref": "#/$defs/ScenarioLedgerResponse"
     }
   ],
   "$defs": {
@@ -561,7 +567,10 @@
         "time_precision",
         "selected_interval_start_utc",
         "selected_interval_end_utc",
-        "evidence_status"
+        "evidence_status",
+        "executed_at_utc",
+        "fees",
+        "memo"
       ],
       "properties": {
         "kind": {
@@ -589,19 +598,39 @@
           "const": "USD"
         },
         "asserted_at_utc": {
-          "$ref": "#/$defs/UtcTimestamp"
+          "$ref": "#/$defs/UtcTimestamp",
+          "description": "When the server recorded the user's assertion."
         },
         "time_precision": {
           "enum": ["exact", "minute", "approximate", "unknown"]
         },
         "selected_interval_start_utc": {
-          "$ref": "#/$defs/UtcTimestamp"
+          "$ref": "#/$defs/UtcTimestamp",
+          "description": "Candle the user clicked: context only, never the execution time."
         },
         "selected_interval_end_utc": {
           "$ref": "#/$defs/UtcTimestamp"
         },
         "evidence_status": {
           "enum": ["unverified", "supported", "reconciled"]
+        },
+        "executed_at_utc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "User-claimed execution time; null only when time_precision is unknown. Independent of the selected interval."
+        },
+        "fees": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "memo": {
+          "type": "string",
+          "maxLength": 500
         }
       }
     },
@@ -680,7 +709,11 @@
         "quantity",
         "currency",
         "fee_assumption",
-        "slippage_assumption"
+        "slippage_assumption",
+        "direction",
+        "entry_interval_start_utc",
+        "exit_interval_start_utc",
+        "created_at_utc"
       ],
       "properties": {
         "kind": {
@@ -715,10 +748,24 @@
           "const": "USD"
         },
         "fee_assumption": {
-          "$ref": "#/$defs/NonNegativeDecimalString"
+          "$ref": "#/$defs/NonNegativeDecimalString",
+          "description": "Total fees for the round trip."
         },
         "slippage_assumption": {
-          "$ref": "#/$defs/NonNegativeDecimalString"
+          "$ref": "#/$defs/NonNegativeDecimalString",
+          "description": "Adverse price slippage per share, applied at entry and at exit."
+        },
+        "direction": {
+          "enum": ["long", "short"]
+        },
+        "entry_interval_start_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "exit_interval_start_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "created_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
         }
       }
     },
@@ -1024,6 +1071,117 @@
                   "type": "string",
                   "format": "date"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ManualLedgerResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "ledger",
+        "executions",
+        "positions"
+      ],
+      "properties": {
+        "kind": {
+          "const": "manual_ledger_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "ledger": {
+          "const": "manual_actual"
+        },
+        "executions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ManualExecution"
+          }
+        },
+        "positions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "instrument_id",
+              "open_quantity",
+              "average_cost",
+              "realized_pnl",
+              "fees",
+              "unordered_execution_ids"
+            ],
+            "properties": {
+              "instrument_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "open_quantity": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "average_cost": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/NonNegativeDecimalString"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "realized_pnl": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "fees": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "unordered_execution_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/Identifier"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ScenarioLedgerResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "ledger", "scenarios"],
+      "properties": {
+        "kind": {
+          "const": "scenario_ledger_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "ledger": {
+          "const": "hypothetical"
+        },
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scenario", "gross_pnl", "costs", "net_pnl"],
+            "properties": {
+              "scenario": {
+                "$ref": "#/$defs/ScenarioDefinition"
+              },
+              "gross_pnl": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "costs": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "net_pnl": {
+                "$ref": "#/$defs/DecimalString"
               }
             }
           }

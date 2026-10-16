@@ -2,9 +2,12 @@ import {
   CandlestickSeries,
   ColorType,
   createChart,
+  createSeriesMarkers,
   HistogramSeries,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type MouseEventParams,
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
@@ -13,12 +16,16 @@ import { useEffect, useRef } from "react";
 import type { CandlePoint, VolumePoint } from "./chart-data";
 import { COLORS, exchangeTime } from "./chart-data";
 import type { ChartSyncGroup } from "./chart-sync";
+import type { ChartMarker } from "./journal-markers";
 
 interface PriceChartProps {
   chartId: string;
   candles: CandlePoint[];
   volume: VolumePoint[];
   sync: ChartSyncGroup;
+  markers?: ChartMarker[];
+  /** Called with the start time (epoch seconds) of the clicked candle. */
+  onCandleClick?: (time: number) => void;
 }
 
 function timeOf(value: Time): number {
@@ -31,12 +38,20 @@ export function PriceChart({
   candles,
   volume,
   sync,
+  markers = [],
+  onCandleClick,
 }: PriceChartProps) {
   const container = useRef<HTMLDivElement | null>(null);
   const chart = useRef<IChartApi | null>(null);
   const candleSeries = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeries = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const markerLayer = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const applyingSyncedRange = useRef(false);
+  const clickHandler = useRef(onCandleClick);
+
+  useEffect(() => {
+    clickHandler.current = onCandleClick;
+  }, [onCandleClick]);
 
   useEffect(() => {
     if (!container.current) {
@@ -64,13 +79,15 @@ export function PriceChart({
         timeFormatter: (time: Time) => exchangeTime(timeOf(time)),
       },
     });
-    candleSeries.current = instance.addSeries(CandlestickSeries, {
+    const candlesApi = instance.addSeries(CandlestickSeries, {
       upColor: COLORS.up,
       downColor: COLORS.down,
       wickUpColor: COLORS.up,
       wickDownColor: COLORS.down,
       borderVisible: false,
     });
+    candleSeries.current = candlesApi;
+    markerLayer.current = createSeriesMarkers(candlesApi, []);
     volumeSeries.current = instance.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "",
@@ -86,7 +103,13 @@ export function PriceChart({
       }
       sync.publish(chartId, { from: timeOf(range.from), to: timeOf(range.to) });
     };
+    const onClick = (param: MouseEventParams<Time>) => {
+      if (param.time !== undefined) {
+        clickHandler.current?.(timeOf(param.time));
+      }
+    };
     instance.timeScale().subscribeVisibleTimeRangeChange(onRange);
+    instance.subscribeClick(onClick);
     const unregister = sync.register(chartId, (range) => {
       applyingSyncedRange.current = true;
       try {
@@ -102,9 +125,11 @@ export function PriceChart({
     });
     return () => {
       unregister();
+      instance.unsubscribeClick(onClick);
       instance.timeScale().unsubscribeVisibleTimeRangeChange(onRange);
       instance.remove();
       chart.current = null;
+      markerLayer.current = null;
     };
   }, [chartId, sync]);
 
@@ -117,6 +142,15 @@ export function PriceChart({
     );
     chart.current?.timeScale().fitContent();
   }, [candles, volume]);
+
+  useEffect(() => {
+    markerLayer.current?.setMarkers(
+      markers.map((marker) => ({
+        ...marker,
+        time: marker.time as UTCTimestamp,
+      })),
+    );
+  }, [markers, candles]);
 
   return (
     <div

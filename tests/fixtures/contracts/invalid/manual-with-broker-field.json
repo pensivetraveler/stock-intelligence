@@ -12,5 +12,8 @@
   "selected_interval_start_utc": "2026-10-09T14:00:00Z",
   "selected_interval_end_utc": "2026-10-09T14:01:00Z",
   "evidence_status": "unverified",
-  "broker_execution_id": "must-not-mix"
+  "broker_execution_id": "must-not-mix",
+  "executed_at_utc": "2026-10-09T14:00:30Z",
+  "fees": "1.00",
+  "memo": ""
 }
