@@ -25,6 +25,9 @@ stock-intelligence-workstation/
 │   └── contracts/                   # JSON Schema validation / 교차 언어 계약 테스트
 ├── scripts/                         # 전체 검증 명령 진입점
 └── docs/
+    ├── README.md                    # 문서 읽기 순서와 역할
+    ├── IMPLEMENTATION_HISTORY.md    # 누적 작업·커밋·검증 이력
+    ├── EXECUTION_PROCESS.md         # 실행 단계와 승인 범위
     ├── SYSTEM_SPEC.md               # 통합 시스템 명세 v1.5
     ├── IMPLEMENTATION_ROADMAP.md   # 단계별 구현 로드맵 v1.5
     ├── DATA_PROVIDER_EVALUATION_v1.5.md

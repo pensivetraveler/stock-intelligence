@@ -1,6 +1,8 @@
 # Stock Intelligence Workstation — Codex Implementation Roadmap v1.5
 
-Status: Proposed sequence; no code has been implemented yet.
+Status (2026-10-15): Phase 0와 실행 단계 Phase 1A~1C의 로컬 기반 구현 완료. Phase 1 전체의 실제 수집·운영 요구사항과 Phase 2 이후는 남아 있다. Tauri native와 원격 CI는 미검증이다. 현재 증거는 [PROJECT_STATE.md](PROJECT_STATE.md), 커밋별 작업은 [IMPLEMENTATION_HISTORY.md](IMPLEMENTATION_HISTORY.md), 실행 순서·승인 범위는 [EXECUTION_PROCESS.md](EXECUTION_PROCESS.md)를 따른다.
+
+아래는 전체 제품의 목표 목록이다. 항목의 존재를 구현 완료로 해석하지 않는다. 특히 하단 Vendor verification의 Phase 1A/1B는 조사 작업 흐름의 기존 명칭이며, 실행 단계의 Fake Provider/로컬 저장 Phase 1A/1B와 다르다. 실제 Provider 시험은 실행 단계 Phase 1D에 해당한다.
 
 ## Engineering approach
 

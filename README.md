@@ -9,10 +9,13 @@
 1. Git 원격 저장소가 있으면 `git clone`으로 받는다. ZIP 배포물이라면 빈 디렉터리에 **전체 압축 해제**한 뒤 저장소 루트(`AGENTS.md`가 있는 위치)에서 `git init`을 실행한다. 원격·초기 커밋·CI 연결은 사용자가 사용할 호스팅을 정한 뒤 명시적으로 구성한다.
 2. `git status`가 정상 동작하고 기존 파일이 모두 보이는지 확인한다. 기존 원격이나 사용자 변경이 있으면 덮어쓰지 않는다.
 3. Codex를 **그 로컬 폴더에서** 시작한다. 필요한 문서와 현재 환경을 먼저 읽도록 한다.
-4. `docs/CODEX_PHASE_0_TASK.md`의 실행 요청을 Codex에 보낸다.
-5. Codex가 `docs/PHASE_0_IMPLEMENTATION_SPEC.md`의 P0-01~P0-07을 구현하고 테스트한 뒤 변경·검증 결과를 기록하게 한다.
+4. 현재 체크아웃에서는 [docs/README.md](docs/README.md), `PROJECT_STATE.md`, `IMPLEMENTATION_HISTORY.md`를 읽어 완료 범위와 남은 작업을 확인한다.
+5. `docs/EXECUTION_PROCESS.md`에서 다음 범위를 정하고 작업한다. `CODEX_PHASE_0_TASK.md`와 `PHASE_0_IMPLEMENTATION_SPEC.md`는 최초 구축 기록·수락 기준이며 완료한 Phase 0을 다시 구현하는 지시가 아니다.
 
 ## 참조 문서
+
+- [docs/README.md](docs/README.md): 문서 탐색 시작점
+- [docs/IMPLEMENTATION_HISTORY.md](docs/IMPLEMENTATION_HISTORY.md): 현재까지 작업·커밋·검증·남은 제약
 
 - `AGENTS.md`: Codex가 따라야 할 루트 지침 (원본 협업 지침의 핵심 행동 규칙 포함)
 - `docs/PROJECT_INSTRUCTIONS.md`: 지속적인 개발 협업·안전 지침
@@ -21,7 +24,7 @@
 - `docs/EXECUTION_PROCESS.md`: 현재 작업 단계와 사용자 승인 Gate
 - `docs/DATA_PROVIDER_EVALUATION_v1.5.md`: 공식 문서 조사 (계정/라이선스 미검증)
 - `docs/REPOSITORY_STRUCTURE.md`: 디렉터리 구조와 경계
-- `docs/PHASE_0_IMPLEMENTATION_SPEC.md`: 지금 구현할 작업과 검증 기준
+- `docs/PHASE_0_IMPLEMENTATION_SPEC.md`: 완료한 Phase 0의 작업 범위와 검증 기준
 - `docs/CODEX_PHASE_0_TASK.md`: Codex 최초 실행 메시지
 - `docs/PROJECT_STATE.md`: 실행·결정·차단사항 갱신 위치
 
@@ -72,6 +75,8 @@ SIW_DATA_DIR=data uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8
 - pre/regular/post는 `America/New_York` 기준의 버전된 정책이며 공급업체 entitlement를 의미하지 않는다.
 - 5m/15m/30m/60m는 세션 시작에 맞춰 집계하고 세션을 넘겨 합치지 않는다.
 - 파생 bar의 `quality`와 `lineage`에는 결측·미확정 상태, source revision, 기대/관측 1분봉 수와 calendar version이 남는다.
+
+큰 timeframe 집계는 현재 내부 모듈에서 제공한다. 공개 `GET /v1/market/bars`는 `timeframe=1m`만 지원한다.
 
 포트 `8000`이 사용 중이면 API와 데스크톱을 같은 대체 포트로 맞춘다.
 
