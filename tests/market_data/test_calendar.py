@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from services.market_data.calendar import CalendarError, UsEquityCalendar
+from services.market_data.calendar import (
+    CALENDAR_FIRST_SESSION,
+    CALENDAR_LAST_SESSION,
+    CalendarError,
+    UsEquityCalendar,
+    us_equity_calendar_version,
+)
+from services.market_data.fake import DEFAULT_FIXTURE_PATH
 
 
 def utc(year: int, month: int, day: int, hour: int, minute: int = 0) -> datetime:
@@ -73,7 +81,38 @@ def test_calendar_rejects_naive_time_and_unsupported_calendar() -> None:
 def test_dates_outside_loaded_calendar_range_raise_calendar_error() -> None:
     calendar = UsEquityCalendar("XNAS")
 
-    with pytest.raises(CalendarError, match="outside the loaded exchange calendar range"):
+    with pytest.raises(CalendarError, match="outside the supported exchange calendar range"):
         calendar.window_for_date(date(1990, 1, 3))
-    with pytest.raises(CalendarError, match="outside the loaded exchange calendar range"):
+    with pytest.raises(CalendarError, match="outside the supported exchange calendar range"):
         calendar.classify_interval(utc(2099, 1, 2, 15), utc(2099, 1, 2, 15, 1))
+
+
+def test_supported_calendar_range_is_fixed_and_inclusive() -> None:
+    calendar = UsEquityCalendar("XNAS")
+
+    assert date(2000, 1, 3) == CALENDAR_FIRST_SESSION
+    assert date(2030, 12, 31) == CALENDAR_LAST_SESSION
+    assert calendar.window_for_date(CALENDAR_FIRST_SESSION) is not None
+    assert calendar.window_for_date(CALENDAR_LAST_SESSION) is not None
+    with pytest.raises(CalendarError):
+        calendar.window_for_date(date(1999, 12, 31))
+    with pytest.raises(CalendarError):
+        calendar.window_for_date(date(2031, 1, 2))
+
+
+def test_calendar_version_fingerprints_the_shared_regular_schedule() -> None:
+    version = us_equity_calendar_version()
+
+    assert version.startswith("xnys-regular-2000-01-03-2030-12-31-sha256-")
+    assert UsEquityCalendar("XNAS").calendar_version == version
+    assert UsEquityCalendar("XNYS").calendar_version == version
+
+
+def test_fixture_lineage_matches_current_calendar_schedule() -> None:
+    fixture = json.loads(DEFAULT_FIXTURE_PATH.read_text(encoding="utf-8"))
+    versions = {bar["lineage"]["calendar_version"] for bar in fixture["bars"]}
+
+    assert versions == {us_equity_calendar_version()}, (
+        "The exchange calendar schedule changed. Review the schedule difference, "
+        "then regenerate calendar_version in the test fixtures."
+    )

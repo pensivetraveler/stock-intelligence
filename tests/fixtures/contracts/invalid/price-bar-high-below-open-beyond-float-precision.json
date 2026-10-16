@@ -1,0 +1,31 @@
+{
+  "kind": "price_bar",
+  "schema_version": "0.1",
+  "instrument_id": "us:aapl:xnas:2026",
+  "timeframe": "1m",
+  "interval_start_utc": "2026-10-09T13:30:00Z",
+  "interval_end_utc": "2026-10-09T13:31:00Z",
+  "open": "250.10000000000000001",
+  "high": "250.1",
+  "low": "249.90",
+  "close": "250.1",
+  "volume": "12345",
+  "volume_unit": "shares",
+  "session": "regular",
+  "is_final": true,
+  "quality": "complete",
+  "lineage": {
+    "kind": "provider",
+    "source_timeframe": "1m",
+    "expected_source_bar_count": 1,
+    "observed_source_bar_count": 1,
+    "source_dataset_revision": null,
+    "calendar_id": "XNAS",
+    "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
+  },
+  "adjustment": "raw",
+  "source_id": "synthetic-fixture",
+  "source_feed_scope": "synthetic",
+  "dataset_revision": "fixture-r1",
+  "available_at_utc": "2026-10-09T13:31:02Z"
+}

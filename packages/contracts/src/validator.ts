@@ -17,8 +17,52 @@ function asString(document: Document, key: string): string {
   return value;
 }
 
-function decimal(document: Document, key: string): number {
-  return Number(asString(document, key));
+interface ParsedDecimal {
+  negative: boolean;
+  integer: string;
+  fraction: string;
+}
+
+// Exact comparison of schema-validated decimal strings. `Number` would round values
+// such as "250.10000000000000001" and disagree with the Python `Decimal` validator.
+function parseDecimal(value: string): ParsedDecimal {
+  const negative = value.startsWith("-");
+  const [integerPart, fractionPart = ""] = (
+    negative ? value.slice(1) : value
+  ).split(".");
+  const integer = integerPart === "0" ? "" : integerPart;
+  const fraction = fractionPart.replace(/0+$/, "");
+  return {
+    negative: negative && (integer !== "" || fraction !== ""),
+    integer,
+    fraction,
+  };
+}
+
+function compareMagnitude(left: ParsedDecimal, right: ParsedDecimal): number {
+  if (left.integer.length !== right.integer.length) {
+    return left.integer.length < right.integer.length ? -1 : 1;
+  }
+  if (left.integer !== right.integer) {
+    return left.integer < right.integer ? -1 : 1;
+  }
+  const width = Math.max(left.fraction.length, right.fraction.length);
+  const leftFraction = left.fraction.padEnd(width, "0");
+  const rightFraction = right.fraction.padEnd(width, "0");
+  if (leftFraction === rightFraction) {
+    return 0;
+  }
+  return leftFraction < rightFraction ? -1 : 1;
+}
+
+export function compareDecimal(left: string, right: string): number {
+  const a = parseDecimal(left);
+  const b = parseDecimal(right);
+  if (a.negative !== b.negative) {
+    return a.negative ? -1 : 1;
+  }
+  const magnitude = compareMagnitude(a, b);
+  return a.negative ? -magnitude : magnitude;
 }
 
 function pointInTimeErrors(bars: Document[], coverage: Document): string[] {
@@ -61,14 +105,14 @@ export function semanticErrors(document: Document): string[] {
     if (end <= start) {
       errors.push("interval_end_utc must be after interval_start_utc");
     }
-    const open = decimal(document, "open");
-    const high = decimal(document, "high");
-    const low = decimal(document, "low");
-    const close = decimal(document, "close");
-    if (high < Math.max(open, close, low)) {
+    const open = asString(document, "open");
+    const high = asString(document, "high");
+    const low = asString(document, "low");
+    const close = asString(document, "close");
+    if ([open, close, low].some((price) => compareDecimal(high, price) < 0)) {
       errors.push("high must be greater than or equal to open, close, and low");
     }
-    if (low > Math.min(open, close, high)) {
+    if ([open, close, high].some((price) => compareDecimal(low, price) > 0)) {
       errors.push("low must be less than or equal to open, close, and high");
     }
     const lineage = document.lineage as Document;

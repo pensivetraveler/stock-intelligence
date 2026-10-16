@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 
@@ -42,6 +42,28 @@ class InstrumentNotFoundError(MarketDataError):
 
 class FixtureIntegrityError(MarketDataError):
     """A synthetic fixture violates the canonical market-data contract."""
+
+
+def validate_bars_query(query: BarsQuery) -> None:
+    """Provider-independent rules, checked before any cache lookup.
+
+    Cache keys use whole-second UTC text. A sub-second cutoff would otherwise share a
+    key with an earlier cutoff and could serve bars published after it.
+    """
+    timestamps = (
+        ("start_utc", query.start_utc),
+        ("end_utc", query.end_utc),
+        ("as_of_utc", query.as_of_utc),
+    )
+    for name, value in timestamps:
+        if value is None:
+            continue
+        if value.utcoffset() != timedelta(0):
+            raise InvalidBarsQueryError(f"{name} must be UTC")
+        if value.microsecond:
+            raise InvalidBarsQueryError(f"{name} must not have sub-second precision")
+    if query.end_utc <= query.start_utc:
+        raise InvalidBarsQueryError("end_utc must be after start_utc")
 
 
 class MarketDataProvider(Protocol):

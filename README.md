@@ -71,10 +71,10 @@ SIW_DATA_DIR=data uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8
 
 ### 거래 세션과 집계
 
-- 정규장·휴장·반장은 `exchange-calendars`의 XNAS→XNYS 일정으로 계산한다.
+- 정규장·휴장·반장은 `exchange-calendars`의 XNAS→XNYS 일정으로 계산한다. 지원 범위는 2000-01-03~2030-12-31로 고정되어 있고, 범위 밖 요청은 `422 invalid_market_data_query`로 거부한다.
 - pre/regular/post는 `America/New_York` 기준의 버전된 정책이며 공급업체 entitlement를 의미하지 않는다.
 - 5m/15m/30m/60m는 세션 시작에 맞춰 집계하고 세션을 넘겨 합치지 않는다.
-- 파생 bar의 `quality`와 `lineage`에는 결측·미확정 상태, source revision, 기대/관측 1분봉 수와 calendar version이 남는다.
+- 파생 bar의 `quality`와 `lineage`에는 결측·미확정 상태, source revision, 기대/관측 1분봉 수와 calendar version이 남는다. calendar version은 라이브러리 버전이 아니라 고정 범위 일정의 SHA-256 fingerprint다([ADR 0005](docs/decisions/0005-calendar-fingerprint-query-boundary-and-job-lifecycle.md)).
 
 큰 timeframe 집계는 현재 내부 모듈에서 제공한다. 공개 `GET /v1/market/bars`는 `timeframe=1m`만 지원한다.
 

@@ -9,7 +9,7 @@ import pytest
 
 from packages.contracts.validator import validate_document
 from services.market_data.aggregation import AggregationError, MinuteBarAggregator
-from services.market_data.calendar import CALENDAR_LIBRARY_VERSION, UsEquityCalendar
+from services.market_data.calendar import UsEquityCalendar, us_equity_calendar_version
 
 
 def utc(year: int, month: int, day: int, hour: int, minute: int = 0) -> datetime:
@@ -57,7 +57,7 @@ def make_bars(
                     "observed_source_bar_count": 1,
                     "source_dataset_revision": None,
                     "calendar_id": "XNAS",
-                    "calendar_version": CALENDAR_LIBRARY_VERSION,
+                    "calendar_version": us_equity_calendar_version(),
                 },
                 "adjustment": "raw",
                 "source_id": "synthetic-test",
@@ -179,3 +179,13 @@ def test_duplicate_mixed_revision_and_session_mismatch_are_rejected() -> None:
         aggregator.aggregate(mixed, "5m")
     with pytest.raises(AggregationError, match="conflicts with exchange calendar"):
         aggregator.aggregate(mismatch, "5m")
+
+
+def test_available_at_uses_latest_instant_not_latest_text() -> None:
+    bars = make_bars(utc(2026, 10, 9, 13, 30), 5)
+    bars[3]["available_at_utc"] = "2026-10-09T13:35:00.500Z"
+    bars[4]["available_at_utc"] = "2026-10-09T13:35:00Z"
+
+    result = MinuteBarAggregator().aggregate(bars, "5m")
+
+    assert result[0]["available_at_utc"] == "2026-10-09T13:35:00.500Z"

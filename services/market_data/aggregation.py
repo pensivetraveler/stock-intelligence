@@ -191,7 +191,10 @@ class MinuteBarAggregator:
             "dataset_revision": (
                 f"{source_revision}:agg:{timeframe}:{self.calendar.extended_hours_policy_version}"
             ),
-            "available_at_utc": max(cast(str, bar["available_at_utc"]) for bar in ordered),
+            # Compare instants, not text: "...:00.5Z" sorts before "...:00Z" as a string.
+            "available_at_utc": max(
+                ordered, key=lambda bar: _parse_utc(cast(str, bar["available_at_utc"]))
+            )["available_at_utc"],
         }
         validate_document(result)
         return result

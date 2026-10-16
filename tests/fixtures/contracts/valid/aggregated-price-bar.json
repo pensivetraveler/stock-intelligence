@@ -21,7 +21,7 @@
     "observed_source_bar_count": 5,
     "source_dataset_revision": "fake-aapl-20261009-r1",
     "calendar_id": "XNAS",
-    "calendar_version": "exchange-calendars-4.13.2"
+    "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
   },
   "adjustment": "raw",
   "source_id": "fake-market-data",

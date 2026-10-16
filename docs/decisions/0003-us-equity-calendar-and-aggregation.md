@@ -1,6 +1,6 @@
 # ADR 0003 — US equity calendar, session policy and minute aggregation
 
-- **Status:** accepted
+- **Status:** accepted; calendar version and loaded range amended by ADR 0005
 - **Date:** 2026-10-12
 
 ## Context

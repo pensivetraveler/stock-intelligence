@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from importlib.metadata import version
+from functools import cache
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -12,12 +13,53 @@ from exchange_calendars.errors import DateOutOfBounds
 SessionName = Literal["pre", "regular", "post", "closed", "unknown"]
 TradingSessionName = Literal["pre", "regular", "post"]
 NEW_YORK = ZoneInfo("America/New_York")
-CALENDAR_LIBRARY_VERSION = f"exchange-calendars-{version('exchange-calendars')}"
+# Fixed bounds keep the supported range and the schedule fingerprint independent of
+# the date the process happens to start on.
+CALENDAR_FIRST_SESSION = date(2000, 1, 3)
+CALENDAR_LAST_SESSION = date(2030, 12, 31)
 EXTENDED_HOURS_POLICY_VERSION = "us-equity-extended-hours-v1-2026-10-12"
 
 
 class CalendarError(ValueError):
     """The requested time cannot be represented by the configured calendar policy."""
+
+
+def _utc_text(value: Any) -> str:
+    converted = value.to_pydatetime() if hasattr(value, "to_pydatetime") else value
+    if not isinstance(converted, datetime) or converted.utcoffset() != timedelta(0):
+        raise CalendarError("calendar returned a non-UTC session boundary")
+    return converted.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+@cache
+def _load_calendar(calendar_id: str) -> tuple[Any, str]:
+    """Load one exchange calendar per process and fingerprint its regular schedule.
+
+    The version changes only when a session date, open or close inside the fixed
+    bounds changes, not when the library version changes without schedule changes.
+    """
+    calendar: Any = xcals.get_calendar(
+        calendar_id,
+        start=CALENDAR_FIRST_SESSION.isoformat(),
+        end=CALENDAR_LAST_SESSION.isoformat(),
+    )
+    schedule = calendar.schedule
+    lines = [
+        f"{session.date().isoformat()},{_utc_text(market_open)},{_utc_text(market_close)}"
+        for session, market_open, market_close in zip(
+            schedule.index, schedule["open"], schedule["close"], strict=True
+        )
+    ]
+    digest = hashlib.sha256("\n".join(lines).encode()).hexdigest()
+    version = (
+        f"xnys-regular-{CALENDAR_FIRST_SESSION.isoformat()}-{CALENDAR_LAST_SESSION.isoformat()}"
+        f"-sha256-{digest[:16]}"
+    )
+    return calendar, version
+
+
+def us_equity_calendar_version() -> str:
+    return _load_calendar("XNAS")[1]
 
 
 @dataclass(frozen=True)
@@ -58,16 +100,18 @@ class UsEquityCalendar:
             raise CalendarError("Phase 1C supports only XNAS/XNYS US equity calendars")
         self.calendar_id = calendar_id
         self.canonical_calendar_id = "XNYS"
-        self.calendar_version = CALENDAR_LIBRARY_VERSION
         self.extended_hours_policy_version = EXTENDED_HOURS_POLICY_VERSION
-        self._calendar: Any = xcals.get_calendar(calendar_id)
+        self._calendar, self.calendar_version = _load_calendar(calendar_id)
 
     def window_for_date(self, session_date: date) -> SessionWindow | None:
         label = session_date.isoformat()
         try:
             is_session = self._calendar.is_session(label)
         except DateOutOfBounds as exc:
-            raise CalendarError(f"{label} is outside the loaded exchange calendar range") from exc
+            raise CalendarError(
+                f"{label} is outside the supported exchange calendar range "
+                f"{CALENDAR_FIRST_SESSION.isoformat()}..{CALENDAR_LAST_SESSION.isoformat()}"
+            ) from exc
         if not is_session:
             return None
         regular_open = self._as_datetime(self._calendar.session_open(label))

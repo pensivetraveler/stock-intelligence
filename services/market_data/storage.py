@@ -20,10 +20,16 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from packages.contracts.validator import validate_document
-from services.market_data.provider import BarsQuery, BarsResult, MarketDataProvider
+from services.market_data.provider import (
+    BarsQuery,
+    BarsResult,
+    MarketDataProvider,
+    validate_bars_query,
+)
 
 MIGRATIONS_DIR = Path(__file__).with_name("migrations")
 OWNER_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+JOB_ERROR_CODE_PATTERN = re.compile(r"^[a-z0-9_]{1,64}$")
 PARQUET_SCHEMA = pa.schema(
     [
         ("kind", pa.string()),
@@ -481,7 +487,7 @@ class LocalMarketDataStore:
                 UPDATE acquisition_jobs
                 SET status = 'running', attempt_count = attempt_count + 1,
                     error_code = NULL, owner_id = ?, updated_at_utc = ?
-                WHERE job_key = ? AND status IN ('queued', 'interrupted')
+                WHERE job_key = ? AND status IN ('queued', 'interrupted', 'failed')
                 """,
                 (self.owner_id, _format_utc(self._now()), job_key),
             )
@@ -489,16 +495,44 @@ class LocalMarketDataStore:
                 raise StorageError("job is missing or cannot transition to running")
 
     def checkpoint_job(self, job_key: str, checkpoint: dict[str, Any]) -> None:
+        self._require_open()
         with self._connect() as connection:
             cursor = connection.execute(
                 """
                 UPDATE acquisition_jobs SET checkpoint_json = ?, updated_at_utc = ?
-                WHERE job_key = ? AND status = 'running'
+                WHERE job_key = ? AND status = 'running' AND owner_id = ?
                 """,
-                (_canonical_json(checkpoint), _format_utc(self._now()), job_key),
+                (_canonical_json(checkpoint), _format_utc(self._now()), job_key, self.owner_id),
             )
             if cursor.rowcount != 1:
-                raise StorageError("only a running job can be checkpointed")
+                raise StorageError("only the store running this job can checkpoint it")
+
+    def complete_job(self, job_key: str) -> None:
+        """Mark a running job owned by this store as succeeded; this is terminal."""
+        self._finish_job(job_key, "succeeded", None)
+
+    def fail_job(self, job_key: str, error_code: str) -> None:
+        """Mark a running job owned by this store as failed; `start_job` may retry it.
+
+        Only a short machine code is stored, so provider messages, URLs or secrets
+        never reach the metadata database.
+        """
+        if not JOB_ERROR_CODE_PATTERN.fullmatch(error_code):
+            raise StorageError("job error_code must be 1-64 characters of [a-z0-9_]")
+        self._finish_job(job_key, "failed", error_code)
+
+    def _finish_job(self, job_key: str, status: str, error_code: str | None) -> None:
+        self._require_open()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE acquisition_jobs SET status = ?, error_code = ?, updated_at_utc = ?
+                WHERE job_key = ? AND status = 'running' AND owner_id = ?
+                """,
+                (status, error_code, _format_utc(self._now()), job_key, self.owner_id),
+            )
+            if cursor.rowcount != 1:
+                raise StorageError("only the store running this job can finish it")
 
     def job_state(self, job_key: str) -> dict[str, Any]:
         with self._connect() as connection:
@@ -869,6 +903,7 @@ class CachedMarketDataProvider:
         return self.upstream.capabilities()
 
     def get_bars(self, query: BarsQuery) -> BarsResult:
+        validate_bars_query(query)
         try:
             cached = self.store.read_exact(query, self.source_id)
         except AmbiguousRevisionError:

@@ -15,6 +15,7 @@ from services.market_data.provider import (
     FixtureIntegrityError,
     InstrumentNotFoundError,
     InvalidBarsQueryError,
+    validate_bars_query,
 )
 
 DEFAULT_FIXTURE_PATH = (
@@ -198,6 +199,7 @@ class FakeMarketDataProvider:
     def _validate_query(self, query: BarsQuery) -> None:
         if query.timeframe != "1m":
             raise InvalidBarsQueryError("fake provider supports only the 1m timeframe")
+        validate_bars_query(query)
         for name, value in (("start_utc", query.start_utc), ("end_utc", query.end_utc)):
             if value.utcoffset() != timedelta(0):
                 raise InvalidBarsQueryError(f"{name} must be UTC")

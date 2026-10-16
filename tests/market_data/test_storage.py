@@ -5,7 +5,7 @@ import sqlite3
 import subprocess
 import sys
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, cast
 
@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from services.market_data.fake import DEFAULT_FIXTURE_PATH, FakeMarketDataProvider
-from services.market_data.provider import BarsQuery, BarsResult
+from services.market_data.provider import BarsQuery, BarsResult, InvalidBarsQueryError
 from services.market_data.storage import (
     MIGRATIONS_DIR,
     PARQUET_SCHEMA,
@@ -433,3 +433,85 @@ def test_cache_wrapper_refetches_complete_coverage_with_provisional_bars(
     assert first.coverage["coverage_status"] == "complete"
     assert second.to_document() == first.to_document()
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    ("cached_query", "message"),
+    [
+        (
+            BarsQuery(
+                INSTRUMENT_ID,
+                "1m",
+                START.astimezone(timezone(timedelta(hours=9))),
+                END.astimezone(timezone(timedelta(hours=9))),
+            ),
+            "start_utc must be UTC",
+        ),
+        (
+            BarsQuery(INSTRUMENT_ID, "1m", START, END, NOW.replace(microsecond=500_000)),
+            "as_of_utc must not have sub-second precision",
+        ),
+    ],
+)
+def test_cache_wrapper_validates_query_before_cache_lookup(
+    tmp_path: Path, cached_query: BarsQuery, message: str
+) -> None:
+    cached = CachedMarketDataProvider(fake_provider(), store(tmp_path))
+    cached.get_bars(query())
+
+    with pytest.raises(InvalidBarsQueryError, match=message):
+        cached.get_bars(cached_query)
+
+
+def test_owner_completes_job_and_success_is_terminal(tmp_path: Path) -> None:
+    with store(tmp_path) as market_store:
+        job_key = market_store.enqueue_job(query(), SOURCE_ID)
+        market_store.start_job(job_key)
+        market_store.complete_job(job_key)
+
+        state = market_store.job_state(job_key)
+        assert (state["status"], state["error_code"]) == ("succeeded", None)
+        with pytest.raises(StorageError):
+            market_store.start_job(job_key)
+        with pytest.raises(StorageError):
+            market_store.complete_job(job_key)
+
+
+def test_failed_job_keeps_checkpoint_and_can_be_retried(tmp_path: Path) -> None:
+    with store(tmp_path) as market_store:
+        job_key = market_store.enqueue_job(query(), SOURCE_ID)
+        market_store.start_job(job_key)
+        market_store.checkpoint_job(job_key, {"next_start_utc": "2026-10-09T13:32:00Z"})
+        with pytest.raises(StorageError, match="error_code"):
+            market_store.fail_job(job_key, "Provider said: token=abc")
+        market_store.fail_job(job_key, "upstream_timeout")
+
+        failed = market_store.job_state(job_key)
+        assert (failed["status"], failed["error_code"]) == ("failed", "upstream_timeout")
+        assert failed["checkpoint"] == {"next_start_utc": "2026-10-09T13:32:00Z"}
+
+        market_store.start_job(job_key)
+        retried = market_store.job_state(job_key)
+        assert (retried["status"], retried["attempt_count"], retried["error_code"]) == (
+            "running",
+            2,
+            None,
+        )
+
+
+def test_only_the_owning_store_can_checkpoint_or_finish_a_job(tmp_path: Path) -> None:
+    owner = store(tmp_path)
+    job_key = owner.enqueue_job(query(), SOURCE_ID)
+    owner.start_job(job_key)
+
+    with store(tmp_path) as other:
+        with pytest.raises(StorageError, match="store running this job"):
+            other.checkpoint_job(job_key, {})
+        with pytest.raises(StorageError, match="store running this job"):
+            other.complete_job(job_key)
+        with pytest.raises(StorageError, match="store running this job"):
+            other.fail_job(job_key, "stolen")
+
+    owner.close()
+    with pytest.raises(StorageError, match="closed"):
+        owner.complete_job(job_key)
