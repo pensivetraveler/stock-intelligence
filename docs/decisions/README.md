@@ -17,3 +17,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0001-phase-0-toolchain-and-contract-source.md`: Phase 0 toolchain과 canonical contract source
 - `0002-local-market-data-storage.md`: SQLite metadata, immutable Parquet와 복구 journal
 - `0003-us-equity-calendar-and-aggregation.md`: US equity calendar, 세션 정책과 1분봉 집계
+- `0004-multi-process-store-and-point-in-time-contract.md`: 다중 프로세스 cache 소유권 복구와 point-in-time 응답 규칙

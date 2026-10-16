@@ -7,6 +7,7 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 import exchange_calendars as xcals
+from exchange_calendars.errors import DateOutOfBounds
 
 SessionName = Literal["pre", "regular", "post", "closed", "unknown"]
 TradingSessionName = Literal["pre", "regular", "post"]
@@ -63,7 +64,11 @@ class UsEquityCalendar:
 
     def window_for_date(self, session_date: date) -> SessionWindow | None:
         label = session_date.isoformat()
-        if not self._calendar.is_session(label):
+        try:
+            is_session = self._calendar.is_session(label)
+        except DateOutOfBounds as exc:
+            raise CalendarError(f"{label} is outside the loaded exchange calendar range") from exc
+        if not is_session:
             return None
         regular_open = self._as_datetime(self._calendar.session_open(label))
         regular_close = self._as_datetime(self._calendar.session_close(label))

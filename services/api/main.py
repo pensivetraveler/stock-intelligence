@@ -21,7 +21,11 @@ from services.market_data.provider import (
     InvalidBarsQueryError,
     MarketDataProvider,
 )
-from services.market_data.storage import CachedMarketDataProvider, LocalMarketDataStore
+from services.market_data.storage import (
+    CachedMarketDataProvider,
+    LocalMarketDataStore,
+    StorageError,
+)
 
 APP_NAME = "stock-intelligence-workstation-api"
 APP_VERSION = "0.4.0-dev"
@@ -46,15 +50,18 @@ def _request_id(request: Request) -> str:
 
 
 def _error_response(request: Request, status_code: int, code: str, message: str) -> JSONResponse:
+    request_id = _request_id(request)
     return JSONResponse(
         status_code=status_code,
         content={
             "error": {
                 "code": code,
                 "message": message,
-                "request_id": _request_id(request),
+                "request_id": request_id,
             }
         },
+        # Server errors bypass the request-ID middleware, so set the header here too.
+        headers={"X-Request-ID": request_id},
     )
 
 
@@ -98,6 +105,10 @@ def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAP
     async def validation_error(request: Request, _exc: RequestValidationError) -> JSONResponse:
         return _error_response(request, 422, "validation_error", "Request validation failed")
 
+    @application.exception_handler(Exception)
+    async def unexpected_error(request: Request, _exc: Exception) -> JSONResponse:
+        return _error_response(request, 500, "internal_error", "Internal server error")
+
     @application.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -110,8 +121,10 @@ def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAP
             "app_version": APP_VERSION,
         }
 
+    # Provider and cache I/O are blocking; a sync endpoint runs in FastAPI's threadpool
+    # instead of stalling the event loop.
     @application.get("/v1/market/bars", response_model=None)
-    async def market_bars(
+    def market_bars(
         request: Request,
         instrument_id: Annotated[str, Query(min_length=1, max_length=200)],
         start_utc: Annotated[datetime, Query()],
@@ -138,6 +151,13 @@ def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAP
             )
         except InvalidBarsQueryError as exc:
             return _error_response(request, 422, "invalid_market_data_query", str(exc))
+        except StorageError:
+            return _error_response(
+                request,
+                500,
+                "market_data_storage_error",
+                "Local market data cache could not serve the request",
+            )
         return JSONResponse(content=result.to_document())
 
     return application

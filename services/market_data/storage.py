@@ -3,9 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sqlite3
+import sys
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +23,7 @@ from packages.contracts.validator import validate_document
 from services.market_data.provider import BarsQuery, BarsResult, MarketDataProvider
 
 MIGRATIONS_DIR = Path(__file__).with_name("migrations")
+OWNER_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 PARQUET_SCHEMA = pa.schema(
     [
         ("kind", pa.string()),
@@ -78,6 +82,66 @@ def _sha256(value: bytes) -> str:
 
 def _safe_component(value: str) -> str:
     return quote(value, safe="-_.")
+
+
+if sys.platform == "win32":
+    import msvcrt
+
+    def _lock_descriptor(descriptor: int, *, blocking: bool) -> bool:
+        try:
+            msvcrt.locking(descriptor, msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK, 1)
+        except OSError:
+            if blocking:
+                raise
+            return False
+        return True
+
+    def _unlock_descriptor(descriptor: int) -> None:
+        msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+
+else:
+    import fcntl
+
+    def _lock_descriptor(descriptor: int, *, blocking: bool) -> bool:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+        except BlockingIOError:
+            return False
+        return True
+
+    def _unlock_descriptor(descriptor: int) -> None:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+
+
+class _ExclusiveFileLock:
+    """OS advisory lock released by the kernel when its holder exits or crashes."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._descriptor: int | None = None
+
+    def acquire(self, *, blocking: bool) -> bool:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            locked = _lock_descriptor(descriptor, blocking=blocking)
+        except BaseException:
+            os.close(descriptor)
+            raise
+        if not locked:
+            os.close(descriptor)
+            return False
+        self._descriptor = descriptor
+        return True
+
+    def release(self) -> None:
+        descriptor, self._descriptor = self._descriptor, None
+        if descriptor is None:
+            return
+        try:
+            _unlock_descriptor(descriptor)
+        finally:
+            os.close(descriptor)
 
 
 class StorageError(RuntimeError):
@@ -168,6 +232,13 @@ class MigrationRunner:
 
 
 class LocalMarketDataStore:
+    """Local cache shared safely by several processes on one data root.
+
+    Each instance holds an owner lock for its lifetime. Crash recovery only touches
+    journal entries and running jobs whose owner lock is no longer held, so opening
+    a second store never interrupts work that a live process is still doing.
+    """
+
     def __init__(
         self,
         root: Path,
@@ -180,10 +251,68 @@ class LocalMarketDataStore:
         self._now = now or _utc_now
         self._replace_file = replace_file or os.replace
         self.root.mkdir(parents=True, exist_ok=True)
-        MigrationRunner(self.database_path).apply()
-        self._configure_database()
-        self.recover_interrupted_writes()
-        self.recover_interrupted_jobs()
+        self.owner_id = uuid4().hex
+        self._owner_lock = _ExclusiveFileLock(self._owner_lock_path(self.owner_id))
+        with self._maintenance_lock():
+            # Taken under the maintenance lock so a concurrent stale-owner sweep cannot
+            # unlink this lock file between its creation and its lock.
+            self._owner_lock.acquire(blocking=True)
+            try:
+                MigrationRunner(self.database_path).apply()
+                self._configure_database()
+                self._recover_interrupted_writes()
+                self._recover_interrupted_jobs()
+                self._remove_stale_owner_locks()
+            except BaseException:
+                self._owner_lock.release()
+                raise
+        self._closed = False
+
+    def close(self) -> None:
+        """Release the owner lock; unfinished work becomes recoverable by others."""
+        self._closed = True
+        self._owner_lock.release()
+
+    def __enter__(self) -> LocalMarketDataStore:
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        self.close()
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise StorageError("market data store is closed")
+
+    def _owner_lock_path(self, owner_id: str) -> Path:
+        return self.root / "owners" / f"{owner_id}.lock"
+
+    @contextmanager
+    def _maintenance_lock(self) -> Iterator[None]:
+        lock = _ExclusiveFileLock(self.root / "maintenance.lock")
+        lock.acquire(blocking=True)
+        try:
+            yield
+        finally:
+            lock.release()
+
+    def _owner_is_alive(self, owner_id: object) -> bool:
+        if owner_id == self.owner_id:
+            return True
+        if not isinstance(owner_id, str) or not OWNER_ID_PATTERN.fullmatch(owner_id):
+            return False
+        path = self._owner_lock_path(owner_id)
+        if not path.exists():
+            return False
+        probe = _ExclusiveFileLock(path)
+        if not probe.acquire(blocking=False):
+            return True
+        probe.release()
+        return False
+
+    def _remove_stale_owner_locks(self) -> None:
+        for path in (self.root / "owners").glob("*.lock"):
+            if not self._owner_is_alive(path.stem):
+                path.unlink(missing_ok=True)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path)
@@ -198,6 +327,7 @@ class LocalMarketDataStore:
             connection.execute("PRAGMA synchronous = FULL")
 
     def write_result(self, result: BarsResult) -> WriteReceipt:
+        self._require_open()
         document = result.to_document()
         validate_document(document)
         manifest = result.coverage
@@ -218,14 +348,15 @@ class LocalMarketDataStore:
                     """
                     INSERT INTO write_journal (
                         journal_id, coverage_key, manifest_json, files_json,
-                        state, created_at_utc, updated_at_utc
-                    ) VALUES (?, ?, ?, ?, 'pending', ?, ?)
+                        state, owner_id, created_at_utc, updated_at_utc
+                    ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)
                     """,
                     (
                         journal_id,
                         coverage_key,
                         _canonical_json(manifest),
                         _canonical_json(file_entries),
+                        self.owner_id,
                         timestamp,
                         timestamp,
                     ),
@@ -260,7 +391,7 @@ class LocalMarketDataStore:
                 journal_id if requires_file_write else None,
             )
         except Exception as exc:
-            self._cleanup_failed_write(file_entries, created_paths)
+            self._cleanup_failed_write(file_entries)
             if requires_file_write:
                 with self._connect() as connection:
                     connection.execute(
@@ -343,15 +474,16 @@ class LocalMarketDataStore:
         return job_key
 
     def start_job(self, job_key: str) -> None:
+        self._require_open()
         with self._connect() as connection:
             cursor = connection.execute(
                 """
                 UPDATE acquisition_jobs
                 SET status = 'running', attempt_count = attempt_count + 1,
-                    error_code = NULL, updated_at_utc = ?
+                    error_code = NULL, owner_id = ?, updated_at_utc = ?
                 WHERE job_key = ? AND status IN ('queued', 'interrupted')
                 """,
-                (_format_utc(self._now()), job_key),
+                (self.owner_id, _format_utc(self._now()), job_key),
             )
             if cursor.rowcount != 1:
                 raise StorageError("job is missing or cannot transition to running")
@@ -384,16 +516,29 @@ class LocalMarketDataStore:
         return value
 
     def recover_interrupted_jobs(self) -> int:
+        with self._maintenance_lock():
+            return self._recover_interrupted_jobs()
+
+    def _recover_interrupted_jobs(self) -> int:
+        recovered = 0
         with self._connect() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE acquisition_jobs
-                SET status = 'interrupted', error_code = 'process_restarted', updated_at_utc = ?
-                WHERE status = 'running'
-                """,
-                (_format_utc(self._now()),),
-            )
-        return cursor.rowcount
+            rows = connection.execute(
+                "SELECT job_key, owner_id FROM acquisition_jobs WHERE status = 'running'"
+            ).fetchall()
+            for row in rows:
+                if self._owner_is_alive(row["owner_id"]):
+                    continue
+                cursor = connection.execute(
+                    """
+                    UPDATE acquisition_jobs
+                    SET status = 'interrupted', error_code = 'process_restarted',
+                        updated_at_utc = ?
+                    WHERE job_key = ? AND status = 'running' AND owner_id IS ?
+                    """,
+                    (_format_utc(self._now()), row["job_key"], row["owner_id"]),
+                )
+                recovered += cursor.rowcount
+        return recovered
 
     def pin_revision(
         self,
@@ -491,12 +636,18 @@ class LocalMarketDataStore:
             raise RevisionPinnedError("dataset revision is pinned and cannot be evicted")
 
     def recover_interrupted_writes(self) -> int:
+        with self._maintenance_lock():
+            return self._recover_interrupted_writes()
+
+    def _recover_interrupted_writes(self) -> int:
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM write_journal WHERE state IN ('pending', 'renamed')"
             ).fetchall()
         recovered = 0
         for row in rows:
+            if self._owner_is_alive(row["owner_id"]):
+                continue
             files = cast(list[dict[str, Any]], json.loads(cast(str, row["files_json"])))
             try:
                 for entry in files:
@@ -672,13 +823,12 @@ class LocalMarketDataStore:
                 raise
             raise CacheIntegrityError(f"invalid Parquet part: {path.name}") from exc
 
-    def _cleanup_failed_write(
-        self, file_entries: list[dict[str, str]], created_paths: list[str]
-    ) -> None:
+    def _cleanup_failed_write(self, file_entries: list[dict[str, str]]) -> None:
+        # Final parts are immutable and content-addressed. Another process may have
+        # found and committed a part this write created, so only temp files are removed;
+        # an unreferenced part is invisible to reads and reused by a retry.
         for entry in file_entries:
             (self.root / entry["temp_path"]).unlink(missing_ok=True)
-        for relative_path in created_paths:
-            (self.root / relative_path).unlink(missing_ok=True)
 
     @staticmethod
     def _fsync_file(path: Path) -> None:
@@ -719,8 +869,13 @@ class CachedMarketDataProvider:
         return self.upstream.capabilities()
 
     def get_bars(self, query: BarsQuery) -> BarsResult:
-        cached = self.store.read_exact(query, self.source_id)
-        if cached is not None and cached.coverage["coverage_status"] == "complete":
+        try:
+            cached = self.store.read_exact(query, self.source_id)
+        except AmbiguousRevisionError:
+            # Several revisions are cached; never pick one silently. The upstream
+            # result names its revision explicitly and is read back by that revision.
+            cached = None
+        if cached is not None and self._is_reusable(cached):
             return cached
         fetched = self.upstream.get_bars(query)
         self.store.write_result(fetched)
@@ -732,3 +887,11 @@ class CachedMarketDataProvider:
         if stored is None:
             raise CacheIntegrityError("stored result could not be read back")
         return stored
+
+    @staticmethod
+    def _is_reusable(cached: BarsResult) -> bool:
+        # A provisional bar can still be revised upstream, so a cached result is only
+        # served without refetching when coverage is complete and every bar is final.
+        return cached.coverage["coverage_status"] == "complete" and all(
+            cast(bool, bar["is_final"]) for bar in cached.bars
+        )

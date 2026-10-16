@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from packages.contracts.validator import load_schema, validate_document, validation_errors
+from packages.contracts.validator import (
+    load_schema,
+    schema_validator,
+    validate_document,
+    validation_errors,
+)
 
 FIXTURES = Path("tests/fixtures/contracts")
 
@@ -31,3 +36,7 @@ def test_valid_contract_fixtures(path: Path, document: dict[str, object]) -> Non
 @pytest.mark.parametrize(("path", "document"), _documents("invalid"), ids=lambda value: str(value))
 def test_invalid_contract_fixtures(path: Path, document: dict[str, object]) -> None:
     assert validation_errors(document), f"expected invalid fixture to fail: {path}"
+
+
+def test_schema_validator_is_compiled_once() -> None:
+    assert schema_validator() is schema_validator()

@@ -21,6 +21,37 @@ function decimal(document: Document, key: string): number {
   return Number(asString(document, key));
 }
 
+function pointInTimeErrors(bars: Document[], coverage: Document): string[] {
+  const errors: string[] = [];
+  const requestedStart = Date.parse(asString(coverage, "requested_start_utc"));
+  const requestedEnd = Date.parse(asString(coverage, "requested_end_utc"));
+  const cutoff =
+    coverage.point_in_time_cutoff_utc === null
+      ? null
+      : Date.parse(asString(coverage, "point_in_time_cutoff_utc"));
+  let previousStart: number | null = null;
+  for (const bar of bars) {
+    const start = Date.parse(asString(bar, "interval_start_utc"));
+    const end = Date.parse(asString(bar, "interval_end_utc"));
+    if (start < requestedStart || end > requestedEnd) {
+      errors.push("response bar must lie within the requested coverage range");
+    }
+    if (previousStart !== null && start <= previousStart) {
+      errors.push(
+        "response bars must be strictly ordered by interval_start_utc",
+      );
+    }
+    previousStart = start;
+    if (
+      cutoff !== null &&
+      Date.parse(asString(bar, "available_at_utc")) > cutoff
+    ) {
+      errors.push("response bar was not available at the point-in-time cutoff");
+    }
+  }
+  return errors;
+}
+
 export function semanticErrors(document: Document): string[] {
   const errors: string[] = [];
 
@@ -58,6 +89,12 @@ export function semanticErrors(document: Document): string[] {
     }
     if (document.quality === "provisional" && document.is_final === true) {
       errors.push("provisional bar quality cannot be final");
+    }
+    if (
+      document.is_final === true &&
+      Date.parse(asString(document, "available_at_utc")) < end
+    ) {
+      errors.push("a final bar cannot be available before its interval ends");
     }
     if (
       lineage.kind === "provider" &&
@@ -152,6 +189,7 @@ export function semanticErrors(document: Document): string[] {
         "response bar count must match observed coverage interval count",
       );
     }
+    errors.push(...pointInTimeErrors(bars, coverage));
   }
 
   return errors;

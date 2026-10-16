@@ -64,7 +64,7 @@ curl --get http://127.0.0.1:8000/v1/market/bars \
 SIW_DATA_DIR=data uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8000
 ```
 
-`data/metadata.sqlite3`에는 migration·Coverage·수집 작업·revision pin·복구 journal이 저장되고, bar는 `data/bars/` 아래 source/instrument/timeframe/UTC date/revision별 Parquet part로 저장된다. 이 디렉터리는 Git에서 제외되며 네트워크 파일 공유용이 아니다.
+`data/metadata.sqlite3`에는 migration·Coverage·수집 작업·revision pin·복구 journal이 저장되고, bar는 `data/bars/` 아래 source/instrument/timeframe/UTC date/revision별 Parquet part로 저장된다. 여러 프로세스가 같은 디렉터리를 열 수 있으며 `data/owners/`의 프로세스별 잠금으로 살아 있는 프로세스의 작업은 복구 대상에서 제외한다([ADR 0004](docs/decisions/0004-multi-process-store-and-point-in-time-contract.md)). 이 디렉터리는 Git에서 제외되며 네트워크 파일 공유용이 아니다.
 
 ### 거래 세션과 집계
 

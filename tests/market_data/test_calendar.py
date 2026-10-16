@@ -68,3 +68,12 @@ def test_calendar_rejects_naive_time_and_unsupported_calendar() -> None:
         calendar.classify_interval(datetime(2026, 10, 9, 13, 30), datetime(2026, 10, 9, 13, 31))
     with pytest.raises(CalendarError, match="only XNAS/XNYS"):
         UsEquityCalendar("XLON")
+
+
+def test_dates_outside_loaded_calendar_range_raise_calendar_error() -> None:
+    calendar = UsEquityCalendar("XNAS")
+
+    with pytest.raises(CalendarError, match="outside the loaded exchange calendar range"):
+        calendar.window_for_date(date(1990, 1, 3))
+    with pytest.raises(CalendarError, match="outside the loaded exchange calendar range"):
+        calendar.classify_interval(utc(2099, 1, 2, 15), utc(2099, 1, 2, 15, 1))

@@ -104,6 +104,13 @@ def test_point_in_time_cutoff_hides_unavailable_bars() -> None:
         ({"end_utc": datetime(2026, 10, 11, 13, 31, tzinfo=timezone.utc)}, "cannot exceed"),
         ({"start_utc": datetime(2026, 10, 9, 22, 30)}, "must be UTC"),
         (
+            {
+                "start_utc": datetime(1990, 1, 3, 15, 0, tzinfo=timezone.utc),
+                "end_utc": datetime(1990, 1, 3, 15, 5, tzinfo=timezone.utc),
+            },
+            "outside the loaded exchange calendar range",
+        ),
+        (
             {"as_of_utc": datetime(2026, 10, 13, tzinfo=timezone.utc)},
             "cannot be in the future",
         ),

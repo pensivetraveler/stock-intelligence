@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from decimal import Decimal
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
 
@@ -15,6 +16,7 @@ def load_schema() -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(SCHEMA_PATH.read_text(encoding="utf-8")))
 
 
+@lru_cache(maxsize=1)
 def schema_validator() -> Draft202012Validator:
     schema = load_schema()
     Draft202012Validator.check_schema(schema)
@@ -23,6 +25,26 @@ def schema_validator() -> Draft202012Validator:
 
 def _utc(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _point_in_time_errors(bars: list[dict[str, Any]], coverage: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    requested_start = _utc(coverage["requested_start_utc"])
+    requested_end = _utc(coverage["requested_end_utc"])
+    cutoff_value = coverage["point_in_time_cutoff_utc"]
+    cutoff = _utc(cutoff_value) if cutoff_value is not None else None
+    previous_start: datetime | None = None
+    for bar in bars:
+        start = _utc(bar["interval_start_utc"])
+        end = _utc(bar["interval_end_utc"])
+        if start < requested_start or end > requested_end:
+            errors.append("response bar must lie within the requested coverage range")
+        if previous_start is not None and start <= previous_start:
+            errors.append("response bars must be strictly ordered by interval_start_utc")
+        previous_start = start
+        if cutoff is not None and _utc(bar["available_at_utc"]) > cutoff:
+            errors.append("response bar was not available at the point-in-time cutoff")
+    return errors
 
 
 def semantic_errors(document: dict[str, Any]) -> list[str]:
@@ -51,6 +73,8 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
             errors.append("complete bar quality requires all source bars and finalization")
         if document["quality"] == "provisional" and document["is_final"]:
             errors.append("provisional bar quality cannot be final")
+        if document["is_final"] and _utc(document["available_at_utc"]) < end:
+            errors.append("a final bar cannot be available before its interval ends")
         if lineage["kind"] == "provider" and (
             expected != 1 or observed != 1 or lineage["source_dataset_revision"] is not None
         ):
@@ -103,6 +127,7 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
                     errors.append(f"response bar {key} must match coverage")
         if len(bars) != coverage["observed_interval_count"]:
             errors.append("response bar count must match observed coverage interval count")
+        errors.extend(_point_in_time_errors(bars, coverage))
 
     return errors
 

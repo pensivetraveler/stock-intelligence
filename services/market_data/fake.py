@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from packages.contracts.validator import validate_document
-from services.market_data.calendar import UsEquityCalendar
+from services.market_data.calendar import CalendarError, UsEquityCalendar
 from services.market_data.provider import (
     BarsQuery,
     BarsResult,
@@ -131,15 +131,18 @@ class FakeMarketDataProvider:
             or _parse_utc(cast(str, bar["available_at_utc"])) <= query.as_of_utc
         ]
 
-        expected_starts = tuple(
-            start
-            for offset in range(int((query.end_utc - query.start_utc).total_seconds() // 60))
-            if self._calendar.classify_interval(
-                (start := query.start_utc + timedelta(minutes=offset)),
-                start + timedelta(minutes=1),
+        try:
+            expected_starts = tuple(
+                start
+                for offset in range(int((query.end_utc - query.start_utc).total_seconds() // 60))
+                if self._calendar.classify_interval(
+                    (start := query.start_utc + timedelta(minutes=offset)),
+                    start + timedelta(minutes=1),
+                )
+                in {"pre", "regular", "post"}
             )
-            in {"pre", "regular", "post"}
-        )
+        except CalendarError as exc:
+            raise InvalidBarsQueryError(str(exc)) from exc
         visible_by_start = {
             _parse_utc(cast(str, bar["interval_start_utc"])): bar for bar in visible
         }

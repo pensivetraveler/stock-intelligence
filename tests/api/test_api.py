@@ -1,9 +1,15 @@
+import asyncio
+import threading
 from pathlib import Path
+from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from services.api.main import APP_NAME, APP_VERSION, create_app
+from services.market_data.fake import FakeMarketDataProvider
+from services.market_data.provider import BarsQuery, BarsResult
+from services.market_data.storage import AmbiguousRevisionError
 
 pytestmark = pytest.mark.anyio
 
@@ -158,3 +164,114 @@ async def test_configured_data_directory_persists_api_result(
     assert second.json() == first.json()
     assert len(list(tmp_path.rglob("*.parquet"))) == 1
     assert (tmp_path / "metadata.sqlite3").is_file()
+
+
+class _RaisingProvider:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    @property
+    def source_id(self) -> str:
+        return "raising"
+
+    def capabilities(self) -> dict[str, Any]:
+        return {}
+
+    def get_bars(self, query: BarsQuery) -> BarsResult:
+        raise self.error
+
+
+def _raising_client(error: Exception) -> AsyncClient:
+    return AsyncClient(
+        transport=ASGITransport(
+            app=create_app(_RaisingProvider(error)), raise_app_exceptions=False
+        ),
+        base_url="http://test",
+    )
+
+
+BARS_PARAMS = {
+    "instrument_id": "us:aapl:xnas:2026",
+    "start_utc": "2026-10-09T13:30:00Z",
+    "end_utc": "2026-10-09T13:34:00Z",
+}
+
+
+@pytest.mark.parametrize("year", [1990, 2099])
+async def test_market_bars_outside_calendar_range_is_query_error(year: int) -> None:
+    async with client() as test_client:
+        response = await test_client.get(
+            "/v1/market/bars",
+            params={
+                **BARS_PARAMS,
+                "start_utc": f"{year}-01-03T15:00:00Z",
+                "end_utc": f"{year}-01-03T15:05:00Z",
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_market_data_query"
+
+
+async def test_market_bars_storage_failure_uses_error_envelope() -> None:
+    async with _raising_client(AmbiguousRevisionError("internal detail")) as test_client:
+        response = await test_client.get(
+            "/v1/market/bars", params=BARS_PARAMS, headers={"X-Request-ID": "storage"}
+        )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "market_data_storage_error",
+            "message": "Local market data cache could not serve the request",
+            "request_id": "storage",
+        }
+    }
+
+
+async def test_unexpected_failure_uses_error_envelope_without_details() -> None:
+    async with _raising_client(RuntimeError("secret internal detail")) as test_client:
+        response = await test_client.get(
+            "/v1/market/bars", params=BARS_PARAMS, headers={"X-Request-ID": "boom"}
+        )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "internal_error",
+            "message": "Internal server error",
+            "request_id": "boom",
+        }
+    }
+    assert response.headers["X-Request-ID"] == "boom"
+
+
+async def test_blocking_market_data_call_does_not_stall_other_requests() -> None:
+    started = threading.Event()
+    release = threading.Event()
+    released_before_timeout: list[bool] = []
+    upstream = FakeMarketDataProvider.from_path()
+
+    class BlockingProvider:
+        source_id = upstream.source_id
+
+        def capabilities(self) -> dict[str, Any]:
+            return upstream.capabilities()
+
+        def get_bars(self, query: BarsQuery) -> BarsResult:
+            started.set()
+            released_before_timeout.append(release.wait(timeout=5))
+            return upstream.get_bars(query)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app(BlockingProvider())), base_url="http://test"
+    ) as test_client:
+        bars_request = asyncio.create_task(test_client.get("/v1/market/bars", params=BARS_PARAMS))
+        assert await asyncio.to_thread(started.wait, 5)
+        health = await test_client.get("/health")
+        release.set()
+        bars = await bars_request
+
+    assert health.status_code == 200
+    assert bars.status_code == 200
+    assert released_before_timeout == [True]
