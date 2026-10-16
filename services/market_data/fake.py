@@ -18,13 +18,8 @@ from services.market_data.provider import (
     validate_bars_query,
 )
 
-DEFAULT_FIXTURE_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "tests"
-    / "fixtures"
-    / "market_data"
-    / "fake_aapl_1m_r1.json"
-)
+# Synthetic data ships with the provider so the runtime never reads from tests/.
+DEFAULT_FIXTURE_PATH = Path(__file__).resolve().with_name("fixtures") / "fake_aapl_1m_r1.json"
 MAX_QUERY_MINUTES = 1_440
 
 

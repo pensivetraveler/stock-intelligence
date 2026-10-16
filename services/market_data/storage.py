@@ -8,13 +8,14 @@ import sqlite3
 import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -29,6 +30,7 @@ from services.market_data.provider import (
 
 MIGRATIONS_DIR = Path(__file__).with_name("migrations")
 OWNER_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+EXCHANGE_TIMEZONE = ZoneInfo("America/New_York")
 JOB_ERROR_CODE_PATTERN = re.compile(r"^[a-z0-9_]{1,64}$")
 PARQUET_SCHEMA = pa.schema(
     [
@@ -150,6 +152,16 @@ class _ExclusiveFileLock:
             os.close(descriptor)
 
 
+def _session_date(bar: dict[str, Any]) -> str:
+    """US exchange-local date of the bar start.
+
+    Partitioning by UTC date would split a winter post-market session (19:00-20:00 ET
+    is 00:00-01:00 UTC the next day) across two partitions.
+    """
+    start = datetime.fromisoformat(cast(str, bar["interval_start_utc"]).replace("Z", "+00:00"))
+    return start.astimezone(EXCHANGE_TIMEZONE).date().isoformat()
+
+
 class StorageError(RuntimeError):
     """Base error for local market-data persistence."""
 
@@ -196,7 +208,7 @@ class MigrationRunner:
     def apply(self) -> tuple[str, ...]:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         applied_now: list[str] = []
-        with sqlite3.connect(self.database_path) as connection:
+        with closing(sqlite3.connect(self.database_path)) as connection, connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -320,12 +332,19 @@ class LocalMarketDataStore:
             if not self._owner_is_alive(path.stem):
                 path.unlink(missing_ok=True)
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 5000")
-        return connection
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        """Yield one transaction (commit on success, rollback on error), then close.
+
+        `with sqlite3.connect(...)` alone only ends the transaction and leaves the
+        connection and its file descriptors open until garbage collection.
+        """
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA busy_timeout = 5000")
+            with connection:
+                yield connection
 
     def _configure_database(self) -> None:
         with self._connect() as connection:
@@ -699,6 +718,7 @@ class LocalMarketDataStore:
                 )
                 recovered += 1
             except Exception as exc:
+                self._remove_journal_temp_files(files)
                 with self._connect() as connection:
                     connection.execute(
                         "UPDATE write_journal SET state = 'failed', error = ?, updated_at_utc = ? "
@@ -706,6 +726,18 @@ class LocalMarketDataStore:
                         (type(exc).__name__, _format_utc(self._now()), row["journal_id"]),
                     )
         return recovered
+
+    def _remove_journal_temp_files(self, files: list[dict[str, Any]]) -> None:
+        for entry in files:
+            temp_path = (self.root / cast(str, entry["temp_path"])).resolve()
+            # Journal paths come from the database; never delete outside the data root
+            # or anything that is not one of this store's temporary part names.
+            if (
+                temp_path.is_relative_to(self.root)
+                and temp_path.name.startswith(".part-")
+                and temp_path.suffix == ".tmp"
+            ):
+                temp_path.unlink(missing_ok=True)
 
     def _commit_coverage(
         self,
@@ -796,8 +828,7 @@ class LocalMarketDataStore:
     ) -> dict[str, tuple[dict[str, Any], ...]]:
         groups: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
         for bar in bars:
-            date = cast(str, bar["interval_start_utc"])[:10]
-            groups[date].append(dict(bar))
+            groups[_session_date(bar)].append(dict(bar))
         return {
             date: tuple(sorted(group, key=lambda bar: cast(str, bar["interval_start_utc"])))
             for date, group in sorted(groups.items())
@@ -806,12 +837,12 @@ class LocalMarketDataStore:
     def _file_entry(self, bars: tuple[dict[str, Any], ...]) -> dict[str, str]:
         first = bars[0]
         payload_sha256 = _sha256(_canonical_json(bars).encode())
-        date = cast(str, first["interval_start_utc"])[:10]
+        session_date = _session_date(first)
         relative_directory = Path("bars") / Path(
             f"source_id={_safe_component(cast(str, first['source_id']))}",
             f"instrument_id={_safe_component(cast(str, first['instrument_id']))}",
             f"timeframe={_safe_component(cast(str, first['timeframe']))}",
-            f"date={date}",
+            f"session_date={session_date}",
             f"revision={_safe_component(cast(str, first['dataset_revision']))}",
         )
         final_path = relative_directory / f"part-{payload_sha256}.parquet"

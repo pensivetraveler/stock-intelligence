@@ -1,4 +1,8 @@
 import asyncio
+import os
+import re
+import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -7,7 +11,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from services.api.main import APP_NAME, APP_VERSION, create_app
-from services.market_data.fake import FakeMarketDataProvider
+from services.market_data.fake import DEFAULT_FIXTURE_PATH, FakeMarketDataProvider
 from services.market_data.provider import BarsQuery, BarsResult
 from services.market_data.storage import AmbiguousRevisionError
 
@@ -275,3 +279,47 @@ async def test_blocking_market_data_call_does_not_stall_other_requests() -> None
     assert health.status_code == 200
     assert bars.status_code == 200
     assert released_before_timeout == [True]
+
+
+def test_importing_the_api_module_has_no_storage_side_effects(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    completed = subprocess.run(
+        [sys.executable, "-c", "import services.api.main"],
+        cwd=Path(__file__).resolve().parents[2],
+        env={**os.environ, "SIW_DATA_DIR": str(data_dir)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert not data_dir.exists()
+
+
+async def test_lifespan_opens_configured_store_before_first_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SIW_DATA_DIR", str(tmp_path / "data"))
+    application = create_app()
+    assert not (tmp_path / "data").exists()
+
+    async with application.router.lifespan_context(application):
+        assert (tmp_path / "data" / "metadata.sqlite3").is_file()
+
+
+def test_default_fixture_ships_with_the_provider_not_the_tests() -> None:
+    repository = Path(__file__).resolve().parents[2]
+
+    assert DEFAULT_FIXTURE_PATH.is_file()
+    assert DEFAULT_FIXTURE_PATH.is_relative_to(repository / "services")
+
+
+@pytest.mark.parametrize("header", ["has space", 'quote"mark', "x" * 129, "semi;colon", "<script>"])
+async def test_unsafe_request_id_is_replaced(header: str) -> None:
+    async with client() as test_client:
+        response = await test_client.get("/missing", headers={"X-Request-ID": header})
+
+    returned = response.headers["X-Request-ID"]
+    assert returned != header
+    assert response.json()["error"]["request_id"] == returned
+    assert re.fullmatch(r"[0-9a-f-]{36}", returned)

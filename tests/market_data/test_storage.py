@@ -515,3 +515,93 @@ def test_only_the_owning_store_can_checkpoint_or_finish_a_job(tmp_path: Path) ->
     owner.close()
     with pytest.raises(StorageError, match="closed"):
         owner.complete_job(job_key)
+
+
+def test_winter_post_session_stays_in_one_session_date_partition(tmp_path: Path) -> None:
+    document = fixture_document()
+    starts = (
+        datetime(2026, 11, 30, 23, 59, tzinfo=timezone.utc),
+        datetime(2026, 12, 1, 0, 0, tzinfo=timezone.utc),
+    )
+    for bar, start in zip(document["bars"], starts, strict=False):
+        end = start + timedelta(minutes=1)
+        bar.update(
+            interval_start_utc=start.isoformat().replace("+00:00", "Z"),
+            interval_end_utc=end.isoformat().replace("+00:00", "Z"),
+            available_at_utc=(end + timedelta(seconds=2)).isoformat().replace("+00:00", "Z"),
+            session="post",
+        )
+    document["bars"] = document["bars"][:2]
+    result = fake_provider(document).get_bars(
+        BarsQuery(INSTRUMENT_ID, "1m", starts[0], starts[1] + timedelta(minutes=1))
+    )
+    assert result.coverage["coverage_status"] == "complete"
+
+    with store(tmp_path) as market_store:
+        receipt = market_store.write_result(result)
+
+    assert len(receipt.parquet_paths) == 1
+    assert "/session_date=2026-11-30/" in receipt.parquet_paths[0]
+
+
+def test_store_closes_every_sqlite_connection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    opened: list[sqlite3.Connection] = []
+    real_connect = sqlite3.connect
+
+    def tracking_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        connection = real_connect(*args, **kwargs)
+        opened.append(connection)
+        return connection
+
+    monkeypatch.setattr("services.market_data.storage.sqlite3.connect", tracking_connect)
+    with store(tmp_path) as market_store:
+        market_store.write_result(fake_result())
+        market_store.read_exact(query(), SOURCE_ID, REVISION)
+        job_key = market_store.enqueue_job(query(), SOURCE_ID)
+        market_store.start_job(job_key)
+        market_store.complete_job(job_key)
+
+    assert opened
+    for connection in opened:
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            connection.execute("SELECT 1")
+
+
+def test_failed_recovery_removes_its_temp_files_only(tmp_path: Path) -> None:
+    with store(tmp_path) as market_store:
+        part_dir = tmp_path / "bars" / "orphan"
+        part_dir.mkdir(parents=True)
+        temp_path = part_dir / ".part-deadbeef.parquet.0123.tmp"
+        temp_path.write_bytes(b"not parquet")
+        outside = tmp_path.parent / f".part-outside-{tmp_path.name}.tmp"
+        outside.write_bytes(b"keep")
+        files = [
+            {
+                "final_path": "bars/orphan/part-deadbeef.parquet",
+                "temp_path": "bars/orphan/.part-deadbeef.parquet.0123.tmp",
+                "payload_sha256": "0" * 64,
+            },
+            {
+                "final_path": "bars/orphan/part-other.parquet",
+                "temp_path": f"../{outside.name}",
+                "payload_sha256": "0" * 64,
+            },
+        ]
+        with sqlite3.connect(market_store.database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO write_journal (
+                    journal_id, coverage_key, manifest_json, files_json, state,
+                    created_at_utc, updated_at_utc
+                ) VALUES ('orphan', 'coverage', '{}', ?, 'pending', 'then', 'then')
+                """,
+                (json.dumps(files),),
+            )
+
+        assert market_store.recover_interrupted_writes() == 0
+
+    assert not temp_path.exists()
+    assert outside.read_bytes() == b"keep"
+    outside.unlink()

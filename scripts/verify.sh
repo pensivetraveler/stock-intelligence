@@ -9,9 +9,25 @@ uv run ruff check .
 uv run mypy services packages/contracts tests/contracts
 uv run pytest
 
+work_dir="$(mktemp -d)"
+trap 'rm -rf "$work_dir"' EXIT
+
+# Package scripts call `pnpm` through `sh`, so a shell function is not enough. When pnpm
+# is only reachable through corepack (packageManager in package.json), put a shim on PATH.
+if ! command -v pnpm >/dev/null 2>&1; then
+  if ! command -v corepack >/dev/null 2>&1; then
+    echo "pnpm is not installed and corepack is unavailable; install Node with corepack." >&2
+    exit 1
+  fi
+  mkdir -p "$work_dir/bin"
+  printf '#!/bin/sh\nexec corepack pnpm "$@"\n' >"$work_dir/bin/pnpm"
+  chmod +x "$work_dir/bin/pnpm"
+  export PATH="$work_dir/bin:$PATH"
+  export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+fi
+
 pnpm install --frozen-lockfile
-generated_contract_snapshot="$(mktemp)"
-trap 'rm -f "$generated_contract_snapshot"' EXIT
+generated_contract_snapshot="$work_dir/contracts.d.ts"
 cp packages/contracts/generated/contracts.d.ts "$generated_contract_snapshot"
 pnpm contracts:generate
 pnpm format:check

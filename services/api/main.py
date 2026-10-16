@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Awaitable, Callable
+import re
+import threading
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
@@ -35,6 +38,7 @@ DEFAULT_CORS_ORIGINS = (
     "http://localhost:5173",
     "tauri://localhost",
 )
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
 def _cors_origins() -> list[str]:
@@ -42,6 +46,14 @@ def _cors_origins() -> list[str]:
     if configured is None:
         return list(DEFAULT_CORS_ORIGINS)
     return [origin.strip() for origin in configured.split(",") if origin.strip()]
+
+
+def _incoming_request_id(request: Request) -> str:
+    # Echo a caller's ID only when it is short and log-safe; otherwise mint one.
+    value = request.headers.get("X-Request-ID")
+    if value is not None and REQUEST_ID_PATTERN.fullmatch(value):
+        return value
+    return str(uuid4())
 
 
 def _request_id(request: Request) -> str:
@@ -73,9 +85,31 @@ def _default_market_data_provider() -> MarketDataProvider:
     return CachedMarketDataProvider(upstream, LocalMarketDataStore(Path(configured_data_dir)))
 
 
+class _LazyProvider:
+    """Build the default provider on first use, so importing the module has no side effects."""
+
+    def __init__(self, provider: MarketDataProvider | None) -> None:
+        self._provider = provider
+        self._lock = threading.Lock()
+
+    def get(self) -> MarketDataProvider:
+        with self._lock:
+            if self._provider is None:
+                self._provider = _default_market_data_provider()
+            return self._provider
+
+
 def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAPI:
-    application = FastAPI(title=APP_NAME, version=APP_VERSION)
-    provider = market_data_provider or _default_market_data_provider()
+    provider = _LazyProvider(market_data_provider)
+
+    @asynccontextmanager
+    async def lifespan(_application: FastAPI) -> AsyncIterator[None]:
+        # Under a server, open the fixture and cache at startup so misconfiguration fails
+        # fast; clients that skip lifespan events still get the provider on first request.
+        provider.get()
+        yield
+
+    application = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),
@@ -89,7 +123,7 @@ def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAP
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        request_id = request.headers.get("X-Request-ID") or str(uuid4())
+        request_id = _incoming_request_id(request)
         request.state.request_id = request_id
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
@@ -133,7 +167,7 @@ def create_app(market_data_provider: MarketDataProvider | None = None) -> FastAP
         as_of_utc: Annotated[datetime | None, Query()] = None,
     ) -> Response:
         try:
-            result = provider.get_bars(
+            result = provider.get().get_bars(
                 BarsQuery(
                     instrument_id=instrument_id,
                     timeframe=timeframe,

@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { version as APP_VERSION } from "../package.json";
 import { checkApiHealth, type ApiConnectionState } from "./api-health";
 import "./styles.css";
-
-const APP_VERSION = "0.1.0-dev";
 
 interface AppProps {
   apiBaseUrl?: string;
@@ -23,8 +22,12 @@ export function App({
   const [lastSuccess, setLastSuccess] = useState<string | null>(null);
   const retryTimer = useRef<number | null>(null);
   const mounted = useRef(true);
+  // Bumped whenever the polling loop is replaced (props change or unmount), so a
+  // check started by an earlier loop cannot update state or schedule more polls.
+  const generation = useRef(0);
 
   const runCheck = useCallback(async () => {
+    const startedGeneration = generation.current;
     if (retryTimer.current !== null) {
       window.clearTimeout(retryTimer.current);
       retryTimer.current = null;
@@ -32,7 +35,7 @@ export function App({
     setState("checking");
     setMessage("Checking API health");
     const result = await checkApiHealth(apiBaseUrl, fetcher, timeoutMs);
-    if (!mounted.current) {
+    if (!mounted.current || startedGeneration !== generation.current) {
       return;
     }
     setState(result.state);
@@ -45,11 +48,14 @@ export function App({
 
   useEffect(() => {
     mounted.current = true;
+    generation.current += 1;
     void runCheck();
     return () => {
       mounted.current = false;
+      generation.current += 1;
       if (retryTimer.current !== null) {
         window.clearTimeout(retryTimer.current);
+        retryTimer.current = null;
       }
     };
   }, [runCheck]);

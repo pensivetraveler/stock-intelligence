@@ -9,18 +9,20 @@ Codex 및 코딩 Agent는 먼저 이 파일과 작업에 관련된 문서를 실
 - `docs/PROJECT_INSTRUCTIONS.md`: 지속적인 개발 협업 및 안전 규칙
 - `docs/SYSTEM_SPEC.md`: 제품 요구사항, 아키텍처·데이터 불변조건
 - `docs/IMPLEMENTATION_ROADMAP.md`: 전체 개발 순서
-- `docs/PHASE_0_IMPLEMENTATION_SPEC.md`: **현재 착수할 Phase 0 범위와 완료 조건**
+- `docs/PROJECT_STATE.md`, `docs/IMPLEMENTATION_HISTORY.md`: **현재 완료 범위·검증 기록·남은 위험**
+- `docs/EXECUTION_PROCESS.md`: 다음 단계를 정하는 절차와 사용자 승인 Gate
+- `docs/PHASE_0_IMPLEMENTATION_SPEC.md`: 완료한 Phase 0의 범위와 수락 기준(재구현 지시가 아님)
 - `docs/DATA_PROVIDER_EVALUATION_v1.5.md`: 공급업체 조사(실제 계정 권한·API 성공 증거가 아님)
 - `docs/decisions/`: 구조 결정(ADR). 현재 저장소의 코드는 실제 구현 증거의 최우선 소스다.
 
 문서가 누락되었으면 읽었다고 가정하거나 내용을 지어내지 말고 누락을 보고한다. 프로젝트 범위가 충돌하면 현재 사용자의 명시적 지시 → 검증된 코드/테스트/런타임 사실 → 최신 확정 요구사항 순으로 차이를 드러내고, 데이터 안전성과 관련된 충돌은 임의 해결하지 않는다.
 
-## 이번 작업: Phase 0만 구현
+## 현재 작업 범위
 
-1. 먼저 저장소의 현 상태와 도구 버전, 실행 환경을 점검한다. 비어 있는 디렉터리를 구현 완료로 간주하지 않는다.
-2. `docs/PHASE_0_IMPLEMENTATION_SPEC.md`의 P0-01~P0-07을 작은 변경 단위로 수행한다.
-3. Python FastAPI API의 `/health`, `/version`; React/TypeScript 데스크톱 개발 셸; 별도 Collector 시작점; 계약용 스키마·Fixture; 포맷/린트/타입/테스트/CI를 구성한다. OS별 Tauri 실행이 불가능하면 원인과 미검증 부분을 분리해 보고한다.
-4. 외부 시세 호출, 실제 증권사 계정 연결, 결제, 크롤링, 주문 기능, 백테스팅 실행기, 복잡한 차트 UI는 **Phase 0 범위 밖**이다. Fixture 기반의 데이터 계약은 정의하되 실제 구현을 앞당기지 않는다.
+1. 먼저 저장소의 현 상태와 도구 버전, 실행 환경을 점검한다. 비어 있는 디렉터리나 문서상 계획을 구현 완료로 간주하지 않는다.
+2. 완료 범위는 `docs/PROJECT_STATE.md`와 `docs/IMPLEMENTATION_HISTORY.md`를 따른다. 다음 단계는 `docs/EXECUTION_PROCESS.md`의 Gate에 따라 사용자가 정한 범위만 착수한다.
+3. 사용자가 명시적으로 승인하기 전에는 외부 시세 호출, 실제 증권사 계정 연결, 결제, 크롤링, 주문 기능, 백테스팅 실행기, 복잡한 차트 UI를 앞당겨 구현하지 않는다. Fixture 기반의 데이터 계약은 정의할 수 있다.
+4. 변경은 작은 단위로 수행한다. OS별 Tauri 실행이 불가능하면 원인과 미검증 부분을 분리해 보고한다.
 5. 각 완료 선언에 실제 실행한 명령, 테스트 결과, 변경 파일, 남은 위험 및 다음 작업을 포함한다. 실행하지 않은 테스트는 `미실행`으로 표시한다.
 
 ## 반드시 지킬 도메인 규칙
