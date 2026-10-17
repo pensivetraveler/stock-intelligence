@@ -18,6 +18,7 @@ from packages.contracts.validator import validate_document
 from services.market_data.broker_common import AllowlistedClient, BlockedEndpointError
 from services.market_data.kis import KisConfig, KisMarketDataProvider
 from services.market_data.kiwoom import KiwoomConfig, KiwoomMarketDataProvider
+from services.market_data.meritz import MeritzConfig, MeritzMarketDataProvider
 from services.market_data.provider import (
     BarsQuery,
     InvalidBarsQueryError,
@@ -430,12 +431,22 @@ def test_order_endpoints_cannot_be_called(method: str, path: str) -> None:
 
 @pytest.mark.parametrize(
     ("choice", "names"),
-    [("kis", "SIW_KIS_APP_KEY"), ("toss", "SIW_TOSS_CLIENT_ID"), ("kiwoom", "SIW_KIWOOM_APP_KEY")],
+    [
+        ("kis", "SIW_KIS_APP_KEY"),
+        ("toss", "SIW_TOSS_CLIENT_ID"),
+        ("kiwoom", "SIW_KIWOOM_APP_KEY"),
+        ("meritz", "SIW_MERITZ_APP_KEY"),
+    ],
 )
 def test_broker_selection_requires_its_own_keys(
     monkeypatch: pytest.MonkeyPatch, choice: str, names: str
 ) -> None:
-    for name in ("SIW_KIS_APP_KEY", "SIW_TOSS_CLIENT_ID", "SIW_KIWOOM_APP_KEY"):
+    for name in (
+        "SIW_KIS_APP_KEY",
+        "SIW_TOSS_CLIENT_ID",
+        "SIW_KIWOOM_APP_KEY",
+        "SIW_MERITZ_APP_KEY",
+    ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("SIW_MARKET_DATA_PROVIDER", choice)
 
@@ -453,3 +464,135 @@ def test_broker_capabilities_and_instruments_follow_the_contract() -> None:
         )
         for item in provider.instruments():
             validate_document(item["instrument"])
+
+
+# --- Meritz ----------------------------------------------------------------------------
+
+MAC = "A1B2C3D4E5F6"
+
+
+def meritz_row(korea_date: str, korea_hour: str) -> dict[str, Any]:
+    return {
+        "korea_hour": korea_hour,
+        "prpr": "773.2500",
+        "cntg_vol": 4100,
+        "acml_vol": 120000,
+        "rltv": "96.73",
+        "dcpn_cnt": 4,
+        "korea_date": korea_date,
+        "oprc": "773.2400",
+        "hprc": "773.2600",
+        "lprc": "772.5000",
+    }
+
+
+def meritz(recorder: Recorder) -> MeritzMarketDataProvider:
+    config = MeritzConfig(app_key="meritz-app-key", app_secret=SECRET, mac_address=MAC)
+    return MeritzMarketDataProvider(
+        config, transport=httpx.MockTransport(recorder), now=lambda: NOW
+    )
+
+
+MERITZ_TOKEN = j(
+    {"access_token": "meritz-token", "scope": "login", "token_type": "Bearer", "expires_in": 604800}
+)
+
+
+def kst(minute_of_regular_session: int) -> tuple[str, str]:
+    # 09:30 ET on 2026-10-16 (EDT) is 22:30 KST the same day.
+    total = 22 * 60 + 30 + minute_of_regular_session
+    day = "20261016" if total < 24 * 60 else "20261017"
+    total %= 24 * 60
+    return day, f"{total // 60:02d}{total % 60:02d}00"
+
+
+def test_meritz_request_follows_the_official_spec_and_converts_korean_time() -> None:
+    recorder = Recorder(
+        MERITZ_TOKEN,
+        j(
+            {
+                "data": [meritz_row(*kst(1)), meritz_row(*kst(0))],
+                "rsp_cd": "0000",
+                "rsp_msg": "정상 처리 되었습니다.",
+            }
+        ),
+    )
+
+    result = meritz(recorder).get_bars(window("13:30", "13:32"))
+
+    token, minutes = recorder.requests
+    assert token.url.path == "/oauth2/token"
+    assert parse_qs(token.content.decode()) == {
+        "grant_type": ["client_credentials"],
+        "client_id": ["meritz-app-key"],
+        "client_secret": [SECRET],
+        "scope": ["login"],
+    }
+    assert minutes.url.path == "/market/v1/overseas/candles/minutes"
+    assert (minutes.headers["authorization"], minutes.headers["mac_address"]) == (
+        "Bearer meritz-token",
+        MAC,
+    )
+    assert dict(minutes.url.params) == {
+        "mrkt_div_code": "OV",
+        "mrkt_cls_code": "AX",
+        "iscd": "SPY",
+        "dely_rltm_cls_code": "0",
+        "hour_cls_code": "60",
+    }
+    validate_document(result.to_document())
+    assert [bar["interval_start_utc"] for bar in result.bars] == [
+        "2026-10-16T13:30:00Z",
+        "2026-10-16T13:31:00Z",
+    ]
+    assert result.coverage["adjustment"] == "unknown"
+
+
+def test_meritz_capped_latest_page_marks_older_minutes_beyond_history() -> None:
+    rows = [
+        meritz_row(*kst(m)) for m in range(389, 349, -1)
+    ]  # the latest 40 minutes of the session
+    recorder = Recorder(MERITZ_TOKEN, j({"data": rows, "rsp_cd": "0000", "rsp_msg": "ok"}))
+
+    result = meritz(recorder).get_bars(window("19:00", "20:00"))
+
+    reasons = {
+        gap["start_utc"][11:16]: gap["reason"] for gap in result.coverage["missing_intervals"]
+    }
+    assert len(result.bars) == 40
+    assert set(reasons.values()) == {"beyond_source_history"}
+    assert min(reasons) == "19:00" and max(reasons) == "19:19"
+
+
+@pytest.mark.parametrize(
+    ("response", "error"),
+    [
+        (
+            j({"rsp_cd": "EGW00200", "rsp_msg": "초당 거래건수를 초과하였습니다."}, status=500),
+            ProviderRateLimitError,
+        ),
+        (
+            j({"rsp_cd": "5820", "rsp_msg": "조회할 자료가 없습니다."}, status=500),
+            InvalidBarsQueryError,
+        ),
+    ],
+)
+def test_meritz_errors_are_judged_by_rsp_cd(
+    response: httpx.Response, error: type[Exception]
+) -> None:
+    with pytest.raises(error) as raised:
+        meritz(Recorder(MERITZ_TOKEN, response)).get_bars(window("13:30", "13:32"))
+    assert SECRET not in str(raised.value)
+    assert MAC not in str(raised.value)
+
+
+def test_meritz_config_requires_and_normalizes_the_mac_address() -> None:
+    env = {"SIW_MERITZ_APP_KEY": "k", "SIW_MERITZ_APP_SECRET": SECRET}
+    with pytest.raises(ValueError, match="SIW_MERITZ_MAC_ADDRESS"):
+        MeritzConfig.from_env(env)
+    with pytest.raises(ValueError, match="12 hexadecimal"):
+        MeritzConfig.from_env({**env, "SIW_MERITZ_MAC_ADDRESS": "not-a-mac"})
+    loaded = MeritzConfig.from_env({**env, "SIW_MERITZ_MAC_ADDRESS": "a1:b2:c3:d4:e5:f6"})
+    assert loaded.mac_address == MAC
+    assert SECRET not in repr(loaded) and MAC not in repr(loaded)
+    validate_document(meritz(Recorder()).capabilities())

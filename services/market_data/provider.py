@@ -61,7 +61,9 @@ class ProviderDataError(MarketDataError):
 
 
 # Missing-interval reasons that describe a settled fact rather than a gap to re-fetch.
-SETTLED_MISSING_REASONS = frozenset({"provider_no_bar", "session_not_covered"})
+SETTLED_MISSING_REASONS = frozenset(
+    {"provider_no_bar", "session_not_covered", "beyond_source_history"}
+)
 
 
 def validate_bars_query(query: BarsQuery) -> None:

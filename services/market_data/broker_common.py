@@ -197,8 +197,14 @@ def build_result(
     identity: SourceIdentity,
     calendar: UsEquityCalendar,
     now: datetime,
+    history_start_utc: datetime | None = None,
 ) -> BarsResult:
-    """Canonical bars plus coverage for every expected minute, with an honest reason for gaps."""
+    """Canonical bars plus coverage for every expected minute, with an honest reason for gaps.
+
+    `history_start_utc` is the earliest minute the source could serve for this request
+    (for example the oldest of a capped "latest N bars" response); older minutes are
+    reported as `beyond_source_history`, not as minutes without trades.
+    """
     try:
         expected = calendar.trading_minutes(query.start_utc, query.end_utc)
     except CalendarError as exc:
@@ -223,6 +229,8 @@ def build_result(
         available_at = end + delay
         if session not in identity.covered_sessions:
             reason = "session_not_covered"
+        elif history_start_utc is not None and start < history_start_utc:
+            reason = "beyond_source_history"
         elif item is not None and (query.as_of_utc is None or available_at <= query.as_of_utc):
             visible.append(
                 _bar(

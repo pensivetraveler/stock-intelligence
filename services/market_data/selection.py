@@ -11,7 +11,7 @@ import os
 from services.market_data.fake import FakeMarketDataProvider
 from services.market_data.provider import MarketDataProvider
 
-PROVIDERS = ("fake", "alpaca", "kis", "toss", "kiwoom")
+PROVIDERS = ("fake", "alpaca", "kis", "toss", "kiwoom", "meritz")
 
 
 class ProviderConfigError(ValueError):
@@ -34,7 +34,7 @@ def provider_from_env() -> MarketDataProvider:
             return AlpacaMarketDataProvider(AlpacaConfig.from_env())
         except AlpacaConfigError as exc:
             raise ProviderConfigError(str(exc)) from exc
-    if choice in ("kis", "toss", "kiwoom"):
+    if choice in ("kis", "toss", "kiwoom", "meritz"):
         return _broker(choice)
     raise ProviderConfigError(f"SIW_MARKET_DATA_PROVIDER must be one of {', '.join(PROVIDERS)}")
 
@@ -51,6 +51,10 @@ def _broker(choice: str) -> MarketDataProvider:
             from services.market_data.toss import TossConfig, TossMarketDataProvider
 
             return TossMarketDataProvider(TossConfig.from_env())
+        if choice == "meritz":
+            from services.market_data.meritz import MeritzConfig, MeritzMarketDataProvider
+
+            return MeritzMarketDataProvider(MeritzConfig.from_env())
         from services.market_data.kiwoom import KiwoomConfig, KiwoomMarketDataProvider
 
         return KiwoomMarketDataProvider(KiwoomConfig.from_env())

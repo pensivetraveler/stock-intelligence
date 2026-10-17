@@ -310,6 +310,23 @@
 - **검증:** `./scripts/verify.sh` 통과(exit 0) — pytest 266개(증권사 18개, Alpaca 26개 포함), Vitest 계약 52개·데스크톱 41개, 생성 타입 drift 검사. 키 없이 실행한 `broker_check`는 세 증권사 모두 설정 오류로 exit 2.
 - **미검증:** 세 증권사 모두 실계정 미실행이다. 확인할 것은 시각대·bar 시작 의미, 장전·장후 포함 여부, 한국투자의 KEYB 첫 요청 동작, 키움의 `cntr_tm` 중복 여부다.
 
+## 메리츠증권 채널 추가 — 2026-10-17
+
+- **사용자 요청과 공식 확인:**
+  - 공식 페이지에서 공개 베타(10/12–25), 정식 출시(10/26), 해외주식 지원, API 이용료 무료, 본인 투자 용도 한정·제3자 제공 금지를 확인했다.
+  - 공식 명세 JSON에서 분봉 API(`/market/v1/overseas/candles/minutes`)를 확인했다. 최근 40개만 제공하고, 시각은 KST이며, 오류는 HTTP 500에 `rsp_cd`로 판정하고, `mac_address` 헤더가 필수다.
+- **변경 파일:**
+  - 백엔드: `services/market_data/{meritz,broker_common,selection,broker_check,provider}.py`
+  - 계약: `packages/contracts`(결측 사유 `beyond_source_history`)
+  - 설정·테스트: `.env.example`, `tests/market_data/test_brokers.py`
+  - 문서: ADR 0013 보완, README, EXECUTION_PROCESS
+- **설계:**
+  - 다른 증권사와 같이 허용 경로만 호출하고, 토큰은 메모리에만 보관하며, 정규장만 기본으로 다룬다.
+  - MAC 주소는 `SIW_MERITZ_MAC_ADDRESS`로만 받고 출력하지 않는다.
+  - 최근 40개 밖의 분은 `beyond_source_history`로 표시한다.
+- **검증:** `./scripts/verify.sh` 통과(exit 0) — pytest 272개(증권사 24개), Vitest 계약 52개·데스크톱 41개, 생성 타입 drift 검사.
+- **미검증:** 실계정 확인이 필요하다(`broker_check --provider meritz`). 확인할 것은 `korea_hour`의 bar 시작·끝 의미, 장전·장후 포함, 토큰 오류 코드다.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:

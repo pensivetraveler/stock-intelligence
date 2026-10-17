@@ -22,7 +22,7 @@ from services.market_data.selection import ProviderConfigError, _broker
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m services.market_data.broker_check")
-    parser.add_argument("--provider", choices=("kis", "toss", "kiwoom"), required=True)
+    parser.add_argument("--provider", choices=("kis", "toss", "kiwoom", "meritz"), required=True)
     parser.add_argument("--symbol", default=None)
     parser.add_argument("--date", type=date.fromisoformat, default=None)
     args = parser.parse_args(argv)
