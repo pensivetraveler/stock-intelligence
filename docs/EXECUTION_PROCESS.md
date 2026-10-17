@@ -133,7 +133,12 @@
 
 ## 단계 1D — 실제 Provider PoC (별도 권한 필요)
 
-**상태:** 미착수
+**상태:** 진행 중. 2026-10-17 사용자 결정에 따라 Alpaca로 먼저 프로토타입을 만들고, 이후 증권사 API 4곳(Toss·KIS·Kiwoom, 선정 시 Mirae Asset)을 대체 수단으로 연결한다.
+
+- [x] Alpaca Market Data v2 읽기 전용 adapter(opt-in), 무료 요금제 15분 제외, 무체결 분 처리, 문서 형식의 응답으로 테스트([ADR 0012](decisions/0012-alpaca-prototype-provider.md))
+- [x] 사용자 키로 `python -m services.market_data.alpaca check` 실행: 2026-10-17 SPY sip 30/30분 성공, 결측 없음
+- [ ] 장시간 실계정 확인: 하루 전체 backfill, IEX feed, 호출 한도, 15분 경계
+- [ ] 증권사 API 4곳: 계정별 시세 범위·제한·권리 확인 후 adapter 구현(각각 별도 source, 자동 병합 금지)
 
 - 사용자 승인 credential에 한정한 읽기 전용 시험
 - Toss/KIS/Kiwoom 및 Alpaca/Massive 동등 비교

@@ -80,6 +80,7 @@ export function Workspace({
   const [nameForm, setNameForm] = useState<NameForm>(null);
   const [instruments, setInstruments] = useState<InstrumentListing[]>([]);
   const [instrumentsError, setInstrumentsError] = useState<string | null>(null);
+  const [instrumentsReady, setInstrumentsReady] = useState(false);
   const [ledgers, setLedgers] = useState<{
     manual: ManualLedgerResponse | null;
     imported: ImportedLedgerResponse | null;
@@ -99,10 +100,14 @@ export function Workspace({
     api
       .instruments()
       .then((items) => {
-        if (current) setInstruments(items);
+        if (current) {
+          setInstruments(items);
+          setInstrumentsReady(true);
+        }
       })
       .catch((error: unknown) => {
         if (current) {
+          setInstrumentsReady(true);
           setInstrumentsError(
             error instanceof Error ? error.message : "Request failed",
           );
@@ -371,6 +376,7 @@ export function Workspace({
             api={api}
             config={config}
             instruments={instruments}
+            instrumentsReady={instrumentsReady}
             sync={sync}
             onChange={updateChart(index as 0 | 1)}
             journal={journal}

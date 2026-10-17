@@ -253,6 +253,36 @@
     - `journal.sqlite3`에 계좌번호가 없음
 - **남은 범위:** 증권사별 preset·XLSX, batch 무효화·재가져오기, 수동 기록과의 대사, 계좌 구분, Tauri native·Windows·원격 CI 미검증.
 
+## Phase 1D Alpaca 프로토타입 — 2026-10-17
+
+- **사용자 결정:**
+  - Alpaca로 프로토타입을 만들고, 이후 증권사 API 4곳을 대체 수단으로 연결한다.
+  - Alpaca 무료 요금제는 최근 15분 제한이 있다. 증권사 API는 제한이 없어 보인다고 하셨으나 **미검증**이다.
+  - 데이터는 우선 로컬에 저장하고, NAS·클라우드는 이후 검토한다.
+- **변경 파일:**
+  - 백엔드: `services/market_data/{alpaca,selection,provider,storage,aggregation,bars_service}.py`, `services/api/main.py`, `services/collector/{cli,backfill}.py`
+  - 계약: `packages/contracts/{schemas,generated}`(결측 사유 확장)
+  - 의존성: `pyproject.toml`·`uv.lock`(httpx를 런타임 의존성으로)
+  - 설정·테스트: `.env.example`, `tests/market_data/test_alpaca.py`
+  - 데스크톱: `apps/desktop/src/{ChartPanel,Workspace}.tsx`와 테스트
+  - 문서: ADR 0012, AGENTS.md(공급업체 규칙 보완), decisions/README, README, EXECUTION_PROCESS, ROADMAP, REPOSITORY_STRUCTURE, IMPLEMENTATION_HISTORY
+- **동작:**
+  - `SIW_MARKET_DATA_PROVIDER=alpaca`일 때만 `GET /v2/stocks/bars`를 호출한다(읽기 전용, `adjustment=raw`, feed 명시, 페이지네이션).
+  - 가격은 Decimal로 파싱한다. sip feed는 최근 15분을 요청하지 않는다(`outside_entitlement`).
+  - 체결 없는 분은 `provider_no_bar`, 최근 분은 `not_yet_final`로 표시한다.
+  - 오류는 502·503으로 분류해 반환한다. backfill은 인증·데이터 오류에서 재시도 없이 바로 실패한다.
+- **보안:** 키는 `APCA_API_KEY_ID`·`APCA_API_SECRET_KEY` 환경 변수로만 받는다. 요청 헤더 외의 출력, `repr`, 오류 메시지에는 넣지 않는다(테스트로 확인).
+- **검증:** `./scripts/verify.sh` 통과(exit 0) — pytest 247개(Alpaca 25개 포함), Vitest 계약 52개·데스크톱 41개, lint·typecheck·build. 키 없이 실행한 `alpaca check`는 설정 오류로 exit 2. Alpaca 테스트는 문서 형식의 응답을 쓰며 네트워크를 쓰지 않는다.
+- **실계정 확인(2026-10-17):**
+  - 사용자가 `alpaca check --symbol SPY`를 실행했다. 대상은 `alpaca-sip`, 2026-10-16 13:30–14:00Z이다.
+  - 30/30분을 받았고 결측 사유는 없다. 가격은 응답 그대로 정확히 보존됐다(`772.5` 등).
+  - 출력에 키는 없었다.
+  - capabilities를 `integration_tested`로 올렸다. 요금제 권한(entitlement)은 feed·범위에 따라 달라 `unknown`으로 유지한다.
+- **미검증:**
+  - 장시간 실계정 동작: 하루 전체 페이지네이션, IEX feed, 호출 한도, 15분 경계
+  - 증권사 API의 제한·권리
+  - NAS 저장: SQLite와 OS 잠금이 로컬 파일시스템을 전제하므로 별도 설계가 필요하다.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:

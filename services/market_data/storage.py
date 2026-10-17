@@ -22,6 +22,7 @@ import pyarrow.parquet as pq
 
 from packages.contracts.validator import validate_document
 from services.market_data.provider import (
+    SETTLED_MISSING_REASONS,
     BarsQuery,
     BarsResult,
     MarketDataProvider,
@@ -1048,8 +1049,11 @@ class CachedMarketDataProvider:
 
     @staticmethod
     def _is_reusable(cached: BarsResult) -> bool:
-        # A provisional bar can still be revised upstream, so a cached result is only
-        # served without refetching when coverage is complete and every bar is final.
-        return cached.coverage["coverage_status"] == "complete" and all(
-            cast(bool, bar["is_final"]) for bar in cached.bars
+        # A provisional bar can still be revised upstream, and an unexplained gap may
+        # still be filled, so a cached result is served without refetching only when every
+        # bar is final and every missing minute is a settled fact (e.g. no trades).
+        settled = all(
+            gap["reason"] in SETTLED_MISSING_REASONS
+            for gap in cast(list[dict[str, str]], cached.coverage["missing_intervals"])
         )
+        return settled and all(cast(bool, bar["is_final"]) for bar in cached.bars)

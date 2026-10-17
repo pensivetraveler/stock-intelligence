@@ -2,7 +2,7 @@
 
 미국 주식 차트·매매 복기·백테스팅·전문 Agent 연구 환경을 위한 **로컬 개발 착수 패키지**.
 
-**현재 상태:** Phase 0 기반, Phase 1A~1C·1E 시장 데이터 기반, Phase 2A·2B 차트 workspace(차트 2개, 이름 붙인 workspace·레이아웃 템플릿), Phase 3A 수동·가상 거래 원장, Phase 3B 증권사 거래내역 CSV 가져오기 구현 완료. FastAPI API, React/TypeScript 차트 workspace, 독립 Collector 진단 경로, 합성 Provider, SQLite/Parquet cache, XNAS/XNYS 거래 캘린더, 공개 API의 session-aligned 5m/15m/30m/60m 집계, 재개 가능한 합성 데이터 backfill이 구성되어 있다. 실제 공급업체는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
+**현재 상태:** Phase 0 기반, Phase 1A~1C·1E 시장 데이터 기반, Phase 2A·2B 차트 workspace(차트 2개, 이름 붙인 workspace·레이아웃 템플릿), Phase 3A 수동·가상 거래 원장, Phase 3B 증권사 거래내역 CSV 가져오기 구현 완료. Phase 1D의 Alpaca 시세 adapter 프로토타입(선택 사항)을 추가했고, 실계정에서 짧은 확인 요청이 성공했다. FastAPI API, React/TypeScript 차트 workspace, 독립 Collector 진단 경로, 합성 Provider, SQLite/Parquet cache, XNAS/XNYS 거래 캘린더, 공개 API의 session-aligned 5m/15m/30m/60m 집계, 재개 가능한 합성 데이터 backfill이 구성되어 있다. 실제 공급업체는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
 
 ## 시작 순서
 
@@ -125,6 +125,41 @@ API를 `SIW_DATA_DIR=data`로 실행하면 차트의 캔들을 클릭해 두 종
   - 차트 마커는 수동 기록이 파란 화살표, 가상 기록이 보라색 원(진입)·사각형(청산)이다.
 - **API:** `POST/GET /v1/trades/manual`, `POST/GET /v1/scenarios`. 같은 ID로 같은 요청을 다시 보내면 저장된 기록을 돌려주고, 다른 내용이면 409로 거부한다.
 - **계좌:** 계좌 정보는 받지 않는다. 메모에도 계좌번호나 인증 정보를 쓰지 않는다.
+
+### Alpaca 시세 연결(프로토타입)
+
+기본 데이터는 합성 데이터다. `SIW_MARKET_DATA_PROVIDER=alpaca`를 설정했을 때만 Alpaca Market Data API v2에서 읽기 전용으로 1분봉을 받는다([ADR 0012](docs/decisions/0012-alpaca-prototype-provider.md)). 주문 API는 호출하지 않는다.
+
+1. Alpaca 대시보드에서 API 키를 발급한다. 시세 조회에는 paper 계정 키로 충분하다.
+2. 저장소 루트에서 `.env.example`을 `.env`로 복사하고 값을 채운다. `.env`는 Git에서 제외되어 있으며 커밋하지 않는다.
+
+```bash
+cp .env.example .env
+```
+
+| 변수                                     | 의미                                                                                                  |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `SIW_MARKET_DATA_PROVIDER`               | `alpaca`로 설정하면 사용한다. 기본값은 `fake`                                                         |
+| `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` | Alpaca 키. 요청 헤더로만 보내며 로그·오류 메시지·저장소에 남기지 않는다                               |
+| `SIW_ALPACA_FEED`                        | `sip`(기본, 통합 시세. 무료 요금제는 최근 15분 제외) 또는 `iex`(IEX 단독, 실시간이지만 거래량의 일부) |
+| `SIW_ALPACA_SYMBOLS`                     | `SYMBOL:MIC` 목록. 기본 `SPY:ARCX,AAPL:XNAS,MSFT:XNAS`                                                |
+| `SIW_ALPACA_DELAY_MINUTES`               | bar가 이 계정에 공개되기까지의 지연(분). 기본은 sip 15, iex 0                                         |
+| `SIW_ALPACA_FINALITY_MINUTES`            | bar를 확정으로 볼 때까지의 시간(분). 기본 15                                                          |
+| `SIW_DATA_DIR`                           | 받은 bar를 로컬 cache에 저장할 디렉터리. 로컬 디스크만 지원하며 NAS 공유 폴더는 아직 지원하지 않는다  |
+
+3. 키 확인: 최근 거래일 정규장 첫 30분을 한 번만 요청하고 결과 요약을 출력한다. 키는 출력하지 않는다.
+
+```bash
+set -a; source .env; set +a; uv run python -m services.market_data.alpaca check --symbol SPY
+```
+
+4. API 실행: `.env`를 읽어 실행한다. 화면에서 종목을 `SPY` 등으로 바꾼다.
+
+```bash
+uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8000 --env-file .env
+```
+
+Alpaca 데이터에서 체결이 없는 분은 bar가 오지 않는다. 이 분은 결측이 아니라 `provider_no_bar`(체결 없음)로 표시하며, 가격을 만들어 넣지 않는다. 최근 15분(sip 무료 요금제)은 `outside_entitlement`, 아직 확정 전인 분은 `not_yet_final`로 표시한다. 오류 응답 코드는 다음과 같다: 키나 요금제가 거부되면 502 `provider_auth_failed`, 호출 한도에 걸리면 503 `provider_rate_limited`, 일시 장애는 503 `provider_unavailable`이다.
 
 ### 증권사 거래내역 CSV 가져오기
 

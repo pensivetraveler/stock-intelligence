@@ -13,6 +13,8 @@ from services.market_data.provider import (
     InstrumentNotFoundError,
     InvalidBarsQueryError,
     MarketDataProvider,
+    ProviderAuthError,
+    ProviderDataError,
     validate_bars_query,
 )
 from services.market_data.storage import (
@@ -178,6 +180,13 @@ def _fetch_with_retry(
             raise
         except InstrumentNotFoundError:
             store.fail_job(job_key, "instrument_not_found")
+            raise
+        except (ProviderAuthError, ProviderDataError) as exc:
+            # Retrying cannot fix rejected credentials or contract-violating data.
+            store.fail_job(
+                job_key,
+                "provider_auth" if isinstance(exc, ProviderAuthError) else "provider_data",
+            )
             raise
         except StorageError:
             store.fail_job(job_key, "storage_error")

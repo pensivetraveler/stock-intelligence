@@ -38,6 +38,8 @@ interface ChartPanelProps {
   api: MarketApi;
   config: ChartConfig;
   instruments: InstrumentListing[];
+  /** False until the instrument list has loaded (or failed), so no request races it. */
+  instrumentsReady?: boolean;
   sync: ChartSyncGroup;
   onChange: (config: ChartConfig) => void;
   journal: {
@@ -63,6 +65,7 @@ export function ChartPanel({
   api,
   config,
   instruments,
+  instrumentsReady = true,
   sync,
   onChange,
   journal,
@@ -71,11 +74,28 @@ export function ChartPanel({
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [selected, setSelected] = useState<PriceBar | null>(null);
   const { instrumentId, timeframe, sessionDate, sessionScope } = config;
+  // A saved layout can name an instrument the current provider does not offer (for
+  // example SYNTH after switching to Alpaca); say so instead of requesting it.
+  const unavailable =
+    instruments.length > 0 &&
+    !instruments.some((item) => item.instrument.instrument_id === instrumentId);
 
   useEffect(() => {
     let current = true;
-    setLoad({ status: "loading" });
     setSelected(null);
+    if (!instrumentsReady) {
+      setLoad({ status: "loading" });
+      return;
+    }
+    if (unavailable) {
+      setLoad({
+        status: "error",
+        message:
+          "This instrument is not offered by the current data provider. Choose another.",
+      });
+      return;
+    }
+    setLoad({ status: "loading" });
     void (async () => {
       try {
         const session = await api.session(sessionDate);
@@ -94,7 +114,15 @@ export function ChartPanel({
     return () => {
       current = false;
     };
-  }, [api, instrumentId, timeframe, sessionDate, sessionScope]);
+  }, [
+    api,
+    instrumentId,
+    timeframe,
+    sessionDate,
+    sessionScope,
+    unavailable,
+    instrumentsReady,
+  ]);
 
   const series = useMemo(
     () => (load.status === "ready" ? toSeries(load.response.bars) : null),
@@ -144,7 +172,7 @@ export function ChartPanel({
               onChange({ ...config, instrumentId: event.target.value })
             }
           >
-            {instruments.length === 0 ? (
+            {instruments.length === 0 || unavailable ? (
               <option value={instrumentId}>{instrumentId}</option>
             ) : null}
             {instruments.map((item) => (

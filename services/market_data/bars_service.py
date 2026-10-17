@@ -12,6 +12,7 @@ from services.market_data.aggregation import (
 )
 from services.market_data.calendar import CalendarError
 from services.market_data.provider import (
+    SETTLED_MISSING_REASONS,
     BarsQuery,
     BarsResult,
     InvalidBarsQueryError,
@@ -58,11 +59,20 @@ class MarketBarsService:
 
         source = self.provider.get_bars(replace(query, timeframe="1m"))
         # Providers return contract-validated responses, so the 1m bars are not re-validated.
+        source_missing = cast(list[dict[str, str]], source.coverage["missing_intervals"])
+        no_trade = frozenset(
+            _parse_utc(gap["start_utc"])
+            for gap in source_missing
+            if gap["reason"] in SETTLED_MISSING_REASONS
+        )
         bars = self.aggregator.aggregate(
-            source.bars, timeframe, as_of_utc=query.as_of_utc, source_validated=True
+            source.bars,
+            timeframe,
+            as_of_utc=query.as_of_utc,
+            source_validated=True,
+            no_trade_minutes=no_trade,
         )
         observed = {cast(str, bar["interval_start_utc"]) for bar in bars}
-        source_missing = cast(list[dict[str, str]], source.coverage["missing_intervals"])
         missing = [
             {
                 "start_utc": _format_utc(start),
@@ -114,13 +124,20 @@ class MarketBarsService:
     def _missing_reason(
         source_missing: list[dict[str, str]], start: datetime, end: datetime
     ) -> str:
-        # A bucket without bars is missing because of its source minutes. Prefer the
-        # cutoff reason: those minutes exist upstream but were not yet published.
+        # A bucket without bars is missing because of its source minutes. The most
+        # actionable reason wins; only a bucket whose every minute had no trades is
+        # reported as settled "provider_no_bar".
         reasons = {
             item["reason"]
             for item in source_missing
             if start <= _parse_utc(item["start_utc"]) < end
         }
-        if "not_available_as_of_cutoff" in reasons:
-            return "not_available_as_of_cutoff"
-        return "fixture_missing"
+        for reason in (
+            "not_available_as_of_cutoff",
+            "outside_entitlement",
+            "not_yet_final",
+            "fixture_missing",
+        ):
+            if reason in reasons:
+                return reason
+        return "provider_no_bar" if reasons else "fixture_missing"

@@ -12,7 +12,7 @@ Evidence/verification: 확인한 코드/테스트/근거
 Revisit when: 어느 조건에서 재검토하나
 ```
 
-불필요한 자잘한 결정을 ADR로 남기지 않는다. 사용자와 합의된 `Alpaca + Massive 미선정` 상태를 구현 편의로 변경하지 않는다.
+불필요한 자잘한 결정을 ADR로 남기지 않는다. 사용자와 합의된 `Alpaca + Massive 미선정` 상태를 구현 편의로 변경하지 않는다. 2026-10-17 사용자 결정에 따른 Alpaca 프로토타입(opt-in)은 정식 선정이 아니다(ADR 0012).
 
 - `0001-phase-0-toolchain-and-contract-source.md`: Phase 0 toolchain과 canonical contract source
 - `0002-local-market-data-storage.md`: SQLite metadata, immutable Parquet와 복구 journal
@@ -25,3 +25,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0009-manual-and-hypothetical-trade-ledgers.md`: 수동(실제)·가상 거래 원장, 멱등 기록, ET 시간 변환, 분리된 P&L
 - `0010-named-workspaces-and-layout-templates.md`: 이름 붙인 workspace, Terminal/Review 템플릿, 되돌리기
 - `0011-broker-statement-csv-import.md`: 증권사 거래내역 CSV 가져오기, 중복 검토, 별도 원장, 원본 미보관
+- `0012-alpaca-prototype-provider.md`: Alpaca 시세 adapter 프로토타입(opt-in), 무료 요금제 15분 제한, 무체결 분 처리

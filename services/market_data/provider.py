@@ -44,6 +44,26 @@ class FixtureIntegrityError(MarketDataError):
     """A synthetic fixture violates the canonical market-data contract."""
 
 
+class ProviderUnavailableError(MarketDataError):
+    """The upstream provider could not answer now (network, timeout, 5xx). Retryable."""
+
+
+class ProviderRateLimitError(ProviderUnavailableError):
+    """The provider asked us to slow down (HTTP 429). Retryable after a pause."""
+
+
+class ProviderAuthError(MarketDataError):
+    """Credentials or plan entitlement were rejected. Not retryable without user action."""
+
+
+class ProviderDataError(MarketDataError):
+    """The provider returned data that violates the canonical contract; it is never fixed up."""
+
+
+# Missing-interval reasons that describe a settled fact rather than a gap to re-fetch.
+SETTLED_MISSING_REASONS = frozenset({"provider_no_bar"})
+
+
 def validate_bars_query(query: BarsQuery) -> None:
     """Provider-independent rules, checked before any cache lookup.
 

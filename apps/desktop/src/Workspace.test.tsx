@@ -515,6 +515,30 @@ describe("chart workspace", () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it("explains an instrument the current provider does not offer", async () => {
+    const api = fakeApi();
+    const storage = memoryStorage();
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        ...DEFAULT_WORKSPACE,
+        charts: [
+          { ...DEFAULT_WORKSPACE.charts[0], instrumentId: "us:old:xnas:2026" },
+          DEFAULT_WORKSPACE.charts[1],
+        ],
+      }),
+    );
+    render(<Workspace api={api} storage={storage} />);
+
+    expect(
+      await screen.findByText(/not offered by the current data provider/),
+    ).toBeInTheDocument();
+    await screen.findByTestId("chart-chart-2");
+    expect(api.barsCalls.map((call) => call.instrumentId)).not.toContain(
+      "us:old:xnas:2026",
+    );
+  });
 });
 
 function sequence(): () => string {

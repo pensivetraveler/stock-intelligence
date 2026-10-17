@@ -24,13 +24,17 @@ from services.journal.store import JournalStore
 from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
 from services.market_data.calendar import CalendarError, UsEquityCalendar
-from services.market_data.fake import FakeMarketDataProvider
 from services.market_data.provider import (
     BarsQuery,
     InstrumentNotFoundError,
     InvalidBarsQueryError,
     MarketDataProvider,
+    ProviderAuthError,
+    ProviderDataError,
+    ProviderRateLimitError,
+    ProviderUnavailableError,
 )
+from services.market_data.selection import provider_from_env
 from services.market_data.storage import (
     CachedMarketDataProvider,
     LocalMarketDataStore,
@@ -85,7 +89,7 @@ def _error_response(request: Request, status_code: int, code: str, message: str)
 
 
 def _default_market_data_provider() -> MarketDataProvider:
-    upstream = FakeMarketDataProvider.from_path()
+    upstream = provider_from_env()
     configured_data_dir = os.getenv("SIW_DATA_DIR", "").strip()
     if not configured_data_dir:
         return upstream
@@ -274,6 +278,14 @@ def create_app(
             )
         except InvalidBarsQueryError as exc:
             return _error_response(request, 422, "invalid_market_data_query", str(exc))
+        except ProviderAuthError as exc:
+            return _error_response(request, 502, "provider_auth_failed", str(exc))
+        except ProviderRateLimitError as exc:
+            return _error_response(request, 503, "provider_rate_limited", str(exc))
+        except ProviderUnavailableError as exc:
+            return _error_response(request, 503, "provider_unavailable", str(exc))
+        except ProviderDataError as exc:
+            return _error_response(request, 502, "provider_data_invalid", str(exc))
         except AggregationError:
             return _error_response(
                 request,

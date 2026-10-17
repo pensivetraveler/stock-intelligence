@@ -14,7 +14,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="siw-collector")
     parser.add_argument("command", choices=("doctor", "run", "backfill"))
     parser.add_argument("--config", type=Path)
-    backfill = parser.add_argument_group("backfill (synthetic provider only)")
+    backfill = parser.add_argument_group("backfill (provider from SIW_MARKET_DATA_PROVIDER)")
     backfill.add_argument("--instrument-id")
     backfill.add_argument("--start-utc", type=_utc_argument)
     backfill.add_argument("--end-utc", type=_utc_argument)
@@ -80,8 +80,13 @@ def _error(code: str, message: str) -> None:
 def _backfill(args: argparse.Namespace) -> int:
     # Imported here so `doctor` and `run` keep their fast, dependency-light startup.
     from services.collector.backfill import BackfillRequest, run_backfill
-    from services.market_data.fake import FakeMarketDataProvider
-    from services.market_data.provider import MarketDataError
+    from services.market_data.provider import (
+        MarketDataError,
+        ProviderAuthError,
+        ProviderDataError,
+        ProviderUnavailableError,
+    )
+    from services.market_data.selection import ProviderConfigError, provider_from_env
     from services.market_data.storage import LocalMarketDataStore, StorageError
 
     missing = [
@@ -109,11 +114,20 @@ def _backfill(args: argparse.Namespace) -> int:
         with LocalMarketDataStore(data_dir) as store:
             summary = run_backfill(
                 store,
-                FakeMarketDataProvider.from_path(),
+                provider_from_env(),
                 request,
                 min_interval_seconds=args.min_request_interval_seconds,
                 stop=stop,
             )
+    except ProviderConfigError as exc:
+        _error("invalid_config", str(exc))
+        return 2
+    except ProviderAuthError as exc:
+        _error("provider_auth_failed", str(exc))
+        return 1
+    except (ProviderUnavailableError, ProviderDataError) as exc:
+        _error("provider_error", str(exc))
+        return 1
     except MarketDataError as exc:
         _error("invalid_backfill_request", str(exc))
         return 2

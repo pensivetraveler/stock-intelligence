@@ -51,11 +51,14 @@ class MinuteBarAggregator:
         *,
         as_of_utc: datetime | None = None,
         source_validated: bool = False,
+        no_trade_minutes: frozenset[datetime] = frozenset(),
     ) -> tuple[dict[str, Any], ...]:
         """Aggregate canonical 1m bars into session buckets.
 
         Pass `source_validated=True` only for bars taken from a contract-validated
-        response; anything else is validated bar by bar first.
+        response; anything else is validated bar by bar first. `no_trade_minutes` are
+        minute starts the provider settled as having no trades: they are not expected
+        source bars, so a bucket is not marked partial for them.
         """
         if timeframe not in TARGET_MINUTES:
             raise AggregationError("target timeframe must be 5m, 15m, 30m, or 60m")
@@ -98,7 +101,9 @@ class MinuteBarAggregator:
             grouped[(session_date, session, bucket_start, bucket_end)].append(bar)
 
         return tuple(
-            self._aggregate_bucket(group, timeframe, session, bucket_start, bucket_end)
+            self._aggregate_bucket(
+                group, timeframe, session, bucket_start, bucket_end, no_trade_minutes
+            )
             # Order by time: sorting the keys would order sessions by name (post < pre).
             for (_date, session, bucket_start, bucket_end), group in sorted(
                 grouped.items(), key=lambda item: item[0][2]
@@ -159,9 +164,11 @@ class MinuteBarAggregator:
         session: TradingSessionName,
         bucket_start: datetime,
         bucket_end: datetime,
+        no_trade_minutes: frozenset[datetime] = frozenset(),
     ) -> dict[str, Any]:
         ordered = sorted(bars, key=lambda bar: cast(str, bar["interval_start_utc"]))
-        expected_count = int((bucket_end - bucket_start).total_seconds() // 60)
+        settled_empty = sum(1 for minute in no_trade_minutes if bucket_start <= minute < bucket_end)
+        expected_count = int((bucket_end - bucket_start).total_seconds() // 60) - settled_empty
         observed_count = len(ordered)
         has_provisional = any(
             not cast(bool, bar["is_final"]) or bar["quality"] == "provisional" for bar in ordered
