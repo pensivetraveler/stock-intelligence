@@ -1,4 +1,7 @@
 import type {
+  ImportBatch,
+  ImportedLedgerResponse,
+  ImportPreviewResponse,
   ManualExecution,
   ManualLedgerResponse,
   MarketBarsResponse,
@@ -39,6 +42,27 @@ export interface MarketApi {
   scenarioLedger(): Promise<ScenarioLedgerResponse>;
   recordManual(request: ManualExecutionRequest): Promise<ManualExecution>;
   recordScenario(request: ScenarioRequest): Promise<ScenarioDefinition>;
+  importedLedger(): Promise<ImportedLedgerResponse>;
+  previewImport(
+    request: StatementImportRequest,
+  ): Promise<ImportPreviewResponse>;
+  commitImport(
+    request: StatementImportRequest & {
+      decisions: Record<string, "import" | "skip">;
+    },
+  ): Promise<ImportBatch>;
+}
+
+export type ImportMapping = ImportPreviewResponse["mapping"];
+
+/** A broker statement CSV read in the browser; the API never stores the file itself. */
+export interface StatementImportRequest {
+  file_name: string;
+  content: string;
+  broker_label: string;
+  timestamp_timezone: "America/New_York" | "UTC";
+  delimiter: "," | ";" | "\t";
+  mapping: ImportMapping | null;
 }
 
 /** What the user asserts about their own fill; the clicked candle is context only. */
@@ -198,6 +222,26 @@ export function createMarketApi(
       return get<ScenarioDefinition>(
         "/v1/scenarios",
         "scenario_definition",
+        request,
+      );
+    },
+    importedLedger() {
+      return get<ImportedLedgerResponse>(
+        "/v1/trades/imported",
+        "imported_ledger_response",
+      );
+    },
+    previewImport(request) {
+      return get<ImportPreviewResponse>(
+        "/v1/imports/trades/preview",
+        "import_preview_response",
+        request,
+      );
+    },
+    commitImport(request) {
+      return get<ImportBatch>(
+        "/v1/imports/trades/commit",
+        "import_batch",
         request,
       );
     },

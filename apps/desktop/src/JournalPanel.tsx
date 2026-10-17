@@ -1,4 +1,5 @@
 import type {
+  ImportedLedgerResponse,
   ManualLedgerResponse,
   ScenarioLedgerResponse,
 } from "@siw/contracts/types";
@@ -8,14 +9,19 @@ import { MARKER_COLORS } from "./journal-markers";
 
 interface JournalPanelProps {
   manual: ManualLedgerResponse | null;
+  imported: ImportedLedgerResponse | null;
   scenarios: ScenarioLedgerResponse | null;
   error: string | null;
   symbolOf: (instrumentId: string) => string;
 }
 
-/** Two ledgers side by side and never summed: actual (user-asserted) and hypothetical. */
+/**
+ * Three ledgers side by side and never summed: manual entries, statement imports (both
+ * actual fills, possibly of the same trades) and hypothetical scenarios.
+ */
 export function JournalPanel({
   manual,
+  imported,
   scenarios,
   error,
   symbolOf,
@@ -86,6 +92,62 @@ export function JournalPanel({
                 <td colSpan={6}>
                   No actual executions recorded. Click a candle to add one.
                 </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="ledger">
+        <h2>
+          <span
+            className="swatch"
+            style={{ background: MARKER_COLORS.imported }}
+          />{" "}
+          Statement imports (file, not broker-verified)
+        </h2>
+        {imported && imported.positions.length > 0 ? (
+          <ul className="ledger-summary">
+            {imported.positions.map((position) => (
+              <li key={position.instrument_id}>
+                {symbolOf(position.instrument_id)}: realized{" "}
+                {position.realized_pnl} USD after {position.fees} fees · open{" "}
+                {position.open_quantity}
+                {position.average_cost ? ` @ ${position.average_cost}` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Side</th>
+              <th>Qty</th>
+              <th>Price</th>
+              <th>Fill time</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {imported?.executions.length ? (
+              imported.executions.map((item) => (
+                <tr key={item.execution_id}>
+                  <td>{symbolOf(item.instrument_id)}</td>
+                  <td>{item.side}</td>
+                  <td>{item.quantity}</td>
+                  <td>{item.price}</td>
+                  <td>{exchangeTime(item.executed_at_utc)}</td>
+                  <td>
+                    {item.broker_label} · row {item.source.row_number}
+                    {item.duplicate_review.decision === "imported_after_review"
+                      ? " · kept after duplicate review"
+                      : ""}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6}>No statements imported.</td>
               </tr>
             )}
           </tbody>

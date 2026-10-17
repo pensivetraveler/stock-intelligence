@@ -1,4 +1,5 @@
 import type {
+  ImportedLedgerResponse,
   ManualLedgerResponse,
   ScenarioLedgerResponse,
 } from "@siw/contracts/types";
@@ -12,6 +13,7 @@ import {
 
 import { ChartSyncGroup } from "./chart-sync";
 import { ChartPanel } from "./ChartPanel";
+import { ImportPanel } from "./ImportPanel";
 import { JournalPanel } from "./JournalPanel";
 import {
   MarketApiError,
@@ -80,9 +82,10 @@ export function Workspace({
   const [instrumentsError, setInstrumentsError] = useState<string | null>(null);
   const [ledgers, setLedgers] = useState<{
     manual: ManualLedgerResponse | null;
+    imported: ImportedLedgerResponse | null;
     scenarios: ScenarioLedgerResponse | null;
     error: string | null;
-  }>({ manual: null, scenarios: null, error: null });
+  }>({ manual: null, imported: null, scenarios: null, error: null });
   const active = activeWorkspace(library);
   const layout = active.layout;
   const [sync] = useState(() => new ChartSyncGroup(layout.syncTimeRange));
@@ -113,13 +116,18 @@ export function Workspace({
   useEffect(() => saveLibrary(storage, library), [storage, library]);
 
   const refreshJournal = useCallback(() => {
-    Promise.all([api.manualLedger(), api.scenarioLedger()])
-      .then(([manual, scenarios]) =>
-        setLedgers({ manual, scenarios, error: null }),
+    Promise.all([
+      api.manualLedger(),
+      api.importedLedger(),
+      api.scenarioLedger(),
+    ])
+      .then(([manual, imported, scenarios]) =>
+        setLedgers({ manual, imported, scenarios, error: null }),
       )
       .catch((error: unknown) =>
         setLedgers({
           manual: null,
+          imported: null,
           scenarios: null,
           error:
             error instanceof MarketApiError &&
@@ -135,6 +143,7 @@ export function Workspace({
   const journal = useMemo(
     () => ({
       manual: ledgers.manual?.executions ?? [],
+      imported: ledgers.imported?.executions ?? [],
       scenarios:
         ledgers.scenarios?.scenarios.map((item) => item.scenario) ?? [],
     }),
@@ -371,10 +380,14 @@ export function Workspace({
       </div>
       <JournalPanel
         manual={ledgers.manual}
+        imported={ledgers.imported}
         scenarios={ledgers.scenarios}
         error={ledgers.error}
         symbolOf={symbolOf}
       />
+      {ledgers.error ? null : (
+        <ImportPanel api={api} onImported={refreshJournal} />
+      )}
     </div>
   );
 }

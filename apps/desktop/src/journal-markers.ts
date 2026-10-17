@@ -1,4 +1,5 @@
 import type {
+  ImportedExecution,
   ManualExecution,
   PriceBar,
   ScenarioDefinition,
@@ -16,6 +17,7 @@ export interface ChartMarker {
 /** Distinct shapes and colours per ledger, so actual and hypothetical never look alike. */
 export const MARKER_COLORS = {
   manual: "#4c8dff",
+  imported: "#2ec4b6",
   hypothetical: "#c08bff",
 };
 
@@ -39,8 +41,23 @@ export function journalMarkers(
   instrumentId: string,
   manual: ManualExecution[],
   scenarios: ScenarioDefinition[],
+  imported: ImportedExecution[] = [],
 ): ChartMarker[] {
   const markers: ChartMarker[] = [];
+  for (const execution of imported) {
+    if (execution.instrument_id !== instrumentId) continue;
+    const time = barStart(bars, execution.executed_at_utc);
+    if (time === null) continue;
+    const buy = execution.side === "buy";
+    markers.push({
+      id: `imported:${execution.execution_id}`,
+      time,
+      position: buy ? "belowBar" : "aboveBar",
+      shape: buy ? "arrowUp" : "arrowDown",
+      color: MARKER_COLORS.imported,
+      text: `I ${execution.side} ${execution.quantity}`,
+    });
+  }
   for (const execution of manual) {
     if (execution.instrument_id !== instrumentId) continue;
     // A claimed time places the marker; with an unknown time, the clicked candle does.

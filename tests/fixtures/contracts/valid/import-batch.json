@@ -1,0 +1,16 @@
+{
+  "kind": "import_batch",
+  "schema_version": "0.1",
+  "batch_id": "batch-a254ac8868714d35e882ba8c",
+  "file_name": "without_ids.csv",
+  "file_sha256": "a254ac8868714d35e882ba8c0ea7351f1a8891626d29cb0e7b9ccf8e33b3b70c",
+  "broker_label": "Example Broker",
+  "committed_at_utc": "2026-10-12T00:00:00Z",
+  "row_count": 3,
+  "imported_execution_ids": [
+    "imp-18808042e9605b9bf9737c4766b73f6e",
+    "imp-2e3d68774a0f42c9f25ca751ed828078",
+    "imp-4ca7c20ac7b43b0f076f845c5c08517c"
+  ],
+  "skipped_rows": []
+}

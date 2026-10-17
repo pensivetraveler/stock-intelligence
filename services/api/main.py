@@ -19,7 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response
 
 from packages.contracts.validator import validate_document
-from services.api.journal_routes import register_journal_routes
+from services.api.journal_routes import register_import_routes, register_journal_routes
 from services.journal.store import JournalStore
 from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
@@ -229,6 +229,16 @@ def create_app(
         journal=journal.get,
         known_instruments=lambda: {
             item["instrument"]["instrument_id"] for item in provider.get().instruments()
+        },
+        now=clock,
+        error_response=_error_response,
+    )
+    register_import_routes(
+        application,
+        journal=journal.get,
+        symbols=lambda: {
+            item["instrument"]["symbol"].upper(): item["instrument"]["instrument_id"]
+            for item in provider.get().instruments()
         },
         now=clock,
         error_response=_error_response,

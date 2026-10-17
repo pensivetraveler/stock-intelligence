@@ -1,0 +1,110 @@
+{
+  "kind": "imported_ledger_response",
+  "schema_version": "0.1",
+  "ledger": "statement_imported",
+  "executions": [
+    {
+      "broker_execution_id": null,
+      "broker_label": "Example Broker",
+      "currency": "USD",
+      "duplicate_review": {
+        "decision": "none",
+        "related": []
+      },
+      "executed_at_utc": "2026-10-09T15:00:00Z",
+      "execution_id": "imp-18808042e9605b9bf9737c4766b73f6e",
+      "fees": "0",
+      "instrument_id": "us:synth:xnas:2026",
+      "kind": "imported_execution",
+      "price": "50.00",
+      "quantity": "5",
+      "schema_version": "0.1",
+      "side": "buy",
+      "source": {
+        "batch_id": "batch-a254ac8868714d35e882ba8c",
+        "file_sha256": "a254ac8868714d35e882ba8c0ea7351f1a8891626d29cb0e7b9ccf8e33b3b70c",
+        "row_number": 1
+      },
+      "time_precision": "minute",
+      "verification_status": "statement_imported"
+    },
+    {
+      "broker_execution_id": null,
+      "broker_label": "Example Broker",
+      "currency": "USD",
+      "duplicate_review": {
+        "decision": "imported_after_review",
+        "related": ["row 1"]
+      },
+      "executed_at_utc": "2026-10-09T15:00:00Z",
+      "execution_id": "imp-2e3d68774a0f42c9f25ca751ed828078",
+      "fees": "0",
+      "instrument_id": "us:synth:xnas:2026",
+      "kind": "imported_execution",
+      "price": "50.00",
+      "quantity": "5",
+      "schema_version": "0.1",
+      "side": "buy",
+      "source": {
+        "batch_id": "batch-a254ac8868714d35e882ba8c",
+        "file_sha256": "a254ac8868714d35e882ba8c0ea7351f1a8891626d29cb0e7b9ccf8e33b3b70c",
+        "row_number": 2
+      },
+      "time_precision": "minute",
+      "verification_status": "statement_imported"
+    },
+    {
+      "broker_execution_id": null,
+      "broker_label": "Example Broker",
+      "currency": "USD",
+      "duplicate_review": {
+        "decision": "none",
+        "related": []
+      },
+      "executed_at_utc": "2026-10-09T18:30:00Z",
+      "execution_id": "imp-4ca7c20ac7b43b0f076f845c5c08517c",
+      "fees": "0.25",
+      "instrument_id": "us:synth:xnas:2026",
+      "kind": "imported_execution",
+      "price": "50.60",
+      "quantity": "5",
+      "schema_version": "0.1",
+      "side": "sell",
+      "source": {
+        "batch_id": "batch-a254ac8868714d35e882ba8c",
+        "file_sha256": "a254ac8868714d35e882ba8c0ea7351f1a8891626d29cb0e7b9ccf8e33b3b70c",
+        "row_number": 3
+      },
+      "time_precision": "minute",
+      "verification_status": "statement_imported"
+    }
+  ],
+  "positions": [
+    {
+      "instrument_id": "us:synth:xnas:2026",
+      "open_quantity": "5",
+      "average_cost": "50.00",
+      "realized_pnl": "2.75",
+      "fees": "0.25",
+      "unordered_execution_ids": []
+    }
+  ],
+  "batches": [
+    {
+      "batch_id": "batch-a254ac8868714d35e882ba8c",
+      "broker_label": "Example Broker",
+      "committed_at_utc": "2026-10-12T00:00:00Z",
+      "file_name": "without_ids.csv",
+      "file_sha256": "a254ac8868714d35e882ba8c0ea7351f1a8891626d29cb0e7b9ccf8e33b3b70c",
+      "imported_execution_ids": [
+        "imp-18808042e9605b9bf9737c4766b73f6e",
+        "imp-2e3d68774a0f42c9f25ca751ed828078",
+        "imp-4ca7c20ac7b43b0f076f845c5c08517c"
+      ],
+      "kind": "import_batch",
+      "row_count": 3,
+      "schema_version": "0.1",
+      "skipped_rows": []
+    }
+  ]
+}

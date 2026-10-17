@@ -2,7 +2,7 @@
 
 미국 주식 차트·매매 복기·백테스팅·전문 Agent 연구 환경을 위한 **로컬 개발 착수 패키지**.
 
-**현재 상태:** Phase 0 기반, Phase 1A~1C·1E 시장 데이터 기반, Phase 2A·2B 차트 workspace(차트 2개, 이름 붙인 workspace·레이아웃 템플릿), Phase 3A 수동·가상 거래 원장 구현 완료. FastAPI API, React/TypeScript 차트 workspace, 독립 Collector 진단 경로, 합성 Provider, SQLite/Parquet cache, XNAS/XNYS 거래 캘린더, 공개 API의 session-aligned 5m/15m/30m/60m 집계, 재개 가능한 합성 데이터 backfill이 구성되어 있다. 실제 공급업체는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
+**현재 상태:** Phase 0 기반, Phase 1A~1C·1E 시장 데이터 기반, Phase 2A·2B 차트 workspace(차트 2개, 이름 붙인 workspace·레이아웃 템플릿), Phase 3A 수동·가상 거래 원장, Phase 3B 증권사 거래내역 CSV 가져오기 구현 완료. FastAPI API, React/TypeScript 차트 workspace, 독립 Collector 진단 경로, 합성 Provider, SQLite/Parquet cache, XNAS/XNYS 거래 캘린더, 공개 API의 session-aligned 5m/15m/30m/60m 집계, 재개 가능한 합성 데이터 backfill이 구성되어 있다. 실제 공급업체는 아직 연결하지 않았으며, 현재 머신에는 Rust/Cargo가 없어 Tauri 2 네이티브 실행만 미검증이다.
 
 ## 시작 순서
 
@@ -125,6 +125,21 @@ API를 `SIW_DATA_DIR=data`로 실행하면 차트의 캔들을 클릭해 두 종
   - 차트 마커는 수동 기록이 파란 화살표, 가상 기록이 보라색 원(진입)·사각형(청산)이다.
 - **API:** `POST/GET /v1/trades/manual`, `POST/GET /v1/scenarios`. 같은 ID로 같은 요청을 다시 보내면 저장된 기록을 돌려주고, 다른 내용이면 409로 거부한다.
 - **계좌:** 계좌 정보는 받지 않는다. 메모에도 계좌번호나 인증 정보를 쓰지 않는다.
+
+### 증권사 거래내역 CSV 가져오기
+
+화면 아래쪽 `Import broker statement (CSV)`에서 CSV 파일을 고르고 증권사 이름을 입력한 뒤 `Preview`를 누른다. 가져온 행은 수동 기록·가상 기록과 별도인 세 번째 원장(statement import)이 된다([ADR 0011](docs/decisions/0011-broker-statement-csv-import.md)).
+
+- **열 매핑**
+  - 헤더 이름으로 열을 자동 추천하고, 화면에서 바꿀 수 있다.
+  - 매핑한 열만 읽는다. 원본 파일과 매핑하지 않은 열(계좌번호 등)은 저장하지 않으며, 파일 SHA-256·이름·행 번호만 출처로 남긴다.
+- **행 분류:** 새 행 / 이미 가져온 행 / 중복 가능 / 오류로 분류해 보여 준다.
+  - 같은 증권사 체결 ID는 자동으로 건너뛴다. 같은 ID인데 내용이 다르면 오류로 표시한다.
+  - ID 없이 같은 체결로 보이는 행은 "중복 가능"으로 표시한다. 행마다 가져오기·건너뛰기를 직접 정해야 커밋할 수 있으며, 동일한 정상 체결이면 둘 다 남길 수 있다.
+  - 같은 파일은 한 번만 가져온다.
+- **시간대:** offset이 없는 시각은 ET 또는 UTC 중 선택한 시간대로 읽는다. ET에서 서머타임 전환으로 존재하지 않거나 모호한 시각은 거부한다.
+- **제한:** 파일당 1 MB·5,000행. 증권사 이름에 6자리 이상 숫자(계좌번호로 보이는 값)는 넣을 수 없다.
+- **API:** `POST /v1/imports/trades/preview`, `POST /v1/imports/trades/commit`, `GET /v1/trades/imported`
 
 ### Collector
 

@@ -1,0 +1,123 @@
+{
+  "kind": "import_preview_response",
+  "schema_version": "0.1",
+  "batch_id": "batch-a254ac8868714d35e882ba8c",
+  "file_name": "without_ids.csv",
+  "file_sha256": "a254ac8868714d35e882ba8c0ea7351f1a8891626d29cb0e7b9ccf8e33b3b70c",
+  "broker_label": "Example Broker",
+  "columns": ["Date/Time", "Symbol", "Side", "Qty", "Price", "Fees"],
+  "mapping": {
+    "executed_at": "Date/Time",
+    "date": null,
+    "time": null,
+    "symbol": "Symbol",
+    "side": "Side",
+    "quantity": "Qty",
+    "price": "Price",
+    "fees": "Fees",
+    "broker_execution_id": null
+  },
+  "timestamp_timezone": "America/New_York",
+  "already_imported": false,
+  "rows": [
+    {
+      "row_number": 1,
+      "status": "new",
+      "execution": {
+        "kind": "imported_execution",
+        "schema_version": "0.1",
+        "execution_id": "imp-18808042e9605b9bf9737c4766b73f6e",
+        "instrument_id": "us:synth:xnas:2026",
+        "side": "buy",
+        "quantity": "5",
+        "price": "50.00",
+        "fees": "0",
+        "currency": "USD",
+        "executed_at_utc": "2026-10-09T15:00:00Z",
+        "time_precision": "minute",
+        "broker_label": "Example Broker",
+        "broker_execution_id": null,
+        "source": {
+          "batch_id": "batch-a254ac8868714d35e882ba8c",
+          "file_sha256": "a254ac8868714d35e882ba8c0ea7351f1a8891626d29cb0e7b9ccf8e33b3b70c",
+          "row_number": 1
+        },
+        "verification_status": "statement_imported",
+        "duplicate_review": {
+          "decision": "none",
+          "related": []
+        }
+      },
+      "errors": [],
+      "matches": []
+    },
+    {
+      "row_number": 2,
+      "status": "possible_duplicate",
+      "execution": {
+        "kind": "imported_execution",
+        "schema_version": "0.1",
+        "execution_id": "imp-2e3d68774a0f42c9f25ca751ed828078",
+        "instrument_id": "us:synth:xnas:2026",
+        "side": "buy",
+        "quantity": "5",
+        "price": "50.00",
+        "fees": "0",
+        "currency": "USD",
+        "executed_at_utc": "2026-10-09T15:00:00Z",
+        "time_precision": "minute",
+        "broker_label": "Example Broker",
+        "broker_execution_id": null,
+        "source": {
+          "batch_id": "batch-a254ac8868714d35e882ba8c",
+          "file_sha256": "a254ac8868714d35e882ba8c0ea7351f1a8891626d29cb0e7b9ccf8e33b3b70c",
+          "row_number": 2
+        },
+        "verification_status": "statement_imported",
+        "duplicate_review": {
+          "decision": "none",
+          "related": []
+        }
+      },
+      "errors": [],
+      "matches": ["row 1"]
+    },
+    {
+      "row_number": 3,
+      "status": "new",
+      "execution": {
+        "kind": "imported_execution",
+        "schema_version": "0.1",
+        "execution_id": "imp-4ca7c20ac7b43b0f076f845c5c08517c",
+        "instrument_id": "us:synth:xnas:2026",
+        "side": "sell",
+        "quantity": "5",
+        "price": "50.60",
+        "fees": "0.25",
+        "currency": "USD",
+        "executed_at_utc": "2026-10-09T18:30:00Z",
+        "time_precision": "minute",
+        "broker_label": "Example Broker",
+        "broker_execution_id": null,
+        "source": {
+          "batch_id": "batch-a254ac8868714d35e882ba8c",
+          "file_sha256": "a254ac8868714d35e882ba8c0ea7351f1a8891626d29cb0e7b9ccf8e33b3b70c",
+          "row_number": 3
+        },
+        "verification_status": "statement_imported",
+        "duplicate_review": {
+          "decision": "none",
+          "related": []
+        }
+      },
+      "errors": [],
+      "matches": []
+    }
+  ],
+  "summary": {
+    "new": 3,
+    "duplicate_exact": 0,
+    "possible_duplicate": 1,
+    "invalid": 0
+  }
+}

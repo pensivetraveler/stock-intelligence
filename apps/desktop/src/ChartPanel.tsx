@@ -1,4 +1,5 @@
 import type {
+  ImportedExecution,
   ManualExecution,
   MarketBarsResponse,
   PriceBar,
@@ -39,7 +40,11 @@ interface ChartPanelProps {
   instruments: InstrumentListing[];
   sync: ChartSyncGroup;
   onChange: (config: ChartConfig) => void;
-  journal: { manual: ManualExecution[]; scenarios: ScenarioDefinition[] };
+  journal: {
+    manual: ManualExecution[];
+    imported: ImportedExecution[];
+    scenarios: ScenarioDefinition[];
+  };
   onJournalChange: () => void;
 }
 
@@ -100,7 +105,13 @@ export function ChartPanel({
   const markers = useMemo(
     () =>
       bars
-        ? journalMarkers(bars, instrumentId, journal.manual, journal.scenarios)
+        ? journalMarkers(
+            bars,
+            instrumentId,
+            journal.manual,
+            journal.scenarios,
+            journal.imported,
+          )
         : [],
     [bars, instrumentId, journal],
   );

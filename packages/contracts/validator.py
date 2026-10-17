@@ -182,6 +182,34 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
         if status == "empty" and observed != 0:
             errors.append("empty coverage must not contain observed intervals")
 
+    if kind == "imported_execution":
+        if Decimal(document["quantity"]) <= 0 or Decimal(document["price"]) <= 0:
+            errors.append("imported execution quantity and price must be positive")
+        review = document["duplicate_review"]
+        if review["decision"] == "imported_after_review" and not review["related"]:
+            errors.append("a reviewed duplicate must name the records it resembles")
+
+    if kind in {"import_preview_response", "imported_ledger_response"}:
+        rows = document.get("rows")
+        executions = (
+            [row["execution"] for row in rows if row["execution"] is not None]
+            if rows is not None
+            else document["executions"]
+        )
+        for execution in executions:
+            errors.extend(semantic_errors(execution))
+        if rows is not None:
+            for row in rows:
+                if (row["status"] == "invalid") != (row["execution"] is None):
+                    errors.append("only invalid preview rows lack an execution")
+                if row["status"] == "invalid" and not row["errors"]:
+                    errors.append("an invalid preview row must say why")
+            counts = {status: 0 for status in document["summary"]}
+            for row in rows:
+                counts[row["status"]] += 1
+            if counts != document["summary"]:
+                errors.append("preview summary must count the rows by status")
+
     if kind == "manual_ledger_response":
         for execution in document["executions"]:
             errors.extend(semantic_errors(execution))

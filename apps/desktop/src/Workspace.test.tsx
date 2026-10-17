@@ -1,11 +1,21 @@
 import type {
+  ImportBatch,
+  ImportedExecution,
+  ImportedLedgerResponse,
+  ImportPreviewResponse,
   ManualExecution,
   MarketBarsResponse,
   MarketInstrumentsResponse,
   ScenarioDefinition,
   SessionWindow,
 } from "@siw/contracts/types";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -55,12 +65,15 @@ function fakeApi(options: { journalOff?: boolean } = {}): MarketApi & {
   barsCalls: BarsRequest[];
   manualRequests: ManualExecutionRequest[];
   scenarioRequests: ScenarioRequest[];
+  importRequests: { decisions: Record<string, string> }[];
 } {
   const session = fixture<SessionWindow>("session-window-early-close.json");
   const barsCalls: BarsRequest[] = [];
   const manualRequests: ManualExecutionRequest[] = [];
   const scenarioRequests: ScenarioRequest[] = [];
+  const importRequests: { decisions: Record<string, string> }[] = [];
   const manual: ManualExecution[] = [];
+  const imported: ImportedExecution[] = [];
   const scenarios: ScenarioDefinition[] = [];
   const off = () =>
     Promise.reject(
@@ -70,6 +83,7 @@ function fakeApi(options: { journalOff?: boolean } = {}): MarketApi & {
     barsCalls,
     manualRequests,
     scenarioRequests,
+    importRequests,
     instruments: () =>
       Promise.resolve(
         fixture<MarketInstrumentsResponse>("market-instruments-response.json")
@@ -120,6 +134,33 @@ function fakeApi(options: { journalOff?: boolean } = {}): MarketApi & {
               net_pnl: "9",
             })),
           }),
+    importedLedger: () =>
+      options.journalOff
+        ? off()
+        : Promise.resolve({
+            ...fixture<ImportedLedgerResponse>("imported-ledger-response.json"),
+            executions: [...imported],
+            positions: [],
+            batches: [],
+          }),
+    previewImport: () =>
+      Promise.resolve(
+        fixture<ImportPreviewResponse>("import-preview-response.json"),
+      ),
+    commitImport: (request) => {
+      importRequests.push(request);
+      imported.push(
+        ...fixture<ImportedLedgerResponse>(
+          "imported-ledger-response.json",
+        ).executions.map((item) => ({
+          ...item,
+          instrument_id: "us:synth:xnas:2026",
+          // Inside the single bar the fake serves, so the marker is drawn.
+          executed_at_utc: "2026-10-09T13:31:00Z",
+        })),
+      );
+      return Promise.resolve(fixture<ImportBatch>("import-batch.json"));
+    },
     recordManual: (request) => {
       manualRequests.push(request);
       const record: ManualExecution = {
@@ -428,6 +469,51 @@ describe("chart workspace", () => {
     );
 
     expect(await screen.findByText(/Trade journal is off/)).toBeInTheDocument();
+  });
+
+  it("previews a statement, requires a duplicate decision and adds a third ledger", async () => {
+    const api = fakeApi();
+    render(
+      <Workspace api={api} storage={memoryStorage()} newId={sequence()} />,
+    );
+    await screen.findByTestId("chart-chart-1");
+
+    fireEvent.click(screen.getByText("Import broker statement (CSV)"));
+    const csv = new File(["Date/Time,Symbol\n"], "without_ids.csv", {
+      type: "text/csv",
+    });
+    fireEvent.change(screen.getByLabelText("CSV file"), {
+      target: { files: [csv] },
+    });
+    fireEvent.change(screen.getByLabelText(/Broker label/), {
+      target: { value: "Example Broker" },
+    });
+    const preview = screen.getByRole("button", { name: "Preview" });
+    await waitFor(() => expect(preview).toBeEnabled());
+    fireEvent.click(preview);
+
+    expect(await screen.findByText("Possible duplicate")).toBeInTheDocument();
+    expect(screen.getByText(/matches row 1/)).toBeInTheDocument();
+    const commit = screen.getByRole("button", { name: "Commit import" });
+    expect(commit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Decision for row 2"), {
+      target: { value: "import" },
+    });
+    fireEvent.click(commit);
+
+    expect(
+      await screen.findByText(/Imported 3 of 3 rows from without_ids.csv/),
+    ).toBeInTheDocument();
+    expect(api.importRequests[0].decisions).toEqual({ "2": "import" });
+    expect(
+      await screen.findByText(/kept after duplicate review/),
+    ).toBeInTheDocument();
+    expect((await screen.findAllByText(/I buy 5/)).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        "No actual executions recorded. Click a candle to add one.",
+      ),
+    ).toBeInTheDocument();
   });
 });
 

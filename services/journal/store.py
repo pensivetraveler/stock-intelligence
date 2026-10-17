@@ -114,6 +114,78 @@ class JournalStore:
             raise JournalConflictError(f"{id_column} was already used for a different record")
         return cast(dict[str, Any], json.loads(cast(str, existing["document_json"]))), False
 
+    def commit_import(
+        self, batch: dict[str, Any], executions: list[dict[str, Any]]
+    ) -> tuple[dict[str, Any], bool]:
+        """Store a statement batch and its rows atomically, once per file.
+
+        Returns the stored batch and whether this call created it. A file already
+        committed returns its original batch and imports nothing.
+        """
+        validate_document(batch)
+        for execution in executions:
+            validate_document(execution)
+        existing = self.batch_for_file(batch["file_sha256"])
+        if existing is not None:
+            return existing, False
+        try:
+            with self._connect() as connection:
+                connection.execute(
+                    "INSERT INTO import_batches (batch_id, file_sha256, committed_at_utc, "
+                    "document_json) VALUES (?, ?, ?, ?)",
+                    (
+                        batch["batch_id"],
+                        batch["file_sha256"],
+                        batch["committed_at_utc"],
+                        _canonical(batch),
+                    ),
+                )
+                connection.executemany(
+                    "INSERT INTO imported_executions (execution_id, batch_id, instrument_id, "
+                    "broker_label, broker_execution_id, executed_at_utc, document_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        (
+                            item["execution_id"],
+                            batch["batch_id"],
+                            item["instrument_id"],
+                            item["broker_label"],
+                            item["broker_execution_id"],
+                            item["executed_at_utc"],
+                            _canonical(item),
+                        )
+                        for item in executions
+                    ],
+                )
+        except sqlite3.IntegrityError as exc:
+            # A concurrent commit of the same file won; anything else is a real conflict.
+            existing = self.batch_for_file(batch["file_sha256"])
+            if existing is not None:
+                return existing, False
+            raise JournalConflictError(
+                "a broker execution ID in this file is already stored"
+            ) from exc
+        return batch, True
+
+    def batch_for_file(self, sha256: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT document_json FROM import_batches WHERE file_sha256 = ?", (sha256,)
+            ).fetchone()
+        return None if row is None else cast(dict[str, Any], json.loads(cast(str, row[0])))
+
+    def import_batches(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT document_json FROM import_batches ORDER BY committed_at_utc, batch_id"
+            ).fetchall()
+        return [cast(dict[str, Any], json.loads(cast(str, row[0]))) for row in rows]
+
+    def imported_executions(self, instrument_id: str | None = None) -> list[dict[str, Any]]:
+        return self._documents(
+            "imported_executions", "executed_at_utc, batch_id, execution_id", instrument_id
+        )
+
     def manual_executions(self, instrument_id: str | None = None) -> list[dict[str, Any]]:
         return self._documents("manual_executions", "asserted_at_utc, execution_id", instrument_id)
 

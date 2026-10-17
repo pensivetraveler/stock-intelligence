@@ -17,7 +17,11 @@ export type StockIntelligenceWorkstationContractsV01 =
   | SessionWindow
   | MarketInstrumentsResponse
   | ManualLedgerResponse
-  | ScenarioLedgerResponse;
+  | ScenarioLedgerResponse
+  | ImportedExecution
+  | ImportPreviewResponse
+  | ImportBatch
+  | ImportedLedgerResponse;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -280,14 +284,15 @@ export interface ManualLedgerResponse {
   schema_version: SchemaVersion;
   ledger: "manual_actual";
   executions: ManualExecution[];
-  positions: {
-    instrument_id: Identifier;
-    open_quantity: DecimalString;
-    average_cost: NonNegativeDecimalString | null;
-    realized_pnl: DecimalString;
-    fees: NonNegativeDecimalString;
-    unordered_execution_ids: Identifier[];
-  }[];
+  positions: LedgerPosition[];
+}
+export interface LedgerPosition {
+  instrument_id: Identifier;
+  open_quantity: DecimalString;
+  average_cost: NonNegativeDecimalString | null;
+  realized_pnl: DecimalString;
+  fees: NonNegativeDecimalString;
+  unordered_execution_ids: Identifier[];
 }
 export interface ScenarioLedgerResponse {
   kind: "scenario_ledger_response";
@@ -299,4 +304,90 @@ export interface ScenarioLedgerResponse {
     costs: NonNegativeDecimalString;
     net_pnl: DecimalString;
   }[];
+}
+/**
+ * A fill read from a user-supplied broker statement file. Not API-verified.
+ */
+export interface ImportedExecution {
+  kind: "imported_execution";
+  schema_version: SchemaVersion;
+  execution_id: Identifier;
+  instrument_id: Identifier;
+  side: Side;
+  quantity: NonNegativeDecimalString;
+  price: NonNegativeDecimalString;
+  fees: NonNegativeDecimalString;
+  currency: "USD";
+  executed_at_utc: UtcTimestamp;
+  time_precision: "exact" | "minute";
+  broker_label: string;
+  broker_execution_id: string | null;
+  source: {
+    batch_id: Identifier;
+    file_sha256: string;
+    row_number: number;
+  };
+  verification_status: "statement_imported";
+  duplicate_review: {
+    decision: "none" | "imported_after_review";
+    related: string[];
+  };
+}
+export interface ImportPreviewResponse {
+  kind: "import_preview_response";
+  schema_version: SchemaVersion;
+  batch_id: Identifier;
+  file_name: string;
+  file_sha256: string;
+  broker_label: string;
+  columns: string[];
+  mapping: {
+    executed_at: string | null;
+    date: string | null;
+    time: string | null;
+    symbol: string | null;
+    side: string | null;
+    quantity: string | null;
+    price: string | null;
+    fees: string | null;
+    broker_execution_id: string | null;
+  };
+  timestamp_timezone: "America/New_York" | "UTC";
+  already_imported: boolean;
+  rows: {
+    row_number: number;
+    status: "new" | "duplicate_exact" | "possible_duplicate" | "invalid";
+    execution: ImportedExecution | null;
+    errors: string[];
+    matches: string[];
+  }[];
+  summary: {
+    new: number;
+    duplicate_exact: number;
+    possible_duplicate: number;
+    invalid: number;
+  };
+}
+export interface ImportBatch {
+  kind: "import_batch";
+  schema_version: SchemaVersion;
+  batch_id: Identifier;
+  file_name: string;
+  file_sha256: string;
+  broker_label: string;
+  committed_at_utc: UtcTimestamp;
+  row_count: number;
+  imported_execution_ids: Identifier[];
+  skipped_rows: {
+    row_number: number;
+    reason: "invalid" | "duplicate_exact" | "skipped_after_review";
+  }[];
+}
+export interface ImportedLedgerResponse {
+  kind: "imported_ledger_response";
+  schema_version: SchemaVersion;
+  ledger: "statement_imported";
+  executions: ImportedExecution[];
+  positions: LedgerPosition[];
+  batches: ImportBatch[];
 }

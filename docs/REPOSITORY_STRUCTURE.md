@@ -16,7 +16,7 @@ stock-intelligence-workstation/
 ├── services/
 │   ├── api/                         # FastAPI, 계약 검증, health/version
 │   ├── collector/                   # 별도 프로세스: doctor/run, 합성 데이터 backfill job
-│   ├── journal/                     # 수동(실제)·가상 거래 원장: 별도 SQLite, FIFO·시나리오 P&L
+│   ├── journal/                     # 수동·가져오기·가상 거래 원장: 별도 SQLite, CSV 가져오기, FIFO·시나리오 P&L
 │   └── market_data/                 # Provider, 합성 fixture, cache, calendar, aggregation, bars service
 ├── packages/
 │   ├── contracts/                   # JSON Schema 2020-12, 버전, TS/Python 변환 검사

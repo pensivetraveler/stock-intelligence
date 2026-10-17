@@ -19,7 +19,8 @@
 | 운영 보강                 | `ef2dbac`      | 세션 날짜 partition, 연결 close, API lazy 시작, request ID, 단일 버전  | Python 110, TS 계약 34, UI 6; 전체 검증 통과 | 2026-10-16                          |
 | Phase 1 내부 마무리(1E)   | `a3c8141`      | 공개 5m~60m 집계 API, cache 범위 조합, 재개 가능한 backfill            | Python 134, TS 계약 35, UI 6; 전체 검증 통과 | 2026-10-16                          |
 | Phase 2A 차트 workspace   | `a3c8141`      | 차트 2개·독립 설정·동기화·레이아웃 저장, 합성 SYNTH, 종목·세션 API     | 전체 검증·브라우저 확인                      | 2026-10-16                          |
-| Phase 2B·3A               | 커밋 전        | 이름 붙인 workspace·템플릿, 수동·가상 거래 원장과 P&L                  | 전체 검증·브라우저 확인                      | 2026-10-16                          |
+| Phase 2B·3A               | `a62d9f3`      | 이름 붙인 workspace·템플릿, 수동·가상 거래 원장과 P&L                  | 전체 검증·브라우저 확인                      | 2026-10-16                          |
+| Phase 3B CSV 가져오기     | 커밋 전        | 거래내역 CSV 미리보기·중복 검토·커밋, 별도 원장                        | 전체 검증·브라우저 확인                      | 2026-10-17                          |
 
 Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 정정·재시도·공급업체 비교 등 장기 로드맵의 나머지 요구사항은 후속 작업이다.
 
@@ -131,11 +132,17 @@ Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 �
 - 합성 `SYNTH` 하루치와 종목·세션 API
 - 브라우저 검증에서 집계 순서·500 CORS·모바일 viewport 결함을 찾아 고쳤다([ADR 0008](decisions/0008-chart-workspace-slice.md)).
 
-**Phase 2B·3A(커밋 전):**
+**Phase 2B·3A(`a62d9f3`):**
 
 - 이름 붙인 workspace, Terminal/Review 템플릿과 되돌리기([ADR 0010](decisions/0010-named-workspaces-and-layout-templates.md))
 - 캔들 클릭으로 기록하는 수동(실제)·가상 거래 원장과 서로 분리된 P&L, 차트 마커([ADR 0009](decisions/0009-manual-and-hypothetical-trade-ledgers.md))
 - 브라우저 검증에서 bars 요청이 4초 걸리는 문제를 찾았다. 계층마다 중복되던 검증을 제거하고 `$ref`를 인라인해 0.5~0.7초로 줄였다.
+
+**Phase 3B CSV 가져오기(커밋 전):**
+
+- 열 매핑 추천·편집과 행별 미리보기
+- 체결 ID 기준 자동 중복 제외, ID 없는 동일 체결의 사용자 검토, 같은 파일 재가져오기 방지
+- 별도 statement import 원장과 마커. 원본 파일과 매핑하지 않은 열(계좌번호)은 저장하지 않는다([ADR 0011](decisions/0011-broker-statement-csv-import.md)).
 
 ## 7. 현재 가능한 사용과 남은 작업
 
@@ -163,6 +170,8 @@ git show --stat 1113ec2
 git show --stat 980e973
 git show --stat fc96cc3
 git show --stat ef2dbac
+git show --stat a3c8141
+git show --stat a62d9f3
 ./scripts/verify.sh
 ```
 

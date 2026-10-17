@@ -231,6 +231,28 @@
   - 12:47 ET → 16:47Z 저장
 - **남은 범위:** 기록 정정·무효화, CSV/XLSX 가져오기, broker 확인 체결·대사, 계좌 구분, Tauri native·Windows·원격 CI 미검증.
 
+## Phase 3B 거래내역 CSV 가져오기 — 2026-10-17
+
+- **변경 파일:**
+  - 백엔드: `services/journal/{csv_import,store,ledger}.py`, `services/journal/migrations/0002_statement_imports.sql`, `services/api/{journal_routes,main}.py`
+  - 계약: `packages/contracts/{schemas,generated,validator.py,src/validator.ts}`, 계약 fixture, `tests/fixtures/statements/*.csv`
+  - 데스크톱: `apps/desktop/src/{ImportPanel,JournalPanel,Workspace,ChartPanel}.tsx`, `src/{market-api,journal-markers}.ts`, 테스트, `styles.css`
+  - 문서: ADR 0011, README, EXECUTION_PROCESS, ROADMAP, REPOSITORY_STRUCTURE, IMPLEMENTATION_HISTORY
+- **계약:** `imported_execution`, `import_preview_response`, `import_batch`, `imported_ledger_response`를 추가했고, 포지션 항목은 공용 `LedgerPosition`으로 묶었다.
+- **동작:**
+  - 미리보기에서 열 매핑을 추천·편집하고 행을 새 행·이미 가져옴·중복 가능·오류로 분류한다.
+  - 커밋할 때 서버가 미리보기를 다시 계산하고, 중복 가능한 행마다 사용자의 결정을 요구한 뒤 원자적으로 저장한다. 같은 파일(SHA-256)은 한 번만 가져온다.
+- **원장:** 별도 statement import 원장과 FIFO P&L, 청록색 "I" 마커. 수동·가상 원장과 합산하지 않는다.
+- **개인정보:** 원본 파일과 매핑하지 않은 열은 저장하지 않는다. 증권사 이름의 계좌번호형 숫자와 알 수 없는 요청 필드는 거부한다.
+- **검증:**
+  - `./scripts/verify.sh` 통과(exit 0) — pytest 222개, Vitest 계약 52개·데스크톱 40개, lint·typecheck·build, 생성 타입 drift 검사.
+  - 실제 API와 브라우저로 다음을 확인했다:
+    - 4행 미리보기: 새 행 2, 이미 가져옴 1, 오류 1
+    - 커밋: 2행 가져옴, realized −0.30
+    - 같은 파일 재미리보기 시 "already imported"
+    - `journal.sqlite3`에 계좌번호가 없음
+- **남은 범위:** 증권사별 preset·XLSX, batch 무효화·재가져오기, 수동 기록과의 대사, 계좌 구분, Tauri native·Windows·원격 CI 미검증.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:

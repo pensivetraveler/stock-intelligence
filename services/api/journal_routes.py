@@ -12,6 +12,21 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 from starlette.responses import Response
 
 from packages.contracts.validator import validate_document
+from services.journal.csv_import import (
+    MAPPING_FIELDS,
+    MAX_FILE_BYTES,
+    ImportRequest,
+    StatementImportError,
+    batch_id_for,
+    classify,
+    file_sha256,
+    normalize_rows,
+    read_rows,
+    suggest_mapping,
+    summarize,
+    validate_broker_label,
+    validate_mapping,
+)
 from services.journal.ledger import (
     ExchangeTimeError,
     exchange_local_to_utc,
@@ -207,6 +222,165 @@ def register_journal_routes(
                 {"scenario": scenario, **scenario_pnl(scenario)}
                 for scenario in store.scenarios(instrument_id)
             ],
+        }
+        validate_document(document)
+        return JSONResponse(content=document)
+
+
+class StatementImportRequest(BaseModel):
+    """A broker statement CSV as text, read by the browser; it is never stored."""
+
+    model_config = ConfigDict(extra="forbid")
+    file_name: Annotated[str, StringConstraints(min_length=1, max_length=255)]
+    content: Annotated[str, StringConstraints(max_length=MAX_FILE_BYTES)]
+    broker_label: Annotated[str, StringConstraints(min_length=1, max_length=64)]
+    timestamp_timezone: Literal["America/New_York", "UTC"] = "America/New_York"
+    delimiter: Literal[",", ";", "\t"] = ","
+    mapping: dict[str, str | None] | None = None
+
+
+class StatementCommitRequest(StatementImportRequest):
+    # Row number (as text, from JSON) -> what to do with a possible duplicate.
+    decisions: dict[str, Literal["import", "skip"]] = {}
+
+
+def register_import_routes(
+    application: FastAPI,
+    *,
+    journal: Callable[[], JournalStore | None],
+    symbols: Callable[[], dict[str, str]],
+    now: Callable[[], datetime],
+    error_response: ErrorResponse,
+) -> None:
+    def preview(store: JournalStore, body: StatementImportRequest) -> dict[str, Any]:
+        broker_label = validate_broker_label(body.broker_label)
+        request = ImportRequest(
+            file_name=body.file_name,
+            content=body.content,
+            broker_label=broker_label,
+            timestamp_timezone=body.timestamp_timezone,
+            delimiter=body.delimiter,
+            mapping=body.mapping,
+        )
+        columns, rows = read_rows(request)
+        mapping = {**dict.fromkeys(MAPPING_FIELDS), **(body.mapping or suggest_mapping(columns))}
+        validate_mapping(mapping, columns)
+        sha256 = file_sha256(body.content)
+        normalized = normalize_rows(request, rows, mapping, symbols(), sha256, now())
+        preview_rows = classify(normalized, store.imported_executions())
+        document = {
+            "kind": "import_preview_response",
+            "schema_version": "0.1",
+            "batch_id": batch_id_for(sha256),
+            "file_name": body.file_name,
+            "file_sha256": sha256,
+            "broker_label": broker_label,
+            "columns": columns,
+            "mapping": mapping,
+            "timestamp_timezone": body.timestamp_timezone,
+            "already_imported": store.batch_for_file(sha256) is not None,
+            "rows": preview_rows,
+            "summary": summarize(preview_rows),
+        }
+        validate_document(document)
+        return document
+
+    def unavailable(request: Request) -> JSONResponse:
+        return error_response(
+            request,
+            503,
+            "journal_storage_unconfigured",
+            "Set SIW_DATA_DIR to import statements; nothing was stored",
+        )
+
+    @application.post("/v1/imports/trades/preview", response_model=None)
+    def preview_import(request: Request, body: StatementImportRequest) -> Response:
+        store = journal()
+        if store is None:
+            return unavailable(request)
+        try:
+            return JSONResponse(content=preview(store, body))
+        except StatementImportError as exc:
+            return error_response(request, 422, "invalid_import", str(exc))
+
+    @application.post("/v1/imports/trades/commit", response_model=None)
+    def commit_import(request: Request, body: StatementCommitRequest) -> Response:
+        store = journal()
+        if store is None:
+            return unavailable(request)
+        try:
+            planned = preview(store, body)
+        except StatementImportError as exc:
+            return error_response(request, 422, "invalid_import", str(exc))
+        existing = store.batch_for_file(planned["file_sha256"])
+        if existing is not None:
+            return JSONResponse(status_code=200, content=existing)
+        undecided = [
+            row["row_number"]
+            for row in planned["rows"]
+            if row["status"] == "possible_duplicate"
+            and str(row["row_number"]) not in body.decisions
+        ]
+        if undecided:
+            return error_response(
+                request,
+                422,
+                "duplicate_review_required",
+                f"decide whether to import possible duplicate rows: {undecided}",
+            )
+        imported: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+        for row in planned["rows"]:
+            number, status = row["row_number"], row["status"]
+            if status == "new":
+                imported.append(row["execution"])
+            elif status == "possible_duplicate" and body.decisions[str(number)] == "import":
+                imported.append(
+                    {
+                        **row["execution"],
+                        "duplicate_review": {
+                            "decision": "imported_after_review",
+                            "related": row["matches"],
+                        },
+                    }
+                )
+            else:
+                reason = "skipped_after_review" if status == "possible_duplicate" else status
+                skipped.append({"row_number": number, "reason": reason})
+        batch = {
+            "kind": "import_batch",
+            "schema_version": "0.1",
+            "batch_id": planned["batch_id"],
+            "file_name": planned["file_name"],
+            "file_sha256": planned["file_sha256"],
+            "broker_label": planned["broker_label"],
+            "committed_at_utc": _utc_text(now()),
+            "row_count": len(planned["rows"]),
+            "imported_execution_ids": [item["execution_id"] for item in imported],
+            "skipped_rows": skipped,
+        }
+        try:
+            stored, created = store.commit_import(batch, imported)
+        except JournalConflictError as exc:
+            return error_response(request, 409, "journal_conflict", str(exc))
+        return JSONResponse(status_code=201 if created else 200, content=stored)
+
+    @application.get("/v1/trades/imported", response_model=None)
+    def imported_ledger(
+        request: Request,
+        instrument_id: Annotated[str | None, Query(max_length=200)] = None,
+    ) -> Response:
+        store = journal()
+        if store is None:
+            return unavailable(request)
+        executions = store.imported_executions(instrument_id)
+        document = {
+            "kind": "imported_ledger_response",
+            "schema_version": "0.1",
+            "ledger": "statement_imported",
+            "executions": executions,
+            "positions": manual_positions(executions),
+            "batches": store.import_batches(),
         }
         validate_document(document)
         return JSONResponse(content=document)

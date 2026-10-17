@@ -49,8 +49,18 @@ def _parse(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def _tiebreak(item: dict[str, Any]) -> tuple[str, int, str]:
+    """Order fills at the same time by when they were recorded or their statement row."""
+    source = item.get("source")
+    if isinstance(source, dict):
+        return (cast(str, source["batch_id"]), cast(int, source["row_number"]), "")
+    return (cast(str, item.get("asserted_at_utc", "")), 0, cast(str, item["execution_id"]))
+
+
 def manual_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """FIFO positions and realized P&L per instrument from manual executions.
+    """FIFO positions and realized P&L per instrument for one actual-fill ledger.
+
+    Used separately for manual and for imported executions; ledgers are never combined.
 
     Executions with an unknown time cannot be ordered against the others, so they
     are listed in `unordered_execution_ids` and left out of the calculation rather
@@ -67,11 +77,7 @@ def manual_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         )
         timed = sorted(
             (item for item in items if item["executed_at_utc"] is not None),
-            key=lambda item: (
-                _parse(cast(str, item["executed_at_utc"])),
-                _parse(cast(str, item["asserted_at_utc"])),
-                cast(str, item["execution_id"]),
-            ),
+            key=lambda item: (_parse(cast(str, item["executed_at_utc"])), _tiebreak(item)),
         )
         lots: list[_Lot] = []
         realized = ZERO

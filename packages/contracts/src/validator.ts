@@ -204,6 +204,59 @@ export function semanticErrors(document: Document): string[] {
     }
   }
 
+  if (document.kind === "imported_execution") {
+    if (
+      compareDecimal(asString(document, "quantity"), "0") <= 0 ||
+      compareDecimal(asString(document, "price"), "0") <= 0
+    ) {
+      errors.push("imported execution quantity and price must be positive");
+    }
+    const review = document.duplicate_review as Document;
+    if (
+      review.decision === "imported_after_review" &&
+      (review.related as unknown[]).length === 0
+    ) {
+      errors.push("a reviewed duplicate must name the records it resembles");
+    }
+  }
+
+  if (
+    document.kind === "import_preview_response" ||
+    document.kind === "imported_ledger_response"
+  ) {
+    const rows = document.rows as Document[] | undefined;
+    const executions = rows
+      ? rows
+          .filter((row) => row.execution !== null)
+          .map((row) => row.execution as Document)
+      : (document.executions as Document[]);
+    for (const execution of executions) {
+      errors.push(...semanticErrors(execution));
+    }
+    if (rows) {
+      const counts: Record<string, number> = {};
+      for (const key of Object.keys(document.summary as Document)) {
+        counts[key] = 0;
+      }
+      for (const row of rows) {
+        if ((row.status === "invalid") !== (row.execution === null)) {
+          errors.push("only invalid preview rows lack an execution");
+        }
+        if (
+          row.status === "invalid" &&
+          (row.errors as unknown[]).length === 0
+        ) {
+          errors.push("an invalid preview row must say why");
+        }
+        counts[row.status as string] = (counts[row.status as string] ?? 0) + 1;
+      }
+      const summary = document.summary as Record<string, number>;
+      if (Object.keys(counts).some((key) => counts[key] !== summary[key])) {
+        errors.push("preview summary must count the rows by status");
+      }
+    }
+  }
+
   if (document.kind === "manual_ledger_response") {
     for (const execution of document.executions as Document[]) {
       errors.push(...semanticErrors(execution));

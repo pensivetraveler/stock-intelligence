@@ -53,6 +53,18 @@
     },
     {
       "$ref": "#/$defs/ScenarioLedgerResponse"
+    },
+    {
+      "$ref": "#/$defs/ImportedExecution"
+    },
+    {
+      "$ref": "#/$defs/ImportPreviewResponse"
+    },
+    {
+      "$ref": "#/$defs/ImportBatch"
+    },
+    {
+      "$ref": "#/$defs/ImportedLedgerResponse"
     }
   ],
   "$defs": {
@@ -1106,46 +1118,7 @@
         "positions": {
           "type": "array",
           "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "instrument_id",
-              "open_quantity",
-              "average_cost",
-              "realized_pnl",
-              "fees",
-              "unordered_execution_ids"
-            ],
-            "properties": {
-              "instrument_id": {
-                "$ref": "#/$defs/Identifier"
-              },
-              "open_quantity": {
-                "$ref": "#/$defs/DecimalString"
-              },
-              "average_cost": {
-                "anyOf": [
-                  {
-                    "$ref": "#/$defs/NonNegativeDecimalString"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "realized_pnl": {
-                "$ref": "#/$defs/DecimalString"
-              },
-              "fees": {
-                "$ref": "#/$defs/NonNegativeDecimalString"
-              },
-              "unordered_execution_ids": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/Identifier"
-                }
-              }
-            }
+            "$ref": "#/$defs/LedgerPosition"
           }
         }
       }
@@ -1184,6 +1157,513 @@
                 "$ref": "#/$defs/DecimalString"
               }
             }
+          }
+        }
+      }
+    },
+    "LedgerPosition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instrument_id",
+        "open_quantity",
+        "average_cost",
+        "realized_pnl",
+        "fees",
+        "unordered_execution_ids"
+      ],
+      "properties": {
+        "instrument_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "open_quantity": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "average_cost": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "realized_pnl": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "fees": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "unordered_execution_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        }
+      }
+    },
+    "ImportedExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A fill read from a user-supplied broker statement file. Not API-verified.",
+      "required": [
+        "kind",
+        "schema_version",
+        "execution_id",
+        "instrument_id",
+        "side",
+        "quantity",
+        "price",
+        "fees",
+        "currency",
+        "executed_at_utc",
+        "time_precision",
+        "broker_label",
+        "broker_execution_id",
+        "source",
+        "verification_status",
+        "duplicate_review"
+      ],
+      "properties": {
+        "kind": {
+          "const": "imported_execution"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "execution_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "instrument_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "side": {
+          "$ref": "#/$defs/Side"
+        },
+        "quantity": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "price": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "fees": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "currency": {
+          "const": "USD"
+        },
+        "executed_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "time_precision": {
+          "enum": ["exact", "minute"]
+        },
+        "broker_label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "broker_execution_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["batch_id", "file_sha256", "row_number"],
+          "properties": {
+            "batch_id": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "file_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "row_number": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "verification_status": {
+          "const": "statement_imported"
+        },
+        "duplicate_review": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["decision", "related"],
+          "properties": {
+            "decision": {
+              "enum": ["none", "imported_after_review"]
+            },
+            "related": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 128
+              }
+            }
+          }
+        }
+      }
+    },
+    "ImportPreviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "batch_id",
+        "file_name",
+        "file_sha256",
+        "broker_label",
+        "columns",
+        "mapping",
+        "timestamp_timezone",
+        "already_imported",
+        "rows",
+        "summary"
+      ],
+      "properties": {
+        "kind": {
+          "const": "import_preview_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "batch_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "file_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "file_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "broker_label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mapping": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "executed_at",
+            "date",
+            "time",
+            "symbol",
+            "side",
+            "quantity",
+            "price",
+            "fees",
+            "broker_execution_id"
+          ],
+          "properties": {
+            "executed_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "date": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "symbol": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "side": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "quantity": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "price": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "fees": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "broker_execution_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "timestamp_timezone": {
+          "enum": ["America/New_York", "UTC"]
+        },
+        "already_imported": {
+          "type": "boolean"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "row_number",
+              "status",
+              "execution",
+              "errors",
+              "matches"
+            ],
+            "properties": {
+              "row_number": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "status": {
+                "enum": [
+                  "new",
+                  "duplicate_exact",
+                  "possible_duplicate",
+                  "invalid"
+                ]
+              },
+              "execution": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ImportedExecution"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "matches": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "new",
+            "duplicate_exact",
+            "possible_duplicate",
+            "invalid"
+          ],
+          "properties": {
+            "new": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "duplicate_exact": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "possible_duplicate": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "invalid": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "ImportBatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "batch_id",
+        "file_name",
+        "file_sha256",
+        "broker_label",
+        "committed_at_utc",
+        "row_count",
+        "imported_execution_ids",
+        "skipped_rows"
+      ],
+      "properties": {
+        "kind": {
+          "const": "import_batch"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "batch_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "file_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "file_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "broker_label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "committed_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "row_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imported_execution_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "skipped_rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["row_number", "reason"],
+            "properties": {
+              "row_number": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "reason": {
+                "enum": ["invalid", "duplicate_exact", "skipped_after_review"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "ImportedLedgerResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "ledger",
+        "executions",
+        "positions",
+        "batches"
+      ],
+      "properties": {
+        "kind": {
+          "const": "imported_ledger_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "ledger": {
+          "const": "statement_imported"
+        },
+        "executions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ImportedExecution"
+          }
+        },
+        "positions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LedgerPosition"
+          }
+        },
+        "batches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ImportBatch"
           }
         }
       }

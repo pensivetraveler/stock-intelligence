@@ -395,7 +395,7 @@ button:disabled {
 
 .journal {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
   gap: 16px;
 }
 
@@ -452,4 +452,60 @@ button:disabled {
   .journal {
     grid-template-columns: 1fr;
   }
+}
+
+.import-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--panel);
+}
+
+.import-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.import-panel[open] summary {
+  margin-bottom: 12px;
+}
+
+.import-preview {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.import-preview h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.import-status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #263142;
+}
+
+.import-new {
+  background: #143b2a;
+  color: #75d9a3;
+}
+
+.import-possible_duplicate {
+  background: #403716;
+  color: #f5d76e;
+}
+
+.import-invalid {
+  background: #461f25;
+  color: #ff9ba7;
+}
+
+.import-notes {
+  white-space: normal;
+  min-width: 180px;
 }
