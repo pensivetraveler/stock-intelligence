@@ -86,14 +86,15 @@ export interface CoverageManifest {
     start_utc: UtcTimestamp;
     end_utc: UtcTimestamp;
     /**
-     * fixture_missing: a synthetic fixture has no bar; not_available_as_of_cutoff: published after the cutoff; provider_no_bar: the provider reported no bar (normally no trades in that minute on the feed); outside_entitlement: the plan does not allow this range yet (e.g. the latest 15 minutes of SIP on a free plan); not_yet_final: too recent for an absent bar to be treated as no trades.
+     * fixture_missing: a synthetic fixture has no bar; not_available_as_of_cutoff: published after the cutoff; provider_no_bar: the provider reported no bar (normally no trades in that minute on the feed); outside_entitlement: the plan does not allow this range yet (e.g. the latest 15 minutes of SIP on a free plan); not_yet_final: too recent for an absent bar to be treated as no trades. session_not_covered: the source does not provide this session (e.g. a broker feed confirmed for regular hours only).
      */
     reason:
       | "fixture_missing"
       | "not_available_as_of_cutoff"
       | "provider_no_bar"
       | "outside_entitlement"
-      | "not_yet_final";
+      | "not_yet_final"
+      | "session_not_covered";
   }[];
   source_id: Identifier;
   source_feed_scope: Identifier;

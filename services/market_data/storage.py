@@ -479,12 +479,15 @@ class LocalMarketDataStore:
         """Serve a range from several cached results without calling upstream.
 
         Only cached results with the same source, timeframe and point-in-time cutoff
-        and no missing intervals are combined. Each covers every interval its provider
-        expected in its own range, so the union of their bars inside the query range is
-        the full expected set. Returns None, which means "fetch upstream", when:
+        are combined, and only when every interval they miss is a settled fact (such as
+        "provider_no_bar": no trades). Each then accounts for every interval its provider
+        expected in its own range, so their bars plus settled gaps inside the query range
+        are the full expected set. Returns None, which means "fetch upstream", when:
         - the candidates span several revisions (no implicit choice),
         - they leave any part of the range uncovered,
-        - their bars disagree, or any bar is not final.
+        - one result has a bar for a minute another settled as having none,
+        - any bar is not final.
+        Bars that differ for the same minute are an integrity error, not a choice.
         """
         cutoff = _format_utc(query.as_of_utc) if query.as_of_utc is not None else None
         with self._connect() as connection:
@@ -499,7 +502,10 @@ class LocalMarketDataStore:
             manifest = cast(dict[str, Any], json.loads(cast(str, row["manifest_json"])))
             start = _parse_utc(cast(str, manifest["requested_start_utc"]))
             end = _parse_utc(cast(str, manifest["requested_end_utc"]))
-            if manifest["missing_intervals"] or end <= query.start_utc or start >= query.end_utc:
+            gaps = cast(list[dict[str, str]], manifest["missing_intervals"])
+            if any(gap["reason"] not in SETTLED_MISSING_REASONS for gap in gaps):
+                continue
+            if end <= query.start_utc or start >= query.end_utc:
                 continue
             paths = cast(list[str], json.loads(cast(str, row["parquet_paths_json"])))
             candidates.append((manifest, paths, start, end))
@@ -530,21 +536,31 @@ class LocalMarketDataStore:
         bars = tuple(bars_by_start[key] for key in sorted(bars_by_start))
         if not all(cast(bool, bar["is_final"]) for bar in bars):
             return None
+        settled: dict[str, dict[str, str]] = {}
+        for manifest, _paths, _start, _end in candidates:
+            for gap in cast(list[dict[str, str]], manifest["missing_intervals"]):
+                if query.start_utc <= _parse_utc(gap["start_utc"]) < query.end_utc:
+                    settled[gap["start_utc"]] = gap
+        if settled.keys() & bars_by_start.keys():
+            return None  # one result saw trades where another saw none: refetch, do not pick
+        missing = [settled[key] for key in sorted(settled)]
 
         exemplar = candidates[0][0]
         coverage: dict[str, Any] = {
             **exemplar,
             "requested_start_utc": _format_utc(query.start_utc),
             "requested_end_utc": _format_utc(query.end_utc),
-            "coverage_status": "complete" if bars else "empty",
+            "coverage_status": (
+                "complete" if bars and not missing else ("partial" if bars else "empty")
+            ),
             "verification_status": (
                 "verified"
                 if all(c[0]["verification_status"] == "verified" for c in candidates)
                 else "unverified"
             ),
             "observed_interval_count": len(bars),
-            "expected_interval_count": len(bars),
-            "missing_intervals": [],
+            "expected_interval_count": len(bars) + len(missing),
+            "missing_intervals": missing,
         }
         result = BarsResult(bars, coverage)
         self._validate_cached(result)

@@ -66,6 +66,8 @@ class AlpacaConfig:
     publication_delay_minutes: int = 15
     # Minutes after a bar's end before it is treated as final (late trades can amend bars).
     finality_minutes: int = 15
+    # Rows per page; smaller values only exercise pagination (the API maximum is 10,000).
+    page_limit: int = PAGE_LIMIT
 
     def __repr__(self) -> str:  # never print secrets, even by accident
         return (
@@ -98,12 +100,13 @@ class AlpacaConfig:
         try:
             delay = int(values.get("SIW_ALPACA_DELAY_MINUTES", default_delay))
             finality = int(values.get("SIW_ALPACA_FINALITY_MINUTES", "15"))
+            page_limit = int(values.get("SIW_ALPACA_PAGE_LIMIT", str(PAGE_LIMIT)))
         except ValueError as exc:
-            raise AlpacaConfigError(
-                "Alpaca delay and finality settings must be whole minutes"
-            ) from exc
+            raise AlpacaConfigError("Alpaca numeric settings must be whole numbers") from exc
         if not 0 <= delay <= 1_440 or not 0 <= finality <= 1_440:
             raise AlpacaConfigError("Alpaca delay and finality must be 0-1440 minutes")
+        if not 1 <= page_limit <= PAGE_LIMIT:
+            raise AlpacaConfigError(f"SIW_ALPACA_PAGE_LIMIT must be 1-{PAGE_LIMIT}")
         return cls(
             key_id=key_id,
             secret_key=secret,
@@ -112,6 +115,7 @@ class AlpacaConfig:
             symbols=tuple(symbols),
             publication_delay_minutes=delay,
             finality_minutes=finality,
+            page_limit=page_limit,
         )
 
 
@@ -297,13 +301,14 @@ class AlpacaMarketDataProvider:
             "timeframe": "1Min",
             "start": _utc_text(start),
             "end": _utc_text(end),
-            "limit": PAGE_LIMIT,
+            "limit": self.config.page_limit,
             "adjustment": "raw",
             "feed": self.config.feed,
             "sort": "asc",
         }
         bars: list[dict[str, Any]] = []
-        for _page in range(50):
+        # Enough pages for a full 1,440-minute range even at small test page sizes.
+        for _page in range(MAX_QUERY_MINUTES // self.config.page_limit + 2):
             try:
                 response = self._client.get("/v2/stocks/bars", params=params)
             except httpx.TimeoutException as exc:

@@ -278,10 +278,37 @@
   - 30/30분을 받았고 결측 사유는 없다. 가격은 응답 그대로 정확히 보존됐다(`772.5` 등).
   - 출력에 키는 없었다.
   - capabilities를 `integration_tested`로 올렸다. 요금제 권한(entitlement)은 feed·범위에 따라 달라 `unknown`으로 유지한다.
+- **장시간 실계정 확인(2026-10-17):**
+  - SPY 2026-10-16 04:00–20:00 ET를 sip feed, 페이지 크기 100으로 backfill했다. 3 chunk, HTTP 10회, 모두 200, 6.8초가 걸렸다.
+  - 960분 중 921분에 bar가 있었고, 나머지 39분은 장전·장후의 `provider_no_bar`였다.
+  - 하루 전체, chunk 경계를 넘는 14–15Z 범위, 정규장 5분봉 78개(일부 관측 0개)가 모두 upstream 요청 없이 cache에서 응답됐다.
+  - IEX 거래량은 SIP의 2.40%였다.
+  - 이 확인을 위해 cache 범위 조합이 체결 없는 분(settled gap)을 포함할 수 있게 했다(테스트 추가).
 - **미검증:**
-  - 장시간 실계정 동작: 하루 전체 페이지네이션, IEX feed, 호출 한도, 15분 경계
+  - 장중 15분 경계와 호출 한도(주말이라 미실행)
   - 증권사 API의 제한·권리
   - NAS 저장: SQLite와 OS 잠금이 로컬 파일시스템을 전제하므로 별도 설계가 필요하다.
+
+## Phase 1D 증권사 adapter — 2026-10-17
+
+- **조사(공식 자료만 사용):**
+  - 한국투자(해외주식분봉조회 HHDFS76950200), 토스(2026-08-13 공개 Open API, `/api/v1/candles`), 키움(REST `usa06011`)은 미국주식 1분봉을 제공한다.
+  - 미래에셋은 미국주식 시세용 공식 API가 없다(해외선물 API만 있음). 근거와 미확인 항목은 ADR 0013에 정리했다.
+- **변경 파일:**
+  - 백엔드: `services/market_data/{broker_common,kis,toss,kiwoom,broker_check,selection,provider}.py`
+  - 계약: `packages/contracts`(결측 사유 `session_not_covered`)
+  - 설정·테스트: `.env.example`, `tests/market_data/test_brokers.py`
+  - 문서: ADR 0013, README, EXECUTION_PROCESS, IMPLEMENTATION_HISTORY
+- **안전:**
+  - 허용 경로(토큰·차트) 외의 호출은 요청을 보내기 전에 `BlockedEndpointError`로 막는다. 주문 경로를 막는 테스트도 있다.
+  - 키는 환경 변수로만 받고, 토큰은 메모리에만 보관한다. 오류 메시지와 `repr`에 비밀값이 없는 것을 확인했다.
+- **보수적 기본값:**
+  - 정규장만 다루고, 범위 밖은 `session_not_covered`로 표시한다.
+  - 키움은 시각대를 명시하지 않으면 시작하지 않는다.
+  - 같은 분이 중복되면 오류로 처리한다.
+  - 수정주가 여부는 확인된 곳만 `raw`로, 한국투자는 `unknown`으로 표시한다.
+- **검증:** `./scripts/verify.sh` 통과(exit 0) — pytest 266개(증권사 18개, Alpaca 26개 포함), Vitest 계약 52개·데스크톱 41개, 생성 타입 drift 검사. 키 없이 실행한 `broker_check`는 세 증권사 모두 설정 오류로 exit 2.
+- **미검증:** 세 증권사 모두 실계정 미실행이다. 확인할 것은 시각대·bar 시작 의미, 장전·장후 포함 여부, 한국투자의 KEYB 첫 요청 동작, 키움의 `cntr_tm` 중복 여부다.
 
 ## 상태 변경 양식
 

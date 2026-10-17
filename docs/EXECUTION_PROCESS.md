@@ -137,8 +137,12 @@
 
 - [x] Alpaca Market Data v2 읽기 전용 adapter(opt-in), 무료 요금제 15분 제외, 무체결 분 처리, 문서 형식의 응답으로 테스트([ADR 0012](decisions/0012-alpaca-prototype-provider.md))
 - [x] 사용자 키로 `python -m services.market_data.alpaca check` 실행: 2026-10-17 SPY sip 30/30분 성공, 결측 없음
-- [ ] 장시간 실계정 확인: 하루 전체 backfill, IEX feed, 호출 한도, 15분 경계
-- [ ] 증권사 API 4곳: 계정별 시세 범위·제한·권리 확인 후 adapter 구현(각각 별도 source, 자동 병합 금지)
+- [x] 장시간 실계정 확인(2026-10-17): SPY 하루 960분 backfill(요청 10회, 페이지네이션), 921개 bar와 체결 없는 분 39개, cache 범위 조합 시 upstream 요청 0회, IEX 거래량 SIP 대비 2.4%
+- [ ] 장중 확인: 15분 경계와 호출 한도(주말이라 미실행)
+- [x] 증권사 API 공식 문서 조사(2026-10-17): 한국투자·토스·키움은 미국주식 1분봉 REST 제공, 미래에셋은 공식 API 없음([ADR 0013](decisions/0013-broker-market-data-adapters.md))
+- [x] 한국투자·토스·키움 adapter: 읽기 전용(허용 경로 외 차단), 토큰은 메모리에만 보관, 확인되지 않은 세션·시각은 보수적 기본값
+- [ ] 증권사별 `broker_check` 실계정 실행: 시각대·bar 시작 의미·장전·장후 포함 여부 기록
+- [ ] 미래에셋: 해외주식 공식 Open API 공개 시 재검토
 
 - 사용자 승인 credential에 한정한 읽기 전용 시험
 - Toss/KIS/Kiwoom 및 Alpaca/Massive 동등 비교

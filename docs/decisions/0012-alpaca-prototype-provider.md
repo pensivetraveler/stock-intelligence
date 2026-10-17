@@ -42,6 +42,18 @@ The project rules forbid hard-coding either paid candidate (Alpaca or Massive) a
   - Backfill retries only unavailable or rate-limited errors. It fails at once with `provider_auth` or `provider_data`.
 - **Account check:** `python -m services.market_data.alpaca check` makes one small request with the user's keys and prints counts and missing-reason types, never secrets.
 
+### Live long-run check, 2026-10-17
+
+The run used the user's keys, loaded from `.env` inside the command and never printed. Data went to a scratch directory, not the repository.
+
+- **Full-day backfill:** SPY on 2026-10-16, 04:00–20:00 ET (960 minutes), feed `sip`, page size forced to 100.
+  - 3 chunks in 10 HTTP requests, all 200, in 6.8 s, so pagination was exercised live.
+  - 921 bars returned (pre 294, regular 390, post 237). The other 39 minutes were `provider_no_bar`, all in pre-market and after-hours. Every bar was final.
+- **Cache reuse:**
+  - The full day, a range crossing chunk boundaries (14:00–15:00Z) and the regular-session 5m aggregate (78 of 78 buckets, none partial) were all served from cache with 0 upstream requests.
+  - This required letting range composition accept settled `provider_no_bar` gaps, added in this change with a test.
+- **IEX vs SIP:** 13:30–14:00Z had 30 bars on both feeds. IEX volume was 108,395 against 4,518,499 on SIP (2.40%), and the first close differed (772.9 vs 772.92). This confirms that IEX is a partial-venue feed.
+
 ## Alternatives
 
 - **Use `feed=iex` by default:** real-time, but only about 2–3% of volume is traded on IEX, so its bars differ from the consolidated tape. SIP history matches the paid plan, so `sip` is the default and IEX stays an explicit choice.
@@ -53,7 +65,7 @@ The project rules forbid hard-coding either paid candidate (Alpaca or Massive) a
 - **Estimated publication time:** the true time is unknown, so replay-style cutoffs on Alpaca data are approximate by the configured delay.
 - **Range limit:** one adapter request covers at most 1,440 minutes; Collector backfill chunks longer ranges.
 - **Storage location:** the cache stays on local disk. ADR 0002 and ADR 0004 rely on a local filesystem (SQLite plus OS locks), so a NAS or cloud server needs a remote Collector or service boundary (Phase 7), not a shared network folder.
-- **Live verification:** one live check passed (see Evidence). Broader live behaviour is still untested: pagination over full days, rate limits, the IEX feed, and the edge of the 15-minute window. Automated tests use responses shaped like the documented API.
+- **Live verification:** the live checks in Evidence passed. Two things are still untested: the rate limit (not provoked on purpose) and the live edge of the 15-minute window (it needs an open market). Automated tests use responses shaped like the documented API.
 
 ## Evidence/verification
 
@@ -77,7 +89,7 @@ The project rules forbid hard-coding either paid candidate (Alpaca or Massive) a
 
 ## Revisit when
 
-- a longer live run (full-day backfill, IEX feed, rate limits) is recorded;
+- the 15-minute window and rate limiting are checked during a live session;
 - a paid plan with real-time SIP is used (set the delay to 0);
 - broker API adapters arrive (each is a separate source; series are never merged silently);
 - data must live on a NAS or cloud server.

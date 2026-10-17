@@ -161,6 +161,26 @@ uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8000 --env-file .en
 
 Alpaca 데이터에서 체결이 없는 분은 bar가 오지 않는다. 이 분은 결측이 아니라 `provider_no_bar`(체결 없음)로 표시하며, 가격을 만들어 넣지 않는다. 최근 15분(sip 무료 요금제)은 `outside_entitlement`, 아직 확정 전인 분은 `not_yet_final`로 표시한다. 오류 응답 코드는 다음과 같다: 키나 요금제가 거부되면 502 `provider_auth_failed`, 호출 한도에 걸리면 503 `provider_rate_limited`, 일시 장애는 503 `provider_unavailable`이다.
 
+### 증권사 시세 연결(한국투자·토스·키움, 확인 대기)
+
+`SIW_MARKET_DATA_PROVIDER`를 `kis`, `toss`, `kiwoom` 중 하나로 설정하면 해당 증권사의 미국주식 1분봉을 읽기 전용으로 받는다([ADR 0013](docs/decisions/0013-broker-market-data-adapters.md)). 미래에셋은 미국주식 시세용 공식 API가 없어 연결하지 않았다.
+
+- **주문 차단:** 증권사 API는 주문 기능이 같은 토큰에 묶여 있다. 그래서 adapter는 토큰 경로와 차트 경로 외의 호출을 구조적으로 차단한다.
+- **키 관리:** 키는 `.env`에만 둔다. 토큰은 메모리에만 보관한다.
+- **보수적 기본값:** 장전·장후 제공 여부를 확인하기 전까지 정규장만 다룬다. 범위 밖의 분은 `session_not_covered`로 표시한다.
+
+| 증권사   | 필수 변수                                                             | 주의                                                                                                                                                                                   |
+| -------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 한국투자 | `SIW_KIS_APP_KEY`, `SIW_KIS_APP_SECRET`                               | 토큰을 발급할 때마다 카카오톡 알림이 온다(1분당 1회). 분봉 이력은 약 1개월                                                                                                             |
+| 토스     | `SIW_TOSS_CLIENT_ID`, `SIW_TOSS_CLIENT_SECRET`                        | 설정 > Open API에서 이 컴퓨터의 IP를 허용 목록에 등록해야 한다. 새 토큰을 발급하면 이전 토큰이 무효가 된다. 일부 거래소 데이터이며, 본인 매매 용도로만 쓰고 제3자에게 제공하면 안 된다 |
+| 키움     | `SIW_KIWOOM_APP_KEY`, `SIW_KIWOOM_SECRET_KEY`, `SIW_KIWOOM_TIME_ZONE` | `cntr_tm`의 시각대가 공식 문서에 없다. `America/New_York` 또는 `Asia/Seoul`을 지정하고 아래 확인 명령으로 검증한다                                                                     |
+
+확인 명령: 최근 거래일 정규장 첫 30분을 한 번 요청한다. 증권사가 보낸 첫 원본 레코드와 변환된 UTC bar 시작을 나란히 출력하며, 키는 출력하지 않는다.
+
+```bash
+set -a; source .env; set +a; uv run python -m services.market_data.broker_check --provider kis --symbol SPY
+```
+
 ### 증권사 거래내역 CSV 가져오기
 
 화면 아래쪽 `Import broker statement (CSV)`에서 CSV 파일을 고르고 증권사 이름을 입력한 뒤 `Preview`를 누른다. 가져온 행은 수동 기록·가상 기록과 별도인 세 번째 원장(statement import)이 된다([ADR 0011](docs/decisions/0011-broker-statement-csv-import.md)).

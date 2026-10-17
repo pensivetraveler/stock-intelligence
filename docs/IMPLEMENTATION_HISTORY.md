@@ -7,21 +7,22 @@
 
 ## 1. 누적 작업 요약
 
-| 단계                       | 커밋           | 주요 결과                                                              | 당시 로컬 검증                               | 상태                                |
-| -------------------------- | -------------- | ---------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------- |
-| 문서 정비·Phase 0 기준선   | `465c396`      | 요구사항·안전 규칙·실행 명세, API·웹 셸·Collector·공통 계약·CI 구성    | Python 26, TS 계약 17, UI 4; 전체 검증 통과  | 로컬 기반 완료, Tauri native 미검증 |
-| Phase 1A                   | `4b2b6a1`      | FakeMarketDataProvider, 1m API, Coverage, cutoff                       | Python 44, TS 계약 20, UI 4; 전체 검증 통과  | 완료                                |
-| Phase 1B                   | `94aa4c2`      | SQLite metadata와 immutable Parquet cache, 중단 복구·pin               | Python 55, TS 계약 20, UI 4; 전체 검증 통과  | 완료                                |
-| Phase 1C                   | `1113ec2`      | 거래 캘린더·DST·세션·분봉 집계·quality/lineage                         | Python 70, TS 계약 22, UI 4; 전체 검증 통과  | 승인된 내부 구현 범위 완료          |
-| 문서 현행화                | 이번 문서 변경 | 문서 색인·누적 이력 추가, 상태·로드맵·진행 규칙 정합성 수정            | 문서 포맷·diff 검사; 기능 테스트 미실행      | 2026-10-15                          |
-| 검토 결함·데이터 안전성    | `980e973`      | API 오류 envelope, 검증기 캐시, 다중 프로세스 복구, point-in-time 계약 | Python 88, TS 계약 26, UI 4; 전체 검증 통과  | 완료                                |
-| 남은 데이터 위험·job 종료  | `fc96cc3`      | cache 전 query 검증, calendar fingerprint, TS decimal, job 종료        | Python 98, TS 계약 34, UI 4; 전체 검증 통과  | 완료                                |
-| 운영 보강                  | `ef2dbac`      | 세션 날짜 partition, 연결 close, API lazy 시작, request ID, 단일 버전  | Python 110, TS 계약 34, UI 6; 전체 검증 통과 | 2026-10-16                          |
-| Phase 1 내부 마무리(1E)    | `a3c8141`      | 공개 5m~60m 집계 API, cache 범위 조합, 재개 가능한 backfill            | Python 134, TS 계약 35, UI 6; 전체 검증 통과 | 2026-10-16                          |
-| Phase 2A 차트 workspace    | `a3c8141`      | 차트 2개·독립 설정·동기화·레이아웃 저장, 합성 SYNTH, 종목·세션 API     | 전체 검증·브라우저 확인                      | 2026-10-16                          |
-| Phase 2B·3A                | `a62d9f3`      | 이름 붙인 workspace·템플릿, 수동·가상 거래 원장과 P&L                  | 전체 검증·브라우저 확인                      | 2026-10-16                          |
-| Phase 3B CSV 가져오기      | `03d687a`      | 거래내역 CSV 미리보기·중복 검토·커밋, 별도 원장                        | 전체 검증·브라우저 확인                      | 2026-10-17                          |
-| Phase 1D Alpaca 프로토타입 | 커밋 전        | Alpaca 시세 adapter(opt-in), 15분 제한, 무체결 분, 오류 분류           | 전체 검증; 실계정 check 30/30분 성공         | 2026-10-17                          |
+| 단계                       | 커밋           | 주요 결과                                                                       | 당시 로컬 검증                               | 상태                                |
+| -------------------------- | -------------- | ------------------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------- |
+| 문서 정비·Phase 0 기준선   | `465c396`      | 요구사항·안전 규칙·실행 명세, API·웹 셸·Collector·공통 계약·CI 구성             | Python 26, TS 계약 17, UI 4; 전체 검증 통과  | 로컬 기반 완료, Tauri native 미검증 |
+| Phase 1A                   | `4b2b6a1`      | FakeMarketDataProvider, 1m API, Coverage, cutoff                                | Python 44, TS 계약 20, UI 4; 전체 검증 통과  | 완료                                |
+| Phase 1B                   | `94aa4c2`      | SQLite metadata와 immutable Parquet cache, 중단 복구·pin                        | Python 55, TS 계약 20, UI 4; 전체 검증 통과  | 완료                                |
+| Phase 1C                   | `1113ec2`      | 거래 캘린더·DST·세션·분봉 집계·quality/lineage                                  | Python 70, TS 계약 22, UI 4; 전체 검증 통과  | 승인된 내부 구현 범위 완료          |
+| 문서 현행화                | 이번 문서 변경 | 문서 색인·누적 이력 추가, 상태·로드맵·진행 규칙 정합성 수정                     | 문서 포맷·diff 검사; 기능 테스트 미실행      | 2026-10-15                          |
+| 검토 결함·데이터 안전성    | `980e973`      | API 오류 envelope, 검증기 캐시, 다중 프로세스 복구, point-in-time 계약          | Python 88, TS 계약 26, UI 4; 전체 검증 통과  | 완료                                |
+| 남은 데이터 위험·job 종료  | `fc96cc3`      | cache 전 query 검증, calendar fingerprint, TS decimal, job 종료                 | Python 98, TS 계약 34, UI 4; 전체 검증 통과  | 완료                                |
+| 운영 보강                  | `ef2dbac`      | 세션 날짜 partition, 연결 close, API lazy 시작, request ID, 단일 버전           | Python 110, TS 계약 34, UI 6; 전체 검증 통과 | 2026-10-16                          |
+| Phase 1 내부 마무리(1E)    | `a3c8141`      | 공개 5m~60m 집계 API, cache 범위 조합, 재개 가능한 backfill                     | Python 134, TS 계약 35, UI 6; 전체 검증 통과 | 2026-10-16                          |
+| Phase 2A 차트 workspace    | `a3c8141`      | 차트 2개·독립 설정·동기화·레이아웃 저장, 합성 SYNTH, 종목·세션 API              | 전체 검증·브라우저 확인                      | 2026-10-16                          |
+| Phase 2B·3A                | `a62d9f3`      | 이름 붙인 workspace·템플릿, 수동·가상 거래 원장과 P&L                           | 전체 검증·브라우저 확인                      | 2026-10-16                          |
+| Phase 3B CSV 가져오기      | `03d687a`      | 거래내역 CSV 미리보기·중복 검토·커밋, 별도 원장                                 | 전체 검증·브라우저 확인                      | 2026-10-17                          |
+| Phase 1D Alpaca 프로토타입 | `67de157`      | Alpaca 시세 adapter(opt-in), 15분 제한, 무체결 분, 오류 분류                    | 전체 검증; 실계정 check 30/30분 성공         | 2026-10-17                          |
+| Phase 1D 증권사 adapter    | 커밋 전        | 한국투자·토스·키움 adapter(공식 문서 기반), 미래에셋 미지원, Alpaca 장시간 확인 | 전체 검증; 증권사 실계정 확인 대기           | 2026-10-17                          |
 
 Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 정정·재시도·공급업체 비교 등 장기 로드맵의 나머지 요구사항은 후속 작업이다.
 
@@ -145,12 +146,18 @@ Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 �
 - 체결 ID 기준 자동 중복 제외, ID 없는 동일 체결의 사용자 검토, 같은 파일 재가져오기 방지
 - 별도 statement import 원장과 마커. 원본 파일과 매핑하지 않은 열(계좌번호)은 저장하지 않는다([ADR 0011](decisions/0011-broker-statement-csv-import.md)).
 
-**Phase 1D Alpaca 프로토타입(커밋 전):**
+**Phase 1D Alpaca 프로토타입(`67de157`):**
 
 - `SIW_MARKET_DATA_PROVIDER=alpaca`일 때만 Alpaca Market Data v2에서 1분봉을 받는다.
 - 가격은 Decimal로 정확히 받고, 무료 요금제의 SIP 최근 15분은 요청하지 않으며 `outside_entitlement`로 표시한다.
 - 체결 없는 분은 `provider_no_bar`로 표시하고 cache·집계에서 결측으로 취급하지 않는다.
 - 키는 환경 변수로만 받는다. 2026-10-17 사용자의 실계정 `alpaca check`에서 SPY sip 30/30분을 받았다([ADR 0012](decisions/0012-alpaca-prototype-provider.md)).
+
+**Phase 1D 증권사 adapter와 Alpaca 장시간 확인(커밋 전):**
+
+- 한국투자·토스·키움 adapter를 공식 문서대로 만들었다. 허용 경로 외 호출(주문)은 구조적으로 차단한다.
+- 확인되지 않은 세션·시각대는 보수적 기본값으로 두고, 증권사별 `broker_check`로 확인한다. 미래에셋은 공식 API가 없다([ADR 0013](decisions/0013-broker-market-data-adapters.md)).
+- Alpaca 실계정 장시간 확인: SPY 하루 960분을 요청 10회로 받았고, cache 범위 조합 시 upstream 요청은 0회였다. IEX 거래량은 SIP의 2.4%였다.
 
 ## 7. 현재 가능한 사용과 남은 작업
 
@@ -181,6 +188,7 @@ git show --stat ef2dbac
 git show --stat a3c8141
 git show --stat a62d9f3
 git show --stat 03d687a
+git show --stat 67de157
 ./scripts/verify.sh
 ```
 

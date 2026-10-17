@@ -26,3 +26,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0010-named-workspaces-and-layout-templates.md`: 이름 붙인 workspace, Terminal/Review 템플릿, 되돌리기
 - `0011-broker-statement-csv-import.md`: 증권사 거래내역 CSV 가져오기, 중복 검토, 별도 원장, 원본 미보관
 - `0012-alpaca-prototype-provider.md`: Alpaca 시세 adapter 프로토타입(opt-in), 무료 요금제 15분 제한, 무체결 분 처리
+- `0013-broker-market-data-adapters.md`: 한국투자·토스·키움 시세 adapter(공식 문서 기반, 실계정 확인 대기), 미래에셋 미지원

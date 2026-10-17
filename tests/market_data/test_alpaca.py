@@ -287,6 +287,9 @@ def test_config_comes_from_environment_without_leaking_secrets() -> None:
         AlpacaConfig.from_env({})
     with pytest.raises(AlpacaConfigError, match="SIW_ALPACA_FEED"):
         AlpacaConfig.from_env({**env, "SIW_ALPACA_FEED": "otc"})
+    assert AlpacaConfig.from_env({**env, "SIW_ALPACA_PAGE_LIMIT": "100"}).page_limit == 100
+    with pytest.raises(AlpacaConfigError, match="SIW_ALPACA_PAGE_LIMIT"):
+        AlpacaConfig.from_env({**env, "SIW_ALPACA_PAGE_LIMIT": "20000"})
     with pytest.raises(AlpacaConfigError, match="SYMBOL:MIC"):
         AlpacaConfig.from_env({**env, "SIW_ALPACA_SYMBOLS": "SPY:NYSE-ARCA"})
 
@@ -353,3 +356,30 @@ def test_api_maps_provider_failures(response: httpx.Response, status: int, code:
     assert reply.status_code == status
     assert reply.json()["error"]["code"] == code
     assert SECRET not in reply.text
+
+
+def test_composition_spans_chunks_with_settled_no_trade_minutes(tmp_path: Path) -> None:
+    recorder = Recorder(
+        ok(page(bar("13:30"), bar("13:32"), bar("13:33"))),
+        ok(page(bar("13:35"), bar("13:36"), bar("13:38"))),
+    )
+    with LocalMarketDataStore(tmp_path) as store:
+        cached = CachedMarketDataProvider(provider(recorder), store)
+        cached.get_bars(query("13:30", "13:35"))
+        cached.get_bars(query("13:35", "13:40"))
+
+        composed = cached.get_bars(query("13:32", "13:38"))
+
+    assert len(recorder.requests) == 2
+    validate_document(composed.to_document())
+    assert [item["interval_start_utc"][11:16] for item in composed.bars] == [
+        "13:32",
+        "13:33",
+        "13:35",
+        "13:36",
+    ]
+    assert [gap["start_utc"][11:16] for gap in composed.coverage["missing_intervals"]] == [
+        "13:34",
+        "13:37",
+    ]
+    assert composed.coverage["expected_interval_count"] == 6
