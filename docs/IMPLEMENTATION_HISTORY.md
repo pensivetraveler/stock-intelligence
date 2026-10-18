@@ -23,7 +23,7 @@
 | Phase 3B CSV 가져오기      | `03d687a`      | 거래내역 CSV 미리보기·중복 검토·커밋, 별도 원장                                 | 전체 검증·브라우저 확인                      | 2026-10-17                          |
 | Phase 1D Alpaca 프로토타입 | `67de157`      | Alpaca 시세 adapter(opt-in), 15분 제한, 무체결 분, 오류 분류                    | 전체 검증; 실계정 check 30/30분 성공         | 2026-10-17                          |
 | Phase 1D 증권사 adapter    | `606079d`      | 한국투자·토스·키움 adapter(공식 문서 기반), 미래에셋 미지원, Alpaca 장시간 확인 | 전체 검증; 증권사 실계정 확인 대기           | 2026-10-17                          |
-| 메리츠증권 채널            | 커밋 전        | 메리츠 Open API 분봉 adapter(최근 40개), `beyond_source_history`                | 전체 검증; 실계정 확인 대기                  | 2026-10-17                          |
+| 메리츠증권 채널            | `0b01dbe`      | 메리츠 Open API 분봉 adapter(최근 40개), `beyond_source_history`                | 전체 검증; 실계정 확인 대기                  | 2026-10-17                          |
 
 Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 정정·재시도·공급업체 비교 등 장기 로드맵의 나머지 요구사항은 후속 작업이다.
 
@@ -160,7 +160,7 @@ Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 �
 - 확인되지 않은 세션·시각대는 보수적 기본값으로 두고, 증권사별 `broker_check`로 확인한다. 미래에셋은 공식 API가 없다([ADR 0013](decisions/0013-broker-market-data-adapters.md)).
 - Alpaca 실계정 장시간 확인: SPY 하루 960분을 요청 10회로 받았고, cache 범위 조합 시 upstream 요청은 0회였다. IEX 거래량은 SIP의 2.4%였다.
 
-**메리츠증권 채널(커밋 전):**
+**메리츠증권 채널(`0b01dbe`):**
 
 - 공식 명세 기준 분봉 adapter를 추가했다. 최근 40개만 제공하고, 시각은 KST이며, `mac_address` 헤더가 필수다.
 - 40개보다 오래된 분은 `beyond_source_history`로 표시한다([ADR 0013](decisions/0013-broker-market-data-adapters.md)).
