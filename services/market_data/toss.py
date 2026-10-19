@@ -118,7 +118,13 @@ class TossMarketDataProvider:
         )
 
     def capabilities(self) -> dict[str, Any]:
-        return capabilities(self.source_id, "toss-us-partial-venues", self._now())
+        # Live check 2026-10-19: SPY 30/30 minutes with the user's key.
+        return capabilities(
+            self.source_id,
+            "toss-us-partial-venues",
+            self._now(),
+            verification_status="integration_tested",
+        )
 
     def instruments(self) -> list[dict[str, Any]]:
         return [

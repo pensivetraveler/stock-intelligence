@@ -24,7 +24,7 @@ The user asked for four broker APIs as alternatives to Alpaca. On 2026-10-17, re
   - Two processes using Toss at once revoke each other's token. The single reissue recovers, but simultaneous use is not supported.
 - **Conservative defaults for unconfirmed behaviour:**
   - Sessions default to regular hours. Expected minutes outside them are reported with the new settled reason `session_not_covered`, never as no trades.
-  - Kiwoom refuses to start without an explicit `SIW_KIWOOM_TIME_ZONE`.
+  - Kiwoom refused to start without an explicit `SIW_KIWOOM_TIME_ZONE`. Since the 2026-10-19 live check (below), New York time is the default.
   - KIS treats `xhms` as the bar start unless `SIW_KIS_TIMESTAMP_IS_BAR_END=true`.
   - Duplicate minutes raise `ProviderDataError`, never a silent choice.
   - Adjustment is reported as `raw` only where unadjusted prices are requested explicitly (Toss `adjusted=false`, Kiwoom `upd_stkpc_tp=0`), and `unknown` for KIS and Meritz.
@@ -34,6 +34,19 @@ The user asked for four broker APIs as alternatives to Alpaca. On 2026-10-17, re
   - When a full 40-bar page comes back, minutes older than its oldest bar are reported with the new settled reason `beyond_source_history`. This makes Meritz a recent-window alternative only.
 - **Shared coverage builder (`broker_common.build_result`):** canonical bars with exact decimals, plus the same gap reasons as Alpaca: `provider_no_bar`, `not_yet_final`, `outside_entitlement`, `not_available_as_of_cutoff` and `session_not_covered`.
 - **Live check:** `python -m services.market_data.broker_check --provider <name>` makes one 30-minute request. It prints the first raw record as the broker sent it, next to the derived UTC bar start, so the time semantics can be confirmed. Capabilities stay `verification_status: documented` until a check passes.
+
+## Live checks (2026-10-19)
+
+Run with the user's keys, registered on the Keys screen (ADR 0014), for the 2026-10-16 regular-session open:
+
+- **Toss:** SPY 30/30 minutes, no gaps. The first raw record is the newest bar, `timestamp` `23:00 KST` = 14:00Z, which is the end of the last requested minute. This matches the documented bar-end meaning. Capabilities are now `integration_tested`.
+- **Kiwoom:**
+  - **Time zone:** AAPL 13:30–13:45Z. Read as New York time, 14 of 15 closes equal Alpaca SIP at the same bar start; read as Seoul time, no bar falls in the window. So `cntr_tm` is New York time marking the bar start, and that is now the default.
+  - **Volume:** about 81% of SIP.
+  - **Exchange code:** SPY (NYSE Arca) failed with `stex_tp=NA` (1903, no such symbol) and returned 30/30 with `NY`, so ARCX now maps to `NY`.
+  - **Late bars:** the newest raw bar was 20:28 ET. Bars after the regular post-market close may be included, but sessions stay regular-only until that is examined.
+  - Capabilities are now `integration_tested`.
+- **Not checked:** KIS and Meritz (no key registered yet).
 
 ## Alternatives
 

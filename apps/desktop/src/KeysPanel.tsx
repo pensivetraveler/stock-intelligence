@@ -117,8 +117,8 @@ export function KeysPanel({ api }: KeysPanelProps) {
   };
 
   return (
-    <details className="import-panel keys-panel">
-      <summary>Market data keys</summary>
+    <section className="import-panel keys-panel" aria-labelledby="keys-title">
+      <h2 id="keys-title">Market data keys</h2>
       <p className="workspace-note">
         Secrets are stored in this computer&apos;s keychain and never shown
         again. Keys of one provider are used in order; a key that hits the rate
@@ -356,6 +356,6 @@ export function KeysPanel({ api }: KeysPanelProps) {
           </div>
         );
       })}
-    </details>
+    </section>
   );
 }
