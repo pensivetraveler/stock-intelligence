@@ -353,7 +353,7 @@ def test_kiwoom_request_follows_the_official_spec_and_pages_with_headers() -> No
         "Bearer kiwoom-token",
     )
     assert json.loads(first.content) == {
-        "stex_tp": "NA",
+        "stex_tp": "NY",
         "stk_cd": "SPY",
         "strt_dt": "20261016",
         "tic_scope": "1",
@@ -399,10 +399,11 @@ def test_kiwoom_seoul_time_zone_and_duplicate_minutes() -> None:
         kiwoom(limited).get_bars(window("13:30", "13:31"))
 
 
-def test_kiwoom_requires_an_explicit_time_zone() -> None:
+def test_kiwoom_time_zone_defaults_to_new_york_and_can_be_overridden() -> None:
     env = {"SIW_KIWOOM_APP_KEY": "k", "SIW_KIWOOM_SECRET_KEY": SECRET}
+    assert KiwoomConfig.from_env(env).time_zone == "America/New_York"
     with pytest.raises(ValueError, match="SIW_KIWOOM_TIME_ZONE"):
-        KiwoomConfig.from_env(env)
+        KiwoomConfig.from_env({**env, "SIW_KIWOOM_TIME_ZONE": "UTC"})
     assert (
         KiwoomConfig.from_env({**env, "SIW_KIWOOM_TIME_ZONE": "Asia/Seoul"}).time_zone
         == "Asia/Seoul"
@@ -452,12 +453,13 @@ def test_broker_selection_uses_registered_keys_never_the_environment(
 
 
 def test_broker_capabilities_and_instruments_follow_the_contract() -> None:
+    expected = {"kis-us": "documented", "toss-us": "integration_tested"}
     for provider in (kis(Recorder()), toss(Recorder()), kiwoom(Recorder())):
         capabilities = provider.capabilities()
         validate_document(capabilities)
         assert (capabilities["source_type"], capabilities["verification_status"]) == (
             "broker_market",
-            "documented",
+            expected.get(provider.source_id, "integration_tested"),
         )
         for item in provider.instruments():
             validate_document(item["instrument"])

@@ -4,8 +4,13 @@ Spec: github.com/Kiwoom-Securities/Kiwoom-REST-API, kiwoom/_data/kiwoom_api_spec
 (au10001 token, usa06011 미국주식 분 차트, POST /api/us/chart, paging via the cont-yn /
 next-key headers, return_code 1700-1702 = request limits). The spec does not state the
 time zone of `cntr_tm` or whether it marks the bar start, and its example shows two rows
-with the same `cntr_tm`; so the time zone must be configured explicitly, and duplicate
-minutes fail loudly instead of being merged.
+with the same `cntr_tm`; duplicate minutes therefore fail loudly instead of being merged.
+
+Live check, 2026-10-19 (user's key, AAPL 2026-10-16 13:30-13:45Z): read as New York time,
+14 of 15 minute closes equal Alpaca SIP at the same bar start, and read as Seoul time no
+bar falls in the window. So `cntr_tm` is New York time marking the bar start; that is the
+default, and SIW_KIWOOM_TIME_ZONE remains as an override. Kiwoom lists NYSE Arca ETFs
+(SPY) under stex_tp `NY`: `NA` answered 1903 "no such symbol".
 """
 
 from __future__ import annotations
@@ -49,7 +54,8 @@ from services.market_data.provider import (
 
 TOKEN_PATH = "/oauth2/token"
 CHART_PATH = "/api/us/chart"
-EXCHANGE_CODES = {"XNAS": "ND", "XNYS": "NY", "XASE": "NA", "ARCX": "NA"}
+# ARCX -> NY was confirmed live (SPY); XASE -> NA follows the spec and is unverified.
+EXCHANGE_CODES = {"XNAS": "ND", "XNYS": "NY", "XASE": "NA", "ARCX": "NY"}
 RATE_LIMIT_CODES = {1700, 1701, 1702}
 NEW_YORK = ZoneInfo("America/New_York")
 TimeZoneName = Literal["America/New_York", "Asia/Seoul"]
@@ -72,11 +78,10 @@ class KiwoomConfig:
     def from_env(cls, env: dict[str, str] | None = None) -> KiwoomConfig:
         values = os.environ if env is None else env
         key, secret = require(values, "SIW_KIWOOM_APP_KEY", "SIW_KIWOOM_SECRET_KEY")
-        zone = values.get("SIW_KIWOOM_TIME_ZONE", "").strip()
+        zone = values.get("SIW_KIWOOM_TIME_ZONE", "America/New_York").strip()
         if zone not in ("America/New_York", "Asia/Seoul"):
             raise BrokerConfigError(
-                "set SIW_KIWOOM_TIME_ZONE to America/New_York or Asia/Seoul: the official spec "
-                "does not say which time zone cntr_tm uses; confirm it with the check command"
+                "SIW_KIWOOM_TIME_ZONE must be America/New_York (confirmed live) or Asia/Seoul"
             )
         symbols = parse_symbols(
             values.get("SIW_KIWOOM_SYMBOLS", "SPY:ARCX,AAPL:XNAS,MSFT:XNAS"), "SIW_KIWOOM_SYMBOLS"
@@ -134,7 +139,9 @@ class KiwoomMarketDataProvider:
         )
 
     def capabilities(self) -> dict[str, Any]:
-        return capabilities(self.source_id, "kiwoom-us", self._now())
+        return capabilities(
+            self.source_id, "kiwoom-us", self._now(), verification_status="integration_tested"
+        )
 
     def instruments(self) -> list[dict[str, Any]]:
         return [

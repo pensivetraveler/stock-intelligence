@@ -349,14 +349,16 @@ def instrument_listing(
     }
 
 
-def capabilities(source_id: str, feed: str, now: datetime) -> dict[str, Any]:
+def capabilities(
+    source_id: str, feed: str, now: datetime, *, verification_status: str = "documented"
+) -> dict[str, Any]:
+    """`documented` until a live check with the user's key has passed (`integration_tested`)."""
     return {
         "kind": "source_capabilities",
         "schema_version": "0.1",
         "source_id": source_id,
         "source_type": "broker_market",
-        # Built from official documentation; no account-level check has been recorded yet.
-        "verification_status": "documented",
+        "verification_status": verification_status,
         "entitlement_status": "unknown",
         "license_status": "unknown",
         "feeds": [feed],

@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
@@ -95,6 +95,31 @@ describe("API connection state", () => {
       String(input).startsWith("http://old"),
     );
     expect(oldCalls).toHaveLength(1);
+  });
+
+  it("switches between the workspace and the keys view from the side menu", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(healthResponse());
+    render(<App fetcher={fetcher} retryMs={60_000} />);
+    await screen.findByText("connected");
+
+    const menu = screen.getByRole("navigation", { name: "Main menu" });
+    expect(
+      screen.getByRole("button", { name: "Charts & journal" }),
+    ).toHaveAttribute("aria-current", "page");
+    expect(
+      screen.queryByRole("heading", { name: "Market data keys" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Market data keys" }));
+    expect(
+      await screen.findByRole("heading", { name: "Market data keys" }),
+    ).toBeInTheDocument();
+    expect(menu).toContainElement(
+      screen.getByRole("button", { name: "Market data keys", current: "page" }),
+    );
+    expect(
+      screen.getByRole("toolbar", { name: "Workspace controls", hidden: true }),
+    ).not.toBeVisible();
   });
 
   it("shows the desktop package version", async () => {
