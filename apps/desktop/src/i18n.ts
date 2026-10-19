@@ -1,0 +1,557 @@
+import { createContext, useContext } from "react";
+
+export type Language = "en" | "ko";
+export const LANGUAGES: { id: Language; label: string }[] = [
+  { id: "en", label: "English" },
+  { id: "ko", label: "한국어" },
+];
+export const LANGUAGE_STORAGE_KEY = "siw.language";
+
+const en = {
+  // App shell
+  "app.eyebrow": "PHASE 2A CHART WORKSPACE",
+  "app.subtitle":
+    "Local-first and read-only. Market data provider: {provider}.",
+  "app.version": "App version",
+  "app.endpoint": "API endpoint",
+  "app.connection": "Connection",
+  "app.lastSuccess": "Last success: {time}",
+  "app.retry": "Retry now",
+  "app.menu": "Main menu",
+  "app.language": "Language",
+  "nav.workspace": "Charts & journal",
+  "nav.keys": "Market data keys",
+  "state.checking": "checking",
+  "state.connected": "connected",
+  "state.disconnected": "disconnected",
+  "health.checking": "Checking API health",
+  "health.available": "API is available",
+  "health.invalid": "Invalid health response",
+
+  // Workspace toolbar
+  "ws.controls": "Workspace controls",
+  "ws.workspace": "Workspace",
+  "ws.saveAs": "Save as…",
+  "ws.rename": "Rename",
+  "ws.delete": "Delete",
+  "ws.lastCannotDelete": "The last workspace cannot be deleted",
+  "ws.template": "Layout template",
+  "ws.applyBoth": "Apply to both charts",
+  "ws.reset": "Reset layout",
+  "ws.undo": "Undo",
+  "ws.sync": "Sync visible time range",
+  "ws.newName": "New workspace name",
+  "ws.name": "Workspace name",
+  "ws.save": "Save",
+  "ws.saveName": "Save name",
+  "ws.cancel": "Cancel",
+  "ws.note":
+    "{description}. Templates copy settings into each chart; later changes stay per chart. Times in ET · workspaces saved on this device.",
+  "ws.instrumentsUnavailable": "Instruments unavailable: {error}",
+  "ws.chartTitle": "Chart {n}",
+  "ws.journalOff":
+    "Trade journal is off: start the API with SIW_DATA_DIR to record executions and scenarios.",
+  "ws.journalUnavailable": "Trade journal unavailable: {error}",
+  "template.terminal.name": "Trading Terminal",
+  "template.terminal.description":
+    "1m and 15m with extended hours, charts move independently",
+  "template.review.name": "Trade Review",
+  "template.review.description":
+    "5m and 60m regular session, visible time range synced",
+  "name.empty": "Enter a name",
+  "name.tooLong": "Use at most {max} characters",
+  "name.taken": "A workspace with this name already exists",
+
+  // Chart panel
+  "chart.instrument": "Instrument",
+  "chart.timeframe": "Timeframe",
+  "chart.sessionDate": "Session date",
+  "chart.hours": "Hours",
+  "chart.regular": "Regular",
+  "chart.extended": "Extended",
+  "chart.loading": "Loading bars…",
+  "chart.closed": "{date} is not a trading day.",
+  "chart.notOffered":
+    "This instrument is not offered by the current data provider. Choose another.",
+  "chart.request": "{message} (request {id})",
+  "chart.clickHint":
+    "Click a candle to record an actual execution or a hypothetical scenario.",
+  "chart.coverage": "Coverage",
+  "chart.quality": "Bar quality",
+  "chart.sessions": "Sessions",
+  "chart.source": "Source",
+  "chart.missing": "Missing",
+  "chart.earlyClose": " · early close",
+  "chart.andMore": " and {n} more",
+  "summary.intervals": "{observed}/{expected} {timeframe} intervals",
+  "summary.allFinal": "all bars complete and final",
+  "summary.notFinal": "{quality}, not final",
+  "summary.noBars": "no bars",
+  "coverage.complete": "complete",
+  "coverage.partial": "partial",
+  "coverage.empty": "empty",
+  "quality.complete": "complete",
+  "quality.partial": "partial",
+  "quality.provisional": "provisional",
+  "session.pre": "pre",
+  "session.regular": "regular",
+  "session.post": "post",
+  "reason.fixture_missing": "fixture missing",
+  "reason.not_available_as_of_cutoff": "not available as of cutoff",
+  "reason.provider_no_bar": "provider no bar",
+  "reason.outside_entitlement": "outside entitlement",
+  "reason.not_yet_final": "not yet final",
+  "reason.session_not_covered": "session not covered",
+  "reason.beyond_source_history": "beyond source history",
+
+  // Trade entry
+  "trade.form": "Trade entry",
+  "trade.recordType": "Record type",
+  "trade.manualTab": "Actual execution (manual)",
+  "trade.hypoTab": "Hypothetical scenario",
+  "trade.context":
+    "{symbol} · selected candle {candle} · O {open} H {high} L {low} C {close}. Context only: the candle is not your fill time or price.",
+  "trade.side": "Side",
+  "trade.buy": "Buy",
+  "trade.sell": "Sell",
+  "trade.quantity": "Quantity",
+  "trade.fillPrice": "Fill price (USD)",
+  "trade.fees": "Fees (USD)",
+  "trade.precision": "Time precision",
+  "trade.exact": "Exact (seconds)",
+  "trade.minute": "To the minute",
+  "trade.approximate": "Approximate",
+  "trade.unknown": "Unknown",
+  "trade.fillDate": "Fill date (ET)",
+  "trade.fillTime": "Fill time (ET)",
+  "trade.memo": "Memo (do not enter account numbers or credentials)",
+  "trade.direction": "Direction",
+  "trade.long": "Long",
+  "trade.short": "Short",
+  "trade.entryPrice": "Entry price",
+  "trade.exitPrice": "Exit price",
+  "trade.exitTime": "Exit time (ET, {date})",
+  "trade.feesTotal": "Fees, total (USD)",
+  "trade.slippage": "Slippage per share",
+  "trade.recordManual": "Record actual execution",
+  "trade.saveScenario": "Save hypothetical scenario",
+  "trade.cancel": "Cancel",
+  "trade.journalOff":
+    "The trade journal is off: start the API with SIW_DATA_DIR set. Nothing was saved.",
+
+  // Journal
+  "journal.label": "Trade journal",
+  "journal.manualTitle": "Actual executions (manual, unverified)",
+  "journal.importedTitle": "Statement imports (file, not broker-verified)",
+  "journal.hypoTitle": "Hypothetical scenarios (not real P&L)",
+  "journal.position":
+    "{symbol}: realized {pnl} USD after {fees} fees · open {open}",
+  "journal.unordered": " · {n} with unknown time not counted",
+  "journal.symbol": "Symbol",
+  "journal.side": "Side",
+  "journal.qty": "Qty",
+  "journal.price": "Price",
+  "journal.fillTime": "Fill time",
+  "journal.evidence": "Evidence",
+  "journal.source": "Source",
+  "journal.direction": "Direction",
+  "journal.entryExit": "Entry → exit",
+  "journal.netPnl": "Net P&L",
+  "journal.unknownTime": "unknown",
+  "journal.noManual":
+    "No actual executions recorded. Click a candle to add one.",
+  "journal.noImported": "No statements imported.",
+  "journal.noScenarios": "No hypothetical scenarios yet.",
+  "journal.row": "{broker} · row {row}",
+  "journal.keptAfterReview": " · kept after duplicate review",
+  "journal.pnl": "{net} USD (gross {gross}, costs {costs})",
+
+  // Statement import
+  "import.title": "Import broker statement (CSV)",
+  "import.note":
+    "Rows become a separate “statement import” ledger, never merged with manual entries. Only mapped columns are read; the file itself and unmapped columns such as account numbers are not stored.",
+  "import.file": "CSV file",
+  "import.broker": "Broker label (a name, not an account number)",
+  "import.timezone": "Times without an offset are in",
+  "import.eastern": "US Eastern (ET)",
+  "import.delimiter": "Delimiter",
+  "import.comma": "Comma",
+  "import.semicolon": "Semicolon",
+  "import.tab": "Tab",
+  "import.preview": "Preview",
+  "import.mapping": "Column mapping",
+  "import.notMapped": "(not mapped)",
+  "import.alreadyImported":
+    "This exact file was already imported; committing again changes nothing.",
+  "import.summary":
+    "{new} new · {exact} already imported · {possible} possible duplicates · {invalid} invalid",
+  "import.row": "Row",
+  "import.status": "Status",
+  "import.fill": "Fill",
+  "import.notes": "Notes",
+  "import.decision": "Decision",
+  "import.decisionFor": "Decision for row {row}",
+  "import.matches": "matches {id}",
+  "import.choose": "Choose…",
+  "import.importSeparate": "Import (a separate fill)",
+  "import.skipSame": "Skip (same fill)",
+  "import.import": "Import",
+  "import.skip": "Skip",
+  "import.confirmNoChanges": "Confirm (no changes)",
+  "import.commit": "Commit import",
+  "import.decideFirst": "Decide on {n} possible duplicate(s) first.",
+  "import.done":
+    "Imported {imported} of {rows} rows from {file}; skipped {skipped}.",
+  "import.off":
+    "Imports are off: start the API with SIW_DATA_DIR set. Nothing was saved.",
+  "import.readError": "Could not read the file",
+  "importStatus.new": "New",
+  "importStatus.duplicate_exact": "Already imported",
+  "importStatus.possible_duplicate": "Possible duplicate",
+  "importStatus.invalid": "Invalid",
+  "importField.executed_at": "Execution timestamp",
+  "importField.date": "Date (if separate)",
+  "importField.time": "Time (if separate)",
+  "importField.symbol": "Symbol",
+  "importField.side": "Side",
+  "importField.quantity": "Quantity",
+  "importField.price": "Price",
+  "importField.fees": "Fees",
+  "importField.broker_execution_id": "Broker execution ID",
+
+  // Keys
+  "keys.title": "Market data keys",
+  "keys.note":
+    "Secrets are stored in this computer's keychain and never shown again. Keys of one provider are used in order; a key that hits the rate limit is skipped for about a minute. The running provider is {provider} (set with SIW_MARKET_DATA_PROVIDER).",
+  "keys.addForm": "Add key",
+  "keys.provider": "Provider",
+  "keys.label": "Label",
+  "keys.account": "Account (last 4 digits)",
+  "keys.accountColumn": "Account",
+  "keys.add": "Add key",
+  "keys.inUse": " · in use",
+  "keys.order": "Order",
+  "keys.enabled": "Enabled",
+  "keys.status": "Status",
+  "keys.actions": "Actions",
+  "keys.enable": "Enable {label}",
+  "keys.moveUp": "Move {label} up",
+  "keys.moveDown": "Move {label} down",
+  "keys.replace": "Replace secret",
+  "keys.replaceForm": "Replace secret of {label}",
+  "keys.saveSecret": "Save secret",
+  "keys.cancel": "Cancel",
+  "keys.delete": "Delete",
+  "keys.confirmDelete": "Confirm delete",
+  "keys.notRunning": "Provider not running",
+  "keys.until": " until {time}",
+  "keys.off":
+    "Key management is off: start the API with SIW_DATA_DIR set. Nothing was saved.",
+  "keys.checkFields":
+    "Check the fields: the account suffix is the last 4 digits only.",
+  "keyState.idle": "Not used yet",
+  "keyState.ok": "Working",
+  "keyState.cooling": "Rate limited",
+  "keyState.error": "Error",
+
+  "common.requestFailed": "Request failed",
+} as const;
+
+export type MessageKey = keyof typeof en;
+
+const ko: Record<MessageKey, string> = {
+  "app.eyebrow": "PHASE 2A 차트 워크스페이스",
+  "app.subtitle": "로컬 우선, 읽기 전용. 시세 공급업체: {provider}.",
+  "app.version": "앱 버전",
+  "app.endpoint": "API 주소",
+  "app.connection": "연결",
+  "app.lastSuccess": "마지막 성공: {time}",
+  "app.retry": "다시 확인",
+  "app.menu": "주 메뉴",
+  "app.language": "언어",
+  "nav.workspace": "차트와 매매일지",
+  "nav.keys": "시세 키 관리",
+  "state.checking": "확인 중",
+  "state.connected": "연결됨",
+  "state.disconnected": "연결 끊김",
+  "health.checking": "API 상태 확인 중",
+  "health.available": "API 사용 가능",
+  "health.invalid": "상태 응답이 올바르지 않음",
+
+  "ws.controls": "워크스페이스 도구",
+  "ws.workspace": "워크스페이스",
+  "ws.saveAs": "다른 이름으로 저장…",
+  "ws.rename": "이름 바꾸기",
+  "ws.delete": "삭제",
+  "ws.lastCannotDelete": "마지막 워크스페이스는 삭제할 수 없습니다",
+  "ws.template": "레이아웃 템플릿",
+  "ws.applyBoth": "두 차트에 적용",
+  "ws.reset": "레이아웃 초기화",
+  "ws.undo": "되돌리기",
+  "ws.sync": "보이는 시간 범위 동기화",
+  "ws.newName": "새 워크스페이스 이름",
+  "ws.name": "워크스페이스 이름",
+  "ws.save": "저장",
+  "ws.saveName": "이름 저장",
+  "ws.cancel": "취소",
+  "ws.note":
+    "{description}. 템플릿은 각 차트에 설정을 복사하며, 이후 변경은 차트별로 유지됩니다. 시각은 미 동부(ET) · 워크스페이스는 이 기기에 저장됩니다.",
+  "ws.instrumentsUnavailable": "종목 목록을 불러오지 못했습니다: {error}",
+  "ws.chartTitle": "차트 {n}",
+  "ws.journalOff":
+    "매매일지가 꺼져 있습니다: 체결과 시나리오를 기록하려면 SIW_DATA_DIR을 설정하고 API를 실행하세요.",
+  "ws.journalUnavailable": "매매일지를 불러오지 못했습니다: {error}",
+  "template.terminal.name": "트레이딩 터미널",
+  "template.terminal.description":
+    "1분봉과 15분봉, 장전·장후 포함, 차트가 따로 움직임",
+  "template.review.name": "매매 복기",
+  "template.review.description":
+    "5분봉과 60분봉, 정규장, 보이는 시간 범위 동기화",
+  "name.empty": "이름을 입력하세요",
+  "name.tooLong": "최대 {max}자까지 입력할 수 있습니다",
+  "name.taken": "같은 이름의 워크스페이스가 이미 있습니다",
+
+  "chart.instrument": "종목",
+  "chart.timeframe": "봉 단위",
+  "chart.sessionDate": "거래일",
+  "chart.hours": "시간대",
+  "chart.regular": "정규장",
+  "chart.extended": "장전·장후 포함",
+  "chart.loading": "캔들을 불러오는 중…",
+  "chart.closed": "{date}은(는) 거래일이 아닙니다.",
+  "chart.notOffered":
+    "현재 시세 공급업체가 제공하지 않는 종목입니다. 다른 종목을 고르세요.",
+  "chart.request": "{message} (요청 {id})",
+  "chart.clickHint":
+    "캔들을 클릭하면 실제 체결이나 가상 시나리오를 기록할 수 있습니다.",
+  "chart.coverage": "수집 범위",
+  "chart.quality": "캔들 품질",
+  "chart.sessions": "세션",
+  "chart.source": "출처",
+  "chart.missing": "빈 구간",
+  "chart.earlyClose": " · 조기 폐장",
+  "chart.andMore": " 외 {n}건",
+  "summary.intervals": "{timeframe} 구간 {observed}/{expected}",
+  "summary.allFinal": "모든 캔들 완전·확정",
+  "summary.notFinal": "{quality}, 미확정",
+  "summary.noBars": "캔들 없음",
+  "coverage.complete": "완전",
+  "coverage.partial": "일부",
+  "coverage.empty": "없음",
+  "quality.complete": "완전",
+  "quality.partial": "일부",
+  "quality.provisional": "잠정",
+  "session.pre": "장전",
+  "session.regular": "정규장",
+  "session.post": "장후",
+  "reason.fixture_missing": "표본 없음",
+  "reason.not_available_as_of_cutoff": "기준 시점에 미공개",
+  "reason.provider_no_bar": "체결 없음",
+  "reason.outside_entitlement": "요금제 범위 밖",
+  "reason.not_yet_final": "아직 미확정",
+  "reason.session_not_covered": "제공하지 않는 세션",
+  "reason.beyond_source_history": "제공 이력 밖",
+
+  "trade.form": "거래 기록",
+  "trade.recordType": "기록 종류",
+  "trade.manualTab": "실제 체결(수동)",
+  "trade.hypoTab": "가상 시나리오",
+  "trade.context":
+    "{symbol} · 선택한 캔들 {candle} · 시 {open} 고 {high} 저 {low} 종 {close}. 참고용입니다: 캔들은 실제 체결 시각이나 가격이 아닙니다.",
+  "trade.side": "매매 구분",
+  "trade.buy": "매수",
+  "trade.sell": "매도",
+  "trade.quantity": "수량",
+  "trade.fillPrice": "체결가(USD)",
+  "trade.fees": "수수료(USD)",
+  "trade.precision": "시각 정확도",
+  "trade.exact": "정확(초 단위)",
+  "trade.minute": "분 단위",
+  "trade.approximate": "대략",
+  "trade.unknown": "모름",
+  "trade.fillDate": "체결일(ET)",
+  "trade.fillTime": "체결 시각(ET)",
+  "trade.memo": "메모(계좌번호나 인증 정보는 입력하지 마세요)",
+  "trade.direction": "방향",
+  "trade.long": "롱(매수)",
+  "trade.short": "숏(매도)",
+  "trade.entryPrice": "진입가",
+  "trade.exitPrice": "청산가",
+  "trade.exitTime": "청산 시각(ET, {date})",
+  "trade.feesTotal": "수수료 합계(USD)",
+  "trade.slippage": "주당 슬리피지",
+  "trade.recordManual": "실제 체결 기록",
+  "trade.saveScenario": "가상 시나리오 저장",
+  "trade.cancel": "취소",
+  "trade.journalOff":
+    "매매일지가 꺼져 있습니다: SIW_DATA_DIR을 설정하고 API를 실행하세요. 저장된 것은 없습니다.",
+
+  "journal.label": "매매일지",
+  "journal.manualTitle": "실제 체결(수동 입력, 미검증)",
+  "journal.importedTitle": "거래내역 가져오기(파일, 증권사 미확인)",
+  "journal.hypoTitle": "가상 시나리오(실제 손익 아님)",
+  "journal.position":
+    "{symbol}: 실현 손익 {pnl} USD(수수료 {fees} 차감) · 보유 {open}",
+  "journal.unordered": " · 시각 미상 {n}건은 계산에서 제외",
+  "journal.symbol": "종목",
+  "journal.side": "구분",
+  "journal.qty": "수량",
+  "journal.price": "가격",
+  "journal.fillTime": "체결 시각",
+  "journal.evidence": "근거",
+  "journal.source": "출처",
+  "journal.direction": "방향",
+  "journal.entryExit": "진입 → 청산",
+  "journal.netPnl": "순손익",
+  "journal.unknownTime": "모름",
+  "journal.noManual": "기록된 실제 체결이 없습니다. 캔들을 클릭해 추가하세요.",
+  "journal.noImported": "가져온 거래내역이 없습니다.",
+  "journal.noScenarios": "가상 시나리오가 아직 없습니다.",
+  "journal.row": "{broker} · {row}행",
+  "journal.keptAfterReview": " · 중복 검토 후 유지",
+  "journal.pnl": "{net} USD(총 {gross}, 비용 {costs})",
+
+  "import.title": "증권사 거래내역 가져오기(CSV)",
+  "import.note":
+    "가져온 행은 별도의 ‘거래내역 가져오기’ 원장이 되며, 수동 기록과 합쳐지지 않습니다. 매핑한 열만 읽고, 파일 자체와 계좌번호 같은 매핑하지 않은 열은 저장하지 않습니다.",
+  "import.file": "CSV 파일",
+  "import.broker": "증권사 이름(계좌번호 아님)",
+  "import.timezone": "오프셋 없는 시각의 기준",
+  "import.eastern": "미 동부(ET)",
+  "import.delimiter": "구분자",
+  "import.comma": "쉼표",
+  "import.semicolon": "세미콜론",
+  "import.tab": "탭",
+  "import.preview": "미리보기",
+  "import.mapping": "열 매핑",
+  "import.notMapped": "(매핑 안 함)",
+  "import.alreadyImported":
+    "이미 가져온 파일입니다. 다시 커밋해도 바뀌는 것이 없습니다.",
+  "import.summary":
+    "새 행 {new} · 이미 가져옴 {exact} · 중복 가능 {possible} · 오류 {invalid}",
+  "import.row": "행",
+  "import.status": "상태",
+  "import.fill": "체결",
+  "import.notes": "비고",
+  "import.decision": "결정",
+  "import.decisionFor": "{row}행 결정",
+  "import.matches": "{id}와 일치",
+  "import.choose": "선택…",
+  "import.importSeparate": "가져오기(별개의 체결)",
+  "import.skipSame": "건너뛰기(같은 체결)",
+  "import.import": "가져오기",
+  "import.skip": "건너뛰기",
+  "import.confirmNoChanges": "확인(변경 없음)",
+  "import.commit": "가져오기 커밋",
+  "import.decideFirst": "중복 가능 {n}건을 먼저 결정하세요.",
+  "import.done":
+    "{file}에서 {rows}행 중 {imported}행을 가져왔고 {skipped}행을 건너뛰었습니다.",
+  "import.off":
+    "가져오기가 꺼져 있습니다: SIW_DATA_DIR을 설정하고 API를 실행하세요. 저장된 것은 없습니다.",
+  "import.readError": "파일을 읽지 못했습니다",
+  "importStatus.new": "새 행",
+  "importStatus.duplicate_exact": "이미 가져옴",
+  "importStatus.possible_duplicate": "중복 가능",
+  "importStatus.invalid": "오류",
+  "importField.executed_at": "체결 일시",
+  "importField.date": "날짜(따로 있을 때)",
+  "importField.time": "시각(따로 있을 때)",
+  "importField.symbol": "종목",
+  "importField.side": "매매 구분",
+  "importField.quantity": "수량",
+  "importField.price": "가격",
+  "importField.fees": "수수료",
+  "importField.broker_execution_id": "증권사 체결 ID",
+
+  "keys.title": "시세 키 관리",
+  "keys.note":
+    "secret은 이 컴퓨터의 키체인에 저장되며 다시 보여 주지 않습니다. 한 공급업체의 키는 순서대로 쓰고, 호출 한도에 걸린 키는 약 1분 동안 건너뜁니다. 실행 중인 공급업체: {provider}(SIW_MARKET_DATA_PROVIDER로 설정).",
+  "keys.addForm": "키 추가",
+  "keys.provider": "공급업체",
+  "keys.label": "별칭",
+  "keys.account": "계좌(끝 4자리)",
+  "keys.accountColumn": "계좌",
+  "keys.add": "키 추가",
+  "keys.inUse": " · 사용 중",
+  "keys.order": "순서",
+  "keys.enabled": "사용",
+  "keys.status": "상태",
+  "keys.actions": "작업",
+  "keys.enable": "{label} 사용",
+  "keys.moveUp": "{label} 위로",
+  "keys.moveDown": "{label} 아래로",
+  "keys.replace": "secret 교체",
+  "keys.replaceForm": "{label}의 secret 교체",
+  "keys.saveSecret": "secret 저장",
+  "keys.cancel": "취소",
+  "keys.delete": "삭제",
+  "keys.confirmDelete": "삭제 확인",
+  "keys.notRunning": "실행 중인 공급업체 아님",
+  "keys.until": " ({time}까지)",
+  "keys.off":
+    "키 관리가 꺼져 있습니다: SIW_DATA_DIR을 설정하고 API를 실행하세요. 저장된 것은 없습니다.",
+  "keys.checkFields": "입력값을 확인하세요: 계좌는 끝 4자리만 입력합니다.",
+  "keyState.idle": "아직 사용 안 함",
+  "keyState.ok": "정상",
+  "keyState.cooling": "호출 한도 대기",
+  "keyState.error": "오류",
+
+  "common.requestFailed": "요청 실패",
+};
+
+export const DICTIONARIES: Record<Language, Record<MessageKey, string>> = {
+  en,
+  ko,
+};
+
+export type Translate = (
+  key: MessageKey,
+  vars?: Record<string, string | number>,
+) => string;
+
+export function translator(language: Language): Translate {
+  const dictionary = DICTIONARIES[language];
+  return (key, vars) =>
+    dictionary[key].replace(/\{(\w+)\}/g, (match, name: string) =>
+      vars && name in vars ? String(vars[name]) : match,
+    );
+}
+
+/** Dictionary text for a key built at runtime (e.g. `reason.${code}`), else the fallback. */
+export function translateDynamic(
+  t: Translate,
+  key: string,
+  fallback: string,
+): string {
+  return key in en ? t(key as MessageKey) : fallback;
+}
+
+export function detectLanguage(storage: Storage | null): Language {
+  try {
+    const saved = storage?.getItem(LANGUAGE_STORAGE_KEY);
+    if (saved === "en" || saved === "ko") return saved;
+  } catch {
+    // Storage can be unavailable (private mode); fall back to the browser language.
+  }
+  return typeof navigator !== "undefined" &&
+    navigator.language.toLowerCase().startsWith("ko")
+    ? "ko"
+    : "en";
+}
+
+export interface I18nValue {
+  language: Language;
+  setLanguage: (language: Language) => void;
+  t: Translate;
+}
+
+// Without a provider (unit tests of single components) everything renders in English.
+export const I18nContext = createContext<I18nValue>({
+  language: "en",
+  setLanguage: () => undefined,
+  t: translator("en"),
+});
+
+export function useI18n(): I18nValue {
+  return useContext(I18nContext);
+}

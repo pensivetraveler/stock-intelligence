@@ -122,6 +122,31 @@ describe("API connection state", () => {
     ).not.toBeVisible();
   });
 
+  it("switches the interface to Korean and remembers the choice", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(healthResponse());
+    const saved = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => saved.get(key) ?? null,
+      setItem: (key: string, value: string) => void saved.set(key, value),
+    } as unknown as Storage;
+    render(
+      <App fetcher={fetcher} retryMs={60_000} languageStorage={storage} />,
+    );
+    await screen.findByText("connected");
+
+    fireEvent.change(screen.getByLabelText("Language"), {
+      target: { value: "ko" },
+    });
+    expect(
+      await screen.findByRole("button", { name: "시세 키 관리" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("연결됨")).toBeInTheDocument();
+    expect(screen.getByText("API 사용 가능")).toBeInTheDocument();
+    expect(screen.getByLabelText("언어")).toHaveValue("ko");
+    expect(saved.get("siw.language")).toBe("ko");
+    expect(document.documentElement.lang).toBe("ko");
+  });
+
   it("shows the desktop package version", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(healthResponse());
     render(<App fetcher={fetcher} retryMs={60_000} />);

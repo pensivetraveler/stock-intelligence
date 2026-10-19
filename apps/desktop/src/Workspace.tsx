@@ -13,6 +13,7 @@ import {
 
 import { ChartSyncGroup } from "./chart-sync";
 import { ChartPanel } from "./ChartPanel";
+import { useI18n, type MessageKey, type Translate } from "./i18n";
 import { ImportPanel } from "./ImportPanel";
 import { JournalPanel } from "./JournalPanel";
 import {
@@ -60,6 +61,17 @@ function randomId(): string {
   return crypto.randomUUID();
 }
 
+// validateName's messages, mapped to dictionary keys for display.
+function nameError(t: Translate, error: string): string {
+  const keys: Record<string, MessageKey> = {
+    "Enter a name": "name.empty",
+    "A workspace with this name already exists": "name.taken",
+  };
+  if (error in keys) return t(keys[error]);
+  const tooLong = /^Use at most (\d+) characters$/.exec(error);
+  return tooLong ? t("name.tooLong", { max: tooLong[1] }) : error;
+}
+
 type NameForm = {
   mode: "save-as" | "rename";
   value: string;
@@ -71,6 +83,7 @@ export function Workspace({
   storage = browserStorage(),
   newId = randomId,
 }: WorkspaceProps) {
+  const { t } = useI18n();
   const [library, setLibrary] = useState<WorkspaceLibrary>(() =>
     loadLibrary(storage, newId),
   );
@@ -85,7 +98,8 @@ export function Workspace({
     manual: ManualLedgerResponse | null;
     imported: ImportedLedgerResponse | null;
     scenarios: ScenarioLedgerResponse | null;
-    error: string | null;
+    // Kept raw and worded at render time, in the current language.
+    error: { cause: unknown } | null;
   }>({ manual: null, imported: null, scenarios: null, error: null });
   const active = activeWorkspace(library);
   const layout = active.layout;
@@ -134,16 +148,25 @@ export function Workspace({
           manual: null,
           imported: null,
           scenarios: null,
-          error:
-            error instanceof MarketApiError &&
-            error.code === "journal_storage_unconfigured"
-              ? "Trade journal is off: start the API with SIW_DATA_DIR to record executions and scenarios."
-              : `Trade journal unavailable: ${error instanceof Error ? error.message : "request failed"}`,
+          error: { cause: error },
         }),
       );
   }, [api]);
 
   useEffect(() => refreshJournal(), [refreshJournal]);
+
+  const journalError =
+    ledgers.error === null
+      ? null
+      : ledgers.error.cause instanceof MarketApiError &&
+          ledgers.error.cause.code === "journal_storage_unconfigured"
+        ? t("ws.journalOff")
+        : t("ws.journalUnavailable", {
+            error:
+              ledgers.error.cause instanceof Error
+                ? ledgers.error.cause.message
+                : t("common.requestFailed"),
+          });
 
   const journal = useMemo(
     () => ({
@@ -217,10 +240,10 @@ export function Workspace({
       <div
         className="workspace-bar"
         role="toolbar"
-        aria-label="Workspace controls"
+        aria-label={t("ws.controls")}
       >
         <label className="inline-field">
-          Workspace
+          {t("ws.workspace")}
           <select
             value={active.id}
             onChange={(event) =>
@@ -241,7 +264,7 @@ export function Workspace({
             setNameForm({ mode: "save-as", value: "", error: null })
           }
         >
-          Save as…
+          {t("ws.saveAs")}
         </button>
         <button
           type="button"
@@ -250,7 +273,7 @@ export function Workspace({
             setNameForm({ mode: "rename", value: active.name, error: null })
           }
         >
-          Rename
+          {t("ws.rename")}
         </button>
         <button
           type="button"
@@ -258,16 +281,16 @@ export function Workspace({
           disabled={library.workspaces.length === 1}
           title={
             library.workspaces.length === 1
-              ? "The last workspace cannot be deleted"
+              ? t("ws.lastCannotDelete")
               : undefined
           }
           onClick={() => changeWorkspace(removeWorkspace(library, active.id))}
         >
-          Delete
+          {t("ws.delete")}
         </button>
         <span className="toolbar-divider" aria-hidden="true" />
         <label className="inline-field">
-          Layout template
+          {t("ws.template")}
           <select
             value={templateId}
             onChange={(event) =>
@@ -276,7 +299,7 @@ export function Workspace({
           >
             {LAYOUT_TEMPLATES.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.name}
+                {t(`template.${item.id}.name`)}
               </option>
             ))}
           </select>
@@ -284,17 +307,17 @@ export function Workspace({
         <button
           type="button"
           className="secondary"
-          title={template.description}
+          title={t(`template.${template.id}.description`)}
           onClick={() => replaceLayout(applyTemplate(layout, template))}
         >
-          Apply to both charts
+          {t("ws.applyBoth")}
         </button>
         <button
           type="button"
           className="secondary"
           onClick={() => replaceLayout(DEFAULT_WORKSPACE)}
         >
-          Reset layout
+          {t("ws.reset")}
         </button>
         <button
           type="button"
@@ -302,7 +325,7 @@ export function Workspace({
           disabled={undoStack.length === 0}
           onClick={undo}
         >
-          Undo
+          {t("ws.undo")}
         </button>
         <label className="toggle">
           <input
@@ -315,16 +338,14 @@ export function Workspace({
               }))
             }
           />
-          Sync visible time range
+          {t("ws.sync")}
         </label>
       </div>
 
       {nameForm ? (
         <form className="name-form" onSubmit={submitName}>
           <label className="inline-field">
-            {nameForm.mode === "save-as"
-              ? "New workspace name"
-              : "Workspace name"}
+            {nameForm.mode === "save-as" ? t("ws.newName") : t("ws.name")}
             <input
               autoFocus
               value={nameForm.value}
@@ -340,31 +361,31 @@ export function Workspace({
             />
           </label>
           <button type="submit">
-            {nameForm.mode === "save-as" ? "Save" : "Save name"}
+            {nameForm.mode === "save-as" ? t("ws.save") : t("ws.saveName")}
           </button>
           <button
             type="button"
             className="secondary"
             onClick={() => setNameForm(null)}
           >
-            Cancel
+            {t("ws.cancel")}
           </button>
           {nameForm.error ? (
             <span className="chart-error" role="alert">
-              {nameForm.error}
+              {nameError(t, nameForm.error)}
             </span>
           ) : null}
         </form>
       ) : null}
 
       <p className="workspace-note">
-        {template.description}. Templates copy settings into each chart; later
-        changes stay per chart. Synthetic data · times in ET · workspaces saved
-        on this device.
+        {t("ws.note", {
+          description: t(`template.${template.id}.description`),
+        })}
       </p>
       {instrumentsError ? (
         <p className="chart-error" role="alert">
-          Instruments unavailable: {instrumentsError}
+          {t("ws.instrumentsUnavailable", { error: instrumentsError })}
         </p>
       ) : null}
       <div className="chart-grid">
@@ -372,7 +393,7 @@ export function Workspace({
           <ChartPanel
             key={index}
             chartId={`chart-${index + 1}`}
-            title={`Chart ${index + 1}`}
+            title={t("ws.chartTitle", { n: index + 1 })}
             api={api}
             config={config}
             instruments={instruments}
@@ -388,10 +409,10 @@ export function Workspace({
         manual={ledgers.manual}
         imported={ledgers.imported}
         scenarios={ledgers.scenarios}
-        error={ledgers.error}
+        error={journalError}
         symbolOf={symbolOf}
       />
-      {ledgers.error ? null : (
+      {journalError ? null : (
         <ImportPanel api={api} onImported={refreshJournal} />
       )}
     </div>

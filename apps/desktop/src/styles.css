@@ -577,3 +577,30 @@ button:disabled {
     border-bottom: 1px solid var(--border);
   }
 }
+
+.side-nav-language {
+  display: grid;
+  gap: 4px;
+  margin-top: auto;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.side-nav-language select {
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #e8edf4;
+  background: #10151d;
+  color-scheme: dark;
+}
+
+@media (max-width: 760px) {
+  .side-nav-language {
+    grid-auto-flow: column;
+    align-items: center;
+    margin: 0 0 0 auto;
+  }
+}

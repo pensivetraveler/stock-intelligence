@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { version as APP_VERSION } from "../package.json";
 import { checkApiHealth, type ApiConnectionState } from "./api-health";
 import { createCredentialApi } from "./credential-api";
+import { LANGUAGES, useI18n, type Language, type MessageKey } from "./i18n";
+import { I18nProvider } from "./I18nProvider";
 import { KeysPanel } from "./KeysPanel";
 import { createMarketApi } from "./market-api";
 import "./styles.css";
@@ -10,24 +12,45 @@ import { Workspace } from "./Workspace";
 
 type View = "workspace" | "keys";
 
-const VIEWS: { id: View; label: string }[] = [
-  { id: "workspace", label: "Charts & journal" },
-  { id: "keys", label: "Market data keys" },
+const VIEWS: { id: View; label: MessageKey }[] = [
+  { id: "workspace", label: "nav.workspace" },
+  { id: "keys", label: "nav.keys" },
 ];
+
+// checkApiHealth reports these fixed messages; anything else is a raw network error.
+const HEALTH_MESSAGES: Record<string, MessageKey> = {
+  "Checking API health": "health.checking",
+  "API is available": "health.available",
+  "Invalid health response": "health.invalid",
+};
 
 interface AppProps {
   apiBaseUrl?: string;
   fetcher?: typeof fetch;
   retryMs?: number;
   timeoutMs?: number;
+  /** Where the language choice is kept; the browser's localStorage by default. */
+  languageStorage?: Storage | null;
 }
 
-export function App({
+export function App({ languageStorage, ...props }: AppProps) {
+  return (
+    <I18nProvider
+      {...(languageStorage === undefined ? {} : { storage: languageStorage })}
+    >
+      <AppContent {...props} />
+    </I18nProvider>
+  );
+}
+
+function AppContent({
   apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000",
   fetcher = fetch,
   retryMs = 5_000,
   timeoutMs = 5_000,
-}: AppProps) {
+}: Omit<AppProps, "languageStorage">) {
+  const { t, language, setLanguage } = useI18n();
+  const [provider, setProvider] = useState<string | null>(null);
   const [state, setState] = useState<ApiConnectionState>("checking");
   const [message, setMessage] = useState("Checking API health");
   const [lastSuccess, setLastSuccess] = useState<string | null>(null);
@@ -40,6 +63,18 @@ export function App({
     () => createCredentialApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
   );
+  const connected = lastSuccess !== null;
+  useEffect(() => {
+    if (!connected) return;
+    let current = true;
+    credentialApi
+      .list()
+      .then((listing) => current && setProvider(listing.active_provider))
+      .catch(() => current && setProvider(null));
+    return () => {
+      current = false;
+    };
+  }, [connected, credentialApi]);
   const retryTimer = useRef<number | null>(null);
   const mounted = useRef(true);
   // Bumped whenever the polling loop is replaced (props change or unmount), so a
@@ -82,7 +117,7 @@ export function App({
 
   return (
     <div className="shell">
-      <nav className="side-nav" aria-label="Main menu">
+      <nav className="side-nav" aria-label={t("app.menu")}>
         {VIEWS.map((item) => (
           <button
             key={item.id}
@@ -93,46 +128,66 @@ export function App({
             aria-current={item.id === view ? "page" : undefined}
             onClick={() => setView(item.id)}
           >
-            {item.label}
+            {t(item.label)}
           </button>
         ))}
+        <label className="side-nav-language">
+          {t("app.language")}
+          <select
+            value={language}
+            onChange={(event) => setLanguage(event.target.value as Language)}
+          >
+            {LANGUAGES.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </nav>
       <main className="app">
         <header className="app-bar" aria-labelledby="app-title">
           <div>
-            <p className="eyebrow">PHASE 2A CHART WORKSPACE</p>
+            <p className="eyebrow">{t("app.eyebrow")}</p>
             <h1 id="app-title">Stock Intelligence Workstation</h1>
             <p className="subtitle">
-              Local-first and read-only. Synthetic market data; no brokerage
-              connection.
+              {t("app.subtitle", { provider: provider ?? "…" })}
             </p>
           </div>
           <dl className="app-facts">
             <div>
-              <dt>App version</dt>
+              <dt>{t("app.version")}</dt>
               <dd>{APP_VERSION}</dd>
             </div>
             <div>
-              <dt>API endpoint</dt>
+              <dt>{t("app.endpoint")}</dt>
               <dd>{apiBaseUrl}</dd>
             </div>
             <div>
-              <dt>Connection</dt>
+              <dt>{t("app.connection")}</dt>
               <dd>
-                <span className={`status status-${state}`}>{state}</span>
+                <span className={`status status-${state}`}>
+                  {t(`state.${state}`)}
+                </span>
               </dd>
             </div>
           </dl>
           <div className="health" role="status" aria-live="polite">
             <strong>/health</strong>
-            <span>{message}</span>
-            {lastSuccess ? <small>Last success: {lastSuccess}</small> : null}
+            <span>
+              {message in HEALTH_MESSAGES
+                ? t(HEALTH_MESSAGES[message])
+                : message}
+            </span>
+            {lastSuccess ? (
+              <small>{t("app.lastSuccess", { time: lastSuccess })}</small>
+            ) : null}
             <button
               type="button"
               onClick={() => void runCheck()}
               disabled={state === "checking"}
             >
-              Retry now
+              {t("app.retry")}
             </button>
           </div>
         </header>
