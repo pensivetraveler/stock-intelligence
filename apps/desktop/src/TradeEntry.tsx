@@ -2,6 +2,7 @@ import type { PriceBar } from "@siw/contracts/types";
 import { useState, type FormEvent } from "react";
 
 import { exchangeTime } from "./chart-data";
+import { useI18n, type Translate } from "./i18n";
 import {
   MarketApiError,
   type ManualExecutionRequest,
@@ -20,13 +21,13 @@ interface TradeEntryProps {
   onClose: () => void;
 }
 
-function message(error: unknown): string {
+function message(t: Translate, error: unknown): string {
   if (error instanceof MarketApiError) {
     return error.code === "journal_storage_unconfigured"
-      ? "The trade journal is off: start the API with SIW_DATA_DIR set. Nothing was saved."
+      ? t("trade.journalOff")
       : error.message;
   }
-  return error instanceof Error ? error.message : "Request failed";
+  return error instanceof Error ? error.message : t("common.requestFailed");
 }
 
 /**
@@ -42,6 +43,7 @@ export function TradeEntry({
   onRecorded,
   onClose,
 }: TradeEntryProps) {
+  const { t } = useI18n();
   const [mode, setMode] = useState<Mode>("manual");
   // One ID per open form, so a double submit or retry cannot create a second record.
   const [recordId] = useState(newId);
@@ -110,7 +112,7 @@ export function TradeEntry({
       onRecorded();
       onClose();
     } catch (error) {
-      setStatus({ error: message(error), saving: false });
+      setStatus({ error: message(t, error), saving: false });
     }
   };
 
@@ -120,10 +122,10 @@ export function TradeEntry({
     <form
       className="trade-entry"
       onSubmit={(event) => void submit(event)}
-      aria-label="Trade entry"
+      aria-label={t("trade.form")}
     >
       <div className="trade-entry-head">
-        <div role="tablist" aria-label="Record type">
+        <div role="tablist" aria-label={t("trade.recordType")}>
           <button
             type="button"
             role="tab"
@@ -131,7 +133,7 @@ export function TradeEntry({
             className={mode === "manual" ? "" : "secondary"}
             onClick={() => setMode("manual")}
           >
-            Actual execution (manual)
+            {t("trade.manualTab")}
           </button>
           <button
             type="button"
@@ -140,32 +142,37 @@ export function TradeEntry({
             className={mode === "hypothetical" ? "" : "secondary"}
             onClick={() => setMode("hypothetical")}
           >
-            Hypothetical scenario
+            {t("trade.hypoTab")}
           </button>
         </div>
         <p className="trade-context">
-          {symbol} · selected candle {candle} · O {bar.open} H {bar.high} L{" "}
-          {bar.low} C {bar.close}. Context only: the candle is not your fill
-          time or price.
+          {t("trade.context", {
+            symbol,
+            candle,
+            open: bar.open,
+            high: bar.high,
+            low: bar.low,
+            close: bar.close,
+          })}
         </p>
       </div>
 
       {mode === "manual" ? (
         <div className="trade-fields">
           <label>
-            Side
+            {t("trade.side")}
             <select
               value={manual.side}
               onChange={(e) =>
                 setManual({ ...manual, side: e.target.value as "buy" | "sell" })
               }
             >
-              <option value="buy">Buy</option>
-              <option value="sell">Sell</option>
+              <option value="buy">{t("trade.buy")}</option>
+              <option value="sell">{t("trade.sell")}</option>
             </select>
           </label>
           <label>
-            Quantity
+            {t("trade.quantity")}
             <input
               required
               inputMode="decimal"
@@ -176,7 +183,7 @@ export function TradeEntry({
             />
           </label>
           <label>
-            Fill price (USD)
+            {t("trade.fillPrice")}
             <input
               required
               inputMode="decimal"
@@ -187,7 +194,7 @@ export function TradeEntry({
             />
           </label>
           <label>
-            Fees (USD)
+            {t("trade.fees")}
             <input
               required
               inputMode="decimal"
@@ -198,7 +205,7 @@ export function TradeEntry({
             />
           </label>
           <label>
-            Time precision
+            {t("trade.precision")}
             <select
               value={manual.precision}
               onChange={(e) =>
@@ -209,16 +216,16 @@ export function TradeEntry({
                 })
               }
             >
-              <option value="exact">Exact (seconds)</option>
-              <option value="minute">To the minute</option>
-              <option value="approximate">Approximate</option>
-              <option value="unknown">Unknown</option>
+              <option value="exact">{t("trade.exact")}</option>
+              <option value="minute">{t("trade.minute")}</option>
+              <option value="approximate">{t("trade.approximate")}</option>
+              <option value="unknown">{t("trade.unknown")}</option>
             </select>
           </label>
           {manual.precision === "unknown" ? null : (
             <>
               <label>
-                Fill date (ET)
+                {t("trade.fillDate")}
                 <input
                   required
                   type="date"
@@ -229,7 +236,7 @@ export function TradeEntry({
                 />
               </label>
               <label>
-                Fill time (ET)
+                {t("trade.fillTime")}
                 <input
                   required
                   type="time"
@@ -243,7 +250,7 @@ export function TradeEntry({
             </>
           )}
           <label className="wide">
-            Memo (do not enter account numbers or credentials)
+            {t("trade.memo")}
             <input
               maxLength={500}
               value={manual.memo}
@@ -254,7 +261,7 @@ export function TradeEntry({
       ) : (
         <div className="trade-fields">
           <label>
-            Direction
+            {t("trade.direction")}
             <select
               value={scenario.direction}
               onChange={(e) =>
@@ -264,12 +271,12 @@ export function TradeEntry({
                 })
               }
             >
-              <option value="long">Long</option>
-              <option value="short">Short</option>
+              <option value="long">{t("trade.long")}</option>
+              <option value="short">{t("trade.short")}</option>
             </select>
           </label>
           <label>
-            Quantity
+            {t("trade.quantity")}
             <input
               required
               inputMode="decimal"
@@ -280,7 +287,7 @@ export function TradeEntry({
             />
           </label>
           <label>
-            Entry price
+            {t("trade.entryPrice")}
             <input
               required
               inputMode="decimal"
@@ -291,7 +298,7 @@ export function TradeEntry({
             />
           </label>
           <label>
-            Exit price
+            {t("trade.exitPrice")}
             <input
               required
               inputMode="decimal"
@@ -302,7 +309,7 @@ export function TradeEntry({
             />
           </label>
           <label>
-            Exit time (ET, {sessionDate})
+            {t("trade.exitTime", { date: sessionDate })}
             <input
               required
               type="time"
@@ -313,7 +320,7 @@ export function TradeEntry({
             />
           </label>
           <label>
-            Fees, total (USD)
+            {t("trade.feesTotal")}
             <input
               required
               inputMode="decimal"
@@ -324,7 +331,7 @@ export function TradeEntry({
             />
           </label>
           <label>
-            Slippage per share
+            {t("trade.slippage")}
             <input
               required
               inputMode="decimal"
@@ -340,11 +347,11 @@ export function TradeEntry({
       <div className="trade-actions">
         <button type="submit" disabled={status.saving}>
           {mode === "manual"
-            ? "Record actual execution"
-            : "Save hypothetical scenario"}
+            ? t("trade.recordManual")
+            : t("trade.saveScenario")}
         </button>
         <button type="button" className="secondary" onClick={onClose}>
-          Cancel
+          {t("trade.cancel")}
         </button>
         {status.error ? (
           <span className="chart-error" role="alert">

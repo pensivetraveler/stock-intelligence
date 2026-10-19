@@ -9,6 +9,7 @@ import type {
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { summarize, toSeries } from "./chart-data";
+import { useI18n, type Translate } from "./i18n";
 import type { ChartSyncGroup } from "./chart-sync";
 import { journalMarkers } from "./journal-markers";
 import {
@@ -30,7 +31,10 @@ type Load =
   | { status: "loading" }
   | { status: "closed"; session: SessionWindow }
   | { status: "ready"; session: SessionWindow; response: MarketBarsResponse }
-  | { status: "error"; message: string };
+  // The error is kept raw and worded at render time, in the current language.
+  | { status: "error"; error: unknown };
+
+const NOT_OFFERED = Symbol("not offered");
 
 interface ChartPanelProps {
   chartId: string;
@@ -50,13 +54,16 @@ interface ChartPanelProps {
   onJournalChange: () => void;
 }
 
-function describeError(error: unknown): string {
+function describeError(t: Translate, error: unknown): string {
+  if (error === NOT_OFFERED) {
+    return t("chart.notOffered");
+  }
   if (error instanceof MarketApiError) {
     return error.requestId
-      ? `${error.message} (request ${error.requestId})`
+      ? t("chart.request", { message: error.message, id: error.requestId })
       : error.message;
   }
-  return error instanceof Error ? error.message : "Request failed";
+  return error instanceof Error ? error.message : t("common.requestFailed");
 }
 
 export function ChartPanel({
@@ -71,6 +78,7 @@ export function ChartPanel({
   journal,
   onJournalChange,
 }: ChartPanelProps) {
+  const { t } = useI18n();
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [selected, setSelected] = useState<PriceBar | null>(null);
   const { instrumentId, timeframe, sessionDate, sessionScope } = config;
@@ -88,11 +96,7 @@ export function ChartPanel({
       return;
     }
     if (unavailable) {
-      setLoad({
-        status: "error",
-        message:
-          "This instrument is not offered by the current data provider. Choose another.",
-      });
+      setLoad({ status: "error", error: NOT_OFFERED });
       return;
     }
     setLoad({ status: "loading" });
@@ -107,8 +111,7 @@ export function ChartPanel({
         const response = await api.bars({ instrumentId, timeframe, ...range });
         if (current) setLoad({ status: "ready", session, response });
       } catch (error) {
-        if (current)
-          setLoad({ status: "error", message: describeError(error) });
+        if (current) setLoad({ status: "error", error });
       }
     })();
     return () => {
@@ -128,7 +131,7 @@ export function ChartPanel({
     () => (load.status === "ready" ? toSeries(load.response.bars) : null),
     [load],
   );
-  const summary = load.status === "ready" ? summarize(load.response) : null;
+  const summary = load.status === "ready" ? summarize(load.response, t) : null;
   const bars = load.status === "ready" ? load.response.bars : null;
   const markers = useMemo(
     () =>
@@ -165,7 +168,7 @@ export function ChartPanel({
       <header className="chart-controls">
         <h2>{title}</h2>
         <label>
-          Instrument
+          {t("chart.instrument")}
           <select
             value={instrumentId}
             onChange={(event) =>
@@ -186,7 +189,7 @@ export function ChartPanel({
           </select>
         </label>
         <label>
-          Timeframe
+          {t("chart.timeframe")}
           <select
             value={timeframe}
             onChange={(event) =>
@@ -204,7 +207,7 @@ export function ChartPanel({
           </select>
         </label>
         <label>
-          Session date
+          {t("chart.sessionDate")}
           <input
             type="date"
             value={sessionDate}
@@ -215,7 +218,7 @@ export function ChartPanel({
           />
         </label>
         <label>
-          Hours
+          {t("chart.hours")}
           <select
             value={sessionScope}
             onChange={(event) =>
@@ -225,8 +228,8 @@ export function ChartPanel({
               })
             }
           >
-            <option value="regular">Regular</option>
-            <option value="extended">Extended</option>
+            <option value="regular">{t("chart.regular")}</option>
+            <option value="extended">{t("chart.extended")}</option>
           </select>
         </label>
       </header>
@@ -246,10 +249,10 @@ export function ChartPanel({
             className={`chart-placeholder ${load.status === "error" ? "chart-error" : ""}`}
             role="status"
           >
-            {load.status === "loading" && "Loading bars…"}
+            {load.status === "loading" && t("chart.loading")}
             {load.status === "closed" &&
-              `${load.session.session_date} is not a trading day.`}
-            {load.status === "error" && load.message}
+              t("chart.closed", { date: load.session.session_date })}
+            {load.status === "error" && describeError(t, load.error)}
           </p>
         )}
       </div>
@@ -265,45 +268,42 @@ export function ChartPanel({
           onClose={() => setSelected(null)}
         />
       ) : load.status === "ready" ? (
-        <p className="workspace-note">
-          Click a candle to record an actual execution or a hypothetical
-          scenario.
-        </p>
+        <p className="workspace-note">{t("chart.clickHint")}</p>
       ) : null}
 
       {summary && load.status === "ready" ? (
         <dl className="chart-meta">
           <div>
-            <dt>Coverage</dt>
+            <dt>{t("chart.coverage")}</dt>
             <dd>
               <span className={`coverage coverage-${summary.coverage}`}>
-                {summary.coverage}
+                {t(`coverage.${summary.coverage}`)}
               </span>{" "}
               {summary.intervals}
             </dd>
           </div>
           <div>
-            <dt>Bar quality</dt>
+            <dt>{t("chart.quality")}</dt>
             <dd>{summary.quality}</dd>
           </div>
           <div>
-            <dt>Sessions</dt>
+            <dt>{t("chart.sessions")}</dt>
             <dd>
               {summary.sessions}
-              {load.session.is_early_close ? " · early close" : ""}
+              {load.session.is_early_close ? t("chart.earlyClose") : ""}
             </dd>
           </div>
           <div>
-            <dt>Source</dt>
+            <dt>{t("chart.source")}</dt>
             <dd className="lineage">{summary.lineage}</dd>
           </div>
           {summary.missing.length > 0 ? (
             <div>
-              <dt>Missing</dt>
+              <dt>{t("chart.missing")}</dt>
               <dd>
                 {summary.missing.slice(0, 3).join("; ")}
                 {summary.missing.length > 3
-                  ? ` and ${summary.missing.length - 3} more`
+                  ? t("chart.andMore", { n: summary.missing.length - 3 })
                   : ""}
               </dd>
             </div>

@@ -5,6 +5,7 @@ import type {
 } from "@siw/contracts/types";
 
 import { exchangeTime } from "./chart-data";
+import { useI18n } from "./i18n";
 import { MARKER_COLORS } from "./journal-markers";
 
 interface JournalPanelProps {
@@ -26,9 +27,10 @@ export function JournalPanel({
   error,
   symbolOf,
 }: JournalPanelProps) {
+  const { t } = useI18n();
   if (error) {
     return (
-      <section className="journal" aria-label="Trade journal">
+      <section className="journal" aria-label={t("journal.label")}>
         <p className="workspace-note" role="status">
           {error}
         </p>
@@ -36,25 +38,30 @@ export function JournalPanel({
     );
   }
   return (
-    <section className="journal" aria-label="Trade journal">
+    <section className="journal" aria-label={t("journal.label")}>
       <div className="ledger">
         <h2>
           <span
             className="swatch"
             style={{ background: MARKER_COLORS.manual }}
           />{" "}
-          Actual executions (manual, unverified)
+          {t("journal.manualTitle")}
         </h2>
         {manual && manual.positions.length > 0 ? (
           <ul className="ledger-summary">
             {manual.positions.map((position) => (
               <li key={position.instrument_id}>
-                {symbolOf(position.instrument_id)}: realized{" "}
-                {position.realized_pnl} USD after {position.fees} fees · open{" "}
-                {position.open_quantity}
+                {t("journal.position", {
+                  symbol: symbolOf(position.instrument_id),
+                  pnl: position.realized_pnl,
+                  fees: position.fees,
+                  open: position.open_quantity,
+                })}
                 {position.average_cost ? ` @ ${position.average_cost}` : ""}
                 {position.unordered_execution_ids.length
-                  ? ` · ${position.unordered_execution_ids.length} with unknown time not counted`
+                  ? t("journal.unordered", {
+                      n: position.unordered_execution_ids.length,
+                    })
                   : ""}
               </li>
             ))}
@@ -63,12 +70,12 @@ export function JournalPanel({
         <table>
           <thead>
             <tr>
-              <th>Symbol</th>
-              <th>Side</th>
-              <th>Qty</th>
-              <th>Price</th>
-              <th>Fill time</th>
-              <th>Evidence</th>
+              <th>{t("journal.symbol")}</th>
+              <th>{t("journal.side")}</th>
+              <th>{t("journal.qty")}</th>
+              <th>{t("journal.price")}</th>
+              <th>{t("journal.fillTime")}</th>
+              <th>{t("journal.evidence")}</th>
             </tr>
           </thead>
           <tbody>
@@ -82,16 +89,14 @@ export function JournalPanel({
                   <td>
                     {item.executed_at_utc
                       ? `${exchangeTime(item.executed_at_utc)} (${item.time_precision})`
-                      : "unknown"}
+                      : t("journal.unknownTime")}
                   </td>
                   <td>{item.evidence_status}</td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={6}>
-                  No actual executions recorded. Click a candle to add one.
-                </td>
+                <td colSpan={6}>{t("journal.noManual")}</td>
               </tr>
             )}
           </tbody>
@@ -103,15 +108,18 @@ export function JournalPanel({
             className="swatch"
             style={{ background: MARKER_COLORS.imported }}
           />{" "}
-          Statement imports (file, not broker-verified)
+          {t("journal.importedTitle")}
         </h2>
         {imported && imported.positions.length > 0 ? (
           <ul className="ledger-summary">
             {imported.positions.map((position) => (
               <li key={position.instrument_id}>
-                {symbolOf(position.instrument_id)}: realized{" "}
-                {position.realized_pnl} USD after {position.fees} fees · open{" "}
-                {position.open_quantity}
+                {t("journal.position", {
+                  symbol: symbolOf(position.instrument_id),
+                  pnl: position.realized_pnl,
+                  fees: position.fees,
+                  open: position.open_quantity,
+                })}
                 {position.average_cost ? ` @ ${position.average_cost}` : ""}
               </li>
             ))}
@@ -120,12 +128,12 @@ export function JournalPanel({
         <table>
           <thead>
             <tr>
-              <th>Symbol</th>
-              <th>Side</th>
-              <th>Qty</th>
-              <th>Price</th>
-              <th>Fill time</th>
-              <th>Source</th>
+              <th>{t("journal.symbol")}</th>
+              <th>{t("journal.side")}</th>
+              <th>{t("journal.qty")}</th>
+              <th>{t("journal.price")}</th>
+              <th>{t("journal.fillTime")}</th>
+              <th>{t("journal.source")}</th>
             </tr>
           </thead>
           <tbody>
@@ -138,16 +146,19 @@ export function JournalPanel({
                   <td>{item.price}</td>
                   <td>{exchangeTime(item.executed_at_utc)}</td>
                   <td>
-                    {item.broker_label} · row {item.source.row_number}
+                    {t("journal.row", {
+                      broker: item.broker_label,
+                      row: item.source.row_number,
+                    })}
                     {item.duplicate_review.decision === "imported_after_review"
-                      ? " · kept after duplicate review"
+                      ? t("journal.keptAfterReview")
                       : ""}
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={6}>No statements imported.</td>
+                <td colSpan={6}>{t("journal.noImported")}</td>
               </tr>
             )}
           </tbody>
@@ -159,16 +170,16 @@ export function JournalPanel({
             className="swatch"
             style={{ background: MARKER_COLORS.hypothetical }}
           />{" "}
-          Hypothetical scenarios (not real P&amp;L)
+          {t("journal.hypoTitle")}
         </h2>
         <table>
           <thead>
             <tr>
-              <th>Symbol</th>
-              <th>Direction</th>
-              <th>Qty</th>
-              <th>Entry → exit</th>
-              <th>Net P&amp;L</th>
+              <th>{t("journal.symbol")}</th>
+              <th>{t("journal.direction")}</th>
+              <th>{t("journal.qty")}</th>
+              <th>{t("journal.entryExit")}</th>
+              <th>{t("journal.netPnl")}</th>
             </tr>
           </thead>
           <tbody>
@@ -186,14 +197,17 @@ export function JournalPanel({
                     {exchangeTime(item.scenario.exit_interval_start_utc)})
                   </td>
                   <td>
-                    {item.net_pnl} USD (gross {item.gross_pnl}, costs{" "}
-                    {item.costs})
+                    {t("journal.pnl", {
+                      net: item.net_pnl,
+                      gross: item.gross_pnl,
+                      costs: item.costs,
+                    })}
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={5}>No hypothetical scenarios yet.</td>
+                <td colSpan={5}>{t("journal.noScenarios")}</td>
               </tr>
             )}
           </tbody>

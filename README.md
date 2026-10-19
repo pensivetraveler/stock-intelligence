@@ -182,6 +182,10 @@ Alpaca 데이터에서 체결이 없는 분은 bar가 오지 않는다. 이 분�
 set -a; source .env; set +a; uv run python -m services.market_data.broker_check --provider kis --symbol SPY
 ```
 
+### 화면 언어
+
+사이드 메뉴 아래 `언어/Language`에서 영어와 한국어 중 고른다. 선택은 이 기기에 저장되고, 처음에는 브라우저 언어를 따른다. API 서버가 보내는 오류 메시지는 영어로 표시된다.
+
 ### 시세 키 관리
 
 시세 공급업체의 키는 화면 아래쪽 `Market data keys`에서 등록한다([ADR 0014](docs/decisions/0014-provider-key-registry.md)). `.env`의 키 변수는 읽지 않는다.

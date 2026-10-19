@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { exchangeTime } from "./chart-data";
 import type { CredentialApi, KeyedProvider } from "./credential-api";
+import { useI18n, type Translate } from "./i18n";
 import { MarketApiError } from "./market-api";
 
 type ProviderSpec = CredentialListResponse["providers"][number];
@@ -14,23 +15,16 @@ interface KeysPanelProps {
   api: CredentialApi;
 }
 
-const STATE_LABELS: Record<string, string> = {
-  idle: "Not used yet",
-  ok: "Working",
-  cooling: "Rate limited",
-  error: "Error",
-};
-
-function describe(error: unknown): string {
+function describe(t: Translate, error: unknown): string {
   if (error instanceof MarketApiError) {
     if (error.code === "credential_storage_unconfigured") {
-      return "Key management is off: start the API with SIW_DATA_DIR set. Nothing was saved.";
+      return t("keys.off");
     }
     if (error.code === "validation_error") {
-      return "Check the fields: the account suffix is the last 4 digits only.";
+      return t("keys.checkFields");
     }
   }
-  return error instanceof Error ? error.message : "Request failed";
+  return error instanceof Error ? error.message : t("common.requestFailed");
 }
 
 function emptySecrets(spec: ProviderSpec | undefined): Record<string, string> {
@@ -44,8 +38,10 @@ function emptySecrets(spec: ProviderSpec | undefined): Record<string, string> {
  * never displayed again: a key can only be replaced or deleted.
  */
 export function KeysPanel({ api }: KeysPanelProps) {
+  const { t } = useI18n();
   const [listing, setListing] = useState<CredentialListResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Kept raw and worded at render time, in the current language.
+  const [error, setError] = useState<{ cause: unknown } | null>(null);
   const [busy, setBusy] = useState(false);
   const [provider, setProvider] = useState<KeyedProvider>("kis");
   const [label, setLabel] = useState("");
@@ -62,7 +58,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
         setListing(result);
         setError(null);
       })
-      .catch((reason: unknown) => setError(describe(reason)));
+      .catch((reason: unknown) => setError({ cause: reason }));
   }, [api]);
 
   useEffect(() => refresh(), [refresh]);
@@ -79,7 +75,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
       refresh();
       return true;
     } catch (reason) {
-      setError(describe(reason));
+      setError({ cause: reason });
       return false;
     } finally {
       setBusy(false);
@@ -118,27 +114,23 @@ export function KeysPanel({ api }: KeysPanelProps) {
 
   return (
     <section className="import-panel keys-panel" aria-labelledby="keys-title">
-      <h2 id="keys-title">Market data keys</h2>
+      <h2 id="keys-title">{t("keys.title")}</h2>
       <p className="workspace-note">
-        Secrets are stored in this computer&apos;s keychain and never shown
-        again. Keys of one provider are used in order; a key that hits the rate
-        limit is skipped for about a minute. The running provider is{" "}
-        <strong>{listing?.active_provider ?? "…"}</strong> (set with
-        SIW_MARKET_DATA_PROVIDER).
+        {t("keys.note", { provider: listing?.active_provider ?? "…" })}
       </p>
       {error ? (
         <p className="chart-error" role="alert">
-          {error}
+          {describe(t, error.cause)}
         </p>
       ) : null}
 
       <form
         className="trade-fields"
-        aria-label="Add key"
+        aria-label={t("keys.addForm")}
         onSubmit={(e) => void submit(e)}
       >
         <label>
-          Provider
+          {t("keys.provider")}
           <select
             value={provider}
             onChange={(event) => {
@@ -155,7 +147,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
           </select>
         </label>
         <label>
-          Label
+          {t("keys.label")}
           <input
             value={label}
             maxLength={60}
@@ -165,7 +157,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
         </label>
         {spec?.per_account ? (
           <label>
-            Account (last 4 digits)
+            {t("keys.account")}
             <input
               value={suffix}
               inputMode="numeric"
@@ -192,7 +184,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
         ))}
         <div className="trade-actions wide">
           <button type="submit" disabled={busy || !spec}>
-            Add key
+            {t("keys.add")}
           </button>
         </div>
       </form>
@@ -206,17 +198,19 @@ export function KeysPanel({ api }: KeysPanelProps) {
           <div className="ledger" key={item.provider}>
             <h2>
               {item.display_name}
-              {listing?.active_provider === item.provider ? " · in use" : ""}
+              {listing?.active_provider === item.provider
+                ? t("keys.inUse")
+                : ""}
             </h2>
             <table>
               <thead>
                 <tr>
-                  <th>Order</th>
-                  <th>Label</th>
-                  <th>Account</th>
-                  <th>Enabled</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th>{t("keys.order")}</th>
+                  <th>{t("keys.label")}</th>
+                  <th>{t("keys.accountColumn")}</th>
+                  <th>{t("keys.enabled")}</th>
+                  <th>{t("keys.status")}</th>
+                  <th>{t("keys.actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -230,7 +224,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
                     <td>
                       <input
                         type="checkbox"
-                        aria-label={`Enable ${key.label}`}
+                        aria-label={t("keys.enable", { label: key.label })}
                         checked={key.enabled}
                         disabled={busy}
                         onChange={(event) =>
@@ -245,16 +239,20 @@ export function KeysPanel({ api }: KeysPanelProps) {
                     <td className="import-notes">
                       {key.status ? (
                         <>
-                          {STATE_LABELS[key.status.state]}
+                          {t(`keyState.${key.status.state}`)}
                           {key.status.cooling_until_utc
-                            ? ` until ${exchangeTime(key.status.cooling_until_utc)}`
+                            ? t("keys.until", {
+                                time: exchangeTime(
+                                  key.status.cooling_until_utc,
+                                ),
+                              })
                             : ""}
                           {key.status.last_error
                             ? ` · ${key.status.last_error}`
                             : ""}
                         </>
                       ) : (
-                        "Provider not running"
+                        t("keys.notRunning")
                       )}
                     </td>
                     <td>
@@ -262,7 +260,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
                         <button
                           type="button"
                           className="secondary"
-                          aria-label={`Move ${key.label} up`}
+                          aria-label={t("keys.moveUp", { label: key.label })}
                           disabled={busy || index === 0}
                           onClick={() =>
                             void act(() => api.move(key.credential_id, "up"))
@@ -273,7 +271,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
                         <button
                           type="button"
                           className="secondary"
-                          aria-label={`Move ${key.label} down`}
+                          aria-label={t("keys.moveDown", { label: key.label })}
                           disabled={busy || index === keys.length - 1}
                           onClick={() =>
                             void act(() => api.move(key.credential_id, "down"))
@@ -289,7 +287,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
                             setReplacement({});
                           }}
                         >
-                          Replace secret
+                          {t("keys.replace")}
                         </button>
                         {confirmDelete === key.credential_id ? (
                           <button
@@ -300,7 +298,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
                               void act(() => api.remove(key.credential_id));
                             }}
                           >
-                            Confirm delete
+                            {t("keys.confirmDelete")}
                           </button>
                         ) : (
                           <button
@@ -308,14 +306,16 @@ export function KeysPanel({ api }: KeysPanelProps) {
                             className="secondary"
                             onClick={() => setConfirmDelete(key.credential_id)}
                           >
-                            Delete
+                            {t("keys.delete")}
                           </button>
                         )}
                       </div>
                       {replacing === key.credential_id ? (
                         <form
                           className="name-form"
-                          aria-label={`Replace secret of ${key.label}`}
+                          aria-label={t("keys.replaceForm", {
+                            label: key.label,
+                          })}
                           onSubmit={(e) => void submitReplacement(e, key)}
                         >
                           {item.fields.map((field) => (
@@ -337,14 +337,14 @@ export function KeysPanel({ api }: KeysPanelProps) {
                             </label>
                           ))}
                           <button type="submit" disabled={busy}>
-                            Save secret
+                            {t("keys.saveSecret")}
                           </button>
                           <button
                             type="button"
                             className="secondary"
                             onClick={() => setReplacing(null)}
                           >
-                            Cancel
+                            {t("keys.cancel")}
                           </button>
                         </form>
                       ) : null}
