@@ -10,7 +10,7 @@
 - **Decision:** Alpaca와 Massive는 동등한 _미선정_ 유료 후보이며 증권사 API/공개 정보 수집원과 병행 검증한다.
 - **Candidate register (2026-10-19):** 사용자가 지정한 13곳(Webull, Massive, Databento, Alpaca, 토스·키움·한국투자·메리츠·DB·LS·KB증권, ChartExchange, Unusual Whales)을 [공급업체 평가 8절](DATA_PROVIDER_EVALUATION_v1.5.md#8-후보-등록부-2026-10-19-사용자-등록)에 후보로 등록했다. 등록은 선정·결제·구현 승인이 아니며, 구현된 채널은 fake·Alpaca·KIS·토스·키움·메리츠뿐이다.
 - **Runtime verified (2026-10-12):** macOS 15.7.9 x86_64, Python 3.10.19, uv 0.12.23, Node 22.23.2, pnpm 11.25.0, Tauri CLI 2.12.2. 2026-10-15에도 `command -v cargo`와 `command -v rustc`는 실행 파일을 찾지 못했다. 나머지 버전은 이번 정리에서 재검증하지 않았다.
-- **Repository:** ZIP 배포 경로를 `git init -b main`으로 초기화하고 Phase 0 local baseline commit을 생성했다. 2026-10-19 원격 `origin`(https://github.com/pensivetraveler/stock-intelligence)을 연결하고 `main`을 푸시해 upstream으로 설정했다.
+- **Repository:** ZIP 배포 경로를 `git init -b main`으로 초기화하고 Phase 0 local baseline commit을 생성했다. 2026-10-19 원격 `origin`(https://github.com/pensivetraveler/stock-intelligence)을 연결하고 `main`을 푸시해 upstream으로 설정했다. 같은 날 GitHub에서 `main` 보호 규칙을 켰다: PR 필수(승인 0명), `verify` 검사 통과와 최신 상태 필수, 직선 이력, 강제 푸시·삭제 금지. 저장소는 공개 상태다.
 - **Phase 0 status:** P0-01~P0-07의 코드·계약·로컬 품질 게이트 완료. Tauri native dev/build만 `blocked: prerequisite (cargo missing)`이며 웹 셸은 실행 검증했다.
 - **Open questions:** Rust toolchain 설치 시점, 실제 공급업체 계정 권한/저장 라이선스, 향후 예산. Phase 0은 외부 계정 연결을 요구하거나 수행하지 않았다.
 - **Phase 1A status:** `FakeMarketDataProvider`가 합성 AAPL 1분봉을 canonical `MarketBarsResponse`와 `CoverageManifest`로 `GET /v1/market/bars`에 반환한다. 동일 요청은 `fake-aapl-20261009-r1`을 결정적으로 반환하며, 누락은 보간하지 않고 `partial/empty`와 명시적 누락 구간으로 노출한다.
@@ -327,6 +327,32 @@
   - 최근 40개 밖의 분은 `beyond_source_history`로 표시한다.
 - **검증:** `./scripts/verify.sh` 통과(exit 0) — pytest 272개(증권사 24개), Vitest 계약 52개·데스크톱 41개, 생성 타입 drift 검사.
 - **미검증:** 실계정 확인이 필요하다(`broker_check --provider meritz`). 확인할 것은 `korea_hour`의 bar 시작·끝 의미, 장전·장후 포함, 토큰 오류 코드다.
+
+## 시세 키 관리 — 2026-10-19
+
+- **사용자 결정:**
+  - 증권사 API는 계좌마다 키가 나오므로 화면에서 키를 관리한다.
+  - secret은 OS 키체인에 저장하고, `.env`의 키는 쓰지 않는다.
+  - 계좌는 별칭과 끝 4자리만 저장한다.
+  - 호출 한도 오류가 나면 다음 키로 전환한다.
+- **변경 파일:**
+  - 백엔드: `services/credentials/{catalog,store,pool}.py`와 migration, `services/api/{credential_routes,main}.py`, `services/market_data/{selection,broker_check,alpaca}.py`
+  - 계약: `credential_summary`, `credential_list_response`(secret 필드 없음, 계좌는 4자리만)와 fixture
+  - 데스크톱: `apps/desktop/src/{KeysPanel,credential-api,market-api,App}.tsx`, `styles.css`와 테스트
+  - 의존성: `keyring`
+  - 문서: ADR 0014(0012·0013 보완), README, `.env.example`
+- **동작:**
+  - 화면 `Market data keys`에서 키를 추가·순서 변경·사용 여부·secret 교체·삭제(확인 후)할 수 있다. 등록한 secret은 다시 보여 주지 않는다.
+  - 공급업체마다 키를 순서대로 쓴다. 한도 오류를 받은 키는 60초 동안 건너뛴다. 인증 실패 등 다른 오류는 다른 키로 넘기지 않는다.
+  - 키 API는 루프백 Host와 허용된 Origin에서 온 요청만 받는다(그 외 403).
+- **검증:**
+  - `./scripts/verify.sh` 통과(exit 0) — pytest 297개(키 관리 22개 포함), Vitest 계약 55개·데스크톱 47개, 생성 타입 drift 검사.
+  - 브라우저에서 패널이 표시되고 콘솔 오류가 없음을 확인했다. 실행 중인 API에서 외부 Origin 요청이 403으로 거부됨을 확인했다.
+- **미검증:**
+  - 실제 macOS 키체인 저장·읽기(테스트는 메모리 backend). 사용자가 화면에서 처음 등록할 때 확인한다.
+  - Windows·Linux 키체인.
+  - 실제 증권사 한도 오류에서의 전환.
+- **이전 방식과의 차이:** 기존 `.env`의 키 변수는 더 이상 읽지 않는다. 화면에서 다시 등록해야 한다.
 
 ## 상태 변경 양식
 

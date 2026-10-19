@@ -113,6 +113,81 @@ function hasKind<T extends { kind: string }>(
   );
 }
 
+export interface ApiTarget {
+  baseUrl: string;
+  fetcher: typeof fetch;
+  timeoutMs: number;
+}
+
+/**
+ * One call to the local API. Non-2xx responses become a `MarketApiError` carrying the
+ * error envelope; a 204 resolves to null.
+ */
+export async function callApi(
+  { baseUrl, fetcher, timeoutMs }: ApiTarget,
+  path: string,
+  init: { method?: string; body?: unknown } = {},
+): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetcher(`${baseUrl}${path}`, {
+      signal: controller.signal,
+      ...(init.method ? { method: init.method } : {}),
+      ...(init.body === undefined
+        ? {}
+        : {
+            method: init.method ?? "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(init.body),
+          }),
+    });
+    if (response.status === 204) {
+      return null;
+    }
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = (payload as { error?: Record<string, unknown> } | null)
+        ?.error;
+      throw new MarketApiError(
+        typeof error?.message === "string"
+          ? error.message
+          : `HTTP ${response.status}`,
+        typeof error?.code === "string" ? error.code : "http_error",
+        typeof error?.request_id === "string" ? error.request_id : null,
+      );
+    }
+    return payload;
+  } catch (error) {
+    if (error instanceof MarketApiError) {
+      throw error;
+    }
+    throw new MarketApiError(
+      error instanceof Error ? error.message : "Network error",
+      "network_error",
+    );
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+/** `callApi`, then a check that the response is the expected contract kind. */
+export async function callForKind<T extends { kind: string }>(
+  target: ApiTarget,
+  path: string,
+  kind: T["kind"],
+  init: { method?: string; body?: unknown } = {},
+): Promise<T> {
+  const payload = await callApi(target, path, init);
+  if (!hasKind<T>(payload, kind)) {
+    throw new MarketApiError(
+      `Unexpected response for ${kind}`,
+      "invalid_response",
+    );
+  }
+  return payload;
+}
+
 /**
  * Thin client for the local API. The API validates every response against the
  * shared contract before sending it; the client only checks the document kind, so
@@ -123,54 +198,13 @@ export function createMarketApi(
   fetcher: typeof fetch = fetch,
   timeoutMs = 10_000,
 ): MarketApi {
-  async function get<T extends { kind: string }>(
+  const target = { baseUrl, fetcher, timeoutMs };
+  function get<T extends { kind: string }>(
     path: string,
     kind: T["kind"],
     body?: unknown,
   ): Promise<T> {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await fetcher(`${baseUrl}${path}`, {
-        signal: controller.signal,
-        ...(body === undefined
-          ? {}
-          : {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body),
-            }),
-      });
-      const payload: unknown = await response.json().catch(() => null);
-      if (!response.ok) {
-        const error = (payload as { error?: Record<string, unknown> } | null)
-          ?.error;
-        throw new MarketApiError(
-          typeof error?.message === "string"
-            ? error.message
-            : `HTTP ${response.status}`,
-          typeof error?.code === "string" ? error.code : "http_error",
-          typeof error?.request_id === "string" ? error.request_id : null,
-        );
-      }
-      if (!hasKind<T>(payload, kind)) {
-        throw new MarketApiError(
-          `Unexpected response for ${kind}`,
-          "invalid_response",
-        );
-      }
-      return payload;
-    } catch (error) {
-      if (error instanceof MarketApiError) {
-        throw error;
-      }
-      throw new MarketApiError(
-        error instanceof Error ? error.message : "Network error",
-        "network_error",
-      );
-    } finally {
-      window.clearTimeout(timeout);
-    }
+    return callForKind<T>(target, path, kind, { body });
   }
 
   return {

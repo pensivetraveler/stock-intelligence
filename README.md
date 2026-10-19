@@ -131,29 +131,29 @@ API를 `SIW_DATA_DIR=data`로 실행하면 차트의 캔들을 클릭해 두 종
 기본 데이터는 합성 데이터다. `SIW_MARKET_DATA_PROVIDER=alpaca`를 설정했을 때만 Alpaca Market Data API v2에서 읽기 전용으로 1분봉을 받는다([ADR 0012](docs/decisions/0012-alpaca-prototype-provider.md)). 주문 API는 호출하지 않는다.
 
 1. Alpaca 대시보드에서 API 키를 발급한다. 시세 조회에는 paper 계정 키로 충분하다.
-2. 저장소 루트에서 `.env.example`을 `.env`로 복사하고 값을 채운다. `.env`는 Git에서 제외되어 있으며 커밋하지 않는다.
+2. 저장소 루트에서 `.env.example`을 `.env`로 복사하고 설정을 채운다. 키는 `.env`에 넣지 않고 화면에서 등록한다(아래 [시세 키 관리](#시세-키-관리)). `.env`는 Git에서 제외되어 있다.
 
 ```bash
 cp .env.example .env
 ```
 
-| 변수                                     | 의미                                                                                                  |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `SIW_MARKET_DATA_PROVIDER`               | `alpaca`로 설정하면 사용한다. 기본값은 `fake`                                                         |
-| `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` | Alpaca 키. 요청 헤더로만 보내며 로그·오류 메시지·저장소에 남기지 않는다                               |
-| `SIW_ALPACA_FEED`                        | `sip`(기본, 통합 시세. 무료 요금제는 최근 15분 제외) 또는 `iex`(IEX 단독, 실시간이지만 거래량의 일부) |
-| `SIW_ALPACA_SYMBOLS`                     | `SYMBOL:MIC` 목록. 기본 `SPY:ARCX,AAPL:XNAS,MSFT:XNAS`                                                |
-| `SIW_ALPACA_DELAY_MINUTES`               | bar가 이 계정에 공개되기까지의 지연(분). 기본은 sip 15, iex 0                                         |
-| `SIW_ALPACA_FINALITY_MINUTES`            | bar를 확정으로 볼 때까지의 시간(분). 기본 15                                                          |
-| `SIW_DATA_DIR`                           | 받은 bar를 로컬 cache에 저장할 디렉터리. 로컬 디스크만 지원하며 NAS 공유 폴더는 아직 지원하지 않는다  |
+| 변수                          | 의미                                                                                                                         |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `SIW_MARKET_DATA_PROVIDER`    | `alpaca`로 설정하면 사용한다. 기본값은 `fake`                                                                                |
+| `SIW_ALPACA_FEED`             | `sip`(기본, 통합 시세. 무료 요금제는 최근 15분 제외) 또는 `iex`(IEX 단독, 실시간이지만 거래량의 일부)                        |
+| `SIW_ALPACA_SYMBOLS`          | `SYMBOL:MIC` 목록. 기본 `SPY:ARCX,AAPL:XNAS,MSFT:XNAS`                                                                       |
+| `SIW_ALPACA_DELAY_MINUTES`    | bar가 이 계정에 공개되기까지의 지연(분). 기본은 sip 15, iex 0                                                                |
+| `SIW_ALPACA_FINALITY_MINUTES` | bar를 확정으로 볼 때까지의 시간(분). 기본 15                                                                                 |
+| `SIW_DATA_DIR`                | 로컬 cache와 등록한 키의 이름표를 저장할 디렉터리. 키를 쓰는 공급업체는 이 값이 필수다. NAS 공유 폴더는 아직 지원하지 않는다 |
 
-3. 키 확인: 최근 거래일 정규장 첫 30분을 한 번만 요청하고 결과 요약을 출력한다. 키는 출력하지 않는다.
+3. API를 실행하고 화면의 `Market data keys`에서 Alpaca 키를 등록한다.
+4. 키 확인: 최근 거래일 정규장 첫 30분을 한 번만 요청하고 결과 요약을 출력한다. 키는 출력하지 않는다. `--label`로 특정 키만 쓸 수 있다.
 
 ```bash
 set -a; source .env; set +a; uv run python -m services.market_data.alpaca check --symbol SPY
 ```
 
-4. API 실행: `.env`를 읽어 실행한다. 화면에서 종목을 `SPY` 등으로 바꾼다.
+API 실행: `.env`를 읽어 실행한다. 화면에서 종목을 `SPY` 등으로 바꾼다.
 
 ```bash
 uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8000 --env-file .env
@@ -166,21 +166,31 @@ Alpaca 데이터에서 체결이 없는 분은 bar가 오지 않는다. 이 분�
 `SIW_MARKET_DATA_PROVIDER`를 `kis`, `toss`, `kiwoom`, `meritz` 중 하나로 설정하면 해당 증권사의 미국주식 1분봉을 읽기 전용으로 받는다([ADR 0013](docs/decisions/0013-broker-market-data-adapters.md)). 미래에셋은 미국주식 시세용 공식 API가 없어 연결하지 않았다.
 
 - **주문 차단:** 증권사 API는 주문 기능이 같은 토큰에 묶여 있다. 그래서 adapter는 토큰 경로와 차트 경로 외의 호출을 구조적으로 차단한다.
-- **키 관리:** 키는 `.env`에만 둔다. 토큰은 메모리에만 보관한다.
+- **키 관리:** 키는 화면의 `Market data keys`에서 계좌별로 등록한다([시세 키 관리](#시세-키-관리)). 토큰은 메모리에만 보관한다.
 - **보수적 기본값:** 장전·장후 제공 여부를 확인하기 전까지 정규장만 다룬다. 범위 밖의 분은 `session_not_covered`로 표시한다.
 
-| 증권사   | 필수 변수                                                               | 주의                                                                                                                                                                                                                             |
-| -------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 한국투자 | `SIW_KIS_APP_KEY`, `SIW_KIS_APP_SECRET`                                 | 토큰을 발급할 때마다 카카오톡 알림이 온다(1분당 1회). 분봉 이력은 약 1개월                                                                                                                                                       |
-| 토스     | `SIW_TOSS_CLIENT_ID`, `SIW_TOSS_CLIENT_SECRET`                          | 설정 > Open API에서 이 컴퓨터의 IP를 허용 목록에 등록해야 한다. 새 토큰을 발급하면 이전 토큰이 무효가 된다. 일부 거래소 데이터이며, 본인 매매 용도로만 쓰고 제3자에게 제공하면 안 된다                                           |
-| 키움     | `SIW_KIWOOM_APP_KEY`, `SIW_KIWOOM_SECRET_KEY`, `SIW_KIWOOM_TIME_ZONE`   | `cntr_tm`의 시각대가 공식 문서에 없다. `America/New_York` 또는 `Asia/Seoul`을 지정하고 아래 확인 명령으로 검증한다                                                                                                               |
-| 메리츠   | `SIW_MERITZ_APP_KEY`, `SIW_MERITZ_APP_SECRET`, `SIW_MERITZ_MAC_ADDRESS` | 2026-10-12 공개 베타, 10-26 정식 출시 예정이다. 모든 호출에 이 컴퓨터의 MAC 주소(12자리)를 보내야 한다(API 요구사항). 분봉은 최근 40개만 제공해 더 오래된 분은 `beyond_source_history`로 표시한다. 본인 투자 용도로만 쓸 수 있다 |
+| 증권사   | 화면 등록 키 / `.env` 필수 설정                | 주의                                                                                                                                                                                                                             |
+| -------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 한국투자 | App key, App secret                            | 토큰을 발급할 때마다 카카오톡 알림이 온다(1분당 1회). 분봉 이력은 약 1개월                                                                                                                                                       |
+| 토스     | Client ID, Client secret                       | 설정 > Open API에서 이 컴퓨터의 IP를 허용 목록에 등록해야 한다. 새 토큰을 발급하면 이전 토큰이 무효가 된다. 일부 거래소 데이터이며, 본인 매매 용도로만 쓰고 제3자에게 제공하면 안 된다                                           |
+| 키움     | App key, Secret key / `SIW_KIWOOM_TIME_ZONE`   | `cntr_tm`의 시각대가 공식 문서에 없다. `America/New_York` 또는 `Asia/Seoul`을 지정하고 아래 확인 명령으로 검증한다                                                                                                               |
+| 메리츠   | App key, App secret / `SIW_MERITZ_MAC_ADDRESS` | 2026-10-12 공개 베타, 10-26 정식 출시 예정이다. 모든 호출에 이 컴퓨터의 MAC 주소(12자리)를 보내야 한다(API 요구사항). 분봉은 최근 40개만 제공해 더 오래된 분은 `beyond_source_history`로 표시한다. 본인 투자 용도로만 쓸 수 있다 |
 
 확인 명령: 최근 거래일 정규장 첫 30분을 한 번 요청한다. 증권사가 보낸 첫 원본 레코드와 변환된 UTC bar 시작을 나란히 출력하며, 키는 출력하지 않는다.
 
 ```bash
 set -a; source .env; set +a; uv run python -m services.market_data.broker_check --provider kis --symbol SPY
 ```
+
+### 시세 키 관리
+
+시세 공급업체의 키는 화면 아래쪽 `Market data keys`에서 등록한다([ADR 0014](docs/decisions/0014-provider-key-registry.md)). `.env`의 키 변수는 읽지 않는다.
+
+- **저장:** secret 값은 OS 키체인(macOS 키체인, Windows 자격 증명 관리자)에 저장한다. `SIW_DATA_DIR/credentials.sqlite3`에는 이름표·계좌번호 끝 4자리·순서만 남는다. 등록한 secret은 화면에 다시 보여 주지 않으며, 교체하거나 삭제만 할 수 있다.
+- **여러 키:** 증권사 API는 계좌마다 키가 따로 나오므로 한 증권사에 여러 키를 등록할 수 있다. 위에서부터 차례로 쓰고, 한 키가 호출 한도 오류를 받으면 약 1분 동안 건너뛰고 다음 키로 요청한다. 처리량을 늘리려고 키를 번갈아 쓰지는 않는다. 다른 오류(인증 실패 등)는 다른 키로 넘기지 않고 그대로 보여 준다.
+- **사용할 공급업체:** 여전히 `.env`의 `SIW_MARKET_DATA_PROVIDER`로 고른다. 그 공급업체의 키에만 동작 상태(사용 중, 한도 대기, 오류)가 표시된다.
+- **접근 제한:** 키 API는 이 컴퓨터(127.0.0.1)에서 앱 출처로 온 요청만 받는다. 다른 웹페이지나 다른 호스트 이름으로 온 요청은 403으로 거부한다.
+- **API:** `GET/POST /v1/credentials`, `PATCH/DELETE /v1/credentials/{id}`, `PUT /v1/credentials/{id}/secrets`, `POST /v1/credentials/{id}/move`
 
 ### 증권사 거래내역 CSV 가져오기
 

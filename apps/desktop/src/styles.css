@@ -509,3 +509,11 @@ button:disabled {
   white-space: normal;
   min-width: 180px;
 }
+
+.keys-panel form[aria-label="Add key"] {
+  margin: 12px 0;
+}
+
+.keys-panel .ledger {
+  margin-top: 12px;
+}

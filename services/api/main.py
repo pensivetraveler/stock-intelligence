@@ -19,7 +19,10 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response
 
 from packages.contracts.validator import validate_document
+from services.api.credential_routes import register_credential_routes
 from services.api.journal_routes import register_import_routes, register_journal_routes
+from services.credentials.pool import PooledProvider
+from services.credentials.store import CredentialStore, KeyringSecretBackend
 from services.journal.store import JournalStore
 from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
@@ -34,7 +37,7 @@ from services.market_data.provider import (
     ProviderRateLimitError,
     ProviderUnavailableError,
 )
-from services.market_data.selection import provider_from_env
+from services.market_data.selection import chosen_provider, provider_from_env
 from services.market_data.storage import (
     CachedMarketDataProvider,
     LocalMarketDataStore,
@@ -88,26 +91,52 @@ def _error_response(request: Request, status_code: int, code: str, message: str)
     )
 
 
-def _default_market_data_provider() -> MarketDataProvider:
-    upstream = provider_from_env()
+def _default_market_data_provider(credentials: CredentialStore | None) -> MarketDataProvider:
+    upstream = provider_from_env(credentials)
     configured_data_dir = os.getenv("SIW_DATA_DIR", "").strip()
     if not configured_data_dir:
         return upstream
     return CachedMarketDataProvider(upstream, LocalMarketDataStore(Path(configured_data_dir)))
 
 
+class _LazyCredentials:
+    """Open the key registry on first use; None when no data directory is configured."""
+
+    def __init__(self, store: CredentialStore | None) -> None:
+        self._store = store
+        self._lock = threading.Lock()
+
+    def get(self) -> CredentialStore | None:
+        with self._lock:
+            if self._store is None:
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                if configured:
+                    self._store = CredentialStore(Path(configured), KeyringSecretBackend())
+            return self._store
+
+
 class _LazyProvider:
     """Build the default provider on first use, so importing the module has no side effects."""
 
-    def __init__(self, provider: MarketDataProvider | None) -> None:
+    def __init__(
+        self,
+        provider: MarketDataProvider | None,
+        credentials: Callable[[], CredentialStore | None],
+    ) -> None:
         self._provider = provider
+        self._credentials = credentials
         self._lock = threading.Lock()
 
     def get(self) -> MarketDataProvider:
         with self._lock:
             if self._provider is None:
-                self._provider = _default_market_data_provider()
+                self._provider = _default_market_data_provider(self._credentials())
             return self._provider
+
+    def key_status(self) -> dict[str, dict[str, object]]:
+        """Per-key runtime state when the provider is served through registered keys."""
+        upstream = getattr(self.get(), "upstream", self.get())
+        return upstream.status() if isinstance(upstream, PooledProvider) else {}
 
 
 class _LazyJournal:
@@ -134,9 +163,11 @@ def create_app(
     market_data_provider: MarketDataProvider | None = None,
     *,
     journal_store: JournalStore | None = None,
+    credential_store: CredentialStore | None = None,
     clock: Callable[[], datetime] = _utc_now,
 ) -> FastAPI:
-    provider = _LazyProvider(market_data_provider)
+    credentials = _LazyCredentials(credential_store)
+    provider = _LazyProvider(market_data_provider, credentials.get)
     journal = _LazyJournal(journal_store)
 
     @asynccontextmanager
@@ -164,7 +195,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=_cors_origins(),
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Accept", "Content-Type", "X-Request-ID"],
     )
 
@@ -235,6 +266,14 @@ def create_app(
             item["instrument"]["instrument_id"] for item in provider.get().instruments()
         },
         now=clock,
+        error_response=_error_response,
+    )
+    register_credential_routes(
+        application,
+        credentials=credentials.get,
+        active_provider=chosen_provider,
+        key_status=provider.key_status,
+        allowed_origins=_cors_origins(),
         error_response=_error_response,
     )
     register_import_routes(

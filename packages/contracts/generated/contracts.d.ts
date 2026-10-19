@@ -21,7 +21,9 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ImportedExecution
   | ImportPreviewResponse
   | ImportBatch
-  | ImportedLedgerResponse;
+  | ImportedLedgerResponse
+  | CredentialSummary
+  | CredentialListResponse;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -400,4 +402,53 @@ export interface ImportedLedgerResponse {
   executions: ImportedExecution[];
   positions: LedgerPosition[];
   batches: ImportBatch[];
+}
+/**
+ * A registered provider key as shown to the user. Secret values and full account numbers are never part of this contract.
+ */
+export interface CredentialSummary {
+  kind: "credential_summary";
+  schema_version: SchemaVersion;
+  credential_id: string;
+  provider: "alpaca" | "kis" | "toss" | "kiwoom" | "meritz";
+  label: string;
+  account_suffix: string | null;
+  priority: number;
+  enabled: boolean;
+  /**
+   * The key's provider is the running market-data provider.
+   */
+  active: boolean;
+  created_at_utc: UtcTimestamp;
+  updated_at_utc: UtcTimestamp;
+  status: null | {
+    state: "idle" | "ok" | "cooling" | "error";
+    cooling_until_utc: UtcTimestamp | null;
+    last_error: string | null;
+    last_used_at_utc: UtcTimestamp | null;
+  };
+}
+export interface CredentialListResponse {
+  kind: "credential_list_response";
+  schema_version: SchemaVersion;
+  active_provider: "fake" | "alpaca" | "kis" | "toss" | "kiwoom" | "meritz";
+  providers: {
+    provider: "alpaca" | "kis" | "toss" | "kiwoom" | "meritz";
+    display_name: string;
+    per_account: boolean;
+    /**
+     * @minItems 1
+     */
+    fields: [
+      {
+        name: string;
+        label: string;
+      },
+      ...{
+        name: string;
+        label: string;
+      }[],
+    ];
+  }[];
+  credentials: CredentialSummary[];
 }
