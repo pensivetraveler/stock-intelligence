@@ -19,7 +19,7 @@ The user asked for four broker APIs as alternatives to Alpaca. On 2026-10-17, re
 
 - **Four opt-in adapters:** `SIW_MARKET_DATA_PROVIDER=kis|toss|kiwoom|meritz`. Each is a separate source with its own `source_id` and feed scope (`kis-us`, `toss-us-partial-venues`, `kiwoom-us`, `meritz-us`). Series from different sources are never merged.
 - **Read-only by construction:** every adapter uses `AllowlistedClient`, which only permits the token path and the chart path. Order endpoints share the same token, but any other method or path raises `BlockedEndpointError` before a request is sent.
-- **Credentials:** keys come from environment variables only. Tokens are kept in memory, refreshed on expiry, and reissued at most once when a call is rejected (KIS `EGW00121/EGW00123`, Toss `expired-token`/`token-revoked`, Kiwoom 401).
+- **Credentials:** keys came from environment variables only (superseded by [ADR 0014](0014-provider-key-registry.md): keys are now registered on the Keys screen and kept in the OS keychain). Tokens are kept in memory, refreshed on expiry, and reissued at most once when a call is rejected (KIS `EGW00121/EGW00123`, Toss `expired-token`/`token-revoked`, Kiwoom 401).
   - Tokens are never written to disk.
   - Two processes using Toss at once revoke each other's token. The single reissue recovers, but simultaneous use is not supported.
 - **Conservative defaults for unconfirmed behaviour:**

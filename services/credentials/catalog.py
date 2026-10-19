@@ -1,0 +1,96 @@
+"""Which secret fields each market-data provider needs, and how adapters receive them.
+
+Adapters still read their settings through `from_env` mappings. Keys never come from the
+process environment: `adapter_settings` drops every key variable from the environment and
+adds the values of one registered credential under the names the adapter expects.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class SecretField:
+    name: str
+    label: str
+    env_name: str
+
+
+@dataclass(frozen=True)
+class ProviderKeySpec:
+    provider: str
+    display_name: str
+    fields: tuple[SecretField, ...]
+    # Broker APIs issue keys per brokerage account; a vendor key belongs to the login.
+    per_account: bool
+
+
+CATALOG: dict[str, ProviderKeySpec] = {
+    spec.provider: spec
+    for spec in (
+        ProviderKeySpec(
+            "alpaca",
+            "Alpaca",
+            (
+                SecretField("api_key_id", "API key ID", "APCA_API_KEY_ID"),
+                SecretField("api_secret_key", "API secret key", "APCA_API_SECRET_KEY"),
+            ),
+            per_account=False,
+        ),
+        ProviderKeySpec(
+            "kis",
+            "한국투자증권",
+            (
+                SecretField("app_key", "App key", "SIW_KIS_APP_KEY"),
+                SecretField("app_secret", "App secret", "SIW_KIS_APP_SECRET"),
+            ),
+            per_account=True,
+        ),
+        ProviderKeySpec(
+            "toss",
+            "토스증권",
+            (
+                SecretField("client_id", "Client ID", "SIW_TOSS_CLIENT_ID"),
+                SecretField("client_secret", "Client secret", "SIW_TOSS_CLIENT_SECRET"),
+            ),
+            per_account=True,
+        ),
+        ProviderKeySpec(
+            "kiwoom",
+            "키움증권",
+            (
+                SecretField("app_key", "App key", "SIW_KIWOOM_APP_KEY"),
+                SecretField("secret_key", "Secret key", "SIW_KIWOOM_SECRET_KEY"),
+            ),
+            per_account=True,
+        ),
+        ProviderKeySpec(
+            "meritz",
+            "메리츠증권",
+            (
+                SecretField("app_key", "App key", "SIW_MERITZ_APP_KEY"),
+                SecretField("app_secret", "App secret", "SIW_MERITZ_APP_SECRET"),
+            ),
+            per_account=True,
+        ),
+    )
+}
+
+SECRET_ENV_NAMES = frozenset(field.env_name for spec in CATALOG.values() for field in spec.fields)
+
+# Stands in for a key when an adapter is built only to list instruments; such an adapter
+# never sends a request.
+_UNUSED = "unused-listing-only"
+
+
+def adapter_settings(
+    environ: Mapping[str, str], provider: str, secrets: Mapping[str, str] | None
+) -> dict[str, str]:
+    """Environment settings without any key variable, plus one credential's secrets."""
+    spec = CATALOG[provider]
+    values = {name: value for name, value in environ.items() if name not in SECRET_ENV_NAMES}
+    for field in spec.fields:
+        values[field.env_name] = _UNUSED if secrets is None else secrets[field.name]
+    return values

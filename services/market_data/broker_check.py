@@ -1,10 +1,11 @@
 """Live check for a broker adapter with the user's own keys (one 30-minute request).
 
-    python -m services.market_data.broker_check --provider kis --symbol SPY
+    python -m services.market_data.broker_check --provider kis --symbol SPY [--label 해외주식]
 
-Prints the result summary and the first raw record exactly as the broker sent it (market
-data only, never credentials), so the time zone and bar-start meaning of the timestamp
-can be confirmed before relying on the adapter.
+Uses the keys registered on the Keys screen (all enabled keys in order, or the one named
+by --label). Prints the result summary and the first raw record exactly as the broker
+sent it (market data only, never credentials), so the time zone and bar-start meaning of
+the timestamp can be confirmed before relying on the adapter.
 """
 
 from __future__ import annotations
@@ -17,7 +18,11 @@ from typing import Any
 
 from services.market_data.calendar import UsEquityCalendar
 from services.market_data.provider import BarsQuery, MarketDataError
-from services.market_data.selection import ProviderConfigError, _broker
+from services.market_data.selection import (
+    ProviderConfigError,
+    default_credential_store,
+    pooled_provider,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,9 +30,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--provider", choices=("kis", "toss", "kiwoom", "meritz"), required=True)
     parser.add_argument("--symbol", default=None)
     parser.add_argument("--date", type=date.fromisoformat, default=None)
+    parser.add_argument("--label", default=None, help="use only the registered key with this label")
     args = parser.parse_args(argv)
     try:
-        provider: Any = _broker(args.provider)
+        store = default_credential_store()
+        provider: Any = pooled_provider(
+            args.provider,
+            store,
+            only=(lambda record: record.label == args.label) if args.label else None,
+        )
     except ProviderConfigError as exc:
         print(json.dumps({"status": "error", "error": str(exc)}))
         return 2
@@ -57,6 +68,14 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "status": "ok",
                 "source_id": result.coverage["source_id"],
+                "key_label": next(
+                    (
+                        record.label
+                        for record in store.list(args.provider)
+                        if record.credential_id == provider.last_credential_id
+                    ),
+                    None,
+                ),
                 "symbol": symbol,
                 "session_date": day.isoformat(),
                 "range_utc": [

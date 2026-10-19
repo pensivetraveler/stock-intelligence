@@ -24,6 +24,7 @@
 | Phase 1D Alpaca 프로토타입 | `67de157`      | Alpaca 시세 adapter(opt-in), 15분 제한, 무체결 분, 오류 분류                    | 전체 검증; 실계정 check 30/30분 성공         | 2026-10-17                          |
 | Phase 1D 증권사 adapter    | `606079d`      | 한국투자·토스·키움 adapter(공식 문서 기반), 미래에셋 미지원, Alpaca 장시간 확인 | 전체 검증; 증권사 실계정 확인 대기           | 2026-10-17                          |
 | 메리츠증권 채널            | `0b01dbe`      | 메리츠 Open API 분봉 adapter(최근 40개), `beyond_source_history`                | 전체 검증; 실계정 확인 대기                  | 2026-10-17                          |
+| 시세 키 관리               | 커밋 전        | 화면 키 등록, OS 키체인, 계좌별 여러 키, 한도 시 다음 키                        | 전체 검증; 실제 키체인 미확인                | 2026-10-19                          |
 
 Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 정정·재시도·공급업체 비교 등 장기 로드맵의 나머지 요구사항은 후속 작업이다.
 
@@ -165,18 +166,23 @@ Phase 1 전체가 완료된 것은 아니다. 실제 데이터 수집·사후 �
 - 공식 명세 기준 분봉 adapter를 추가했다. 최근 40개만 제공하고, 시각은 KST이며, `mac_address` 헤더가 필수다.
 - 40개보다 오래된 분은 `beyond_source_history`로 표시한다([ADR 0013](decisions/0013-broker-market-data-adapters.md)).
 
+**시세 키 관리(커밋 전):**
+
+- 화면 `Market data keys`에서 공급업체 키를 계좌별로 등록한다. secret은 OS 키체인에만 두고, `.env`의 키는 읽지 않는다.
+- 한 키가 호출 한도 오류를 받으면 60초 동안 건너뛰고 다음 키를 쓴다. 다른 오류는 숨기지 않는다([ADR 0014](decisions/0014-provider-key-registry.md)).
+
 ## 7. 현재 가능한 사용과 남은 작업
 
-| 항목                       | 현재 범위                            | 다음에 필요한 작업                                    |
-| -------------------------- | ------------------------------------ | ----------------------------------------------------- |
-| 데이터 조회                | 합성 AAPL 1m API, 선택적 로컬 cache  | 다종목·충분한 fixture, 실제 Provider는 권한·권리 검증 |
-| 큰 timeframe               | 공개 API 5m~60m 집계                 | 일봉(`1d`)과 차트 연결                                |
-| 화면                       | 차트 2개, 이름 붙인 workspace·템플릿 | 지표(Phase 4), replay                                 |
-| 네이티브 앱                | Tauri 구성                           | Rust/Cargo 등 prerequisite 설치 후 실행·빌드 검증     |
-| 데이터 운영                | 로컬 저장·복구·pin, 합성 backfill    | 실제 Provider 수집, 정정 처리, retention              |
-| 원격 CI                    | workflow 파일                        | Git 원격·CI 실행 환경 구성 및 실행 증거               |
-| 매매 복기                  | 수동·가상 원장, 마커, 분리 P&L       | CSV 가져오기·중복 검토, 정정, broker 확인, 계좌 구분  |
-| 지표·Replay·백테스트·Agent | 초기 계약 또는 장기 요구사항         | 해당 Phase 구현과 별도 수락 검증                      |
+| 항목                       | 현재 범위                                | 다음에 필요한 작업                                    |
+| -------------------------- | ---------------------------------------- | ----------------------------------------------------- |
+| 데이터 조회                | 합성 AAPL 1m API, 선택적 로컬 cache      | 다종목·충분한 fixture, 실제 Provider는 권한·권리 검증 |
+| 큰 timeframe               | 공개 API 5m~60m 집계                     | 일봉(`1d`)과 차트 연결                                |
+| 화면                       | 차트 2개, 이름 붙인 workspace·템플릿     | 지표(Phase 4), replay                                 |
+| 네이티브 앱                | Tauri 구성                               | Rust/Cargo 등 prerequisite 설치 후 실행·빌드 검증     |
+| 데이터 운영                | 로컬 저장·복구·pin, 합성 backfill        | 실제 Provider 수집, 정정 처리, retention              |
+| 원격 CI                    | GitHub Actions(`verify`), main 보호 규칙 | Windows·macOS 실행, Tauri 빌드                        |
+| 매매 복기                  | 수동·가상 원장, 마커, 분리 P&L           | CSV 가져오기·중복 검토, 정정, broker 확인, 계좌 구분  |
+| 지표·Replay·백테스트·Agent | 초기 계약 또는 장기 요구사항             | 해당 Phase 구현과 별도 수락 검증                      |
 
 후속 선택지는 **Phase 2의 합성 데이터 기반 차트 수직 슬라이스** 또는 **Phase 1D 실제 Provider PoC**다. Phase 2를 선택하면 첫 차트에서 source·session·quality·Coverage를 표시하며, 이미 공개된 5m~60m 집계 API를 사용할 수 있다. Phase 1D는 사용할 계정·읽기 전용 권한·데이터 저장권·비용 범위 확인이 선행된다. 두 경로 모두 아직 착수하지 않았다.
 

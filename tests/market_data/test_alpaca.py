@@ -15,6 +15,7 @@ import pytest
 
 from packages.contracts.validator import validate_document
 from services.collector.backfill import BackfillRequest, run_backfill
+from services.credentials.store import CredentialStore, MemorySecretBackend
 from services.market_data.alpaca import AlpacaConfig, AlpacaConfigError, AlpacaMarketDataProvider
 from services.market_data.bars_service import MarketBarsService
 from services.market_data.provider import (
@@ -309,16 +310,24 @@ def test_capabilities_and_instruments_follow_the_contract() -> None:
     ]
 
 
-def test_provider_selection_defaults_to_synthetic_and_requires_alpaca_keys(
-    monkeypatch: pytest.MonkeyPatch,
+def test_provider_selection_defaults_to_synthetic_and_takes_alpaca_keys_from_registry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    for name in ("SIW_MARKET_DATA_PROVIDER", "APCA_API_KEY_ID", "APCA_API_SECRET_KEY"):
+    for name in ("SIW_MARKET_DATA_PROVIDER", "SIW_DATA_DIR"):
         monkeypatch.delenv(name, raising=False)
     assert provider_from_env().source_id == "fake-market-data"
 
     monkeypatch.setenv("SIW_MARKET_DATA_PROVIDER", "alpaca")
-    with pytest.raises(ProviderConfigError, match="APCA_API_KEY_ID"):
+    with pytest.raises(ProviderConfigError, match="SIW_DATA_DIR"):
         provider_from_env()
+
+    # Keys in the environment are ignored; only registered keys are used.
+    monkeypatch.setenv("APCA_API_KEY_ID", "PKTEST")
+    monkeypatch.setenv("APCA_API_SECRET_KEY", SECRET)
+    provider = provider_from_env(CredentialStore(tmp_path, MemorySecretBackend()))
+    assert provider.source_id.startswith("alpaca-")
+    with pytest.raises(ProviderAuthError, match="Keys screen"):
+        provider.get_bars(query("13:30", "14:00"))
 
     monkeypatch.setenv("SIW_MARKET_DATA_PROVIDER", "massive")
     with pytest.raises(ProviderConfigError, match="fake, alpaca"):

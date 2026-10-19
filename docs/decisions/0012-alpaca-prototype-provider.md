@@ -20,7 +20,7 @@ The project rules forbid hard-coding either paid candidate (Alpaca or Massive) a
 - **Opt-in adapter:** `AlpacaMarketDataProvider` is used only when `SIW_MARKET_DATA_PROVIDER=alpaca`. Synthetic data stays the default.
   - This is a prototype order chosen by the user, not a canonical vendor selection. Massive stays an unselected candidate.
 - **Read-only, one endpoint:** it calls only `GET /v2/stocks/bars` (1Min, `adjustment=raw`, explicit `feed`, pages of 10,000 rows with `next_page_token`). No trading endpoint is used.
-  - Credentials come only from `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY`. They are sent as headers, kept out of `repr`, and never logged or echoed in errors.
+  - Credentials came only from `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY` (superseded by [ADR 0014](0014-provider-key-registry.md): keys are registered on the Keys screen). They are sent as headers, kept out of `repr`, and never logged or echoed in errors.
 - **Exact prices:** responses are parsed with `parse_float=Decimal`, so prices never pass through binary floats.
   - Bars that violate the contract (high below open, duplicate minutes) raise `ProviderDataError`. Nothing is fixed up silently.
 - **Plan delay:** with `feed=sip`, requests end 15 minutes before now (`SIW_ALPACA_DELAY_MINUTES`). The excluded minutes are reported as `outside_entitlement`.

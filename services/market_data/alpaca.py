@@ -403,15 +403,30 @@ def _check(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="python -m services.market_data.alpaca check")
     parser.add_argument("--symbol", default=None)
     parser.add_argument("--date", type=date.fromisoformat, default=None)
+    parser.add_argument("--label", default=None, help="use only the registered key with this label")
     args = parser.parse_args(argv)
+    # Keys come from the Keys screen (labels in SIW_DATA_DIR, secrets in the OS keychain).
+    from services.market_data.selection import (
+        ProviderConfigError,
+        default_credential_store,
+        pooled_provider,
+    )
+
     try:
-        config = AlpacaConfig.from_env()
-    except AlpacaConfigError as exc:
+        provider = pooled_provider(
+            "alpaca",
+            default_credential_store(),
+            only=(lambda record: record.label == args.label) if args.label else None,
+        )
+    except ProviderConfigError as exc:
         print(json.dumps({"status": "error", "error": str(exc)}))
         return 2
-    provider = AlpacaMarketDataProvider(config)
-    symbol = (args.symbol or config.symbols[0][0]).upper()
-    instrument_id = provider._instruments.get(symbol)
+    listings = {
+        item["instrument"]["symbol"]: item["instrument"]["instrument_id"]
+        for item in provider.instruments()
+    }
+    symbol = (args.symbol or next(iter(listings))).upper()
+    instrument_id = listings.get(symbol)
     if instrument_id is None:
         print(json.dumps({"status": "error", "error": f"{symbol} is not in SIW_ALPACA_SYMBOLS"}))
         return 2
@@ -427,6 +442,7 @@ def _check(argv: list[str]) -> int:
         result = provider.get_bars(query)
     except (
         ProviderAuthError,
+        ProviderRateLimitError,
         ProviderUnavailableError,
         ProviderDataError,
         InvalidBarsQueryError,

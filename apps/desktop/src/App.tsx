@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { version as APP_VERSION } from "../package.json";
 import { checkApiHealth, type ApiConnectionState } from "./api-health";
+import { createCredentialApi } from "./credential-api";
+import { KeysPanel } from "./KeysPanel";
 import { createMarketApi } from "./market-api";
 import "./styles.css";
 import { Workspace } from "./Workspace";
@@ -24,6 +26,10 @@ export function App({
   const [lastSuccess, setLastSuccess] = useState<string | null>(null);
   const api = useMemo(
     () => createMarketApi(apiBaseUrl, fetcher),
+    [apiBaseUrl, fetcher],
+  );
+  const credentialApi = useMemo(
+    () => createCredentialApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
   );
   const retryTimer = useRef<number | null>(null);
@@ -107,6 +113,7 @@ export function App({
         </div>
       </header>
       {lastSuccess ? <Workspace api={api} /> : null}
+      {lastSuccess ? <KeysPanel api={credentialApi} /> : null}
     </main>
   );
 }

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
 
@@ -15,6 +16,8 @@ import httpx
 import pytest
 
 from packages.contracts.validator import validate_document
+from services.credentials.catalog import SECRET_ENV_NAMES
+from services.credentials.store import CredentialStore, MemorySecretBackend
 from services.market_data.broker_common import AllowlistedClient, BlockedEndpointError
 from services.market_data.kis import KisConfig, KisMarketDataProvider
 from services.market_data.kiwoom import KiwoomConfig, KiwoomMarketDataProvider
@@ -429,29 +432,23 @@ def test_order_endpoints_cannot_be_called(method: str, path: str) -> None:
     assert recorder.requests == []
 
 
-@pytest.mark.parametrize(
-    ("choice", "names"),
-    [
-        ("kis", "SIW_KIS_APP_KEY"),
-        ("toss", "SIW_TOSS_CLIENT_ID"),
-        ("kiwoom", "SIW_KIWOOM_APP_KEY"),
-        ("meritz", "SIW_MERITZ_APP_KEY"),
-    ],
-)
-def test_broker_selection_requires_its_own_keys(
-    monkeypatch: pytest.MonkeyPatch, choice: str, names: str
+@pytest.mark.parametrize("choice", ["kis", "toss", "kiwoom", "meritz"])
+def test_broker_selection_uses_registered_keys_never_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, choice: str
 ) -> None:
-    for name in (
-        "SIW_KIS_APP_KEY",
-        "SIW_TOSS_CLIENT_ID",
-        "SIW_KIWOOM_APP_KEY",
-        "SIW_MERITZ_APP_KEY",
-    ):
-        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("SIW_MARKET_DATA_PROVIDER", choice)
-
-    with pytest.raises(ProviderConfigError, match=names):
+    monkeypatch.setenv("SIW_KIWOOM_TIME_ZONE", "Asia/Seoul")
+    monkeypatch.setenv("SIW_MERITZ_MAC_ADDRESS", "A1B2C3D4E5F6")
+    monkeypatch.delenv("SIW_DATA_DIR", raising=False)
+    with pytest.raises(ProviderConfigError, match="SIW_DATA_DIR"):
         provider_from_env()
+
+    for name in SECRET_ENV_NAMES:
+        monkeypatch.setenv(name, SECRET)  # ignored: keys come only from the registry
+    provider = provider_from_env(CredentialStore(tmp_path, MemorySecretBackend()))
+    assert provider.instruments()
+    with pytest.raises(ProviderAuthError, match="Keys screen"):
+        provider.get_bars(window("13:30", "14:00"))
 
 
 def test_broker_capabilities_and_instruments_follow_the_contract() -> None:
