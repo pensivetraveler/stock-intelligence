@@ -2,6 +2,8 @@ import {
   CandlestickSeries,
   ColorType,
   createChart,
+  CrosshairMode,
+  PriceScaleMode,
   createSeriesMarkers,
   HistogramSeries,
   type IChartApi,
@@ -26,6 +28,13 @@ interface PriceChartProps {
   markers?: ChartMarker[];
   /** Called with the start time (epoch seconds) of the clicked candle. */
   onCandleClick?: (time: number) => void;
+  /** Called with the start time under the crosshair, or null when it leaves the chart. */
+  onHover?: (time: number | null) => void;
+  /** Snap the crosshair to the nearest open, high, low or close. */
+  magnet?: boolean;
+  logScale?: boolean;
+  /** Changing this number fits all bars into view again. */
+  fitRequest?: number;
 }
 
 function timeOf(value: Time): number {
@@ -40,6 +49,10 @@ export function PriceChart({
   sync,
   markers = [],
   onCandleClick,
+  onHover,
+  magnet = false,
+  logScale = false,
+  fitRequest = 0,
 }: PriceChartProps) {
   const container = useRef<HTMLDivElement | null>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -48,10 +61,12 @@ export function PriceChart({
   const markerLayer = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const applyingSyncedRange = useRef(false);
   const clickHandler = useRef(onCandleClick);
+  const hoverHandler = useRef(onHover);
 
   useEffect(() => {
     clickHandler.current = onCandleClick;
-  }, [onCandleClick]);
+    hoverHandler.current = onHover;
+  }, [onCandleClick, onHover]);
 
   useEffect(() => {
     if (!container.current) {
@@ -108,8 +123,14 @@ export function PriceChart({
         clickHandler.current?.(timeOf(param.time));
       }
     };
+    const onMove = (param: MouseEventParams<Time>) => {
+      hoverHandler.current?.(
+        param.time === undefined ? null : timeOf(param.time),
+      );
+    };
     instance.timeScale().subscribeVisibleTimeRangeChange(onRange);
     instance.subscribeClick(onClick);
+    instance.subscribeCrosshairMove(onMove);
     const unregister = sync.register(chartId, (range) => {
       applyingSyncedRange.current = true;
       try {
@@ -125,6 +146,7 @@ export function PriceChart({
     });
     return () => {
       unregister();
+      instance.unsubscribeCrosshairMove(onMove);
       instance.unsubscribeClick(onClick);
       instance.timeScale().unsubscribeVisibleTimeRangeChange(onRange);
       instance.remove();
@@ -142,6 +164,23 @@ export function PriceChart({
     );
     chart.current?.timeScale().fitContent();
   }, [candles, volume]);
+
+  useEffect(() => {
+    chart.current?.applyOptions({
+      crosshair: {
+        mode: magnet ? CrosshairMode.Magnet : CrosshairMode.Normal,
+      },
+      rightPriceScale: {
+        mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+      },
+    });
+  }, [magnet, logScale]);
+
+  useEffect(() => {
+    if (fitRequest > 0) {
+      chart.current?.timeScale().fitContent();
+    }
+  }, [fitRequest]);
 
   useEffect(() => {
     markerLayer.current?.setMarkers(

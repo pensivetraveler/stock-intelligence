@@ -34,8 +34,24 @@ export class MarketApiError extends Error {
   }
 }
 
+/**
+ * Regular-session snapshot for the watchlist: the first open and the latest close of
+ * the session, from 60m bars. `null` when the day has no regular-session bars.
+ */
+export interface SessionQuote {
+  instrumentId: string;
+  sessionDate: string;
+  open: string;
+  last: string;
+  lastFinal: boolean;
+}
+
 export interface MarketApi {
   instruments(): Promise<InstrumentListing[]>;
+  quote(
+    instrumentId: string,
+    sessionDate: string,
+  ): Promise<SessionQuote | null>;
   session(sessionDate: string): Promise<SessionWindow>;
   bars(request: BarsRequest): Promise<MarketBarsResponse>;
   manualLedger(): Promise<ManualLedgerResponse>;
@@ -207,7 +223,52 @@ export function createMarketApi(
     return callForKind<T>(target, path, kind, { body });
   }
 
+  const session = (sessionDate: string) =>
+    get<SessionWindow>(
+      `/v1/market/sessions/${encodeURIComponent(sessionDate)}`,
+      "session_window",
+    );
+  const bars = ({ instrumentId, timeframe, startUtc, endUtc }: BarsRequest) => {
+    const query = new URLSearchParams({
+      instrument_id: instrumentId,
+      timeframe,
+      start_utc: startUtc,
+      end_utc: endUtc,
+    });
+    return get<MarketBarsResponse>(
+      `/v1/market/bars?${query.toString()}`,
+      "market_bars_response",
+    );
+  };
+
   return {
+    async quote(instrumentId, sessionDate) {
+      const window = await session(sessionDate);
+      if (
+        !window.is_trading_day ||
+        !window.regular_open_utc ||
+        !window.regular_close_utc
+      ) {
+        return null;
+      }
+      const response = await bars({
+        instrumentId,
+        timeframe: "60m",
+        startUtc: window.regular_open_utc,
+        endUtc: window.regular_close_utc,
+      });
+      const first = response.bars.at(0);
+      const last = response.bars.at(-1);
+      return first && last
+        ? {
+            instrumentId,
+            sessionDate,
+            open: first.open,
+            last: last.close,
+            lastFinal: last.is_final,
+          }
+        : null;
+    },
     async instruments() {
       const response = await get<MarketInstrumentsResponse>(
         "/v1/market/instruments",
@@ -215,24 +276,8 @@ export function createMarketApi(
       );
       return response.instruments;
     },
-    session(sessionDate) {
-      return get<SessionWindow>(
-        `/v1/market/sessions/${encodeURIComponent(sessionDate)}`,
-        "session_window",
-      );
-    },
-    bars({ instrumentId, timeframe, startUtc, endUtc }) {
-      const query = new URLSearchParams({
-        instrument_id: instrumentId,
-        timeframe,
-        start_utc: startUtc,
-        end_utc: endUtc,
-      });
-      return get<MarketBarsResponse>(
-        `/v1/market/bars?${query.toString()}`,
-        "market_bars_response",
-      );
-    },
+    session,
+    bars,
     manualLedger() {
       return get<ManualLedgerResponse>(
         "/v1/trades/manual",

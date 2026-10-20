@@ -89,6 +89,18 @@ function fakeApi(options: { journalOff?: boolean } = {}): MarketApi & {
         fixture<MarketInstrumentsResponse>("market-instruments-response.json")
           .instruments,
       ),
+    quote: (instrumentId, sessionDate) =>
+      Promise.resolve(
+        instrumentId === "us:aapl:xnas:2026"
+          ? {
+              instrumentId,
+              sessionDate,
+              open: "200.00",
+              last: "202.50",
+              lastFinal: true,
+            }
+          : null,
+      ),
     session: (sessionDate) =>
       Promise.resolve(
         sessionDate === "2026-11-26"
@@ -243,7 +255,9 @@ describe("chart workspace", () => {
     expect(api.barsCalls.map((call) => call.timeframe)).toEqual(["5m", "1m"]);
     const first = screen.getByRole("region", { name: /Chart 1/ });
     expect(within(first).getByText("1 partial, not final")).toBeInTheDocument();
-    expect(within(first).getByText(/fake-market-data/)).toBeInTheDocument();
+    expect(first.querySelector(".lineage")).toHaveTextContent(
+      /fake-market-data/,
+    );
     expect(within(first).getByText(/early close/)).toBeInTheDocument();
   });
 
@@ -254,9 +268,12 @@ describe("chart workspace", () => {
     await screen.findByTestId("chart-chart-2");
 
     const first = screen.getByRole("region", { name: /Chart 1/ });
-    fireEvent.change(within(first).getByLabelText("Timeframe"), {
-      target: { value: "60m" },
-    });
+    fireEvent.click(
+      within(within(first).getByRole("group", { name: "Timeframe" })).getByRole(
+        "button",
+        { name: "60m" },
+      ),
+    );
     await screen.findByRole("region", { name: /Chart 1: .* 60m/ });
 
     const saved = savedLayout(storage);
@@ -342,9 +359,11 @@ describe("chart workspace", () => {
       target: { value: "Scalping" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    fireEvent.change(within(first()).getByLabelText("Timeframe"), {
-      target: { value: "30m" },
-    });
+    fireEvent.click(
+      within(
+        within(first()).getByRole("group", { name: "Timeframe" }),
+      ).getByRole("button", { name: "30m" }),
+    );
     await screen.findByRole("region", { name: /Chart 1: .* 30m/ });
 
     fireEvent.change(screen.getByLabelText("Workspace"), {
@@ -514,6 +533,64 @@ describe("chart workspace", () => {
         "No actual executions recorded. Click a candle to add one.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("shows the watchlist and puts a picked symbol in the active chart", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} />);
+    const watchlist = await screen.findByRole("complementary", {
+      name: "Watchlist",
+    });
+    expect(await within(watchlist).findByText("202.50")).toBeInTheDocument();
+    expect(within(watchlist).getByText("+1.25%")).toBeInTheDocument();
+    expect(await within(watchlist).findByText("no bars")).toBeInTheDocument();
+
+    // Chart 2 becomes active by interacting with it; the pick goes there.
+    const second = screen.getByRole("region", { name: /Chart 2/ });
+    fireEvent.pointerDown(second);
+    fireEvent.click(
+      within(watchlist).getByRole("button", {
+        name: "Show AAPL in the active chart",
+      }),
+    );
+    await screen.findByRole("region", { name: /Chart 2: AAPL/ });
+    expect(savedLayout(storage).charts[1].instrumentId).toBe(
+      "us:aapl:xnas:2026",
+    );
+    expect(savedLayout(storage).charts[0].instrumentId).toBe(
+      "us:synth:xnas:2026",
+    );
+  });
+
+  it("searches symbols and steps the session date", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} />);
+    await screen.findByTestId("chart-chart-1");
+    const first = screen.getByRole("region", { name: /Chart 1/ });
+
+    fireEvent.click(within(first).getByRole("button", { name: "Instrument" }));
+    const search = within(first).getByRole("textbox", {
+      name: "Search symbol",
+    });
+    fireEvent.change(search, { target: { value: "aa" } });
+    expect(
+      within(first).queryByRole("button", { name: /SYNTH/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.keyDown(search, { key: "Enter" });
+    await screen.findByRole("region", { name: /Chart 1: AAPL/ });
+
+    fireEvent.click(within(first).getByRole("button", { name: "Next day" }));
+    expect(savedLayout(storage).charts[0].sessionDate).toBe("2026-10-10");
+  });
+
+  it("shows the latest bar in the legend", async () => {
+    render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    const first = screen.getByRole("region", { name: /Chart 1/ });
+    const legend = first.querySelector(".chart-legend");
+    expect(legend).not.toBeNull();
+    expect(legend).toHaveTextContent(/SYNTH · 5m · fake-market-data/);
+    expect(legend).toHaveTextContent("not final");
   });
 
   it("explains an instrument the current provider does not offer", async () => {

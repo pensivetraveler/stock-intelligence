@@ -16,6 +16,7 @@ import { ChartPanel } from "./ChartPanel";
 import { useI18n, type MessageKey, type Translate } from "./i18n";
 import { ImportPanel } from "./ImportPanel";
 import { JournalPanel } from "./JournalPanel";
+import { Watchlist } from "./Watchlist";
 import {
   MarketApiError,
   type InstrumentListing,
@@ -91,6 +92,7 @@ export function Workspace({
   const [undoStack, setUndoStack] = useState<WorkspaceState[]>([]);
   const [templateId, setTemplateId] = useState(LAYOUT_TEMPLATES[0].id);
   const [nameForm, setNameForm] = useState<NameForm>(null);
+  const [activeChart, setActiveChart] = useState<0 | 1>(0);
   const [instruments, setInstruments] = useState<InstrumentListing[]>([]);
   const [instrumentsError, setInstrumentsError] = useState<string | null>(null);
   const [instrumentsReady, setInstrumentsReady] = useState(false);
@@ -388,22 +390,38 @@ export function Workspace({
           {t("ws.instrumentsUnavailable", { error: instrumentsError })}
         </p>
       ) : null}
-      <div className="chart-grid">
-        {layout.charts.map((config, index) => (
-          <ChartPanel
-            key={index}
-            chartId={`chart-${index + 1}`}
-            title={t("ws.chartTitle", { n: index + 1 })}
-            api={api}
-            config={config}
-            instruments={instruments}
-            instrumentsReady={instrumentsReady}
-            sync={sync}
-            onChange={updateChart(index as 0 | 1)}
-            journal={journal}
-            onJournalChange={refreshJournal}
-          />
-        ))}
+      <div className="terminal">
+        <div className="chart-grid">
+          {layout.charts.map((config, index) => (
+            <ChartPanel
+              key={index}
+              active={index === activeChart}
+              onActivate={() => setActiveChart(index as 0 | 1)}
+              chartId={`chart-${index + 1}`}
+              title={t("ws.chartTitle", { n: index + 1 })}
+              api={api}
+              config={config}
+              instruments={instruments}
+              instrumentsReady={instrumentsReady}
+              sync={sync}
+              onChange={updateChart(index as 0 | 1)}
+              journal={journal}
+              onJournalChange={refreshJournal}
+            />
+          ))}
+        </div>
+        <Watchlist
+          api={api}
+          instruments={instruments}
+          sessionDate={layout.charts[activeChart].sessionDate}
+          activeInstrumentId={layout.charts[activeChart].instrumentId}
+          onPick={(instrumentId) =>
+            updateChart(activeChart)({
+              ...layout.charts[activeChart],
+              instrumentId,
+            })
+          }
+        />
       </div>
       <JournalPanel
         manual={ledgers.manual}
