@@ -28,3 +28,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0012-alpaca-prototype-provider.md`: Alpaca 시세 adapter 프로토타입(opt-in), 무료 요금제 15분 제한, 무체결 분 처리
 - `0013-broker-market-data-adapters.md`: 한국투자·토스·키움 시세 adapter(공식 문서 기반, 실계정 확인 대기), 미래에셋 미지원
 - `0014-provider-key-registry.md`: 화면에서 시세 키 등록, secret은 OS 키체인, 계좌별 여러 키와 호출 한도 시 다음 키로 전환
+- `0015-daily-bar-cache-by-year.md`: 일봉 캐시를 확정된 연도 단위로 저장, 올해는 항상 새로 조회, 리비전 혼합 금지

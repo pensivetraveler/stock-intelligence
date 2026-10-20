@@ -168,6 +168,17 @@ def _session_date(bar: dict[str, Any]) -> str:
     return start.astimezone(EXCHANGE_TIMEZONE).date().isoformat()
 
 
+def _partition(bar: dict[str, Any]) -> str:
+    """Directory partition of a bar: its session date, or its year for daily bars.
+
+    Daily bars are one per session, so a file per session would be mostly overhead.
+    """
+    if bar["timeframe"] == "1d":
+        start = _parse_utc(cast(str, bar["interval_start_utc"]))
+        return f"year={start.astimezone(EXCHANGE_TIMEZONE).year}"
+    return f"session_date={_session_date(bar)}"
+
+
 class StorageError(RuntimeError):
     """Base error for local market-data persistence."""
 
@@ -932,7 +943,7 @@ class LocalMarketDataStore:
     ) -> dict[str, tuple[dict[str, Any], ...]]:
         groups: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
         for bar in bars:
-            groups[_session_date(bar)].append(dict(bar))
+            groups[_partition(bar)].append(dict(bar))
         return {
             date: tuple(sorted(group, key=lambda bar: cast(str, bar["interval_start_utc"])))
             for date, group in sorted(groups.items())
@@ -941,12 +952,11 @@ class LocalMarketDataStore:
     def _file_entry(self, bars: tuple[dict[str, Any], ...]) -> dict[str, str]:
         first = bars[0]
         payload_sha256 = _sha256(_canonical_json(bars).encode())
-        session_date = _session_date(first)
         relative_directory = Path("bars") / Path(
             f"source_id={_safe_component(cast(str, first['source_id']))}",
             f"instrument_id={_safe_component(cast(str, first['instrument_id']))}",
             f"timeframe={_safe_component(cast(str, first['timeframe']))}",
-            f"session_date={session_date}",
+            _partition(first),
             f"revision={_safe_component(cast(str, first['dataset_revision']))}",
         )
         final_path = relative_directory / f"part-{payload_sha256}.parquet"
@@ -1041,12 +1051,14 @@ class CachedMarketDataProvider:
         return self.upstream.instruments()
 
     def get_daily_bars(self, query: BarsQuery) -> BarsResult:
-        """Daily bars pass straight to the upstream; they are not cached yet."""
-        from services.market_data.daily import DailyBarsProvider
+        """Daily bars from settled cached years, the rest from the upstream."""
+        from services.market_data.daily import DailyBarsProvider, validate_daily_query
+        from services.market_data.daily_cache import DailyBarsCache
 
         if not isinstance(self.upstream, DailyBarsProvider):
             raise InvalidBarsQueryError("this data provider does not offer daily bars yet")
-        return self.upstream.get_daily_bars(query)
+        validate_daily_query(query, "1d", _utc_now())
+        return DailyBarsCache(self.store, self.source_id, self.upstream.get_daily_bars).get(query)
 
     def get_bars(self, query: BarsQuery) -> BarsResult:
         validate_bars_query(query)

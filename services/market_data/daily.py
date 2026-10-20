@@ -16,7 +16,13 @@ from decimal import Decimal
 from typing import Any, Protocol, runtime_checkable
 
 from packages.contracts.validator import validate_document
-from services.market_data.calendar import NEW_YORK, SessionWindow, UsEquityCalendar
+from services.market_data.calendar import (
+    CALENDAR_FIRST_SESSION,
+    CALENDAR_LAST_SESSION,
+    NEW_YORK,
+    SessionWindow,
+    UsEquityCalendar,
+)
 from services.market_data.provider import (
     BarsQuery,
     BarsResult,
@@ -59,8 +65,9 @@ def sessions_in_range(
 ) -> list[SessionWindow]:
     """Trading sessions whose regular open falls in [start_utc, end_utc), oldest first."""
     sessions: list[SessionWindow] = []
-    day = (start_utc - timedelta(days=1)).date()
-    last = end_utc.date()
+    # Only dates the calendar knows; a range may start or end just outside them.
+    day = max((start_utc - timedelta(days=1)).date(), CALENDAR_FIRST_SESSION)
+    last = min(end_utc.date(), CALENDAR_LAST_SESSION)
     while day <= last:
         window = calendar.window_for_date(day)
         if window is not None and start_utc <= window.regular_open_utc < end_utc:
@@ -123,7 +130,7 @@ def build_daily_result(
                 )
                 continue
         missing.append({"start_utc": utc_text(start), "end_utc": utc_text(end), "reason": reason})
-    return _result(
+    return assemble_result(
         query,
         "1d",
         visible,
@@ -242,7 +249,7 @@ def aggregate_weekly(query: BarsQuery, daily: BarsResult, calendar: UsEquityCale
             }
         )
     coverage = daily.coverage
-    return _result(
+    return assemble_result(
         query,
         "1w",
         visible,
@@ -255,7 +262,7 @@ def aggregate_weekly(query: BarsQuery, daily: BarsResult, calendar: UsEquityCale
     )
 
 
-def _result(
+def assemble_result(
     query: BarsQuery,
     timeframe: str,
     visible: list[dict[str, Any]],
