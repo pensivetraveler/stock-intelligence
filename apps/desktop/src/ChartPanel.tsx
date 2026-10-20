@@ -12,7 +12,9 @@ import { isUncertain, summarize, toSeries } from "./chart-data";
 import type { Drawing, DrawingTool } from "./drawings";
 import { barEnd, barsAsOf } from "./replay";
 import {
+  dailyRange,
   DEFAULT_CANDLES,
+  isDailyTimeframe,
   sessionsForCandles,
   timeframeLabel,
   timeframeSeconds,
@@ -186,7 +188,10 @@ export function ChartPanel({
     void (async () => {
       try {
         const session = await api.session(sessionDate);
-        const range = sessionRange(session, sessionScope);
+        // Daily and weekly charts end with the chosen day even when it is closed.
+        const range = isDailyTimeframe(timeframe)
+          ? dailyRange(timeframe, sessionDate)
+          : sessionRange(session, sessionScope);
         if (range === null) {
           if (current) setLoad({ status: "closed", session });
           return;
@@ -302,7 +307,10 @@ export function ChartPanel({
           ?.session_date ?? sessionDate)
       : sessionDate;
 
-  const neededWarmup = warmupBars(config.indicators ?? []);
+  // Daily and weekly charts already load about 1,200 bars, enough to warm up.
+  const neededWarmup = isDailyTimeframe(timeframe)
+    ? 0
+    : warmupBars(config.indicators ?? []);
   useEffect(() => {
     let current = true;
     setWarmup([]);
@@ -390,7 +398,9 @@ export function ChartPanel({
       return;
     }
     if (asOfBusy.current || loadSession === null) return;
-    const range = sessionRange(loadSession, sessionScope);
+    const range = isDailyTimeframe(timeframe)
+      ? dailyRange(timeframe, sessionDate)
+      : sessionRange(loadSession, sessionScope);
     if (range === null) return;
     const key = asOfKey;
     asOfBusy.current = true;
@@ -420,6 +430,7 @@ export function ChartPanel({
     loadSession,
     instrumentId,
     timeframe,
+    sessionDate,
     sessionScope,
     asOfKey,
   ]);
@@ -553,6 +564,7 @@ export function ChartPanel({
               fitRequest={fitRequest}
               indicators={rendered}
               fitKey={`${instrumentId}|${timeframe}|${sessionDate}|${sessionScope}`}
+              daily={isDailyTimeframe(timeframe)}
               drawings={(config.drawings ?? []).filter(
                 (item) => item.instrumentId === instrumentId,
               )}

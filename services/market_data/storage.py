@@ -25,6 +25,7 @@ from services.market_data.provider import (
     SETTLED_MISSING_REASONS,
     BarsQuery,
     BarsResult,
+    InvalidBarsQueryError,
     MarketDataProvider,
     validate_bars_query,
 )
@@ -1038,6 +1039,14 @@ class CachedMarketDataProvider:
 
     def instruments(self) -> list[dict[str, Any]]:
         return self.upstream.instruments()
+
+    def get_daily_bars(self, query: BarsQuery) -> BarsResult:
+        """Daily bars pass straight to the upstream; they are not cached yet."""
+        from services.market_data.daily import DailyBarsProvider
+
+        if not isinstance(self.upstream, DailyBarsProvider):
+            raise InvalidBarsQueryError("this data provider does not offer daily bars yet")
+        return self.upstream.get_daily_bars(query)
 
     def get_bars(self, query: BarsQuery) -> BarsResult:
         validate_bars_query(query)

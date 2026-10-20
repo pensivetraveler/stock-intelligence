@@ -1,6 +1,6 @@
 /**
- * Timeframes are written as whole minutes, "Nm" (1 to 960), as the API expects. Hours
- * are only a display: "120m" shows as "2h".
+ * Timeframes are written as whole minutes, "Nm" (1 to 960), as the API expects, or as
+ * "1d" / "1w" for daily and weekly bars. Hours are only a display: "120m" shows as "2h".
  */
 
 export const MAX_TIMEFRAME_MINUTES = 960;
@@ -19,7 +19,14 @@ export const PRESET_TIMEFRAMES = [
   "120m",
   "180m",
   "240m",
+  "1d",
+  "1w",
 ] as const;
+
+/** Daily and weekly bars: one request for the whole history, no sessions or hours. */
+export function isDailyTimeframe(timeframe: string): boolean {
+  return timeframe === "1d" || timeframe === "1w";
+}
 
 export const DEFAULT_FAVORITES = ["1m", "5m", "15m", "30m", "60m"];
 export const FAVORITES_STORAGE_KEY = "siw.timeframeFavorites";
@@ -35,15 +42,22 @@ export function timeframeMinutes(timeframe: string): number | null {
 }
 
 export function isTimeframe(value: unknown): value is string {
-  return typeof value === "string" && timeframeMinutes(value) !== null;
+  return (
+    typeof value === "string" &&
+    (timeframeMinutes(value) !== null || isDailyTimeframe(value))
+  );
 }
 
 export function timeframeSeconds(timeframe: string): number {
+  if (timeframe === "1d") return 86_400;
+  if (timeframe === "1w") return 7 * 86_400;
   return (timeframeMinutes(timeframe) ?? 1) * 60;
 }
 
 /** "45m", "2h", "1h 30m" — how a timeframe is shown on buttons and in the legend. */
 export function timeframeLabel(timeframe: string): string {
+  if (timeframe === "1d") return "1D";
+  if (timeframe === "1w") return "1W";
   const minutes = timeframeMinutes(timeframe);
   if (minutes === null) return timeframe;
   if (minutes < 60) return `${minutes}m`;
@@ -66,9 +80,7 @@ export function customTimeframe(
 export function normalizeFavorites(values: unknown): string[] {
   if (!Array.isArray(values)) return [...DEFAULT_FAVORITES];
   const unique = [...new Set(values.filter(isTimeframe))];
-  return unique.sort(
-    (a, b) => (timeframeMinutes(a) ?? 0) - (timeframeMinutes(b) ?? 0),
-  );
+  return unique.sort((a, b) => timeframeSeconds(a) - timeframeSeconds(b));
 }
 
 export function loadFavorites(storage: Storage | null | undefined): string[] {
@@ -101,6 +113,7 @@ export function sessionsForCandles(
   timeframe: string,
   scope: "regular" | "extended",
 ): number {
+  if (isDailyTimeframe(timeframe)) return 1; // one request already spans the history
   const minutes = timeframeMinutes(timeframe) ?? 1;
   const sessionMinutes = scope === "extended" ? 960 : 390;
   const barsPerSession = Math.max(1, Math.ceil(sessionMinutes / minutes));
@@ -108,4 +121,27 @@ export function sessionsForCandles(
     MAX_HISTORY_SESSIONS,
     Math.max(1, Math.ceil(DEFAULT_CANDLES / barsPerSession)),
   );
+}
+
+/** Calendar days a daily or weekly chart looks back to show about DEFAULT_CANDLES. */
+export function dailyLookbackDays(timeframe: string): number {
+  // About 252 sessions a year; weekly bars reach as far back as the provider allows.
+  return timeframe === "1w" ? 8_400 : Math.ceil((DEFAULT_CANDLES * 365) / 252);
+}
+
+function shiftDays(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+/** UTC request range of a daily or weekly chart that ends with `sessionDate`. */
+export function dailyRange(
+  timeframe: string,
+  sessionDate: string,
+): { startUtc: string; endUtc: string } {
+  return {
+    startUtc: `${shiftDays(sessionDate, -dailyLookbackDays(timeframe))}T00:00:00Z`,
+    endUtc: `${shiftDays(sessionDate, 1)}T00:00:00Z`,
+  };
 }

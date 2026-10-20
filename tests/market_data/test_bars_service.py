@@ -141,9 +141,17 @@ def test_any_minute_timeframe_is_aggregated_by_session_buckets(
     ] == [("13:30", "15:30"), ("15:30", "17:30"), ("17:30", "19:30"), ("19:30", "20:00")]
 
 
-@pytest.mark.parametrize("timeframe", ["1h", "0m", "961m", "1d", "05m"])
+@pytest.mark.parametrize("timeframe", ["1h", "0m", "961m", "2d", "05m"])
 def test_unsupported_timeframes_are_rejected(
     synthetic_document: SyntheticDocument, timeframe: str
 ) -> None:
     with pytest.raises(InvalidBarsQueryError, match="timeframe must be"):
+        service(synthetic_document(30)).get_bars(query(timeframe, 30))
+
+
+@pytest.mark.parametrize("timeframe", ["1d", "1w"])
+def test_daily_and_weekly_need_a_daily_provider(
+    synthetic_document: SyntheticDocument, timeframe: str
+) -> None:
+    with pytest.raises(InvalidBarsQueryError, match="does not offer daily bars"):
         service(synthetic_document(30)).get_bars(query(timeframe, 30))

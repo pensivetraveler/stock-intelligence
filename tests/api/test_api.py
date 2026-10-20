@@ -119,7 +119,7 @@ async def test_market_bars_rejects_invalid_timeframe_and_range() -> None:
     }
     async with client() as test_client:
         timeframe_response = await test_client.get(
-            "/v1/market/bars", params={**base_params, "timeframe": "1d"}
+            "/v1/market/bars", params={**base_params, "timeframe": "2d"}
         )
         range_response = await test_client.get(
             "/v1/market/bars",

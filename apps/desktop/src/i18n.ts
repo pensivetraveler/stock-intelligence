@@ -72,6 +72,7 @@ const en = {
   "replay.watchlistHidden":
     "Watchlist prices are hidden during replay so later prices do not show.",
   "tf.more": "More timeframes",
+  "tf.dailyHours": "Daily and weekly bars cover the regular session",
   "tf.menu": "Timeframes",
   "tf.favorite": "Add {timeframe} to favorites",
   "tf.unfavorite": "Remove {timeframe} from favorites",
@@ -423,6 +424,7 @@ const ko: Record<MessageKey, string> = {
   "replay.watchlistHidden":
     "리플레이 중에는 이후 가격이 보이지 않도록 관심종목 가격을 숨깁니다.",
   "tf.more": "타임프레임 더 보기",
+  "tf.dailyHours": "일봉·주봉은 정규장 기준입니다",
   "tf.menu": "타임프레임",
   "tf.favorite": "{timeframe} 즐겨찾기에 추가",
   "tf.unfavorite": "{timeframe} 즐겨찾기에서 빼기",

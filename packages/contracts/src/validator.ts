@@ -149,11 +149,34 @@ export function semanticErrors(document: Document): string[] {
       errors.push("provider lineage must represent one direct source bar");
     }
     if (
-      lineage.kind === "aggregated_1m" &&
-      (document.timeframe === "1m" || lineage.source_dataset_revision === null)
+      (lineage.kind === "aggregated_1m" || lineage.kind === "aggregated_1d") &&
+      (document.timeframe === lineage.source_timeframe ||
+        lineage.source_dataset_revision === null)
     ) {
       errors.push(
         "aggregated lineage requires a derived timeframe and source revision",
+      );
+    }
+    const expectedSource =
+      lineage.kind === "aggregated_1m"
+        ? "1m"
+        : lineage.kind === "aggregated_1d"
+          ? "1d"
+          : null;
+    if (
+      expectedSource !== null &&
+      lineage.source_timeframe !== expectedSource
+    ) {
+      errors.push(
+        `${String(lineage.kind)} lineage must come from ${expectedSource} bars`,
+      );
+    }
+    if (
+      lineage.kind === "provider" &&
+      lineage.source_timeframe !== document.timeframe
+    ) {
+      errors.push(
+        "provider lineage must name the bar's own timeframe as its source",
       );
     }
   }
