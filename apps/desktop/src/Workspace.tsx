@@ -14,22 +14,25 @@ import {
 
 import { ChartSyncGroup } from "./chart-sync";
 import { ChartPanel } from "./ChartPanel";
+import { FloatingWindow, type WindowGeometry } from "./FloatingWindow";
 import { useI18n, type MessageKey, type Translate } from "./i18n";
 import {
   AppMark,
   CandlesIcon,
   ChevronDownIcon,
+  CloseIcon,
+  DockIcon,
   CrosshairIcon,
   FibIcon,
   FitIcon,
   HorizontalLinesIcon,
-  ImportIcon,
   IndicatorsIcon,
   JournalIcon,
   KeyIcon,
   LayoutIcon,
   LogScaleIcon,
   MagnetIcon,
+  PopOutIcon,
   ReplayIcon,
   RulerIcon,
   SearchIcon,
@@ -79,7 +82,7 @@ interface WorkspaceProps {
   keysPanel?: ReactNode;
 }
 
-type Panel = "watchlist" | "journal" | "import" | "keys";
+type Panel = "watchlist" | "journal" | "keys";
 
 /** Per-chart view options that are not part of the saved layout. */
 interface ChartTools {
@@ -89,6 +92,35 @@ interface ChartTools {
 }
 
 const SPLIT_STORAGE_KEY = "siw.chartSplit";
+const WATCHLIST_WINDOW_KEY = "siw.watchlistWindow";
+const DEFAULT_WATCHLIST_WINDOW: WindowGeometry = {
+  x: 120,
+  y: 90,
+  width: 420,
+  height: 320,
+};
+
+/** Saved floating watchlist: whether it is open and where. */
+function loadWatchlistWindow(storage: Storage | null | undefined): {
+  open: boolean;
+  geometry: WindowGeometry;
+} {
+  try {
+    const saved = JSON.parse(storage?.getItem(WATCHLIST_WINDOW_KEY) ?? "null");
+    const geometry = saved?.geometry;
+    if (
+      typeof saved?.open === "boolean" &&
+      ["x", "y", "width", "height"].every(
+        (name) => typeof geometry?.[name] === "number",
+      )
+    ) {
+      return { open: saved.open, geometry };
+    }
+  } catch {
+    // Unreadable or unavailable storage: start docked.
+  }
+  return { open: false, geometry: DEFAULT_WATCHLIST_WINDOW };
+}
 const NO_TOOLS: ChartTools = { magnet: false, logScale: false, fitRequest: 0 };
 
 function shiftDate(date: string, days: number): string {
@@ -175,6 +207,25 @@ export function Workspace({
       return false;
     }
   });
+  const [floating, setFloatingState] = useState(() =>
+    loadWatchlistWindow(storage),
+  );
+  const setFloating = (next: { open: boolean; geometry: WindowGeometry }) => {
+    setFloatingState(next);
+    try {
+      storage?.setItem(WATCHLIST_WINDOW_KEY, JSON.stringify(next));
+    } catch {
+      // Not saved: the window still works until the page reloads.
+    }
+  };
+  const popOutWatchlist = () => {
+    setFloating({ ...floating, open: true });
+    if (panel === "watchlist") setPanel(null);
+  };
+  const dockWatchlist = () => {
+    setFloating({ ...floating, open: false });
+    setPanel("watchlist");
+  };
   const setSplit = (value: boolean) => {
     setSplitState(value);
     try {
@@ -805,25 +856,32 @@ export function Workspace({
               sessionDate={activeConfig.sessionDate}
               activeInstrumentId={activeConfig.instrumentId}
               onPick={(instrumentId) => updateActive({ instrumentId })}
+              actions={
+                <button
+                  type="button"
+                  className="tb-button"
+                  aria-label={t("watch.popOut")}
+                  title={t("watch.popOut")}
+                  onClick={popOutWatchlist}
+                >
+                  <PopOutIcon />
+                </button>
+              }
             />
           ) : null}
           {panel === "journal" ? (
-            <JournalPanel
-              manual={ledgers.manual}
-              imported={ledgers.imported}
-              scenarios={ledgers.scenarios}
-              error={journalError}
-              symbolOf={symbolOf}
-            />
-          ) : null}
-          {panel === "import" ? (
-            journalError ? (
-              <p className="workspace-note" role="status">
-                {journalError}
-              </p>
-            ) : (
-              <ImportPanel api={api} onImported={refreshJournal} />
-            )
+            <>
+              <JournalPanel
+                manual={ledgers.manual}
+                imported={ledgers.imported}
+                scenarios={ledgers.scenarios}
+                error={journalError}
+                symbolOf={symbolOf}
+              />
+              {journalError ? null : (
+                <ImportPanel api={api} onImported={refreshJournal} />
+              )}
+            </>
           ) : null}
           {panel === "keys" ? keysPanel : null}
         </aside>
@@ -834,7 +892,6 @@ export function Workspace({
           [
             ["watchlist", WatchlistIcon],
             ["journal", JournalIcon],
-            ["import", ImportIcon],
             ...(keysPanel ? ([["keys", KeyIcon]] as const) : []),
           ] as const
         ).map(([id, RailIcon]) => (
@@ -843,13 +900,59 @@ export function Workspace({
             type="button"
             aria-label={t(`panel.${id}`)}
             title={t(`panel.${id}`)}
-            aria-pressed={panel === id}
-            onClick={() => setPanel(panel === id ? null : id)}
+            aria-pressed={panel === id || (id === "watchlist" && floating.open)}
+            onClick={() => {
+              if (id === "watchlist" && floating.open) {
+                // The watchlist is floating: the rail button closes the window.
+                setFloating({ ...floating, open: false });
+                return;
+              }
+              setPanel(panel === id ? null : id);
+            }}
           >
             <RailIcon />
           </button>
         ))}
       </nav>
+
+      {floating.open ? (
+        <FloatingWindow
+          title={t("watch.title")}
+          geometry={floating.geometry}
+          onGeometryChange={(geometry) => setFloating({ open: true, geometry })}
+          actions={
+            <>
+              <button
+                type="button"
+                className="tb-button"
+                aria-label={t("watch.dock")}
+                title={t("watch.dock")}
+                onClick={dockWatchlist}
+              >
+                <DockIcon />
+              </button>
+              <button
+                type="button"
+                className="tb-button"
+                aria-label={t("watch.close")}
+                title={t("watch.close")}
+                onClick={() => setFloating({ ...floating, open: false })}
+              >
+                <CloseIcon />
+              </button>
+            </>
+          }
+        >
+          <Watchlist
+            api={api}
+            instruments={instruments}
+            sessionDate={activeConfig.sessionDate}
+            activeInstrumentId={activeConfig.instrumentId}
+            onPick={(instrumentId) => updateActive({ instrumentId })}
+            hideTitle
+          />
+        </FloatingWindow>
+      ) : null}
     </div>
   );
 }

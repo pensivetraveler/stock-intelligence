@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { useI18n } from "./i18n";
 import type { InstrumentListing, MarketApi, SessionQuote } from "./market-api";
@@ -9,6 +9,10 @@ interface WatchlistProps {
   sessionDate: string;
   activeInstrumentId: string;
   onPick: (instrumentId: string) => void;
+  /** Buttons shown beside the title (pop out, dock). */
+  actions?: ReactNode;
+  /** Hide the title when the surrounding window already shows one. */
+  hideTitle?: boolean;
 }
 
 type Row =
@@ -36,6 +40,8 @@ export function Watchlist({
   sessionDate,
   activeInstrumentId,
   onPick,
+  actions,
+  hideTitle = false,
 }: WatchlistProps) {
   const { t } = useI18n();
   const [rows, setRows] = useState<Record<string, Row>>({});
@@ -66,7 +72,12 @@ export function Watchlist({
 
   return (
     <div className="watchlist">
-      <h2>{t("watch.title")}</h2>
+      {hideTitle ? null : (
+        <div className="watchlist-head">
+          <h2>{t("watch.title")}</h2>
+          {actions}
+        </div>
+      )}
       <table>
         <thead>
           <tr>
