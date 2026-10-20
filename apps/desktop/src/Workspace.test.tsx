@@ -520,7 +520,8 @@ describe("chart workspace", () => {
     );
     await screen.findByTestId("chart-chart-1");
 
-    openPanel("Import broker statement (CSV)");
+    // The statement import sits at the bottom of the journal panel.
+    openPanel("Trade journal");
     fireEvent.click(screen.getByText("Import broker statement (CSV)"));
     const csv = new File(["Date/Time,Symbol\n"], "without_ids.csv", {
       type: "text/csv",
@@ -548,7 +549,6 @@ describe("chart workspace", () => {
       await screen.findByText(/Imported 3 of 3 rows from without_ids.csv/),
     ).toBeInTheDocument();
     expect(api.importRequests[0].decisions).toEqual({ "2": "import" });
-    openPanel("Trade journal");
     expect(
       await screen.findByText(/kept after duplicate review/),
     ).toBeInTheDocument();
@@ -690,5 +690,67 @@ describe("terminal layout", () => {
     expect(
       screen.getByRole("complementary", { name: "Watchlist" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("floating watchlist", () => {
+  it("pops out, moves, docks and remembers its window", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} />);
+    await screen.findByRole("complementary", { name: "Watchlist" });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Open the watchlist in a floating window",
+      }),
+    );
+    const floating = screen.getByRole("dialog", { name: "Watchlist" });
+    expect(
+      screen.queryByRole("complementary", { name: "Watchlist" }),
+    ).not.toBeInTheDocument();
+    expect(await within(floating).findByText("202.50")).toBeInTheDocument();
+
+    // Drag the title bar 40px right and 20px down.
+    const title = within(floating).getByText("Watchlist");
+    fireEvent.pointerDown(title, { button: 0, clientX: 200, clientY: 100 });
+    fireEvent.pointerMove(title, { clientX: 240, clientY: 120 });
+    fireEvent.pointerUp(title, { clientX: 240, clientY: 120 });
+    const saved = JSON.parse(storage.getItem("siw.watchlistWindow") ?? "{}");
+    expect(saved).toMatchObject({ open: true, geometry: { x: 160, y: 110 } });
+
+    fireEvent.click(
+      within(floating).getByRole("button", {
+        name: "Dock the watchlist in the side panel",
+      }),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Watchlist" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("complementary", { name: "Watchlist" }),
+    ).toBeInTheDocument();
+  });
+
+  it("reopens floating after a reload and closes from the rail", async () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      "siw.watchlistWindow",
+      JSON.stringify({
+        open: true,
+        geometry: { x: 10, y: 10, width: 300, height: 200 },
+      }),
+    );
+    render(<Workspace api={fakeApi()} storage={storage} />);
+    expect(
+      await screen.findByRole("dialog", { name: "Watchlist" }),
+    ).toBeInTheDocument();
+
+    openPanel("Watchlist");
+    expect(
+      screen.queryByRole("dialog", { name: "Watchlist" }),
+    ).not.toBeInTheDocument();
+    expect(
+      JSON.parse(storage.getItem("siw.watchlistWindow") ?? "{}").open,
+    ).toBe(false);
   });
 });

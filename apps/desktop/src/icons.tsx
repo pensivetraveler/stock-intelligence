@@ -119,11 +119,6 @@ export const JournalIcon = () => (
     <path d="M3.5 1.5h8l2 2v11h-10zM6 6h5M6 9h5M6 12h3" />
   </Icon>
 );
-export const ImportIcon = () => (
-  <Icon>
-    <path d="M8 1.5v8.5M4.5 6.5L8 10l3.5-3.5M2 11v3h12v-3" />
-  </Icon>
-);
 export const KeyIcon = () => (
   <Icon>
     <circle cx="5" cy="11" r="3" />
@@ -134,6 +129,22 @@ export const DataIcon = () => (
   <Icon>
     <ellipse cx="8" cy="3.5" rx="5.5" ry="2" />
     <path d="M2.5 3.5v9c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2v-9M2.5 8c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2" />
+  </Icon>
+);
+export const PopOutIcon = () => (
+  <Icon>
+    <path d="M9 2h5v5M14 2L7.5 8.5M12 9.5V14H2V4h4.5" />
+  </Icon>
+);
+export const DockIcon = () => (
+  <Icon>
+    <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+    <path d="M10 2.5v11M5 6l2 2-2 2" />
+  </Icon>
+);
+export const CloseIcon = () => (
+  <Icon>
+    <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
   </Icon>
 );
 export const ChevronDownIcon = () => (

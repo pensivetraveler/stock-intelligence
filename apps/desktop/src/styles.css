@@ -1350,25 +1350,18 @@ body {
 
 .side-panel {
   grid-area: panel;
+  /* One width for every panel, so switching panels never moves the chart edge. */
+  width: min(480px, 40vw);
   min-height: 0;
+  padding: 10px;
   overflow-y: auto;
   border-left: 1px solid var(--term-line);
   background: var(--term-surface);
 }
 
-.side-panel-watchlist {
-  width: 300px;
-}
-
-.side-panel-journal,
-.side-panel-import,
-.side-panel-keys {
-  width: min(560px, 45vw);
-  padding: 10px;
-}
-
 .side-panel .watchlist {
   position: static;
+  padding: 2px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1401,10 +1394,7 @@ body {
 }
 
 @media (max-width: 900px) {
-  .side-panel-watchlist,
-  .side-panel-journal,
-  .side-panel-import,
-  .side-panel-keys {
+  .side-panel {
     width: min(320px, 60vw);
   }
 
@@ -1415,4 +1405,90 @@ body {
   .status-bar .status-item:nth-child(n + 4) {
     display: none;
   }
+}
+
+.side-panel .import-panel {
+  margin-top: 12px;
+}
+
+.watchlist-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.watchlist-head h2 {
+  margin: 0;
+}
+
+.watchlist-head .tb-button,
+.floating-actions .tb-button {
+  min-height: 26px;
+  padding: 0 6px;
+}
+
+.floating-window {
+  position: fixed;
+  z-index: 30;
+  display: grid;
+  grid-template-rows: 32px minmax(0, 1fr);
+  border: 1px solid #2f3a4c;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--term-surface);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+}
+
+.floating-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 0 12px;
+  border-bottom: 1px solid var(--term-line);
+  color: var(--term-text);
+  background: #1b2230;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.floating-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.floating-body {
+  min-height: 0;
+  padding: 8px 10px;
+  overflow: auto;
+}
+
+.floating-body .watchlist {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.floating-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: linear-gradient(
+    135deg,
+    transparent 55%,
+    #4a566b 55%,
+    #4a566b 62%,
+    transparent 62%,
+    transparent 75%,
+    #4a566b 75%,
+    #4a566b 82%,
+    transparent 82%
+  );
 }
