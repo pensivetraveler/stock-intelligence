@@ -15,11 +15,13 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { CandlePoint, VolumePoint } from "./chart-data";
 import { COLORS, exchangeTime } from "./chart-data";
 import type { ChartSyncGroup } from "./chart-sync";
+import { DrawingLayer, type Projection } from "./DrawingLayer";
+import { snapPrice, type Drawing, type DrawingTool } from "./drawings";
 import type { RenderedIndicator } from "./indicators";
 import type { ChartMarker } from "./journal-markers";
 
@@ -40,6 +42,14 @@ interface PriceChartProps {
   fitRequest?: number;
   /** Indicators to draw: price overlays on the candles, others in panes below. */
   indicators?: RenderedIndicator[];
+  /** Saved drawings for the shown instrument, and the active drawing tool. */
+  drawings?: Drawing[];
+  tool?: DrawingTool;
+  instrumentId?: string;
+  barSeconds?: number;
+  onDrawingCreate?: (drawing: Omit<Drawing, "id">) => void;
+  onDrawingDelete?: (id: string) => void;
+  onToolDone?: () => void;
 }
 
 function timeOf(value: Time): number {
@@ -59,6 +69,13 @@ export function PriceChart({
   logScale = false,
   fitRequest = 0,
   indicators = [],
+  drawings = [],
+  tool = "cursor",
+  instrumentId = "",
+  barSeconds = 60,
+  onDrawingCreate,
+  onDrawingDelete,
+  onToolDone,
 }: PriceChartProps) {
   const container = useRef<HTMLDivElement | null>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -67,6 +84,13 @@ export function PriceChart({
   const markerLayer = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const applyingSyncedRange = useRef(false);
   const indicatorSeries = useRef<ISeriesApi<"Line" | "Histogram">[]>([]);
+  const [ready, setReady] = useState(false);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [redraw, setRedraw] = useState(0);
+  const candlesRef = useRef(candles);
+  candlesRef.current = candles;
+  const magnetRef = useRef(magnet);
+  magnetRef.current = magnet;
   const clickHandler = useRef(onCandleClick);
   const hoverHandler = useRef(onHover);
 
@@ -135,9 +159,29 @@ export function PriceChart({
         param.time === undefined ? null : timeOf(param.time),
       );
     };
+    const bump = () => setRedraw((count) => count + 1);
+    const onMoveAndRedraw = (param: MouseEventParams<Time>) => {
+      onMove(param);
+      bump();
+    };
     instance.timeScale().subscribeVisibleTimeRangeChange(onRange);
+    instance.timeScale().subscribeVisibleLogicalRangeChange(bump);
     instance.subscribeClick(onClick);
-    instance.subscribeCrosshairMove(onMove);
+    instance.subscribeCrosshairMove(onMoveAndRedraw);
+    const element = container.current;
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            setSize({
+              width: element.clientWidth,
+              height: element.clientHeight,
+            });
+            bump();
+          });
+    observer?.observe(element);
+    setSize({ width: element.clientWidth, height: element.clientHeight });
+    setReady(true);
     const unregister = sync.register(chartId, (range) => {
       applyingSyncedRange.current = true;
       try {
@@ -153,7 +197,10 @@ export function PriceChart({
     });
     return () => {
       unregister();
-      instance.unsubscribeCrosshairMove(onMove);
+      observer?.disconnect();
+      setReady(false);
+      instance.timeScale().unsubscribeVisibleLogicalRangeChange(bump);
+      instance.unsubscribeCrosshairMove(onMoveAndRedraw);
       instance.unsubscribeClick(onClick);
       instance.timeScale().unsubscribeVisibleTimeRangeChange(onRange);
       instance.remove();
@@ -258,11 +305,71 @@ export function PriceChart({
     );
   }, [markers, candles]);
 
+  const projection = useMemo<Projection>(
+    () => ({
+      toX: (time) =>
+        chart.current?.timeScale().timeToCoordinate(time as UTCTimestamp) ??
+        null,
+      toY: (price) => candleSeries.current?.priceToCoordinate(price) ?? null,
+      toAnchor: (x, y) => {
+        const instance = chart.current;
+        const series = candleSeries.current;
+        const points = candlesRef.current;
+        if (!instance || !series || points.length === 0) return null;
+        const logical = instance.timeScale().coordinateToLogical(x);
+        const price = series.coordinateToPrice(y);
+        if (logical === null || price === null) return null;
+        const index = Math.min(
+          points.length - 1,
+          Math.max(0, Math.round(logical)),
+        );
+        const bar = points[index];
+        return {
+          time: bar.time,
+          price: magnetRef.current ? snapPrice(price, bar) : price,
+        };
+      },
+    }),
+    [],
+  );
+
+  const zoomTo = useCallback((from: number, to: number) => {
+    chart.current?.timeScale().setVisibleRange({
+      from: from as UTCTimestamp,
+      to: to as UTCTimestamp,
+    });
+  }, []);
+
+  const formatPrice = useCallback(
+    (price: number) =>
+      candleSeries.current?.priceFormatter().format(price) ?? price.toFixed(2),
+    [],
+  );
+
   return (
-    <div
-      className="price-chart"
-      ref={container}
-      data-testid={`chart-${chartId}`}
-    />
+    <div className="price-chart-wrap">
+      <div
+        className="price-chart"
+        ref={container}
+        data-testid={`chart-${chartId}`}
+      />
+      {ready && size.width > 0 ? (
+        <DrawingLayer
+          width={size.width}
+          height={size.height}
+          projection={projection}
+          redraw={redraw}
+          drawings={drawings}
+          tool={tool}
+          instrumentId={instrumentId}
+          barSeconds={barSeconds}
+          formatPrice={formatPrice}
+          onCreate={(drawing) => onDrawingCreate?.(drawing)}
+          onDelete={(id) => onDrawingDelete?.(id)}
+          onToolDone={() => onToolDone?.()}
+          onZoom={zoomTo}
+        />
+      ) : null}
+    </div>
   );
 }

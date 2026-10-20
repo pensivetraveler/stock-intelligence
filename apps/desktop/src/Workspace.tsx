@@ -15,6 +15,7 @@ import {
 import { ChartSyncGroup } from "./chart-sync";
 import { ChartPanel } from "./ChartPanel";
 import { FloatingWindow, type WindowGeometry } from "./FloatingWindow";
+import type { DrawingTool } from "./drawings";
 import { IndicatorDialog } from "./IndicatorDialog";
 import { defaultParams } from "./indicators";
 import { useI18n, type MessageKey, type Translate } from "./i18n";
@@ -199,6 +200,16 @@ export function Workspace({
   const [search, setSearch] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [indicatorsOpen, setIndicatorsOpen] = useState(false);
+  const [drawTool, setDrawTool] = useState<DrawingTool>("cursor");
+
+  useEffect(() => {
+    if (drawTool === "cursor") return;
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrawTool("cursor");
+    };
+    window.addEventListener("keydown", cancel);
+    return () => window.removeEventListener("keydown", cancel);
+  }, [drawTool]);
   // A watchlist reopened floating after a reload is not also shown in the side panel.
   const [panel, setPanel] = useState<Panel | null>(() =>
     loadWatchlistWindow(storage).open ? null : "watchlist",
@@ -729,28 +740,30 @@ export function Workspace({
       >
         <button
           type="button"
-          aria-pressed="true"
+          aria-pressed={drawTool === "cursor"}
           aria-label={t("tools.crosshair")}
           title={t("tools.crosshair")}
+          onClick={() => setDrawTool("cursor")}
         >
           <CrosshairIcon />
         </button>
         {(
           [
-            ["tools.trendLine", TrendLineIcon],
-            ["tools.horizontalLine", HorizontalLinesIcon],
-            ["tools.fib", FibIcon],
-            ["tools.text", TextIcon],
-            ["tools.measure", RulerIcon],
-            ["tools.zoom", ZoomIcon],
+            ["trend", "tools.trendLine", TrendLineIcon],
+            ["hline", "tools.horizontalLine", HorizontalLinesIcon],
+            ["fib", "tools.fib", FibIcon],
+            ["text", "tools.text", TextIcon],
+            ["measure", "tools.measure", RulerIcon],
+            ["zoom", "tools.zoom", ZoomIcon],
           ] as const
-        ).map(([key, ToolIcon]) => (
+        ).map(([id, key, ToolIcon]) => (
           <button
-            key={key}
+            key={id}
             type="button"
-            disabled
+            aria-pressed={drawTool === id}
             aria-label={t(key)}
-            title={`${t(key)} — ${comingSoon(3)}`}
+            title={t(key)}
+            onClick={() => setDrawTool(drawTool === id ? "cursor" : id)}
           >
             <ToolIcon />
           </button>
@@ -785,9 +798,24 @@ export function Workspace({
         <span className="tool-divider" aria-hidden="true" />
         <button
           type="button"
-          disabled
           aria-label={t("tools.removeDrawings")}
-          title={`${t("tools.removeDrawings")} — ${comingSoon(3)}`}
+          title={t("tools.removeDrawings")}
+          disabled={
+            !(activeConfig.drawings ?? []).some(
+              (item) => item.instrumentId === activeConfig.instrumentId,
+            )
+          }
+          onClick={() => {
+            // Undoable like other layout replacements.
+            const charts: [ChartConfig, ChartConfig] = [...layout.charts];
+            charts[activeChart] = {
+              ...activeConfig,
+              drawings: (activeConfig.drawings ?? []).filter(
+                (item) => item.instrumentId !== activeConfig.instrumentId,
+              ),
+            };
+            replaceLayout({ ...layout, charts });
+          }}
         >
           <TrashIcon />
         </button>
@@ -824,6 +852,15 @@ export function Workspace({
                   indicators,
                 })
               }
+              tool={index === activeChart ? drawTool : "cursor"}
+              onDrawingsChange={(drawings) =>
+                updateChart(index as 0 | 1)({
+                  ...layout.charts[index],
+                  drawings,
+                })
+              }
+              onToolDone={() => setDrawTool("cursor")}
+              newId={newId}
             />
           ))}
         </div>

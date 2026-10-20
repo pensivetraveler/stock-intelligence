@@ -9,6 +9,7 @@ import type {
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { isUncertain, summarize, toSeries } from "./chart-data";
+import type { Drawing, DrawingTool } from "./drawings";
 import {
   cleanParams,
   paramsText,
@@ -37,6 +38,14 @@ type Load =
 
 const NOT_OFFERED = Symbol("not offered");
 
+const BAR_SECONDS: Record<ChartConfig["timeframe"], number> = {
+  "1m": 60,
+  "5m": 300,
+  "15m": 900,
+  "30m": 1_800,
+  "60m": 3_600,
+};
+
 interface ChartPanelProps {
   chartId: string;
   title: string;
@@ -62,6 +71,11 @@ interface ChartPanelProps {
   onSettledChange?: (settled: boolean) => void;
   /** Replace this chart's indicators (settings, visibility, removal). */
   onIndicatorsChange?: (indicators: IndicatorInstance[]) => void;
+  /** The drawing tool in use; only the active chart receives one. */
+  tool?: DrawingTool;
+  onDrawingsChange?: (drawings: Drawing[]) => void;
+  onToolDone?: () => void;
+  newId?: () => string;
 }
 
 function describeError(t: Translate, error: unknown): string {
@@ -105,6 +119,10 @@ export function ChartPanel({
   fitRequest = 0,
   onSettledChange,
   onIndicatorsChange,
+  tool = "cursor",
+  onDrawingsChange,
+  onToolDone,
+  newId = () => crypto.randomUUID(),
 }: ChartPanelProps) {
   const { t, language } = useI18n();
   const [load, setLoad] = useState<Load>({ status: "loading" });
@@ -265,6 +283,24 @@ export function ChartPanel({
               logScale={logScale}
               fitRequest={fitRequest}
               indicators={rendered}
+              drawings={(config.drawings ?? []).filter(
+                (item) => item.instrumentId === instrumentId,
+              )}
+              tool={tool}
+              instrumentId={instrumentId}
+              barSeconds={BAR_SECONDS[timeframe]}
+              onDrawingCreate={(drawing) =>
+                onDrawingsChange?.([
+                  ...(config.drawings ?? []),
+                  { ...drawing, id: newId() },
+                ])
+              }
+              onDrawingDelete={(id) =>
+                onDrawingsChange?.(
+                  (config.drawings ?? []).filter((item) => item.id !== id),
+                )
+              }
+              onToolDone={onToolDone}
             />
             {legendBar && change ? (
               <div className="chart-legend" aria-live="off">
