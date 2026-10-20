@@ -9,6 +9,13 @@ import type {
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { isUncertain, summarize, toSeries } from "./chart-data";
+import {
+  cleanParams,
+  paramsText,
+  renderIndicators,
+  type IndicatorInstance,
+  type OhlcvBar,
+} from "./indicators";
 import { useI18n, type Translate } from "./i18n";
 import type { ChartSyncGroup } from "./chart-sync";
 import { journalMarkers } from "./journal-markers";
@@ -51,6 +58,8 @@ interface ChartPanelProps {
   magnet?: boolean;
   logScale?: boolean;
   fitRequest?: number;
+  /** Replace this chart's indicators (settings, visibility, removal). */
+  onIndicatorsChange?: (indicators: IndicatorInstance[]) => void;
 }
 
 function describeError(t: Translate, error: unknown): string {
@@ -92,11 +101,13 @@ export function ChartPanel({
   magnet = false,
   logScale = false,
   fitRequest = 0,
+  onIndicatorsChange,
 }: ChartPanelProps) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [selected, setSelected] = useState<PriceBar | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const { instrumentId, timeframe, sessionDate, sessionScope } = config;
   // A saved layout can name an instrument the current provider does not offer (for
   // example SYNTH after switching to Alpaca); say so instead of requesting it.
@@ -175,6 +186,36 @@ export function ChartPanel({
   const symbol =
     instruments.find((item) => item.instrument.instrument_id === instrumentId)
       ?.instrument.symbol ?? instrumentId;
+  const indicatorList = config.indicators ?? [];
+  const ohlcv = useMemo<OhlcvBar[]>(
+    () =>
+      (bars ?? []).map((bar) => ({
+        time: Math.floor(Date.parse(bar.interval_start_utc) / 1000),
+        open: Number(bar.open),
+        high: Number(bar.high),
+        low: Number(bar.low),
+        close: Number(bar.close),
+        volume: Number(bar.volume),
+      })),
+    [bars],
+  );
+  const rendered = useMemo(
+    () => renderIndicators(ohlcv, indicatorList),
+    // The list is replaced (never mutated) whenever settings change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ohlcv, config.indicators],
+  );
+  const changeIndicator = (
+    key: string,
+    update: (item: IndicatorInstance) => IndicatorInstance | null,
+  ) =>
+    onIndicatorsChange?.(
+      indicatorList.flatMap((item) => {
+        if (item.key !== key) return [item];
+        const next = update(item);
+        return next ? [next] : [];
+      }),
+    );
   const legendBar =
     (hovered !== null &&
       bars?.find(
@@ -184,6 +225,19 @@ export function ChartPanel({
     bars?.at(-1) ||
     null;
   const change = legendBar ? barChange(legendBar) : null;
+  const legendIndex = legendBar
+    ? ohlcv.findIndex(
+        (item) =>
+          item.time ===
+          Math.floor(Date.parse(legendBar.interval_start_utc) / 1000),
+      )
+    : -1;
+  const formatValue = (value: number | null | undefined) =>
+    value === null || value === undefined
+      ? "—"
+      : Math.abs(value) >= 1000
+        ? value.toFixed(0)
+        : value.toFixed(Math.abs(value) >= 10 ? 2 : 4);
   return (
     <section
       className={active ? "chart-panel active" : "chart-panel"}
@@ -204,6 +258,7 @@ export function ChartPanel({
               magnet={magnet}
               logScale={logScale}
               fitRequest={fitRequest}
+              indicators={rendered}
             />
             {legendBar && change ? (
               <div className="chart-legend" aria-live="off">
@@ -232,6 +287,122 @@ export function ChartPanel({
                   <span className="legend-provisional">
                     {t("legend.notFinal")}
                   </span>
+                ) : null}
+                {rendered.length > 0 ? (
+                  <ul
+                    className="indicator-legend"
+                    aria-label={t("ind.onChart")}
+                  >
+                    {rendered.map((item) => (
+                      <li
+                        key={item.key}
+                        className={item.hidden ? "is-hidden" : undefined}
+                      >
+                        <span className="indicator-name">
+                          {item.definition.short}
+                          {item.definition.inputs.length > 0
+                            ? ` ${paramsText(item.definition, item.params)}`
+                            : ""}
+                        </span>
+                        {item.lines.map((line) => (
+                          <b key={line.id} style={{ color: line.color }}>
+                            {formatValue(
+                              legendIndex >= 0
+                                ? item.values[line.id.split(":")[1]][
+                                    legendIndex
+                                  ]
+                                : null,
+                            )}
+                          </b>
+                        ))}
+                        <span className="indicator-actions">
+                          {item.definition.inputs.length > 0 ? (
+                            <button
+                              type="button"
+                              aria-label={t("ind.settings", {
+                                name: item.definition.short,
+                              })}
+                              onClick={() =>
+                                setEditing(
+                                  editing === item.key ? null : item.key,
+                                )
+                              }
+                            >
+                              ⚙
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            aria-label={t(
+                              item.hidden ? "ind.show" : "ind.hide",
+                              {
+                                name: item.definition.short,
+                              },
+                            )}
+                            onClick={() =>
+                              changeIndicator(item.key, (current) => ({
+                                ...current,
+                                hidden: !current.hidden,
+                              }))
+                            }
+                          >
+                            {item.hidden ? "◌" : "●"}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={t("ind.remove", {
+                              name: item.definition.short,
+                            })}
+                            onClick={() =>
+                              changeIndicator(item.key, () => null)
+                            }
+                          >
+                            ✕
+                          </button>
+                        </span>
+                        {editing === item.key ? (
+                          <div
+                            className="popover indicator-settings"
+                            role="dialog"
+                            aria-label={t("ind.settings", {
+                              name: item.definition.short,
+                            })}
+                          >
+                            <strong>{item.definition.name[language]}</strong>
+                            {item.definition.inputs.map((field) => (
+                              <label key={field.key}>
+                                {field.label[language]}
+                                <input
+                                  type="number"
+                                  min={field.min}
+                                  max={field.max}
+                                  step={field.step ?? 1}
+                                  defaultValue={item.params[field.key]}
+                                  onChange={(event) => {
+                                    const value = Number(event.target.value);
+                                    changeIndicator(item.key, (current) => ({
+                                      ...current,
+                                      params: cleanParams(item.definition, {
+                                        ...current.params,
+                                        [field.key]: value,
+                                      }),
+                                    }));
+                                  }}
+                                />
+                              </label>
+                            ))}
+                            <button
+                              type="button"
+                              className="tb-button"
+                              onClick={() => setEditing(null)}
+                            >
+                              {t("ind.done")}
+                            </button>
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
               </div>
             ) : null}

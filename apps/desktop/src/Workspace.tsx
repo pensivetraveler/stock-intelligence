@@ -15,6 +15,8 @@ import {
 import { ChartSyncGroup } from "./chart-sync";
 import { ChartPanel } from "./ChartPanel";
 import { FloatingWindow, type WindowGeometry } from "./FloatingWindow";
+import { IndicatorDialog } from "./IndicatorDialog";
+import { defaultParams } from "./indicators";
 import { useI18n, type MessageKey, type Translate } from "./i18n";
 import {
   AppMark,
@@ -195,6 +197,7 @@ export function Workspace({
   const [activeChart, setActiveChart] = useState<0 | 1>(0);
   const [search, setSearch] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [indicatorsOpen, setIndicatorsOpen] = useState(false);
   const [panel, setPanel] = useState<Panel | null>("watchlist");
   const [tools, setTools] = useState<[ChartTools, ChartTools]>([
     NO_TOOLS,
@@ -490,8 +493,8 @@ export function Workspace({
         <button
           type="button"
           className="tb-button"
-          disabled
-          title={comingSoon(2)}
+          aria-expanded={indicatorsOpen}
+          onClick={() => setIndicatorsOpen(true)}
         >
           <IndicatorsIcon />
           {t("tb.indicators")}
@@ -787,6 +790,12 @@ export function Workspace({
               magnet={tools[index].magnet}
               logScale={tools[index].logScale}
               fitRequest={tools[index].fitRequest}
+              onIndicatorsChange={(indicators) =>
+                updateChart(index as 0 | 1)({
+                  ...layout.charts[index],
+                  indicators,
+                })
+              }
             />
           ))}
         </div>
@@ -914,6 +923,25 @@ export function Workspace({
           </button>
         ))}
       </nav>
+
+      {indicatorsOpen ? (
+        <IndicatorDialog
+          target={`${activeSymbol} · ${activeConfig.timeframe}`}
+          onAdd={(definition) =>
+            updateActive({
+              indicators: [
+                ...(activeConfig.indicators ?? []),
+                {
+                  key: newId(),
+                  type: definition.id,
+                  params: defaultParams(definition),
+                },
+              ],
+            })
+          }
+          onClose={() => setIndicatorsOpen(false)}
+        />
+      ) : null}
 
       {floating.open ? (
         <FloatingWindow
