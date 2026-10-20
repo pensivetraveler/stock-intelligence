@@ -51,6 +51,12 @@ from services.market_data.symbol_directory import (
     SymbolDirectoryUnavailableError,
     SymbolEntry,
 )
+from services.market_data.toss_info import (
+    exchange_rate,
+    korean_names,
+    market_calendar,
+    stock_info,
+)
 from services.market_data.toss_quotes import market_quote
 from services.market_data.toss_session import (
     DEFAULT_BASE_URL as DEFAULT_TOSS_URL,
@@ -160,10 +166,20 @@ class _LazyProvider:
 class _LazySymbols:
     """The symbol directory of the running provider, when it offers one and data is kept."""
 
-    def __init__(self, directory: SymbolDirectory | None, provider: _LazyProvider) -> None:
+    def __init__(
+        self,
+        directory: SymbolDirectory | None,
+        provider: _LazyProvider,
+        toss: Callable[[], TossSession | None],
+    ) -> None:
         self._directory = directory
         self._provider = provider
+        self._toss = toss
         self._lock = threading.Lock()
+
+    def _korean_names(self) -> dict[str, str]:
+        session = self._toss()
+        return korean_names(session) if session is not None else {}
 
     def get(self) -> SymbolDirectory | None:
         with self._lock:
@@ -173,7 +189,10 @@ class _LazySymbols:
                 list_assets = getattr(upstream, "list_assets", None)
                 if configured and list_assets is not None:
                     self._directory = SymbolDirectory(
-                        Path(configured), upstream.source_id, list_assets
+                        Path(configured),
+                        upstream.source_id,
+                        list_assets,
+                        local_names=self._korean_names,
                     )
             return self._directory
 
@@ -227,8 +246,8 @@ def create_app(
 ) -> FastAPI:
     credentials = _LazyCredentials(credential_store)
     provider = _LazyProvider(market_data_provider, credentials.get)
-    symbols = _LazySymbols(symbol_directory, provider)
     toss = toss_session or (lambda: _toss_session(credentials.get()))
+    symbols = _LazySymbols(symbol_directory, provider, toss)
     journal = _LazyJournal(journal_store)
 
     @asynccontextmanager
@@ -334,11 +353,87 @@ def create_app(
             "fetched_at_utc": found.fetched_at_utc,
             "stale": found.stale,
             "results": [
-                {"listing": directory.listing(entry), "name": entry.name} for entry in found.entries
+                {
+                    "listing": directory.listing(entry),
+                    "name": entry.name,
+                    "local_name": entry.local_name,
+                }
+                for entry in found.entries
             ],
         }
         validate_document(document)
         return JSONResponse(content=document)
+
+    def toss_read(request: Request, read: Callable[[TossSession], dict[str, object]]) -> Response:
+        """Run one on-demand Toss read and map its failures to the API's error envelope."""
+        try:
+            session = toss()
+        except SecretStorageError as exc:
+            return _error_response(request, 502, "provider_auth_failed", str(exc))
+        if session is None:
+            return _error_response(
+                request,
+                404,
+                "quote_source_unavailable",
+                "register an enabled real-account Toss key on the Keys screen for live data",
+            )
+        try:
+            document = read(session)
+        except InvalidBarsQueryError as exc:
+            return _error_response(request, 422, "invalid_market_data_query", str(exc))
+        except ProviderAuthError as exc:
+            return _error_response(request, 502, "provider_auth_failed", str(exc))
+        except ProviderRateLimitError as exc:
+            return _error_response(request, 503, "provider_rate_limited", str(exc))
+        except ProviderUnavailableError as exc:
+            return _error_response(request, 503, "provider_unavailable", str(exc))
+        except ProviderDataError as exc:
+            return _error_response(request, 502, "provider_data_invalid", str(exc))
+        return JSONResponse(content=document, headers={"Cache-Control": "no-store"})
+
+    def symbol_of(instrument_id: str) -> str | None:
+        return listed_symbol(instrument_id) or next(
+            (
+                item["instrument"]["symbol"]
+                for item in provider.get().instruments()
+                if item["instrument"]["instrument_id"] == instrument_id
+            ),
+            None,
+        )
+
+    @application.get("/v1/market/stock-info", response_model=None)
+    def stock_info_endpoint(
+        request: Request,
+        instrument_id: Annotated[str, Query(min_length=1, max_length=200)],
+    ) -> Response:
+        """Toss's reference data and active buying warnings for one stock."""
+        symbol = symbol_of(instrument_id)
+        if symbol is None:
+            return _error_response(
+                request, 404, "instrument_not_found", "instrument is not a listed US equity ID"
+            )
+        return toss_read(request, lambda session: stock_info(session, instrument_id, symbol, clock))
+
+    @application.get("/v1/market/exchange-rate", response_model=None)
+    def exchange_rate_endpoint(
+        request: Request,
+        base: Annotated[Literal["USD", "KRW"], Query()] = "USD",
+        quote: Annotated[Literal["USD", "KRW"], Query()] = "KRW",
+    ) -> Response:
+        """Toss's reference USD/KRW rate (display only; trades may use another rate)."""
+        return toss_read(request, lambda session: exchange_rate(session, base, quote, clock))
+
+    @application.get("/v1/market/broker-calendar", response_model=None)
+    def broker_calendar_endpoint(
+        request: Request,
+        market: Annotated[Literal["US", "KR"], Query()] = "US",
+        day: Annotated[date | None, Query(alias="date")] = None,
+    ) -> Response:
+        """Toss's market hours around `date`, compared with the local US calendar."""
+        local = UsEquityCalendar("XNAS")
+        return toss_read(
+            request, lambda session: market_calendar(session, market, day, local, clock)
+        )
 
     @application.get("/v1/market/quote", response_model=None)
     def market_quote_endpoint(

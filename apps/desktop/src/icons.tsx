@@ -131,6 +131,12 @@ export const KeyIcon = () => (
     <path d="M7.2 8.8L14 2M11 5l2 2M12.5 3.5l1.5 1.5" />
   </Icon>
 );
+export const InfoIcon = () => (
+  <Icon>
+    <circle cx="8" cy="8" r="6" />
+    <path d="M8 7v4.5M8 4.6v.2" />
+  </Icon>
+);
 export const QuoteIcon = () => (
   <Icon>
     <path d="M2 3h5M2 6h5M2 9h5M2 12h5M9 4.5h5M9 7.5h5M9 10.5h5" />

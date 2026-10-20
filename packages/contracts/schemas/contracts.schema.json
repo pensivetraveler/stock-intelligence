@@ -80,6 +80,15 @@
     },
     {
       "$ref": "#/$defs/MarketQuote"
+    },
+    {
+      "$ref": "#/$defs/StockInfo"
+    },
+    {
+      "$ref": "#/$defs/ExchangeRate"
+    },
+    {
+      "$ref": "#/$defs/BrokerMarketCalendar"
     }
   ],
   "$defs": {
@@ -1961,7 +1970,7 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["listing", "name"],
+            "required": ["listing", "name", "local_name"],
             "properties": {
               "listing": {
                 "type": "object",
@@ -1994,6 +2003,19 @@
               "name": {
                 "type": "string",
                 "maxLength": 200
+              },
+              "local_name": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                ],
+                "description": "Korean display name from Toss, when a Toss key is registered and Toss has one."
               }
             }
           }
@@ -2153,6 +2175,429 @@
               }
             }
           ]
+        }
+      }
+    },
+    "StockInfo": {
+      "description": "A broker's reference data for one stock and its active buying warnings, read on demand.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "instrument_id",
+        "symbol",
+        "source_id",
+        "observed_at_utc",
+        "name",
+        "english_name",
+        "isin",
+        "market",
+        "security_type",
+        "is_common_share",
+        "status",
+        "currency",
+        "list_date",
+        "delist_date",
+        "shares_outstanding",
+        "leverage_factor",
+        "warnings"
+      ],
+      "properties": {
+        "kind": {
+          "const": "stock_info"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "instrument_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "source_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "observed_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "name": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          ]
+        },
+        "english_name": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          ]
+        },
+        "isin": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 12
+            }
+          ]
+        },
+        "market": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            }
+          ]
+        },
+        "security_type": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            }
+          ]
+        },
+        "is_common_share": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "status": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            }
+          ]
+        },
+        "currency": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 3
+            }
+          ]
+        },
+        "list_date": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          ]
+        },
+        "delist_date": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          ]
+        },
+        "shares_outstanding": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            }
+          ]
+        },
+        "leverage_factor": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/DecimalString"
+            }
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "exchange", "start_date", "end_date"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "exchange": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20
+                  }
+                ]
+              },
+              "start_date": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  }
+                ]
+              },
+              "end_date": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "ExchangeRate": {
+      "description": "A broker's reference (display) exchange rate for one minute-long window; actual trades may use a different rate.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "source_id",
+        "observed_at_utc",
+        "base_currency",
+        "quote_currency",
+        "rate",
+        "mid_rate",
+        "basis_point",
+        "change",
+        "valid_from_utc",
+        "valid_until_utc"
+      ],
+      "properties": {
+        "kind": {
+          "const": "exchange_rate"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "source_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "observed_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "base_currency": {
+          "enum": ["USD", "KRW"]
+        },
+        "quote_currency": {
+          "enum": ["USD", "KRW"]
+        },
+        "rate": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "mid_rate": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            }
+          ]
+        },
+        "basis_point": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/DecimalString"
+            }
+          ]
+        },
+        "change": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10
+            }
+          ]
+        },
+        "valid_from_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "valid_until_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      }
+    },
+    "BrokerMarketCalendar": {
+      "description": "A broker's market hours for the previous, current and next business day, compared with the local exchange calendar where one exists. Closed sessions are absent.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "source_id",
+        "market",
+        "observed_at_utc",
+        "days"
+      ],
+      "properties": {
+        "kind": {
+          "const": "broker_market_calendar"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "source_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "market": {
+          "enum": ["US", "KR"]
+        },
+        "observed_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "days": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "date", "sessions"],
+            "properties": {
+              "role": {
+                "enum": ["previous", "today", "next"]
+              },
+              "date": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+              },
+              "sessions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "start_utc",
+                    "end_utc",
+                    "local_start_utc",
+                    "local_end_utc",
+                    "agrees"
+                  ],
+                  "properties": {
+                    "name": {
+                      "enum": [
+                        "day_market",
+                        "pre_market",
+                        "regular",
+                        "after_market"
+                      ]
+                    },
+                    "start_utc": {
+                      "$ref": "#/$defs/UtcTimestamp"
+                    },
+                    "end_utc": {
+                      "$ref": "#/$defs/UtcTimestamp"
+                    },
+                    "local_start_utc": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/$defs/UtcTimestamp"
+                        }
+                      ]
+                    },
+                    "local_end_utc": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/$defs/UtcTimestamp"
+                        }
+                      ]
+                    },
+                    "agrees": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ],
+                      "description": "Whether the local calendar the charts use has the same bounds; null when there is no local session to compare."
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
