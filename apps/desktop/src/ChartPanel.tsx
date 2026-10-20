@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { isUncertain, summarize, toSeries } from "./chart-data";
 import type { Drawing, DrawingTool } from "./drawings";
+import { barEnd, barsAsOf } from "./replay";
 import {
   cleanParams,
   paramsText,
@@ -69,6 +70,13 @@ interface ChartPanelProps {
   fitRequest?: number;
   /** Told whether this chart has finished loading (ready, closed or failed). */
   onSettledChange?: (settled: boolean) => void;
+  /** Replay "now" in epoch seconds; bars ending later are hidden. Null when off. */
+  replayTime?: number | null;
+  /** When true, a candle click picks the replay start instead of opening trade entry. */
+  replayChoosing?: boolean;
+  onReplayPick?: (time: number) => void;
+  /** End times of the first and last loaded bar, for replay stepping limits. */
+  onReplayBounds?: (first: number | null, last: number | null) => void;
   /** Replace this chart's indicators (settings, visibility, removal). */
   onIndicatorsChange?: (indicators: IndicatorInstance[]) => void;
   /** The drawing tool in use; only the active chart receives one. */
@@ -118,6 +126,10 @@ export function ChartPanel({
   logScale = false,
   fitRequest = 0,
   onSettledChange,
+  replayTime = null,
+  replayChoosing = false,
+  onReplayPick,
+  onReplayBounds,
   onIndicatorsChange,
   tool = "cursor",
   onDrawingsChange,
@@ -178,12 +190,27 @@ export function ChartPanel({
   const settled = load.status !== "loading";
   useEffect(() => onSettledChange?.(settled), [onSettledChange, settled]);
 
-  const series = useMemo(
-    () => (load.status === "ready" ? toSeries(load.response.bars) : null),
-    [load],
+  const allBars = load.status === "ready" ? load.response.bars : null;
+  // During replay everything below (chart, legend, indicators, markers, candle
+  // clicks) sees only the bars that had closed by the replay time.
+  const bars = useMemo(
+    () => (allBars ? barsAsOf(allBars, replayTime) : null),
+    [allBars, replayTime],
   );
-  const summary = load.status === "ready" ? summarize(load.response, t) : null;
-  const bars = load.status === "ready" ? load.response.bars : null;
+  const series = useMemo(() => (bars ? toSeries(bars) : null), [bars]);
+  // The coverage summary describes the whole loaded day, so it is hidden in replay.
+  const summary =
+    load.status === "ready" && replayTime === null
+      ? summarize(load.response, t)
+      : null;
+  useEffect(() => {
+    onReplayBounds?.(
+      allBars && allBars.length > 0 ? barEnd(allBars[0]) : null,
+      allBars && allBars.length > 0
+        ? barEnd(allBars[allBars.length - 1])
+        : null,
+    );
+  }, [allBars, onReplayBounds]);
   const markers = useMemo(
     () =>
       bars
@@ -203,9 +230,14 @@ export function ChartPanel({
         (item) =>
           Math.floor(Date.parse(item.interval_start_utc) / 1000) === time,
       );
-      if (bar) setSelected(bar);
+      if (!bar) return;
+      if (replayChoosing) {
+        onReplayPick?.(barEnd(bar));
+        return;
+      }
+      setSelected(bar);
     },
-    [bars],
+    [bars, replayChoosing, onReplayPick],
   );
   const symbol =
     instruments.find((item) => item.instrument.instrument_id === instrumentId)
@@ -283,6 +315,7 @@ export function ChartPanel({
               logScale={logScale}
               fitRequest={fitRequest}
               indicators={rendered}
+              fitKey={`${instrumentId}|${timeframe}|${sessionDate}|${sessionScope}`}
               drawings={(config.drawings ?? []).filter(
                 (item) => item.instrumentId === instrumentId,
               )}

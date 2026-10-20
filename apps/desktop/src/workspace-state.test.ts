@@ -44,15 +44,49 @@ describe("workspace persistence", () => {
     const state = {
       ...DEFAULT_WORKSPACE,
       syncTimeRange: false,
+      layoutMode: "4" as const,
       charts: [
         { ...DEFAULT_WORKSPACE.charts[0], timeframe: "60m" as const },
         { ...DEFAULT_WORKSPACE.charts[1], instrumentId: "us:aapl:xnas:2026" },
-      ] as typeof DEFAULT_WORKSPACE.charts,
+        DEFAULT_WORKSPACE.charts[2],
+        { ...DEFAULT_WORKSPACE.charts[3], sessionScope: "extended" as const },
+      ],
     };
 
     saveWorkspace(storage, state);
 
     expect(loadWorkspace(storage)).toEqual(state);
+  });
+
+  it("fills the third and fourth chart of a two-chart layout from the first", () => {
+    const storage = memoryStorage();
+    const first = {
+      ...DEFAULT_WORKSPACE.charts[0],
+      instrumentId: "us:aapl:xnas:2026",
+      sessionDate: "2026-10-16",
+      timeframe: "60m" as const,
+    };
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        syncTimeRange: true,
+        charts: [first, DEFAULT_WORKSPACE.charts[1]],
+      }),
+    );
+
+    const loaded = loadWorkspace(storage);
+    const follow = {
+      instrumentId: first.instrumentId,
+      sessionDate: "2026-10-16",
+    };
+    expect(loaded.charts).toEqual([
+      first,
+      DEFAULT_WORKSPACE.charts[1],
+      { ...DEFAULT_WORKSPACE.charts[2], ...follow },
+      { ...DEFAULT_WORKSPACE.charts[3], ...follow },
+    ]);
+    expect(loaded.layoutMode).toBeUndefined();
   });
 
   it.each([

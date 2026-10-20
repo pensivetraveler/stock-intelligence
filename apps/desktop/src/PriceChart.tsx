@@ -40,6 +40,8 @@ interface PriceChartProps {
   logScale?: boolean;
   /** Changing this number fits all bars into view again. */
   fitRequest?: number;
+  /** Bars are fitted into view when this changes (a new chart, not a replay step). */
+  fitKey?: string;
   /** Indicators to draw: price overlays on the candles, others in panes below. */
   indicators?: RenderedIndicator[];
   /** Saved drawings for the shown instrument, and the active drawing tool. */
@@ -69,6 +71,7 @@ export function PriceChart({
   logScale = false,
   fitRequest = 0,
   indicators = [],
+  fitKey = "",
   drawings = [],
   tool = "cursor",
   instrumentId = "",
@@ -84,6 +87,7 @@ export function PriceChart({
   const markerLayer = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const applyingSyncedRange = useRef(false);
   const indicatorSeries = useRef<ISeriesApi<"Line" | "Histogram">[]>([]);
+  const fittedKey = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [redraw, setRedraw] = useState(0);
@@ -210,15 +214,33 @@ export function PriceChart({
     };
   }, [chartId, sync]);
 
+  const shownCount = useRef(0);
+
   useEffect(() => {
+    // When the view already reaches the latest bar, keep following new bars (as a live
+    // chart does, and as replay steps need); a view panned into the past stays put.
+    const scale = chart.current?.timeScale();
+    const range = scale?.getVisibleLogicalRange();
+    const followLatest =
+      range !== null &&
+      range !== undefined &&
+      shownCount.current > 0 &&
+      range.to >= shownCount.current - 1.5;
     candleSeries.current?.setData(
       candles.map((point) => ({ ...point, time: point.time as UTCTimestamp })),
     );
     volumeSeries.current?.setData(
       volume.map((point) => ({ ...point, time: point.time as UTCTimestamp })),
     );
-    chart.current?.timeScale().fitContent();
-  }, [candles, volume]);
+    // Fit once per chart; replay steps add bars without resetting the view.
+    if (fittedKey.current !== fitKey && candles.length > 0) {
+      fittedKey.current = fitKey;
+      chart.current?.timeScale().fitContent();
+    } else if (followLatest && candles.length > shownCount.current) {
+      scale?.scrollToRealTime();
+    }
+    shownCount.current = candles.length;
+  }, [candles, volume, fitKey]);
 
   useEffect(() => {
     chart.current?.applyOptions({

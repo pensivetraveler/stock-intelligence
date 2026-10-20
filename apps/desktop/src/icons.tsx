@@ -93,6 +93,12 @@ export const SingleLayoutIcon = () => (
     <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
   </Icon>
 );
+export const GridLayoutIcon = () => (
+  <Icon>
+    <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+    <path d="M8 2.5v11M1.5 8h13" />
+  </Icon>
+);
 export const ReplayIcon = () => (
   <Icon>
     <path d="M7.5 3.5L2.5 8l5 4.5zM13.5 3.5L8.5 8l5 4.5z" />

@@ -175,7 +175,7 @@ export function validateName(
 function cloneLayout(layout: WorkspaceState): WorkspaceState {
   return {
     ...layout,
-    charts: [{ ...layout.charts[0] }, { ...layout.charts[1] }],
+    charts: layout.charts.map((chart) => ({ ...chart })),
   };
 }
 
@@ -258,11 +258,13 @@ export function applyTemplate(
   template: LayoutTemplate,
 ): WorkspaceState {
   return {
+    ...layout,
     version: 1,
     syncTimeRange: template.sync,
-    charts: [
-      { ...layout.charts[0], ...template.charts[0] },
-      { ...layout.charts[1], ...template.charts[1] },
-    ],
+    // Templates define two charts; slots three and four repeat them.
+    charts: layout.charts.map((chart, index) => ({
+      ...chart,
+      ...template.charts[index % 2],
+    })),
   };
 }
