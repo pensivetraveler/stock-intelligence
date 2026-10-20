@@ -150,6 +150,7 @@ def test_hub_declares_relays_stores_ticks_and_resyncs_the_ledger(
         hub.remove_client(client)
         hub.remove_client(other)
         await connection.incoming.put("{}")
+        await asyncio.wait_for(hub.stopped(), 5)  # includes the final tick flush
         return events
 
     events = asyncio.run(scenario())
