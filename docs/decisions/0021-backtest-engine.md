@@ -114,6 +114,18 @@ On 2026-10-21 the user chose:
 - **On the charts:** "Show fills on charts" draws that run's fills on every chart showing the instrument, as pink `BT` markers. A chip on the chart says they are simulated and hides them. They are never journal entries.
 - **Compared with real fills:** for each instrument, backtest buys and sells (count and average price) are shown next to the user's real executions (manual, imported and broker API) within about a day of the run's dates. This is a reference, not a trade-by-trade match; real executions without a known time are left out.
 
+## Follow-up (2026-10-21): adjusted prices and localized warnings
+
+- **Adjusted prices:** a run's `adjustment` is `raw`, `split_adjusted` or `fully_adjusted` (splits and dividends). The API's default stays `raw`; the screen defaults to split-adjusted where it is available.
+  - **Source:** adjusted bars come from Alpaca daily bars (`adjustment=split|all`). They are offered for US daily and weekly runs only; weekly bars are aggregated from the adjusted daily bars. Intraday and Korean (Toss) runs stay raw until Toss's adjusted candles are checked.
+  - **Never cached:** adjusted history changes whenever a new corporate action is applied. Adjusted bars therefore bypass the daily cache, and their revision names the fetch date (`…:1d:split:asof-YYYY-MM-DD`). A run pins that revision and `adjustment_requested`.
+  - **Look-ahead in price levels:** adjusted prices use actions known on the fetch date, so the price level before an action differs from what traded. Returns are right, but a rule on an absolute price level (for example, close > 100) sees levels that were not visible at the time. Every adjusted run carries an `adjusted_prices` warning saying so.
+  - **Live check (2026-10-21):** NVDA daily bars, 2024-01-02 to 2026-10-16.
+    - Raw: buy-and-hold −56.5%, and a false −86.6% stop at the 10:1 split.
+    - Split-adjusted: buy-and-hold +334.9%, worst trade −13.9%.
+    - Fully adjusted: +336.1%.
+- **Localized warnings:** results also carry `warning_details` (`code`, `instrument_id`, `count`, `dates`). The screen words them in its own language; results stored before this have only the English `warnings` text.
+
 ## Alternatives considered
 
 - **Run the engine in the browser and reuse the TypeScript indicators:** this avoids porting indicators, but gives no isolated Python execution, no queued and cancellable server jobs and no Decimal accounting.

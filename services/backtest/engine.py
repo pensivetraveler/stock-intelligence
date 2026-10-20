@@ -664,5 +664,6 @@ class Backtest:
             "per_symbol": per_symbol,
             "inputs": [item.pin for item in self.inputs],
             "warnings": [w for item in self.inputs for w in item.warnings],
+            "warning_details": [d for item in self.inputs for d in item.warning_details],
             "logs": [],
         }

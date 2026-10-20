@@ -1,7 +1,7 @@
 {
   "kind": "backtest_results",
   "schema_version": "0.1",
-  "run_id": "run-ce1f4640c898",
+  "run_id": "run-c4f483d97ed0",
   "engine_version": "siw-backtest-1",
   "fill_model_version": "next-open-slippage-v1",
   "currency": "USD",
@@ -60,7 +60,7 @@
   ],
   "orders": [
     {
-      "order_id": "run-ce1f4640c898-o1",
+      "order_id": "run-c4f483d97ed0-o1",
       "instrument_id": "us:aapl:xnas:2026",
       "side": "buy",
       "signal_utc": "2026-02-12T14:30:00Z",
@@ -73,9 +73,9 @@
     {
       "kind": "backtest_fill",
       "schema_version": "0.1",
-      "fill_id": "run-ce1f4640c898-o1-f",
-      "run_id": "run-ce1f4640c898",
-      "order_id": "run-ce1f4640c898-o1",
+      "fill_id": "run-c4f483d97ed0-o1-f",
+      "run_id": "run-c4f483d97ed0",
+      "order_id": "run-c4f483d97ed0-o1",
       "instrument_id": "us:aapl:xnas:2026",
       "side": "buy",
       "quantity": "42",
@@ -90,7 +90,7 @@
   "trades": [
     {
       "instrument_id": "us:aapl:xnas:2026",
-      "entry_order_id": "run-ce1f4640c898-o1",
+      "entry_order_id": "run-c4f483d97ed0-o1",
       "entry_utc": "2026-02-13T14:30:00Z",
       "entry_price": "93.292723",
       "quantity": "42",
@@ -135,6 +135,14 @@
   ],
   "warnings": [
     "the universe is the list chosen today; instruments delisted before today are not included, which can flatter results (survivorship bias)"
+  ],
+  "warning_details": [
+    {
+      "code": "survivorship",
+      "instrument_id": null,
+      "count": null,
+      "dates": []
+    }
   ],
   "logs": []
 }

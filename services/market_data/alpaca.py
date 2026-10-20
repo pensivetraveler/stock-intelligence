@@ -67,6 +67,10 @@ VENUE_PATTERN = re.compile(r"^[A-Z]{4}$")
 PAGE_LIMIT = 10_000
 
 
+#: Contract adjustment label -> Alpaca's `adjustment` parameter.
+ALPACA_ADJUSTMENTS = {"split_adjusted": "split", "fully_adjusted": "all"}
+
+
 class AlpacaConfigError(ValueError):
     """The environment does not describe a usable Alpaca configuration."""
 
@@ -351,8 +355,18 @@ class AlpacaMarketDataProvider:
             raise ProviderDataError(f"provider data violates the contract: {exc}") from exc
         return result
 
-    def get_daily_bars(self, query: BarsQuery) -> BarsResult:
-        """Daily bars (Alpaca "1Day", unadjusted) for sessions opening in the range."""
+    def get_adjusted_daily_bars(self, query: BarsQuery, adjustment: str) -> BarsResult:
+        """Alpaca "1Day" bars adjusted for splits or for splits and dividends.
+
+        Never cached: the revision names the fetch date, since adjusted history changes
+        when Alpaca applies a new corporate action.
+        """
+        if adjustment not in ALPACA_ADJUSTMENTS:
+            raise InvalidBarsQueryError("adjustment must be split_adjusted or fully_adjusted")
+        return self.get_daily_bars(query, adjustment)
+
+    def get_daily_bars(self, query: BarsQuery, adjustment: str = "raw") -> BarsResult:
+        """Daily bars (Alpaca "1Day", unadjusted unless asked) for sessions opening in range."""
         now = self._now()
         validate_daily_query(query, "1d", now)
         symbol = self.symbol_for(query.instrument_id)
@@ -367,7 +381,9 @@ class AlpacaMarketDataProvider:
         if sessions and sessions[0].regular_open_utc < published_until:
             start = datetime.combine(sessions[0].session_date, time(0, 0), NEW_YORK)
             end = min(sessions[-1].regular_close_utc, published_until.replace(microsecond=0))
-            for item in self._fetch_pages(symbol, "1Day", start, end, DAILY_PAGES):
+            for item in self._fetch_pages(
+                symbol, "1Day", start, end, DAILY_PAGES, ALPACA_ADJUSTMENTS.get(adjustment, "raw")
+            ):
                 try:
                     day = session_date_of(str(item["t"]))
                     values = {key: Decimal(str(item[key])) for key in ("o", "h", "l", "c", "v")}
@@ -381,8 +397,10 @@ class AlpacaMarketDataProvider:
         source = DailySource(
             source_id=self.source_id,
             feed_scope=f"alpaca-{self.config.feed}",
-            dataset_revision=f"{self.dataset_revision}:1d",
-            adjustment="raw",
+            dataset_revision=f"{self.dataset_revision}:1d"
+            if adjustment == "raw"
+            else f"{self.dataset_revision}:1d:{ALPACA_ADJUSTMENTS[adjustment]}:asof-{now.date()}",
+            adjustment=adjustment,
             publication_delay_minutes=self.config.publication_delay_minutes,
             finality_minutes=self.config.finality_minutes,
         )
@@ -407,7 +425,13 @@ class AlpacaMarketDataProvider:
         )
 
     def _fetch_pages(
-        self, symbol: str, timeframe: str, start: datetime, end: datetime, max_pages: int
+        self,
+        symbol: str,
+        timeframe: str,
+        start: datetime,
+        end: datetime,
+        max_pages: int,
+        adjustment: str = "raw",
     ) -> list[dict[str, Any]]:
         params: dict[str, str | int] = {
             "symbols": symbol,
@@ -415,7 +439,7 @@ class AlpacaMarketDataProvider:
             "start": _utc_text(start),
             "end": _utc_text(end),
             "limit": self.config.page_limit,
-            "adjustment": "raw",
+            "adjustment": adjustment,
             "feed": self.config.feed,
             "sort": "asc",
         }

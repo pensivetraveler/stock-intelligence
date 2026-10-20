@@ -81,6 +81,18 @@ export function BacktestResultsView({
   const reason = (code: string | null) =>
     code === null ? "" : translateDynamic(t, `bt.reason.${code}`, code);
   const notable = results.orders.filter((order) => order.status !== "filled");
+  // Coded warnings are worded in the screen's language; older results only have text.
+  const warnings = results.warning_details
+    ? results.warning_details.map((detail) =>
+        translateDynamic(t, `bt.warn.${detail.code}`, detail.code)
+          .replace(
+            "{symbol}",
+            detail.instrument_id ? symbolOf(detail.instrument_id) : "",
+          )
+          .replace("{count}", String(detail.count ?? ""))
+          .replace("{dates}", detail.dates.join(", ")),
+      )
+    : results.warnings;
 
   const cards: [string, string, string | undefined][] = [
     [t("bt.m.net"), percent(metrics.net_return), definitions.net_return],
@@ -135,9 +147,9 @@ export function BacktestResultsView({
         </span>
       </div>
 
-      {results.warnings.length > 0 ? (
+      {warnings.length > 0 ? (
         <ul className="bt-warnings" aria-label={t("bt.warnings")}>
-          {results.warnings.map((warning) => (
+          {warnings.map((warning) => (
             <li key={warning}>{warning}</li>
           ))}
         </ul>

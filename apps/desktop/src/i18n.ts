@@ -175,6 +175,16 @@ const en = {
   "bt.feeRate": "Fee rate (0.0005 = 0.05%)",
   "bt.feePerOrder": "Fee per order",
   "bt.slippage": "Slippage (bps)",
+  "bt.adjustment": "Prices",
+  "bt.adj.split_adjusted": "Split-adjusted",
+  "bt.adj.fully_adjusted": "Split and dividend adjusted",
+  "bt.adj.raw": "As traded (unadjusted)",
+  "bt.adjNote":
+    "Adjusted prices use the corporate actions known today, so price levels before a split or dividend differ from what traded; they are fetched fresh for each run.",
+  "bt.adjRawOnly":
+    "Only unadjusted prices are available for intraday or Korean runs.",
+  "bt.warn.adjusted_prices":
+    "{symbol}: prices are adjusted with the corporate actions known on {dates}; levels before an action differ from what traded.",
   "bt.intradayNote":
     "Intraday runs read regular sessions only, at most 60 sessions.",
   "bt.save": "Save",
@@ -240,6 +250,17 @@ const en = {
   "bt.engineNote":
     "Engine {engine} · fills {fill}: signal at a final bar's close, fill at the next bar's open.",
   "bt.warnings": "Warnings",
+  "bt.warn.missing_intervals":
+    "{symbol}: {count} expected intervals have no bar.",
+  "bt.warn.non_final_bars":
+    "{symbol}: {count} bars are not final yet and give no signals.",
+  "bt.warn.raw_prices":
+    "{symbol}: prices are not adjusted, so a split or dividend shows up as a price jump.",
+  "bt.warn.suspected_splits":
+    "{symbol}: the price jumps by about a whole split ratio on {dates}; results around those dates are likely wrong.",
+  "bt.warn.no_bars": "{symbol}: no bars in the range.",
+  "bt.warn.survivorship":
+    "The universe is today's list: stocks delisted before today are missing, which can flatter results (survivorship bias).",
   "bt.perSymbol": "By instrument",
   "bt.trades": "Trades ({n})",
   "bt.tradesTable": "Backtest trades",
@@ -821,6 +842,15 @@ const ko: Record<MessageKey, string> = {
   "bt.feeRate": "수수료율(0.0005 = 0.05%)",
   "bt.feePerOrder": "주문당 수수료",
   "bt.slippage": "슬리피지(bp)",
+  "bt.adjustment": "가격 기준",
+  "bt.adj.split_adjusted": "분할 수정",
+  "bt.adj.fully_adjusted": "분할·배당 수정",
+  "bt.adj.raw": "실제 체결가(미수정)",
+  "bt.adjNote":
+    "수정주가는 오늘 기준으로 알려진 기업 이벤트를 반영합니다. 분할·배당 이전 가격 수준은 당시 실제 거래가와 다르며, 실행할 때마다 새로 받아옵니다.",
+  "bt.adjRawOnly": "분봉이나 국내 종목 실행은 미수정 가격만 쓸 수 있습니다.",
+  "bt.warn.adjusted_prices":
+    "{symbol}: {dates} 기준 기업 이벤트로 수정한 가격입니다. 이벤트 이전 가격 수준은 당시 실제 거래가와 다릅니다.",
   "bt.intradayNote": "분봉 실행은 정규장만, 최대 60세션까지 읽습니다.",
   "bt.save": "저장",
   "bt.saveAndRun": "저장 후 실행",
@@ -885,6 +915,16 @@ const ko: Record<MessageKey, string> = {
   "bt.engineNote":
     "엔진 {engine} · 체결 {fill}: 확정 봉 종가에 신호, 다음 봉 시가에 체결.",
   "bt.warnings": "경고",
+  "bt.warn.missing_intervals": "{symbol}: 예상 구간 {count}개에 봉이 없습니다.",
+  "bt.warn.non_final_bars":
+    "{symbol}: 아직 확정되지 않은 봉 {count}개는 신호를 만들지 않습니다.",
+  "bt.warn.raw_prices":
+    "{symbol}: 수정주가가 아니어서 분할·배당이 가격 급변으로 나타납니다.",
+  "bt.warn.suspected_splits":
+    "{symbol}: {dates}에 분할 비율과 비슷한 가격 급변이 있어 그 전후 결과가 틀릴 가능성이 큽니다.",
+  "bt.warn.no_bars": "{symbol}: 기간 안에 봉이 없습니다.",
+  "bt.warn.survivorship":
+    "종목 목록은 오늘 기준입니다. 이전에 상장폐지된 종목이 빠져 결과가 좋게 나올 수 있습니다(생존 편향).",
   "bt.perSymbol": "종목별",
   "bt.trades": "거래({n})",
   "bt.tradesTable": "백테스트 거래",

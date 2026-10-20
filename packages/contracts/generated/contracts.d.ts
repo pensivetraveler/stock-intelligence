@@ -1361,6 +1361,7 @@ export interface BacktestRun {
     fill_policy: "next_eligible_bar_open";
     as_of_utc: UtcTimestamp | null;
     seed: number;
+    adjustment?: "raw" | "split_adjusted" | "fully_adjusted";
   };
   created_at_utc: UtcTimestamp;
   started_at_utc: UtcTimestamp | null;
@@ -1470,10 +1471,24 @@ export interface BacktestResults {
     non_final_bar_count: number;
     bars_sha256: string;
     suspected_split_dates: string[];
+    adjustment_requested?: "raw" | "split_adjusted" | "fully_adjusted";
   }[];
   warnings: string[];
   /**
    * @maxItems 200
    */
   logs: string[];
+  warning_details?: {
+    code:
+      | "missing_intervals"
+      | "non_final_bars"
+      | "raw_prices"
+      | "suspected_splits"
+      | "no_bars"
+      | "survivorship"
+      | "adjusted_prices";
+    instrument_id: Identifier | null;
+    count: number | null;
+    dates: string[];
+  }[];
 }

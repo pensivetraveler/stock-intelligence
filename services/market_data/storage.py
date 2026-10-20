@@ -1072,6 +1072,15 @@ class CachedMarketDataProvider:
         validate_daily_query(query, "1d", _utc_now())
         return DailyBarsCache(self.store, self.source_id, self.upstream.get_daily_bars).get(query)
 
+    def get_adjusted_daily_bars(self, query: BarsQuery, adjustment: str) -> BarsResult:
+        """Adjusted daily bars straight from the upstream: never cached (see daily.py)."""
+        from services.market_data.daily import AdjustedDailyProvider, validate_daily_query
+
+        if not isinstance(self.upstream, AdjustedDailyProvider):
+            raise InvalidBarsQueryError("this data provider does not offer adjusted daily bars")
+        validate_daily_query(query, "1d", _utc_now())
+        return self.upstream.get_adjusted_daily_bars(query, adjustment)
+
     def get_bars(self, query: BarsQuery) -> BarsResult:
         validate_bars_query(query)
         try:

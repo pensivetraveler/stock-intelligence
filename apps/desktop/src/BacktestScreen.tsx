@@ -25,6 +25,8 @@ import type { InstrumentListing } from "./market-api";
 import { RuleBuilder } from "./RuleBuilder";
 
 const POLL_MS = 1_500;
+const ADJUSTMENT_CHOICES = ["split_adjusted", "fully_adjusted", "raw"] as const;
+type Adjustment = (typeof ADJUSTMENT_CHOICES)[number];
 const ACTIVE = new Set(["queued", "running"]);
 
 function isoDate(date: Date): string {
@@ -125,6 +127,7 @@ export function BacktestScreen({
     feeRate: "0.0005",
     feePerOrder: "0",
     slippageBps: "5",
+    adjustment: "split_adjusted" as Adjustment,
   });
 
   const message = useCallback(
@@ -196,6 +199,11 @@ export function BacktestScreen({
     chosen.map((id) => currencyOf(listing.get(id), id)),
   );
   const currency = currencies.size === 1 ? [...currencies][0] : null;
+  // Adjusted prices come from Alpaca daily bars: US daily and weekly runs only.
+  const canAdjust =
+    currency === "USD" &&
+    (config.timeframe === "1d" || config.timeframe === "1w");
+  const adjustment: Adjustment = canAdjust ? config.adjustment : "raw";
   const strategyNames = new Map(
     strategies.map((item) => [item.strategy_id, item.name]),
   );
@@ -239,6 +247,7 @@ export function BacktestScreen({
           fee_rate: config.feeRate.trim() || "0",
           fee_per_order: config.feePerOrder.trim() || "0",
           slippage_bps: config.slippageBps.trim() || "0",
+          adjustment,
           seed: 0,
         };
         const queued = await api.submit(
@@ -486,7 +495,29 @@ export function BacktestScreen({
                   }
                 />
               </label>
+              <label>
+                {t("bt.adjustment")}
+                <select
+                  value={adjustment}
+                  disabled={!canAdjust}
+                  onChange={(event) =>
+                    setConfig({
+                      ...config,
+                      adjustment: event.target.value as Adjustment,
+                    })
+                  }
+                >
+                  {ADJUSTMENT_CHOICES.map((choice) => (
+                    <option key={choice} value={choice}>
+                      {t(`bt.adj.${choice}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
+            <p className="workspace-note">
+              {canAdjust ? t("bt.adjNote") : t("bt.adjRawOnly")}
+            </p>
             {config.timeframe !== "1d" && config.timeframe !== "1w" ? (
               <p className="workspace-note">{t("bt.intradayNote")}</p>
             ) : null}

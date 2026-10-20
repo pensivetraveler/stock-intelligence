@@ -42,6 +42,22 @@ class DailyBarsProvider(Protocol):
         ...
 
 
+#: Contract adjustment labels a provider may be asked for besides raw prices.
+ADJUSTED = ("split_adjusted", "fully_adjusted")
+
+
+@runtime_checkable
+class AdjustedDailyProvider(Protocol):
+    def get_adjusted_daily_bars(self, query: BarsQuery, adjustment: str) -> BarsResult:
+        """Daily bars adjusted for splits ("split_adjusted") or splits and dividends
+        ("fully_adjusted"), with the corporate actions known when they are fetched.
+
+        Adjusted history changes whenever a new action is applied, so such bars are never
+        cached and their revision names the fetch date.
+        """
+        ...
+
+
 def utc_text(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 

@@ -165,3 +165,58 @@ def test_daily_and_weekly_reach_the_api_contract(timeframe: str) -> None:
     result = MarketBarsService(adapter).get_bars(replace(WEEK, timeframe=timeframe))
     assert result.coverage["timeframe"] == timeframe
     validate_document(result.to_document())
+
+
+@pytest.mark.parametrize(
+    ("adjustment", "alpaca_value"), [("split_adjusted", "split"), ("fully_adjusted", "all")]
+)
+def test_adjusted_daily_bars_are_labelled_and_dated(adjustment: str, alpaca_value: str) -> None:
+    adapter, recorder = alpaca(page(*DAYS))
+    result = adapter.get_adjusted_daily_bars(WEEK, adjustment)
+
+    validate_document(result.to_document())
+    params = parse_qs(recorder.requests[0].url.query.decode())
+    assert params["adjustment"] == [alpaca_value]
+    assert result.coverage["adjustment"] == adjustment
+    assert all(bar["adjustment"] == adjustment for bar in result.bars)
+    # Adjusted history changes with later corporate actions, so the fetch date is named.
+    assert result.coverage["dataset_revision"].endswith(f":1d:{alpaca_value}:asof-2026-11-30")
+    with pytest.raises(Exception, match="split_adjusted or fully_adjusted"):
+        adapter.get_adjusted_daily_bars(WEEK, "raw")
+
+
+def test_adjusted_daily_bars_bypass_the_daily_cache(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from services.market_data.storage import CachedMarketDataProvider, LocalMarketDataStore
+
+    adapter, recorder = alpaca(page(*DAYS))
+    cached = CachedMarketDataProvider(adapter, LocalMarketDataStore(tmp_path))
+    first = cached.get_adjusted_daily_bars(WEEK, "split_adjusted")
+    second = cached.get_adjusted_daily_bars(WEEK, "split_adjusted")
+    assert first.bars == second.bars
+    assert len(recorder.requests) == 2  # fetched each time, never served from the cache
+
+
+def test_korean_listings_offer_no_adjusted_bars() -> None:
+    from services.market_data.market_router import MarketRouter
+    from services.market_data.provider import InvalidBarsQueryError
+
+    adapter, _ = alpaca(page(*DAYS))
+    korean = replace(WEEK, instrument_id="kr:005930:xkrx:2026")
+
+    class NoAdjusted:
+        source_id = "toss-kr"
+
+    router = MarketRouter(adapter, lambda: NoAdjusted())  # type: ignore[arg-type,return-value]
+    with pytest.raises(InvalidBarsQueryError, match="not available for kr:005930"):
+        router.get_adjusted_daily_bars(korean, "split_adjusted")
+
+
+def test_weekly_bars_keep_the_adjustment_of_their_daily_bars() -> None:
+    adapter, _ = alpaca(page(*DAYS))
+    daily = adapter.get_adjusted_daily_bars(WEEK, "split_adjusted")
+    weekly = aggregate_weekly(replace(WEEK, timeframe="1w"), daily, UsEquityCalendar())
+
+    validate_document(weekly.to_document())
+    assert weekly.coverage["adjustment"] == "split_adjusted"
+    assert [bar["adjustment"] for bar in weekly.bars] == ["split_adjusted"]
+    assert "asof-2026-11-30" in weekly.coverage["dataset_revision"]
