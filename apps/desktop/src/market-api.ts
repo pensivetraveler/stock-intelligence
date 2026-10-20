@@ -116,6 +116,8 @@ export interface BarsRequest {
   timeframe: Timeframe;
   startUtc: string;
   endUtc: string;
+  /** Point-in-time cutoff: only bars this account could have had by then. */
+  asOfUtc?: string;
 }
 
 function hasKind<T extends { kind: string }>(
@@ -228,12 +230,19 @@ export function createMarketApi(
       `/v1/market/sessions/${encodeURIComponent(sessionDate)}`,
       "session_window",
     );
-  const bars = ({ instrumentId, timeframe, startUtc, endUtc }: BarsRequest) => {
+  const bars = ({
+    instrumentId,
+    timeframe,
+    startUtc,
+    endUtc,
+    asOfUtc,
+  }: BarsRequest) => {
     const query = new URLSearchParams({
       instrument_id: instrumentId,
       timeframe,
       start_utc: startUtc,
       end_utc: endUtc,
+      ...(asOfUtc ? { as_of_utc: asOfUtc } : {}),
     });
     return get<MarketBarsResponse>(
       `/v1/market/bars?${query.toString()}`,

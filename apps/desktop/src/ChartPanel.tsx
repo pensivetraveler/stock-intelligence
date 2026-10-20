@@ -6,7 +6,7 @@ import type {
   ScenarioDefinition,
   SessionWindow,
 } from "@siw/contracts/types";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { isUncertain, summarize, toSeries } from "./chart-data";
 import type { Drawing, DrawingTool } from "./drawings";
@@ -264,18 +264,83 @@ export function ChartPanel({
     instrumentsReady,
   ]);
   const allBars = load.status === "ready" ? load.response.bars : null;
+
+  // Replay asks the API for the session as of the replay time, so bars this account
+  // could not yet have had (a feed's publication delay, unfinished bars) never reach
+  // the screen. Requests are coalesced: while one is in flight, only the latest
+  // replay time is requested next.
+  const [asOf, setAsOf] = useState<{
+    time: number;
+    response: MarketBarsResponse;
+  } | null>(null);
+  const wantedAsOf = useRef<number | null>(null);
+  const asOfBusy = useRef(false);
+  const asOfKey = `${instrumentId}|${timeframe}|${sessionDate}|${sessionScope}`;
+  const asOfKeyRef = useRef(asOfKey);
+  asOfKeyRef.current = asOfKey;
+  const loadSession = load.status === "ready" ? load.session : null;
+  useEffect(() => {
+    setAsOf(null);
+  }, [asOfKey]);
+  useEffect(() => {
+    wantedAsOf.current = replayTime;
+    if (replayTime === null) {
+      setAsOf(null);
+      return;
+    }
+    if (asOfBusy.current || loadSession === null) return;
+    const range = sessionRange(loadSession, sessionScope);
+    if (range === null) return;
+    const key = asOfKey;
+    asOfBusy.current = true;
+    void (async () => {
+      try {
+        while (wantedAsOf.current !== null && asOfKeyRef.current === key) {
+          const time = wantedAsOf.current;
+          const response = await api.bars({
+            instrumentId,
+            timeframe,
+            ...range,
+            asOfUtc: new Date(time * 1000).toISOString().replace(".000Z", "Z"),
+          });
+          if (asOfKeyRef.current !== key) break;
+          setAsOf({ time, response });
+          if (wantedAsOf.current === time) break;
+        }
+      } catch {
+        // Keep the last as-of bars; the client-side cut below still applies.
+      } finally {
+        asOfBusy.current = false;
+      }
+    })();
+  }, [
+    api,
+    replayTime,
+    loadSession,
+    instrumentId,
+    timeframe,
+    sessionScope,
+    asOfKey,
+  ]);
+
   // During replay everything below (chart, legend, indicators, markers, candle
-  // clicks) sees only the bars that had closed by the replay time.
-  const bars = useMemo(
-    () => (allBars ? barsAsOf(allBars, replayTime) : null),
-    [allBars, replayTime],
-  );
+  // clicks) sees only the bars that had closed by the replay time; once the API's
+  // as-of answer arrives, only the bars it says were available by then.
+  const bars = useMemo(() => {
+    if (replayTime === null) return allBars;
+    const source = asOf ? asOf.response.bars : allBars;
+    return source ? barsAsOf(source, replayTime) : null;
+  }, [allBars, replayTime, asOf]);
   const series = useMemo(() => (bars ? toSeries(bars) : null), [bars]);
-  // The coverage summary describes the whole loaded day, so it is hidden in replay.
+  // In replay the summary describes the as-of answer; the whole-day one is hidden.
   const summary =
-    load.status === "ready" && replayTime === null
-      ? summarize(load.response, t)
-      : null;
+    load.status !== "ready"
+      ? null
+      : replayTime === null
+        ? summarize(load.response, t)
+        : asOf
+          ? summarize(asOf.response, t)
+          : null;
   useEffect(() => {
     onReplayBounds?.(
       allBars && allBars.length > 0 ? barEnd(allBars[0]) : null,
@@ -405,6 +470,7 @@ export function ChartPanel({
                 )
               }
               onToolDone={onToolDone}
+              drawingsSelectable={!replayChoosing}
             />
             {legendBar && change ? (
               <div className="chart-legend" aria-live="off">

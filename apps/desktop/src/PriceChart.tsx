@@ -52,6 +52,8 @@ interface PriceChartProps {
   onDrawingCreate?: (drawing: Omit<Drawing, "id">) => void;
   onDrawingDelete?: (id: string) => void;
   onToolDone?: () => void;
+  /** False while clicks must reach the candles (e.g. picking a replay start). */
+  drawingsSelectable?: boolean;
 }
 
 function timeOf(value: Time): number {
@@ -79,6 +81,7 @@ export function PriceChart({
   onDrawingCreate,
   onDrawingDelete,
   onToolDone,
+  drawingsSelectable = true,
 }: PriceChartProps) {
   const container = useRef<HTMLDivElement | null>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -386,6 +389,7 @@ export function PriceChart({
           instrumentId={instrumentId}
           barSeconds={barSeconds}
           formatPrice={formatPrice}
+          selectable={drawingsSelectable}
           onCreate={(drawing) => onDrawingCreate?.(drawing)}
           onDelete={(id) => onDrawingDelete?.(id)}
           onToolDone={() => onToolDone?.()}

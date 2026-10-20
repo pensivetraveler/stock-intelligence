@@ -972,6 +972,14 @@ describe("replay", () => {
     expect(screen.queryByRole("form", { name: "Trade entry" })).toBeNull();
     expect(within(bar).getByText(/ET$/)).toBeInTheDocument();
     expect(within(bar).getByRole("button", { name: "Play" })).toBeEnabled();
+    // The chart asks the API for the session as of the replay time.
+    await waitFor(() =>
+      expect(api.barsCalls.some((call) => call.asOfUtc !== undefined)).toBe(
+        true,
+      ),
+    );
+    const asOfCall = api.barsCalls.find((call) => call.asOfUtc !== undefined);
+    expect(asOfCall?.asOfUtc).toMatch(/^2026-10-09T\d{2}:\d{2}:00Z$/);
     // The only loaded bar has closed at its own end time, so it stays visible.
     expect(screen.getByTestId("chart-chart-1")).toHaveTextContent("1 candles");
     // Already at the last loaded bar: nothing further to step to.

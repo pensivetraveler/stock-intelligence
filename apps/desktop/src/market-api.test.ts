@@ -33,6 +33,24 @@ describe("market API client", () => {
     });
   });
 
+  it("adds the point-in-time cutoff only when asked", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(json(200, { kind: "market_bars_response", bars: [] }));
+    const api = createMarketApi("http://api", fetcher);
+
+    await api.bars({
+      instrumentId: "us:aapl:xnas:2026",
+      timeframe: "5m",
+      startUtc: "2026-10-09T08:00:00Z",
+      endUtc: "2026-10-10T00:00:00Z",
+      asOfUtc: "2026-10-09T15:30:00Z",
+    });
+
+    const url = new URL(String(fetcher.mock.calls[0][0]));
+    expect(url.searchParams.get("as_of_utc")).toBe("2026-10-09T15:30:00Z");
+  });
+
   it("surfaces the API error envelope with its request ID", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       json(422, {
