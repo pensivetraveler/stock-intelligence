@@ -8,6 +8,7 @@ import type {
 } from "@siw/contracts/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { zoneOf } from "./market-zone";
 import { isUncertain, summarize, toSeries } from "./chart-data";
 import type { Drawing, DrawingTool } from "./drawings";
 import { barEnd, barsAsOf } from "./replay";
@@ -187,7 +188,10 @@ export function ChartPanel({
     setLoad({ status: "loading" });
     void (async () => {
       try {
-        const session = await api.session(sessionDate);
+        const session = await api.session(
+          sessionDate,
+          zoneOf(instrumentId).calendarId,
+        );
         // Daily and weekly charts end with the chosen day even when it is closed.
         const range = isDailyTimeframe(timeframe)
           ? dailyRange(timeframe, sessionDate)
@@ -245,6 +249,7 @@ export function ChartPanel({
         sessions = await api.sessions(
           previousDay(sessionDate),
           historySessions,
+          zoneOf(instrumentId).calendarId,
         );
       } catch {
         finish(); // History is best effort: the chart still shows its own day.
@@ -330,6 +335,7 @@ export function ChartPanel({
         const sessions = await api.sessions(
           previousDay(earliestDate),
           WARMUP_SESSIONS,
+          zoneOf(instrumentId).calendarId,
         );
         for (const item of [...sessions].reverse()) {
           if (count >= neededWarmup || !current) break;
@@ -449,9 +455,9 @@ export function ChartPanel({
     load.status !== "ready"
       ? null
       : replayTime === null
-        ? summarize(load.response, t)
+        ? summarize(load.response, t, zoneOf(instrumentId))
         : asOf
-          ? summarize(asOf.response, t)
+          ? summarize(asOf.response, t, zoneOf(instrumentId))
           : null;
   useEffect(() => {
     onReplayBounds?.(
@@ -504,10 +510,13 @@ export function ChartPanel({
   }, [bars, warmup]);
   const warmupCount = ohlcv.length - (bars?.length ?? 0);
   const rendered = useMemo(
-    () => renderIndicators(ohlcv, indicatorList, warmupCount),
+    () =>
+      renderIndicators(ohlcv, indicatorList, warmupCount, {
+        timeZone: zoneOf(instrumentId).timeZone,
+      }),
     // The list is replaced (never mutated) whenever settings change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ohlcv, config.indicators, warmupCount],
+    [ohlcv, config.indicators, warmupCount, instrumentId],
   );
   const changeIndicator = (
     key: string,

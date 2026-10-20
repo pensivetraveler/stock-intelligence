@@ -179,6 +179,7 @@ const en = {
   "info.rate":
     "USD/KRW reference rate {rate} ({change}); trades may use another rate.",
   "info.hours": "US market hours {date} (Toss)",
+  "info.hoursKr": "Korean market hours {date} (Toss; KRX + NXT)",
   "info.session.day_market": "Day market",
   "info.session.pre_market": "Pre-market",
   "info.session.regular": "Regular",
@@ -654,6 +655,7 @@ const ko: Record<MessageKey, string> = {
   "info.rate":
     "USD/KRW 참고 환율 {rate} ({change}). 실제 거래 환율과 다를 수 있습니다.",
   "info.hours": "{date} 미국 장 운영 시간(토스)",
+  "info.hoursKr": "{date} 국내 장 운영 시간(토스, KRX+NXT)",
   "info.session.day_market": "데이마켓",
   "info.session.pre_market": "프리마켓",
   "info.session.regular": "정규장",

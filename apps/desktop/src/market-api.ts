@@ -23,6 +23,7 @@ import type {
   SymbolSearchResponse,
 } from "@siw/contracts/types";
 
+import { zoneOf } from "./market-zone";
 import { openRealtime, type RealtimeSocket } from "./realtime";
 
 /** Whole minutes written "Nm" (see timeframes.ts); the API aggregates any of them. */
@@ -80,8 +81,12 @@ export interface MarketApi {
     sessionDate: string,
   ): Promise<SessionQuote | null>;
   /** The latest `count` trading sessions up to `endDate` (inclusive), oldest first. */
-  sessions(endDate: string, count: number): Promise<SessionWindow[]>;
-  session(sessionDate: string): Promise<SessionWindow>;
+  sessions(
+    endDate: string,
+    count: number,
+    calendarId?: string,
+  ): Promise<SessionWindow[]>;
+  session(sessionDate: string, calendarId?: string): Promise<SessionWindow>;
   bars(request: BarsRequest): Promise<MarketBarsResponse>;
   manualLedger(): Promise<ManualLedgerResponse>;
   scenarioLedger(): Promise<ScenarioLedgerResponse>;
@@ -264,9 +269,9 @@ export function createMarketApi(
     return callForKind<T>(target, path, kind, { body });
   }
 
-  const session = (sessionDate: string) =>
+  const session = (sessionDate: string, calendarId = "XNAS") =>
     get<SessionWindow>(
-      `/v1/market/sessions/${encodeURIComponent(sessionDate)}`,
+      `/v1/market/sessions/${encodeURIComponent(sessionDate)}?calendar_id=${calendarId}`,
       "session_window",
     );
   const bars = ({
@@ -291,7 +296,10 @@ export function createMarketApi(
 
   return {
     async quote(instrumentId, sessionDate) {
-      const window = await session(sessionDate);
+      const window = await session(
+        sessionDate,
+        zoneOf(instrumentId).calendarId,
+      );
       if (
         !window.is_trading_day ||
         !window.regular_open_utc ||
@@ -370,10 +378,11 @@ export function createMarketApi(
     },
     session,
     bars,
-    async sessions(endDate, count) {
+    async sessions(endDate, count, calendarId = "XNAS") {
       const query = new URLSearchParams({
         end_date: endDate,
         count: String(count),
+        calendar_id: calendarId,
       });
       const response = await get<SessionListResponse>(
         `/v1/market/sessions?${query.toString()}`,

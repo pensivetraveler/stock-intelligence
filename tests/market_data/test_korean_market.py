@@ -199,3 +199,110 @@ def test_api_aggregates_korean_bars_on_the_krx_calendar() -> None:
             params={"end_date": "2026-10-20", "count": 1, "calendar_id": "XKRX"},
         ).json()
         assert sessions["sessions"][0]["post_close_utc"] == "2026-10-20T11:00:00Z"
+
+
+def listing_session() -> Any:
+    from services.market_data.toss_session import TossCredentials, TossSession
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth2/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        if request.url.path == "/api/v1/stocks/all":
+            market = request.url.params["market"]
+            rows = {
+                "KOSPI": [
+                    {"symbol": "005930", "name": "삼성전자"},
+                    {"symbol": "000660", "name": "SK하이닉스"},
+                ],
+                "KOSDAQ": [{"symbol": "0101N0", "name": "어떤 코스닥 종목"}],
+            }[market]
+            return httpx.Response(200, json={"result": rows})
+        if request.url.path == "/api/v1/prices":
+            return httpx.Response(
+                200,
+                json={
+                    "result": [
+                        {
+                            "symbol": "005930",
+                            "timestamp": "2026-10-20T10:00:00+09:00",
+                            "lastPrice": "211000",
+                            "currency": "KRW",
+                        }
+                    ]
+                },
+            )
+        if request.url.path == "/api/v1/orderbook":
+            return httpx.Response(
+                200,
+                json={
+                    "result": {
+                        "timestamp": "2026-10-20T10:00:00+09:00",
+                        "currency": "KRW",
+                        "asks": [{"price": "211500", "volume": "10"}],
+                        "bids": [],
+                    }
+                },
+            )
+        if request.url.path == "/api/v1/trades":
+            return httpx.Response(200, json={"result": []})
+        return httpx.Response(
+            200,
+            json={
+                "result": {
+                    "timestamp": "2026-10-20T10:00:00+09:00",
+                    "upperLimitPrice": "271000",
+                    "lowerLimitPrice": "146000",
+                    "currency": "KRW",
+                }
+            },
+        )
+
+    return TossSession(
+        TossCredentials("kr-list-client", "test-secret-not-real"),
+        transport=httpx.MockTransport(handler),
+        sleep=lambda _seconds: None,
+    )
+
+
+def test_korean_listings_are_searchable_alongside_us_stocks(tmp_path: Path) -> None:
+    from services.market_data.symbol_directory import SymbolDirectory, search_all
+    from services.market_data.toss_info import korean_listings
+
+    session = listing_session()
+    korean_dir = SymbolDirectory(tmp_path, "toss-kr", lambda: korean_listings(session))
+    us_dir = SymbolDirectory(
+        tmp_path,
+        "alpaca-sip",
+        lambda: [{"symbol": "SAMS", "name": "Samsara Inc", "venue": "XNYS"}],
+    )
+    found, _fetched, _stale = search_all([us_dir, korean_dir], "삼성")
+    assert [(entry.symbol, entry.instrument_id) for _d, entry in found] == [
+        ("005930", "kr:005930:xkrx:2026")
+    ]
+    by_code, _f, _s = search_all([us_dir, korean_dir], "0101n0")
+    directory, entry = by_code[0]
+    listing = directory.listing(entry)
+    assert listing["instrument"]["instrument_id"] == "kr:0101n0:xkos:2026"
+    assert (listing["instrument"]["asset_class"], listing["instrument"]["currency"]) == (
+        "kr_equity",
+        "KRW",
+    )
+    app = create_app(
+        FakeMarketDataProvider.from_path(),
+        symbol_directory=us_dir,
+        korean_directory=korean_dir,
+        toss_session=lambda: session,
+    )
+    with TestClient(app) as client:
+        response = client.get("/v1/market/symbols", params={"q": "sk"})
+        document = response.json()
+        validate_document(document)
+        assert [r["listing"]["instrument"]["symbol"] for r in document["results"]] == ["000660"]
+        quote = client.get("/v1/market/quote", params={"instrument_id": SAMSUNG}).json()
+        validate_document(quote)
+        assert (quote["source_id"], quote["currency"], quote["last"]["price"]) == (
+            "toss-kr",
+            "KRW",
+            "211000",
+        )
+        assert quote["price_limits"]["upper"] == "271000"
