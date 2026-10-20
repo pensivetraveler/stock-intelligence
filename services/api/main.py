@@ -22,8 +22,11 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response
 
 from packages.contracts.validator import validate_document
+from services.api.backtest_routes import register_backtest_routes
 from services.api.credential_routes import register_credential_routes
 from services.api.journal_routes import register_import_routes, register_journal_routes
+from services.backtest.jobs import BacktestRunner
+from services.backtest.store import BacktestStore
 from services.credentials.pool import PooledProvider
 from services.credentials.store import CredentialStore, KeyringSecretBackend, SecretStorageError
 from services.journal.ledger import manual_positions
@@ -327,6 +330,35 @@ class _LazyJournal:
             return self._store
 
 
+class _LazyBacktests:
+    """Open the backtest store and start its runner on first use (needs SIW_DATA_DIR)."""
+
+    def __init__(
+        self,
+        runner: BacktestRunner | None,
+        provider: Callable[[], MarketDataProvider],
+        clock: Callable[[], datetime],
+    ) -> None:
+        self._runner = runner
+        self._provider = provider
+        self._clock = clock
+        self._lock = threading.Lock()
+
+    def get(self) -> BacktestRunner | None:
+        with self._lock:
+            if self._runner is None:
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                if configured:
+                    store = BacktestStore(Path(configured) / "backtests.sqlite3", self._clock)
+                    self._runner = BacktestRunner(
+                        store, lambda: MarketBarsService(self._provider()).get_bars
+                    )
+            return self._runner
+
+    def started(self) -> BacktestRunner | None:
+        return self._runner
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -342,6 +374,7 @@ def create_app(
     korean_provider: MarketDataProvider | None = None,
     korean_directory: SymbolDirectory | None = None,
     realtime_connect: Connect | None = None,
+    backtest_runner: BacktestRunner | None = None,
     clock: Callable[[], datetime] = _utc_now,
 ) -> FastAPI:
     credentials = _LazyCredentials(credential_store)
@@ -388,6 +421,7 @@ def create_app(
         now=clock,
     )
     journal = _LazyJournal(journal_store)
+    backtests = _LazyBacktests(backtest_runner, provider.get, clock)
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI) -> AsyncIterator[None]:
@@ -398,6 +432,9 @@ def create_app(
         store = ticks_holder[0]
         if store is not None:
             store.flush()  # ticks still in memory when the server stops
+        runner = backtests.started()
+        if runner is not None:
+            runner.stop()  # a run in progress is cancelled, not left half-written
 
     application = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
 
@@ -851,6 +888,8 @@ def create_app(
         now=clock,
         error_response=_error_response,
     )
+
+    register_backtest_routes(application, runner=backtests.get, error_response=_error_response)
 
     # Provider and cache I/O are blocking; a sync endpoint runs in FastAPI's threadpool
     # instead of stalling the event loop.

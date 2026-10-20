@@ -1,0 +1,36 @@
+{
+  "kind": "backtest_run",
+  "schema_version": "0.1",
+  "run_id": "run-ce1f4640c898",
+  "status": "paused",
+  "progress": 1.0,
+  "strategy_id": "strategy-5a0cada53ecd",
+  "strategy_version": 1,
+  "strategy_sha256": "13904d91f5cdf566b44eb528dff345184ce8305da4386fd3bdf23ecb4bd5c14d",
+  "config": {
+    "as_of_utc": null,
+    "currency": "USD",
+    "end_date": "2026-02-27",
+    "fee_per_order": "0",
+    "fee_rate": "0.0005",
+    "fill_policy": "next_eligible_bar_open",
+    "initial_capital": "10000",
+    "instrument_ids": ["us:aapl:xnas:2026"],
+    "seed": 0,
+    "slippage_bps": "5",
+    "start_date": "2026-01-02",
+    "timeframe": "1d"
+  },
+  "created_at_utc": "2026-10-21T00:00:00Z",
+  "started_at_utc": "2026-10-21T00:00:00Z",
+  "finished_at_utc": "2026-10-21T00:00:00Z",
+  "error": null,
+  "summary": {
+    "benchmark_return": "0.228309",
+    "final_equity": "10691.08",
+    "max_drawdown": "0.004470",
+    "net_return": "0.069108",
+    "trade_count": 0,
+    "warning_count": 1
+  }
+}

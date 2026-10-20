@@ -1,0 +1,17 @@
+{
+  "kind": "backtest_fill",
+  "schema_version": "0.1",
+  "fill_id": "fill-1",
+  "run_id": "run-1",
+  "order_id": "order-1",
+  "instrument_id": "kr:005930:xkrx:2026",
+  "side": "buy",
+  "quantity": "10",
+  "price": "209000",
+  "currency": "KRW",
+  "filled_at_utc": "2026-10-09T13:31:00Z",
+  "fill_model_version": "next-open-v1",
+  "fill_reason": "next-eligible-bar-open",
+  "fee": "104.5",
+  "notes": ["reduced_to_available_cash"]
+}

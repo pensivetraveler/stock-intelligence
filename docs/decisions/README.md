@@ -34,3 +34,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0018-broker-api-execution-ledger.md`: 증권사 API 체결 원장(토스, 주문 1건당 1행·평균가·마지막 체결 시각), 계좌 조회 전용, 계좌번호 끝 4자리
 - `0019-toss-realtime-relay-and-tick-store.md`: 토스 실시간 중계(API 단일 연결, Origin 검사, 재연결·PING), 체결 시 원장 자동 동기화, 유실 표시 틱 저장소(봉과 분리)
 - `0020-korean-market-foundation.md`: 국내 주식 기반(K1) — XKRX 캘린더·NXT 확장 시간, kr: 종목 ID, KRW, 시장별 라우팅(국내=토스), 하루 전체 일봉(all_day)
+- `0021-backtest-engine.md`: 백테스트 엔진(B1) — 규칙·Python 전략(격리 프로세스), 차트와 같은 인과적 지표, 다종목 포트폴리오, 다음 봉 시가 체결·수수료·슬리피지, 입력 고정, 대기열 실행

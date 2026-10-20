@@ -37,7 +37,12 @@ export type StockIntelligenceWorkstationContractsV01 =
   | BrokerAccountSnapshot
   | BrokerSellableQuantity
   | RealtimeEvent
-  | TickListResponse;
+  | TickListResponse
+  | BacktestStrategy
+  | BacktestStrategyListResponse
+  | BacktestRun
+  | BacktestRunListResponse
+  | BacktestResults;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -284,10 +289,64 @@ export interface BacktestFill {
   side: Side;
   quantity: NonNegativeDecimalString;
   price: NonNegativeDecimalString;
-  currency: "USD";
+  currency: "USD" | "KRW";
   filled_at_utc: UtcTimestamp;
   fill_model_version: Identifier;
   fill_reason: Identifier;
+  fee?: NonNegativeDecimalString;
+  /**
+   * @maxItems 10
+   */
+  notes?:
+    | []
+    | [Identifier]
+    | [Identifier, Identifier]
+    | [Identifier, Identifier, Identifier]
+    | [Identifier, Identifier, Identifier, Identifier]
+    | [Identifier, Identifier, Identifier, Identifier, Identifier]
+    | [Identifier, Identifier, Identifier, Identifier, Identifier, Identifier]
+    | [
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+      ]
+    | [
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+      ]
+    | [
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+      ]
+    | [
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+        Identifier,
+      ];
 }
 export interface ScenarioDefinition {
   kind: "scenario_definition";
@@ -354,7 +413,7 @@ export interface BacktestRunConfig {
   start_utc: UtcTimestamp;
   end_utc: UtcTimestamp;
   initial_capital: NonNegativeDecimalString;
-  currency: "USD";
+  currency: "USD" | "KRW";
   fill_policy: "next_eligible_bar_open";
   fee_assumption: NonNegativeDecimalString;
   slippage_assumption: NonNegativeDecimalString;
@@ -1032,4 +1091,389 @@ export interface TickListResponse {
     exchange_time_utc: UtcTimestamp;
     received_at_utc: UtcTimestamp;
   }[];
+}
+export interface BacktestStrategy {
+  kind: "backtest_strategy";
+  schema_version: SchemaVersion;
+  strategy_id: Identifier;
+  name: string;
+  version: number;
+  strategy_type: "rules" | "python";
+  definition: {
+    type: "rules" | "python";
+    [k: string]: unknown;
+  };
+  definition_sha256: string;
+  created_at_utc: UtcTimestamp;
+  versions?: number[];
+}
+export interface BacktestStrategyListResponse {
+  kind: "backtest_strategy_list_response";
+  schema_version: SchemaVersion;
+  strategies: BacktestStrategy[];
+}
+export interface BacktestRun {
+  kind: "backtest_run";
+  schema_version: SchemaVersion;
+  run_id: Identifier;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  progress: number;
+  strategy_id: Identifier;
+  strategy_version: number;
+  strategy_sha256: string;
+  config: {
+    /**
+     * @minItems 1
+     * @maxItems 20
+     */
+    instrument_ids:
+      | [Identifier]
+      | [Identifier, Identifier]
+      | [Identifier, Identifier, Identifier]
+      | [Identifier, Identifier, Identifier, Identifier]
+      | [Identifier, Identifier, Identifier, Identifier, Identifier]
+      | [Identifier, Identifier, Identifier, Identifier, Identifier, Identifier]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ]
+      | [
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+          Identifier,
+        ];
+    timeframe: string;
+    start_date: string;
+    end_date: string;
+    initial_capital: NonNegativeDecimalString;
+    currency: "USD" | "KRW";
+    fee_rate: NonNegativeDecimalString;
+    fee_per_order: NonNegativeDecimalString;
+    slippage_bps: NonNegativeDecimalString;
+    fill_policy: "next_eligible_bar_open";
+    as_of_utc: UtcTimestamp | null;
+    seed: number;
+  };
+  created_at_utc: UtcTimestamp;
+  started_at_utc: UtcTimestamp | null;
+  finished_at_utc: UtcTimestamp | null;
+  error: string | null;
+  summary: {
+    final_equity: DecimalString;
+    net_return: DecimalString | null;
+    max_drawdown: DecimalString | null;
+    trade_count: number;
+    benchmark_return: DecimalString | null;
+    warning_count: number;
+  } | null;
+}
+export interface BacktestRunListResponse {
+  kind: "backtest_run_list_response";
+  schema_version: SchemaVersion;
+  runs: BacktestRun[];
+}
+export interface BacktestResults {
+  kind: "backtest_results";
+  schema_version: SchemaVersion;
+  run_id: Identifier;
+  engine_version: Identifier;
+  fill_model_version: Identifier;
+  currency: "USD" | "KRW";
+  initial_capital: NonNegativeDecimalString;
+  final_equity: DecimalString;
+  metrics: {
+    net_return: DecimalString | null;
+    gross_return: DecimalString | null;
+    max_drawdown: DecimalString | null;
+    win_rate: DecimalString | null;
+    profit_factor: DecimalString | null;
+    exposure: DecimalString | null;
+    turnover: DecimalString | null;
+    benchmark_return: DecimalString | null;
+    average_win: DecimalString | null;
+    average_loss: DecimalString | null;
+    fees: NonNegativeDecimalString;
+    slippage_cost: NonNegativeDecimalString;
+    trade_count: number;
+  };
+  metric_definitions: {
+    [k: string]: string;
+  };
+  equity_curve: {
+    time_utc: UtcTimestamp;
+    equity: DecimalString;
+    cash: DecimalString;
+    drawdown: NonNegativeDecimalString;
+    benchmark_equity: DecimalString;
+  }[];
+  orders: {
+    order_id: Identifier;
+    instrument_id: Identifier;
+    side: Side;
+    signal_utc: UtcTimestamp;
+    status: "queued" | "filled" | "rejected" | "unfilled_at_end";
+    reason: Identifier | null;
+    filled_at_utc: UtcTimestamp | null;
+  }[];
+  fills: BacktestFill[];
+  trades: {
+    instrument_id: Identifier;
+    entry_order_id: Identifier;
+    entry_utc: UtcTimestamp;
+    entry_price: NonNegativeDecimalString;
+    quantity: NonNegativeDecimalString;
+    exit_utc: UtcTimestamp | null;
+    exit_price: NonNegativeDecimalString | null;
+    exit_reason: "signal" | "stop_loss" | "take_profit" | "open_at_end";
+    open_quantity: NonNegativeDecimalString;
+    net_pnl: DecimalString;
+    return: DecimalString | null;
+  }[];
+  per_symbol: {
+    instrument_id: Identifier;
+    trade_count: number;
+    win_rate: DecimalString | null;
+    realized_pnl: DecimalString;
+    unrealized_pnl: DecimalString;
+  }[];
+  inputs: {
+    instrument_id: Identifier;
+    timeframe: string;
+    calendar_id: Identifier;
+    calendar_version: Identifier;
+    requested_start_utc: UtcTimestamp;
+    requested_end_utc: UtcTimestamp;
+    as_of_utc: UtcTimestamp | null;
+    source_ids: Identifier[];
+    feed_scopes: Identifier[];
+    adjustments: Identifier[];
+    dataset_revisions: Identifier[];
+    bar_count: number;
+    expected_interval_count: number;
+    missing_interval_count: number;
+    /**
+     * @maxItems 50
+     */
+    missing_intervals: {
+      start_utc: UtcTimestamp;
+      end_utc: UtcTimestamp;
+      reason: Identifier;
+    }[];
+    non_final_bar_count: number;
+    bars_sha256: string;
+    suspected_split_dates: string[];
+  }[];
+  warnings: string[];
+  /**
+   * @maxItems 200
+   */
+  logs: string[];
 }
