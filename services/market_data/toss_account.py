@@ -4,8 +4,8 @@ executions into the broker ledger.
 Toss reports executions per order, not per fill: total filled quantity, average fill
 price, commission, tax and one `filledAt`. Each closed order with fills becomes one
 `broker_order_execution` marked `order_aggregate`, its time marked as the reported last
-fill; nothing finer is invented. Only US orders are stored for now (Korean instrument IDs
-come with the Korean-market stage). Account numbers are reduced to their last four digits
+fill; nothing finer is invented. US (USD) and Korean (KRW) orders are stored, each under its
+market's instrument ID (ADR 0020). Account numbers are reduced to their last four digits
 and never stored or returned whole. Order placing endpoints are not reachable (see
 toss_session.py).
 """
@@ -250,17 +250,20 @@ def sellable_quantity(
 def sync_executions(
     session: TossSession,
     store: JournalStore,
-    instrument_for: Callable[[str], str | None],
+    instrument_for: Callable[[str, str], str | None],
     now: Callable[[], datetime],
     since: str | None = None,
 ) -> dict[str, Any]:
-    """Store the executions of every closed, filled US order in every account, once.
+    """Store the executions of every closed, filled order in every account, once.
+
+    `instrument_for(symbol, currency)` maps a Toss symbol to an instrument ID: USD orders
+    to US listings, KRW orders to Korean ones.
 
     `since` (YYYY-MM-DD, KST order date) limits the read to recent orders.
     """
     synced_at = _now_text(now)
     counts = {"orders_seen": 0, "stored_new": 0, "already_stored": 0}
-    skipped = {"not_filled": 0, "not_us": 0, "unknown_instrument": 0}
+    skipped = {"not_filled": 0, "unsupported_currency": 0, "unknown_instrument": 0}
     conflicts: list[str] = []
     account_list = accounts(session)
     for account in account_list:
@@ -310,7 +313,7 @@ def _execution(
     order: dict[str, Any],
     ref: str,
     synced_at: str,
-    instrument_for: Callable[[str], str | None],
+    instrument_for: Callable[[str, str], str | None],
     skipped: dict[str, int],
 ) -> dict[str, Any] | None:
     execution = _as_dict(order.get("execution"))
@@ -319,11 +322,12 @@ def _execution(
     if quantity in (None, "0") or price is None:
         skipped["not_filled"] += 1
         return None
-    if order.get("currency") != "USD":
-        skipped["not_us"] += 1
+    currency = order.get("currency")
+    if currency not in ("USD", "KRW"):
+        skipped["unsupported_currency"] += 1
         return None
     symbol = str(order.get("symbol") or "").upper()
-    instrument_id = instrument_for(symbol)
+    instrument_id = instrument_for(symbol, str(currency))
     side = SIDES.get(str(order.get("side")))
     if instrument_id is None or side is None:
         skipped["unknown_instrument"] += 1
@@ -346,7 +350,7 @@ def _execution(
         "fees": _dec(Decimal(commission) + Decimal(tax)) or "0",
         "commission": commission,
         "tax": tax,
-        "currency": "USD",
+        "currency": currency,
         "executed_at_utc": _utc(execution.get("filledAt")),
         "time_meaning": "reported_last_fill",
         "granularity": "order_aggregate",

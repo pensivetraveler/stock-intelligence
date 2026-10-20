@@ -227,7 +227,7 @@ export function TradeEntry({
           {manual.precision === "unknown" ? null : (
             <>
               <label>
-                {t("trade.fillDate")}
+                {t("trade.fillDate", { zone: zone.label })}
                 <input
                   required
                   type="date"
@@ -238,7 +238,7 @@ export function TradeEntry({
                 />
               </label>
               <label>
-                {t("trade.fillTime")}
+                {t("trade.fillTime", { zone: zone.label })}
                 <input
                   required
                   type="time"
@@ -311,7 +311,7 @@ export function TradeEntry({
             />
           </label>
           <label>
-            {t("trade.exitTime", { date: sessionDate })}
+            {t("trade.exitTime", { date: sessionDate, zone: zone.label })}
             <input
               required
               type="time"

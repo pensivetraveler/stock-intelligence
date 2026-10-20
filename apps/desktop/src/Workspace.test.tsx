@@ -473,7 +473,11 @@ function fakeApi(
         orders_seen: 2,
         stored_new: 1,
         already_stored: 0,
-        skipped: { not_filled: 1, not_us: 0, unknown_instrument: 0 },
+        skipped: {
+          not_filled: 1,
+          unsupported_currency: 0,
+          unknown_instrument: 0,
+        },
         conflicts: [],
       });
     },

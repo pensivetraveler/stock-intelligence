@@ -142,8 +142,13 @@ def session(broker: Broker) -> TossSession:
     )
 
 
-def instrument_for(symbol: str) -> str | None:
-    return {"AAPL": "us:aapl:xnas:2026", "MSFT": "us:msft:xnas:2026"}.get(symbol)
+def instrument_for(symbol: str, currency: str) -> str | None:
+    known = {
+        ("AAPL", "USD"): "us:aapl:xnas:2026",
+        ("MSFT", "USD"): "us:msft:xnas:2026",
+        ("005930", "KRW"): "kr:005930:xkrx:2026",
+    }
+    return known.get((symbol, currency))
 
 
 def test_account_view_masks_the_account_and_reports_failed_parts() -> None:
@@ -164,9 +169,16 @@ def test_sync_stores_each_filled_us_order_once_as_an_order_aggregate(tmp_path: P
     store = JournalStore(tmp_path)
     first = sync_executions(session(broker), store, instrument_for, lambda: NOW)
     validate_document(first)
-    assert (first["orders_seen"], first["stored_new"]) == (4, 1)
-    assert first["skipped"] == {"not_filled": 1, "not_us": 1, "unknown_instrument": 1}
-    [stored] = store.broker_executions()
+    assert (first["orders_seen"], first["stored_new"]) == (4, 2)
+    assert first["skipped"] == {
+        "not_filled": 1,
+        "unsupported_currency": 0,
+        "unknown_instrument": 1,
+    }
+    # The Korean order is stored in KRW under its Korean listing.
+    korean = next(row for row in store.broker_executions() if row["currency"] == "KRW")
+    assert (korean["instrument_id"], korean["price"]) == ("kr:005930:xkrx:2026", "70000")
+    [stored] = [row for row in store.broker_executions() if row["currency"] == "USD"]
     assert stored["granularity"] == "order_aggregate"
     assert stored["time_meaning"] == "reported_last_fill"
     assert (stored["quantity"], stored["price"], stored["fees"]) == ("10", "250.10", "0.25")
@@ -174,7 +186,7 @@ def test_sync_stores_each_filled_us_order_once_as_an_order_aggregate(tmp_path: P
     assert ACCOUNT_NO not in json.dumps(stored)
 
     again = sync_executions(session(broker), store, instrument_for, lambda: NOW)
-    assert (again["stored_new"], again["already_stored"]) == (0, 1)
+    assert (again["stored_new"], again["already_stored"]) == (0, 2)
 
     # A changed report for a stored order is flagged, never written over.
     changed = Broker()
@@ -183,7 +195,10 @@ def test_sync_stores_each_filled_us_order_once_as_an_order_aggregate(tmp_path: P
     changed.closed_pages = pages
     third = sync_executions(session(changed), store, instrument_for, lambda: NOW)
     assert third["conflicts"] == ["o-aapl"]
-    assert store.broker_executions()[0]["price"] == "250.10"
+    assert (
+        next(row["price"] for row in store.broker_executions() if row["currency"] == "USD")
+        == "250.10"
+    )
 
 
 def test_broker_account_api_and_ledger(tmp_path: Path) -> None:

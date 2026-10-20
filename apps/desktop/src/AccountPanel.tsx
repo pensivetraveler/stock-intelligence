@@ -88,7 +88,7 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
             new: sync.result.stored_new,
             same: sync.result.already_stored,
             notFilled: sync.result.skipped.not_filled,
-            notUs: sync.result.skipped.not_us,
+            currency: sync.result.skipped.unsupported_currency,
             unknown: sync.result.skipped.unknown_instrument,
             conflicts: sync.result.conflicts.length
               ? t("account.conflicts", { n: sync.result.conflicts.length })

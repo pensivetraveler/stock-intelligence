@@ -306,3 +306,128 @@ def test_korean_listings_are_searchable_alongside_us_stocks(tmp_path: Path) -> N
             "211000",
         )
         assert quote["price_limits"]["upper"] == "271000"
+
+
+def test_ledger_records_of_korean_listings_must_be_in_krw() -> None:
+    from packages.contracts.validator import validation_errors
+
+    record = json.loads(Path("tests/fixtures/contracts/valid/manual-execution.json").read_text())
+    korean = {**record, "instrument_id": SAMSUNG, "currency": "KRW"}
+    assert validation_errors(korean) == []
+    assert "kr:005930:xkrx:2026 trades in KRW" in validation_errors({**korean, "currency": "USD"})
+
+
+def test_manual_entries_for_korean_stocks_use_kst_and_krw(tmp_path: Path) -> None:
+    from services.journal.store import JournalStore
+    from services.market_data.symbol_directory import SymbolDirectory
+
+    korean_dir = SymbolDirectory(
+        tmp_path, "toss-kr", lambda: [{"symbol": "005930", "name": "삼성전자", "venue": "XKRX"}]
+    )
+    korean_dir.search("삼성")  # fetch and keep the list
+    app = create_app(
+        FakeMarketDataProvider.from_path(),
+        journal_store=JournalStore(tmp_path / "journal"),
+        korean_directory=korean_dir,
+        toss_session=lambda: listing_session(),
+        clock=lambda: NOW,
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/trades/manual",
+            json={
+                "execution_id": "kr-fill-1",
+                "instrument_id": SAMSUNG,
+                "side": "buy",
+                "quantity": "10",
+                "price": "211000",
+                "time_precision": "minute",
+                # Exchange-local time: 09:05 KST.
+                "executed_date_et": "2026-10-20",
+                "executed_time_et": "09:05:00",
+                "selected_interval_start_utc": "2026-10-20T00:05:00Z",
+                "selected_interval_end_utc": "2026-10-20T00:06:00Z",
+            },
+        )
+        assert response.status_code == 201, response.text
+        stored = response.json()
+        assert (stored["currency"], stored["executed_at_utc"]) == ("KRW", "2026-10-20T00:05:00Z")
+
+
+def test_realtime_relays_korean_codes_on_kr_topics_and_dates_ticks_in_kst(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+
+    from services.market_data import toss_stream
+    from services.market_data.tick_store import TickStore
+    from services.market_data.toss_stream import RealtimeHub
+
+    monkeypatch.setattr(toss_stream, "DECLARE_INTERVAL", 0.0)
+    monkeypatch.setattr(toss_stream, "SYNC_DELAY", 0.0)
+    store = TickStore(tmp_path)
+    sent: list[str] = []
+    incoming: asyncio.Queue[str] = asyncio.Queue()
+
+    class Connection:
+        async def send(self, message: str) -> None:
+            sent.append(message)
+
+        async def recv(self) -> str:
+            return await incoming.get()
+
+        async def close(self) -> None:
+            pass
+
+    async def connect(_url: str, _headers: dict[str, str]) -> Connection:
+        return Connection()
+
+    async def scenario() -> dict[str, Any]:
+        session = listing_session()
+        hub = RealtimeHub(
+            lambda: session,
+            ticks=lambda: store,
+            instrument_for=lambda code, currency: SAMSUNG if currency == "KRW" else None,
+            sync_ledger=lambda _since: None,
+            connect=connect,
+            now=lambda: NOW,
+        )
+        client = hub.add_client(frozenset({"005930", "AAPL"}))
+        for _ in range(100):
+            if sent:
+                break
+            await asyncio.sleep(0.01)
+        await incoming.put(
+            json.dumps(
+                {
+                    "type": "message",
+                    "topic": "trade:kr:005930",
+                    "data": {
+                        "price": "211000",
+                        "volume": "3",
+                        "timestamp": "2026-10-20T08:30:00.000+09:00",
+                        "currency": "KRW",
+                    },
+                }
+            )
+        )
+        event: dict[str, Any] = {}
+        while event.get("event") != "trade":
+            event = await asyncio.wait_for(client.queue.get(), 2)
+        hub.remove_client(client)
+        await incoming.put("{}")
+        await asyncio.wait_for(hub.stopped(), 5)
+        return event
+
+    event = asyncio.run(scenario())
+    declared = json.loads(sent[0])
+    assert {"type": "trade:kr", "codes": ["005930"]} in declared
+    assert {"type": "trade:us", "codes": ["AAPL"]} in declared
+    validate_document(event)
+    assert (event["source_id"], event["currency"], event["instrument_id"]) == (
+        "toss-kr",
+        "KRW",
+        SAMSUNG,
+    )
+    # 08:30 KST on the 20th is 23:30Z on the 19th: the tick is filed under the 20th.
+    assert [row["price"] for row in store.read("toss-kr", "005930", "2026-10-20")] == ["211000"]

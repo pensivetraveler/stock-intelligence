@@ -93,7 +93,7 @@ def test_hub_declares_relays_stores_ticks_and_resyncs_the_ledger(
         hub = RealtimeHub(
             lambda: session,
             ticks=lambda: store,
-            instrument_for={"AAPL": "us:aapl:xnas:2026"}.get,
+            instrument_for=lambda symbol, _currency: {"AAPL": "us:aapl:xnas:2026"}.get(symbol),
             sync_ledger=sync,
             connect=connect,
             now=lambda: NOW,

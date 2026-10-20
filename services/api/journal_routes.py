@@ -34,6 +34,7 @@ from services.journal.ledger import (
     scenario_pnl,
 )
 from services.journal.store import JournalConflictError, JournalStore, request_hash
+from services.market_data.instruments import calendar_for, market_of
 
 DecimalText = Annotated[str, StringConstraints(pattern=r"^(0|[1-9][0-9]*)(\.[0-9]{1,8})?$")]
 RecordId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9._:-]{8,64}$")]
@@ -90,10 +91,21 @@ def _executed_at(request: ManualExecutionRequest) -> str | None:
             raise JournalRequestError("leave the execution time empty when precision is unknown")
         return None
     if request.executed_date_et is None or request.executed_time_et is None:
-        raise JournalRequestError("enter the execution date and time in ET")
+        raise JournalRequestError("enter the execution date and time in exchange-local time")
     if request.time_precision == "minute" and request.executed_time_et.second:
         raise JournalRequestError("minute precision times must not include seconds")
-    return _utc_text(exchange_local_to_utc(request.executed_date_et, request.executed_time_et))
+    return _utc_text(
+        exchange_local_to_utc(
+            request.executed_date_et,
+            request.executed_time_et,
+            calendar_for(request.instrument_id).zone,
+        )
+    )
+
+
+def _currency(instrument_id: str) -> str:
+    """Korean listings trade in KRW, everything else in USD."""
+    return "KRW" if market_of(instrument_id) == "KR" else "USD"
 
 
 def register_journal_routes(
@@ -145,7 +157,7 @@ def register_journal_routes(
                 "side": body.side,
                 "quantity": body.quantity,
                 "price": body.price,
-                "currency": "USD",
+                "currency": _currency(body.instrument_id),
                 "asserted_at_utc": _utc_text(now()),
                 "time_precision": body.time_precision,
                 "executed_at_utc": _executed_at(body),
@@ -193,12 +205,16 @@ def register_journal_routes(
                 "entry_price": body.entry_price,
                 "exit_price": body.exit_price,
                 "quantity": body.quantity,
-                "currency": "USD",
+                "currency": _currency(body.instrument_id),
                 "fee_assumption": body.fee_assumption,
                 "slippage_assumption": body.slippage_assumption,
                 "entry_interval_start_utc": body.entry_interval_start_utc,
                 "exit_interval_start_utc": _utc_text(
-                    exchange_local_to_utc(body.exit_date_et, body.exit_time_et)
+                    exchange_local_to_utc(
+                        body.exit_date_et,
+                        body.exit_time_et,
+                        calendar_for(body.instrument_id).zone,
+                    )
                 ),
                 "created_at_utc": _utc_text(now()),
             }
@@ -234,7 +250,7 @@ class StatementImportRequest(BaseModel):
     file_name: Annotated[str, StringConstraints(min_length=1, max_length=255)]
     content: Annotated[str, StringConstraints(max_length=MAX_FILE_BYTES)]
     broker_label: Annotated[str, StringConstraints(min_length=1, max_length=64)]
-    timestamp_timezone: Literal["America/New_York", "UTC"] = "America/New_York"
+    timestamp_timezone: Literal["America/New_York", "Asia/Seoul", "UTC"] = "America/New_York"
     delimiter: Literal[",", ";", "\t"] = ","
     mapping: dict[str, str | None] | None = None
 

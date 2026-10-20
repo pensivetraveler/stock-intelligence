@@ -85,7 +85,8 @@ from services.market_data.toss_stream import Connect, RealtimeHub, default_conne
 
 LOG = logging.getLogger("siw.api")
 APP_NAME = "stock-intelligence-workstation-api"
-REALTIME_SYMBOL = re.compile(r"^[A-Z][A-Z0-9.]{0,9}$")
+# US tickers start with a letter; Korean KRX codes are six characters starting with a digit.
+REALTIME_SYMBOL = re.compile(r"^([A-Z][A-Z0-9.]{0,9}|[0-9][0-9A-Z]{5})$")
 MAX_REALTIME_SYMBOLS = 45
 MAX_TICKS_RETURNED = 5_000
 APP_VERSION = "0.4.0-dev"
@@ -244,8 +245,12 @@ class _LazySymbols:
         return [item for item in (self.get(), self.korean()) if item is not None]
 
     def known(self) -> dict[str, SymbolEntry]:
-        directory = self.get()
-        return directory.known() if directory is not None else {}
+        """US and Korean listings known on disk (never triggers a provider request)."""
+        merged: dict[str, SymbolEntry] = {}
+        for directory in (self.get(), self.korean()):
+            if directory is not None:
+                merged.update(directory.known())
+        return merged
 
 
 def _toss_credentials(credentials: CredentialStore | None) -> TossCredentials | None:
@@ -353,13 +358,18 @@ def create_app(
                 ticks_holder[0] = TickStore(Path(configured))
         return ticks_holder[0]
 
-    def instrument_for(symbol: str) -> str | None:
-        """Instrument ID of a US ticker: configured instruments first, then the directory."""
-        for item in provider.get().instruments():
-            if item["instrument"]["symbol"].upper() == symbol:
-                return cast(str, item["instrument"]["instrument_id"])
+    def instrument_for(symbol: str, currency: str = "USD") -> str | None:
+        """Instrument ID of a US ticker (USD) or Korean code (KRW).
+
+        US: configured instruments first, then the directory. Korean: the Korean directory.
+        """
+        korean = currency == "KRW"
+        if not korean:
+            for item in provider.get().instruments():
+                if item["instrument"]["symbol"].upper() == symbol:
+                    return cast(str, item["instrument"]["instrument_id"])
         for instrument_id, entry in symbols.known().items():
-            if entry.symbol == symbol:
+            if entry.symbol == symbol and entry.korean == korean:
                 return instrument_id
         return None
 
@@ -629,12 +639,13 @@ def create_app(
             return _error_response(
                 request, 404, "ticks_unavailable", "no tick store or unknown instrument"
             )
-        rows = store.read("toss-us", symbol, session_date.isoformat())
+        source = "toss-kr" if market_of(instrument_id) == "KR" else "toss-us"
+        rows = store.read(source, symbol, session_date.isoformat())
         latest = rows[-MAX_TICKS_RETURNED:]
         document = {
             "kind": "tick_list_response",
             "schema_version": "0.1",
-            "source_id": "toss-us",
+            "source_id": source,
             "symbol": symbol,
             "session_date": session_date.isoformat(),
             "completeness": "lossy_stream",

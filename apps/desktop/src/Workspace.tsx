@@ -660,7 +660,10 @@ export function Workspace({
     ...new Set(
       visibleCharts
         .map((index) => symbolOf(layout.charts[index].instrumentId))
-        .filter((symbol) => /^[A-Z][A-Z0-9.]{0,9}$/.test(symbol)),
+        // US tickers, and Korean KRX codes (six characters, starting with a digit).
+        .filter((symbol) =>
+          /^([A-Z][A-Z0-9.]{0,9}|[0-9][0-9A-Z]{5})$/.test(symbol),
+        ),
     ),
   ].sort();
   const liveKey = replayOn ? "" : liveSymbols.join(",");

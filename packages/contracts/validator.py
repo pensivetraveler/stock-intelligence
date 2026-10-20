@@ -23,6 +23,19 @@ def schema_validator() -> Draft202012Validator:
     return Draft202012Validator(schema, format_checker=FormatChecker())
 
 
+# Kinds whose currency must match the instrument's market (kr: listings trade in KRW).
+CURRENCY_BY_MARKET_KINDS = frozenset(
+    {
+        "manual_execution",
+        "scenario_definition",
+        "imported_execution",
+        "broker_order_execution",
+        "broker_confirmed_execution",
+        "market_quote",
+    }
+)
+
+
 @cache
 def _kind_validator(kind: str) -> Draft202012Validator | None:
     """Validator for one contract kind, or None when the kind is unknown.
@@ -168,6 +181,13 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
         identifiers = [item["instrument"]["instrument_id"] for item in document["instruments"]]
         if len(identifiers) != len(set(identifiers)):
             errors.append("instrument_id must be unique within the response")
+
+    if kind in CURRENCY_BY_MARKET_KINDS:
+        instrument = document.get("instrument_id")
+        if isinstance(instrument, str) and document.get("currency") in ("USD", "KRW"):
+            trades_in = "KRW" if instrument.startswith("kr:") else "USD"
+            if document["currency"] != trades_in:
+                errors.append(f"{instrument} trades in {trades_in}")
 
     if kind == "research_table":
         width = len(document["columns"])

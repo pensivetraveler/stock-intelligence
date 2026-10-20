@@ -177,6 +177,7 @@ export function ImportPanel({ api, onImported }: ImportPanelProps) {
             }
           >
             <option value="America/New_York">{t("import.eastern")}</option>
+            <option value="Asia/Seoul">{t("import.korea")}</option>
             <option value="UTC">UTC</option>
           </select>
         </label>

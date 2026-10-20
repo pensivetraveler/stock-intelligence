@@ -29,6 +29,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 NEW_YORK = ZoneInfo("America/New_York")
+SEOUL = ZoneInfo("Asia/Seoul")
 COMPLETENESS = "lossy_stream"
 FLUSH_SECONDS = 10.0
 FLUSH_TICKS = 2_000
@@ -61,9 +62,10 @@ class Tick:
 
     @property
     def session_date(self) -> str:
-        """New York calendar date of the trade (overnight day-market trades included)."""
+        """Exchange calendar date of the trade: Seoul for Korean listings, else New York."""
         stamp = datetime.fromisoformat(self.exchange_time_utc.replace("Z", "+00:00"))
-        return stamp.astimezone(NEW_YORK).date().isoformat()
+        zone = SEOUL if self.source_id == "toss-kr" else NEW_YORK
+        return stamp.astimezone(zone).date().isoformat()
 
 
 class TickStore:

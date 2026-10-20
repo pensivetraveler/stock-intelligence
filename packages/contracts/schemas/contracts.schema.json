@@ -598,7 +598,8 @@
           "$ref": "#/$defs/NonNegativeDecimalString"
         },
         "currency": {
-          "const": "USD"
+          "enum": ["USD", "KRW"],
+          "description": "USD for US listings, KRW for Korean (kr:) listings."
         },
         "executed_at_utc": {
           "$ref": "#/$defs/UtcTimestamp"
@@ -667,7 +668,8 @@
           "$ref": "#/$defs/NonNegativeDecimalString"
         },
         "currency": {
-          "const": "USD"
+          "enum": ["USD", "KRW"],
+          "description": "USD for US listings, KRW for Korean (kr:) listings."
         },
         "asserted_at_utc": {
           "$ref": "#/$defs/UtcTimestamp",
@@ -817,7 +819,8 @@
           "$ref": "#/$defs/NonNegativeDecimalString"
         },
         "currency": {
-          "const": "USD"
+          "enum": ["USD", "KRW"],
+          "description": "USD for US listings, KRW for Korean (kr:) listings."
         },
         "fee_assumption": {
           "$ref": "#/$defs/NonNegativeDecimalString",
@@ -1311,7 +1314,8 @@
           "$ref": "#/$defs/NonNegativeDecimalString"
         },
         "currency": {
-          "const": "USD"
+          "enum": ["USD", "KRW"],
+          "description": "USD for US listings, KRW for Korean (kr:) listings."
         },
         "executed_at_utc": {
           "$ref": "#/$defs/UtcTimestamp"
@@ -1531,7 +1535,7 @@
           }
         },
         "timestamp_timezone": {
-          "enum": ["America/New_York", "UTC"]
+          "enum": ["America/New_York", "Asia/Seoul", "UTC"]
         },
         "already_imported": {
           "type": "boolean"
@@ -2815,7 +2819,8 @@
           "$ref": "#/$defs/NonNegativeDecimalString"
         },
         "currency": {
-          "const": "USD"
+          "enum": ["USD", "KRW"],
+          "description": "USD for US listings, KRW for Korean (kr:) listings."
         },
         "executed_at_utc": {
           "oneOf": [
@@ -2960,13 +2965,17 @@
         "skipped": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["not_filled", "not_us", "unknown_instrument"],
+          "required": [
+            "not_filled",
+            "unsupported_currency",
+            "unknown_instrument"
+          ],
           "properties": {
             "not_filled": {
               "type": "integer",
               "minimum": 0
             },
-            "not_us": {
+            "unsupported_currency": {
               "type": "integer",
               "minimum": 0
             },
