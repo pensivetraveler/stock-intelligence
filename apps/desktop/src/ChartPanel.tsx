@@ -58,6 +58,8 @@ interface ChartPanelProps {
   magnet?: boolean;
   logScale?: boolean;
   fitRequest?: number;
+  /** Told whether this chart has finished loading (ready, closed or failed). */
+  onSettledChange?: (settled: boolean) => void;
   /** Replace this chart's indicators (settings, visibility, removal). */
   onIndicatorsChange?: (indicators: IndicatorInstance[]) => void;
 }
@@ -101,6 +103,7 @@ export function ChartPanel({
   magnet = false,
   logScale = false,
   fitRequest = 0,
+  onSettledChange,
   onIndicatorsChange,
 }: ChartPanelProps) {
   const { t, language } = useI18n();
@@ -153,6 +156,9 @@ export function ChartPanel({
     unavailable,
     instrumentsReady,
   ]);
+
+  const settled = load.status !== "loading";
+  useEffect(() => onSettledChange?.(settled), [onSettledChange, settled]);
 
   const series = useMemo(
     () => (load.status === "ready" ? toSeries(load.response.bars) : null),
