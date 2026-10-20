@@ -1,6 +1,6 @@
 # ADR 0017 — Toss data through one shared read-only session
 
-- **Status:** accepted. Stages 1–3 are implemented; stages 4–6 and full Korean-market support are planned.
+- **Status:** accepted. Stages 1–4 are implemented; stages 5–6 and full Korean-market support are planned.
 - **Date:** 2026-10-20
 
 ## Context
@@ -47,9 +47,21 @@ On 2026-10-20 the user decided:
 - **Venues stay Alpaca's:** Toss's US market labels are not listing exchanges. SPY, listed on NYSE Arca, appears under Toss "AMEX", and `US_ETC` holds OTC stocks. Toss therefore never decides the venue in an instrument ID.
 - **Screen:** a "Stock info" panel shows the reference data, warnings, the rate and today's US hours with any differences.
 
+## Stage 4 — research tables (implemented 2026-10-20)
+
+- `GET /v1/research/{dataset}` serves 14 read-only Toss datasets through one generic `research_table` contract:
+  - stock rankings and sector rankings;
+  - Korean index and bond-yield prices, indicator candles, and KOSPI/KOSDAQ investor flows;
+  - the sector list, sector detail, sector stocks and sector ETFs;
+  - Korean-stock investor, program, short-selling, credit and securities-lending trends.
+- **Why one contract:** these are tables for reading, not inputs to charts, indicators or backtests, so 14 bespoke contracts would add cost without adding safety.
+- **How values are kept:** each value stays the exact string Toss sent, with no float conversion. Times become UTC. Nested fields become dotted column names. Sector performance lists become one column per period.
+- **Request checks:** only each dataset's documented parameters are forwarded, and values must match `[A-Za-z0-9._,:+-]`. Anything else is refused before any request is sent. `next_cursor` carries Toss's `nextUntil`/`nextBefore` for older rows.
+- **Screen:** a Research panel offers each dataset with its documented options and a table view.
+- **Live check:** 10 of the 14 datasets were read live and validated. US rankings by trading amount gave 100 rows, Toss has exactly 300 sectors, and Samsung Electronics (005930) investor and short-selling trends came back with `nextUntil`. Indicator candles, program trades, credit trades and securities lending were tested only against documented examples.
+
 ## Planned stages
 
-4. Research: rankings, market indicators, sectors and Korean trading trends.
 5. Account (read-only): accounts, holdings, orders and conditional-order history, buying power, sellable quantity and commissions. Filled orders go into the broker-confirmed ledger with provenance.
 6. Realtime WebSocket: trade ticks (stored apart from minute bars), the order book, and personal order events.
 

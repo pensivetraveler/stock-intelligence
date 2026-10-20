@@ -335,6 +335,20 @@ export function semanticErrors(document: Document): string[] {
     }
   }
 
+  if (document.kind === "research_table") {
+    const columns = document.columns as string[];
+    if (new Set(columns).size !== columns.length) {
+      errors.push("research_table columns must be unique");
+    }
+    if (
+      (document.rows as unknown[][]).some(
+        (row) => row.length !== columns.length,
+      )
+    ) {
+      errors.push("every research_table row must have one cell per column");
+    }
+  }
+
   if (document.kind === "symbol_search_response") {
     const identifiers = (document.results as Document[]).map(
       (item) =>

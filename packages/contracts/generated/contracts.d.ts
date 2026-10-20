@@ -29,7 +29,8 @@ export type StockIntelligenceWorkstationContractsV01 =
   | MarketQuote
   | StockInfo
   | ExchangeRate
-  | BrokerMarketCalendar;
+  | BrokerMarketCalendar
+  | ResearchTable;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -707,4 +708,48 @@ export interface BrokerMarketCalendar {
           }[];
         },
       ];
+}
+/**
+ * A broker research table for reading (rankings, market indicators, sectors, Korean trading trends). Values are exact strings as the broker sent them, times are UTC, nested fields are dotted column names. Not an input to charts, indicators or backtests.
+ */
+export interface ResearchTable {
+  kind: "research_table";
+  schema_version: SchemaVersion;
+  source_id: Identifier;
+  dataset:
+    | "rankings"
+    | "market_indicator_prices"
+    | "market_indicator_candles"
+    | "market_indicator_investor_trading"
+    | "sectors"
+    | "sector_rankings"
+    | "sector"
+    | "sector_stocks"
+    | "sector_etfs"
+    | "stock_investor_trading"
+    | "stock_program_trades"
+    | "stock_short_selling"
+    | "stock_credit_trades"
+    | "stock_securities_lending";
+  /**
+   * The symbol or sector ID the table is about, if any.
+   */
+  key: null | string;
+  params: {
+    [k: string]: string;
+  };
+  observed_at_utc: UtcTimestamp;
+  as_of_utc: null | UtcTimestamp;
+  /**
+   * Value to pass as `until` or `before` for older rows.
+   */
+  next_cursor: null | string;
+  /**
+   * @maxItems 80
+   */
+  columns: string[];
+  /**
+   * @maxItems 2000
+   */
+  rows: (null | boolean | string)[][];
 }

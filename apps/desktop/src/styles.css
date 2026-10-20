@@ -1966,3 +1966,19 @@ body {
 .info-list dd {
   margin: 0;
 }
+
+.research-scroll {
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.research-table th {
+  position: sticky;
+  top: 0;
+  background: var(--term-surface);
+  white-space: nowrap;
+}
+
+.research-table td {
+  white-space: nowrap;
+}
