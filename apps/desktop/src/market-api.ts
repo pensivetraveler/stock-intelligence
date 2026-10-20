@@ -10,12 +10,14 @@ import type {
   ScenarioLedgerResponse,
   SessionListResponse,
   SessionWindow,
+  SymbolSearchResponse,
 } from "@siw/contracts/types";
 
 /** Whole minutes written "Nm" (see timeframes.ts); the API aggregates any of them. */
 export type Timeframe = string;
 export type InstrumentListing =
   MarketInstrumentsResponse["instruments"][number];
+export type SymbolSearchResult = SymbolSearchResponse["results"][number];
 
 /** A failed API call, carrying the API's error envelope when one was returned. */
 export class MarketApiError extends Error {
@@ -43,6 +45,8 @@ export interface SessionQuote {
 
 export interface MarketApi {
   instruments(): Promise<InstrumentListing[]>;
+  /** US-listed stocks whose ticker or company name matches `query`, tickers first. */
+  searchSymbols(query: string, limit?: number): Promise<SymbolSearchResponse>;
   quote(
     instrumentId: string,
     sessionDate: string,
@@ -281,6 +285,13 @@ export function createMarketApi(
         "market_instruments_response",
       );
       return response.instruments;
+    },
+    searchSymbols(query, limit = 20) {
+      const params = new URLSearchParams({ q: query, limit: String(limit) });
+      return get<SymbolSearchResponse>(
+        `/v1/market/symbols?${params.toString()}`,
+        "symbol_search_response",
+      );
     },
     session,
     bars,

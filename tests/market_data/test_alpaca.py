@@ -213,8 +213,10 @@ def test_queries_are_validated_before_any_request() -> None:
     recorder = Recorder()
     alpaca = provider(recorder)
 
-    with pytest.raises(InstrumentNotFoundError):
-        alpaca.get_bars(BarsQuery("us:zzzz:xnas:2026", "1m", NOW - timedelta(hours=1), NOW))
+    # Any listed US equity ID is accepted; OTC venues and malformed IDs are not.
+    for instrument_id in ("us:zzzz:otcm:2026", "zzzz", "us:zz zz:xnas:2026"):
+        with pytest.raises(InstrumentNotFoundError):
+            alpaca.get_bars(BarsQuery(instrument_id, "1m", NOW - timedelta(hours=1), NOW))
     with pytest.raises(InvalidBarsQueryError, match="1m"):
         alpaca.get_bars(BarsQuery(SPY, "5m", NOW - timedelta(hours=1), NOW))
     with pytest.raises(InvalidBarsQueryError, match="future"):

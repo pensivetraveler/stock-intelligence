@@ -11,6 +11,9 @@ interface WatchlistProps {
   sessionDate: string;
   activeInstrumentId: string;
   onPick: (instrumentId: string) => void;
+  /** Instruments the user added through search; only these can be removed. */
+  removable?: ReadonlySet<string>;
+  onRemove?: (instrumentId: string) => void;
   /** Buttons shown beside the title (pop out, dock). */
   actions?: ReactNode;
   /** Hide the title when the surrounding window already shows one. */
@@ -37,6 +40,8 @@ export function Watchlist({
   sessionDate,
   activeInstrumentId,
   onPick,
+  removable,
+  onRemove,
   actions,
   hideTitle = false,
 }: WatchlistProps) {
@@ -80,6 +85,21 @@ export function Watchlist({
                   >
                     {item.instrument.symbol}
                   </button>
+                  {onRemove && removable?.has(id) ? (
+                    <button
+                      type="button"
+                      className="watch-remove"
+                      aria-label={t("watch.remove", {
+                        symbol: item.instrument.symbol,
+                      })}
+                      title={t("watch.remove", {
+                        symbol: item.instrument.symbol,
+                      })}
+                      onClick={() => onRemove(id)}
+                    >
+                      ×
+                    </button>
+                  ) : null}
                 </td>
                 <td>
                   {row.status === "loading"

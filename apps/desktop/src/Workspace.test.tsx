@@ -94,6 +94,38 @@ function fakeApi(
         fixture<MarketInstrumentsResponse>("market-instruments-response.json")
           .instruments,
       ),
+    searchSymbols: (query) =>
+      Promise.resolve({
+        kind: "symbol_search_response",
+        schema_version: "0.1",
+        query,
+        source_id: "alpaca-sip",
+        fetched_at_utc: "2026-10-20T01:00:00Z",
+        stale: false,
+        results: "NVIDIA".startsWith(query.toUpperCase())
+          ? [
+              {
+                name: "NVIDIA Corporation Common Stock",
+                listing: {
+                  instrument: {
+                    kind: "instrument_ref",
+                    schema_version: "0.1",
+                    instrument_id: "us:nvda:xnas:2026",
+                    symbol: "NVDA",
+                    venue: "XNAS",
+                    asset_class: "us_equity",
+                    currency: "USD",
+                    identity_as_of: "2026-01-01T00:00:00Z",
+                    identity_source: "alpaca-sip-assets",
+                  },
+                  source_id: "alpaca-sip",
+                  dataset_revision: "alpaca-sip-assets-2026-10-20",
+                  session_dates: [],
+                },
+              },
+            ]
+          : [],
+      }),
     quote: (instrumentId, sessionDate) =>
       Promise.resolve(
         instrumentId === "us:aapl:xnas:2026"
@@ -624,6 +656,50 @@ describe("chart workspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Next day" }));
     expect(savedLayout(storage).charts[0].sessionDate).toBe("2026-10-10");
+  });
+
+  it("finds any US stock by ticker or name, charts it and keeps it", async () => {
+    const api = fakeApi();
+    const storage = memoryStorage();
+    const { unmount } = render(<Workspace api={api} storage={storage} />);
+    await screen.findByTestId("chart-chart-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Instrument" }));
+    const popover = screen.getByRole("dialog", { name: "Search symbol" });
+    fireEvent.change(
+      within(popover).getByRole("textbox", { name: "Search symbol" }),
+      { target: { value: "nvid" } },
+    );
+    expect(within(popover).getByText("Searching all US stocks…")).toBeVisible();
+    fireEvent.click(
+      await within(popover).findByRole("button", {
+        name: /NVDA.*NVIDIA Corporation Common Stock · XNAS/,
+      }),
+    );
+
+    await screen.findByRole("region", { name: /Chart 1: NVDA/ });
+    await waitFor(() =>
+      expect(
+        api.barsCalls.some((call) => call.instrumentId === "us:nvda:xnas:2026"),
+      ).toBe(true),
+    );
+    // Added to the watchlist, removable there, and remembered on this device.
+    expect(
+      screen.getByRole("button", { name: "Remove NVDA from the watchlist" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Remove AAPL from the watchlist" }),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    render(<Workspace api={fakeApi()} storage={storage} />);
+    await screen.findByRole("region", { name: /Chart 1: NVDA/ });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove NVDA from the watchlist" }),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Show NVDA in the active chart" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the latest bar in the legend", async () => {

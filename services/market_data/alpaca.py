@@ -48,6 +48,20 @@ MAX_QUERY_MINUTES = 1_440
 # Daily pages: 40 years of sessions even at a 1,000-bar page size.
 DAILY_PAGES = 12
 SYMBOL_PATTERN = re.compile(r"^[A-Z][A-Z0-9.]{0,9}$")
+# Alpaca asset exchanges and their MICs. OTC and crypto assets are left out: the exchange
+# calendar used here covers US equity venues only.
+ASSET_EXCHANGE_MICS = {
+    "NASDAQ": "XNAS",
+    "NYSE": "XNYS",
+    "ARCA": "ARCX",
+    "AMEX": "XASE",
+    "BATS": "BATS",
+}
+# The asset list lives on the trading API. Live and paper keys work on different hosts, so
+# both are tried; only GET /v2/assets is ever called there (never orders or accounts).
+TRADING_URLS = ("https://api.alpaca.markets", "https://paper-api.alpaca.markets")
+ASSETS_PATH = "/v2/assets"
+LISTED_INSTRUMENT = re.compile(r"^us:([a-z][a-z0-9.]{0,9}):(xnas|xnys|arcx|xase|bats):2026$")
 VENUE_PATTERN = re.compile(r"^[A-Z]{4}$")
 PAGE_LIMIT = 10_000
 
@@ -186,6 +200,50 @@ class AlpacaMarketDataProvider:
             "observed_at_utc": _utc_text(self._now()),
         }
 
+    def symbol_for(self, instrument_id: str) -> str | None:
+        """Alpaca symbol of a configured instrument or of any listed US equity ID."""
+        configured = self._symbols.get(instrument_id)
+        if configured is not None:
+            return configured
+        match = LISTED_INSTRUMENT.fullmatch(instrument_id)
+        return match.group(1).upper() if match else None
+
+    def list_assets(self) -> list[dict[str, str]]:
+        """Active US-listed stocks and ETFs: symbol, company name and venue MIC."""
+        response: httpx.Response | None = None
+        for base in TRADING_URLS:
+            try:
+                response = self._client.get(
+                    f"{base}{ASSETS_PATH}",
+                    params={"status": "active", "asset_class": "us_equity"},
+                    timeout=httpx.Timeout(30.0, connect=5.0),
+                )
+            except httpx.HTTPError as exc:
+                raise ProviderUnavailableError(
+                    f"could not reach Alpaca: {type(exc).__name__}"
+                ) from exc
+            if response.status_code not in (401, 403):
+                break  # a live key is refused by the paper host and the other way round
+        assert response is not None
+        self._raise_for_status(response)
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ProviderDataError("Alpaca returned an asset list that is not JSON") from exc
+        if not isinstance(payload, list):
+            raise ProviderDataError("Alpaca returned an asset list that is not a list")
+        assets: list[dict[str, str]] = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            symbol = str(item.get("symbol", "")).upper()
+            venue = ASSET_EXCHANGE_MICS.get(str(item.get("exchange", "")))
+            if venue is None or not SYMBOL_PATTERN.fullmatch(symbol):
+                continue
+            name = " ".join(str(item.get("name") or "").split())[:200]
+            assets.append({"symbol": symbol, "name": name, "venue": venue})
+        return assets
+
     def instruments(self) -> list[dict[str, Any]]:
         return [
             {
@@ -209,9 +267,9 @@ class AlpacaMarketDataProvider:
 
     def get_bars(self, query: BarsQuery) -> BarsResult:
         self._validate(query)
-        symbol = self._symbols.get(query.instrument_id)
+        symbol = self.symbol_for(query.instrument_id)
         if symbol is None:
-            raise InstrumentNotFoundError("instrument is not in SIW_ALPACA_SYMBOLS")
+            raise InstrumentNotFoundError("instrument is not a listed US equity ID")
         now = self._now()
         try:
             expected = [
@@ -297,9 +355,9 @@ class AlpacaMarketDataProvider:
         """Daily bars (Alpaca "1Day", unadjusted) for sessions opening in the range."""
         now = self._now()
         validate_daily_query(query, "1d", now)
-        symbol = self._symbols.get(query.instrument_id)
+        symbol = self.symbol_for(query.instrument_id)
         if symbol is None:
-            raise InstrumentNotFoundError("instrument is not in SIW_ALPACA_SYMBOLS")
+            raise InstrumentNotFoundError("instrument is not a listed US equity ID")
         try:
             sessions = sessions_in_range(self._calendar, query.start_utc, query.end_utc)
         except CalendarError as exc:

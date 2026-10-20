@@ -335,6 +335,16 @@ export function semanticErrors(document: Document): string[] {
     }
   }
 
+  if (document.kind === "symbol_search_response") {
+    const identifiers = (document.results as Document[]).map(
+      (item) =>
+        ((item.listing as Document).instrument as Document).instrument_id,
+    );
+    if (new Set(identifiers).size !== identifiers.length) {
+      errors.push("instrument_id must be unique within the response");
+    }
+  }
+
   if (document.kind === "backtest_run_config") {
     const start = Date.parse(asString(document, "start_utc"));
     const end = Date.parse(asString(document, "end_utc"));
