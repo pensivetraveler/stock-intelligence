@@ -67,6 +67,7 @@ const fixture = <T,>(name: string): T =>
 function fakeApi(
   options: { journalOff?: boolean; history?: boolean } = {},
 ): MarketApi & {
+  sessionCalendars: string[];
   realtime: {
     symbols: string[][];
     push: (event: RealtimeEvent) => void;
@@ -96,6 +97,7 @@ function fakeApi(
   const manual: ManualExecution[] = [];
   const imported: ImportedExecution[] = [];
   const broker: BrokerOrderExecution[] = [];
+  const sessionCalendars: string[] = [];
   const realtime = {
     symbols: [] as string[][],
     // Replaced when the workspace opens the relay.
@@ -246,30 +248,54 @@ function fakeApi(
         source_id: "alpaca-sip",
         fetched_at_utc: "2026-10-20T01:00:00Z",
         stale: false,
-        results: "NVIDIA".startsWith(query.toUpperCase())
-          ? [
-              {
-                name: "NVIDIA Corporation Common Stock",
-                local_name: "엔비디아",
-                listing: {
-                  instrument: {
-                    kind: "instrument_ref",
-                    schema_version: "0.1",
-                    instrument_id: "us:nvda:xnas:2026",
-                    symbol: "NVDA",
-                    venue: "XNAS",
-                    asset_class: "us_equity",
-                    currency: "USD",
-                    identity_as_of: "2026-01-01T00:00:00Z",
-                    identity_source: "alpaca-sip-assets",
+        results:
+          query === "삼성"
+            ? [
+                {
+                  name: "삼성전자",
+                  local_name: null,
+                  listing: {
+                    instrument: {
+                      kind: "instrument_ref",
+                      schema_version: "0.1",
+                      instrument_id: "kr:005930:xkrx:2026",
+                      symbol: "005930",
+                      venue: "XKRX",
+                      asset_class: "kr_equity",
+                      currency: "KRW",
+                      identity_as_of: "2026-01-01T00:00:00Z",
+                      identity_source: "toss-kr-assets",
+                    },
+                    source_id: "toss-kr",
+                    dataset_revision: "toss-kr-assets-2026-10-20",
+                    session_dates: [],
                   },
-                  source_id: "alpaca-sip",
-                  dataset_revision: "alpaca-sip-assets-2026-10-20",
-                  session_dates: [],
                 },
-              },
-            ]
-          : [],
+              ]
+            : "NVIDIA".startsWith(query.toUpperCase())
+              ? [
+                  {
+                    name: "NVIDIA Corporation Common Stock",
+                    local_name: "엔비디아",
+                    listing: {
+                      instrument: {
+                        kind: "instrument_ref",
+                        schema_version: "0.1",
+                        instrument_id: "us:nvda:xnas:2026",
+                        symbol: "NVDA",
+                        venue: "XNAS",
+                        asset_class: "us_equity",
+                        currency: "USD",
+                        identity_as_of: "2026-01-01T00:00:00Z",
+                        identity_source: "alpaca-sip-assets",
+                      },
+                      source_id: "alpaca-sip",
+                      dataset_revision: "alpaca-sip-assets-2026-10-20",
+                      session_dates: [],
+                    },
+                  },
+                ]
+              : [],
       }),
     quote: (instrumentId, sessionDate) =>
       Promise.resolve(
@@ -295,12 +321,15 @@ function fakeApi(
           : [],
       );
     },
-    session: (sessionDate) =>
-      Promise.resolve(
+    sessionCalendars,
+    session: (sessionDate, calendarId) => {
+      sessionCalendars.push(calendarId ?? "XNAS");
+      return Promise.resolve(
         sessionDate === "2026-11-26"
           ? fixture<SessionWindow>("session-window-holiday.json")
           : session,
-      ),
+      );
+    },
     bars: (request) => {
       barsCalls.push(request);
       const response = fixture<MarketBarsResponse>(
@@ -1093,6 +1122,29 @@ describe("chart workspace", () => {
     expect(
       await screen.findByText(/Order update: AAPL BUY FILLED/),
     ).toBeVisible();
+  });
+
+  it("shows a Korean stock in Korean time on the KRX calendar", async () => {
+    const api = fakeApi();
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    expect(screen.getByText(/ ET$/)).toBeInTheDocument(); // US clock first
+
+    fireEvent.click(screen.getByRole("button", { name: "Instrument" }));
+    const popover = screen.getByRole("dialog", { name: "Search symbol" });
+    fireEvent.change(
+      within(popover).getByRole("textbox", { name: "Search symbol" }),
+      { target: { value: "삼성" } },
+    );
+    fireEvent.click(
+      await within(popover).findByRole("button", { name: /005930.*삼성전자/ }),
+    );
+    await screen.findByRole("region", { name: /Chart 1: 005930/ });
+    await waitFor(() => expect(api.sessionCalendars.at(-1)).toBe("XKRX"));
+    expect(screen.getByText(/ KST$/)).toBeInTheDocument();
+    expect(
+      api.barsCalls.some((call) => call.instrumentId === "kr:005930:xkrx:2026"),
+    ).toBe(true);
   });
 
   it("shows the latest bar in the legend", async () => {

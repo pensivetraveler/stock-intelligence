@@ -4,20 +4,20 @@ import { useEffect, useState } from "react";
 import { useI18n } from "./i18n";
 import { MarketApiError, type MarketApi } from "./market-api";
 import type { LiveSymbol } from "./realtime";
+import { zoneFormat, zoneOf, type MarketZone } from "./market-zone";
 
-const SECOND_TIME = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
+const SECOND_TIME: Intl.DateTimeFormatOptions = {
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit",
   hourCycle: "h23",
-});
+};
 
 /** Refresh period while the panel is open (Toss MARKET_DATA allows 15 requests/s). */
 export const QUOTE_REFRESH_MS = 5_000;
 
-function at(utc: string): string {
-  return `${SECOND_TIME.format(new Date(utc))} ET`;
+function atIn(zone: MarketZone, utc: string): string {
+  return `${zoneFormat(zone, "en-US", SECOND_TIME).format(new Date(utc))} ${zone.label}`;
 }
 
 interface QuotePanelProps {
@@ -45,6 +45,8 @@ export function QuotePanel({
   liveConnected = false,
 }: QuotePanelProps) {
   const { t } = useI18n();
+  const zone = zoneOf(instrumentId);
+  const at = (utc: string) => atIn(zone, utc);
   const [quote, setQuote] = useState<MarketQuote | null>(null);
   const [error, setError] = useState<unknown>(null);
 

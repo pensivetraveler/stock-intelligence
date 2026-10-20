@@ -7,17 +7,13 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useI18n, type MessageKey } from "./i18n";
 import { MarketApiError, type MarketApi } from "./market-api";
+import { zoneFormat, zoneOf } from "./market-zone";
 
-const ET_TIME = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
+const HOUR_MINUTE: Intl.DateTimeFormatOptions = {
   hour: "2-digit",
   minute: "2-digit",
   hourCycle: "h23",
-});
-
-function et(utc: string): string {
-  return ET_TIME.format(new Date(utc));
-}
+};
 
 interface StockInfoPanelProps {
   api: MarketApi;
@@ -38,6 +34,9 @@ export function StockInfoPanel({
   symbol,
 }: StockInfoPanelProps) {
   const { t } = useI18n();
+  const zone = zoneOf(instrumentId);
+  const et = (utc: string) =>
+    zoneFormat(zone, "en-US", HOUR_MINUTE).format(new Date(utc));
   const [info, setInfo] = useState<Loaded<StockInfo>>({
     value: null,
     error: null,
@@ -62,7 +61,9 @@ export function StockInfoPanel({
     setInfo({ value: null, error: null });
     track<StockInfo>(setInfo)(api.stockInfo(instrumentId));
     track<ExchangeRate>(setRate)(api.exchangeRate());
-    track<BrokerMarketCalendar>(setHours)(api.brokerCalendar("US"));
+    track<BrokerMarketCalendar>(setHours)(
+      api.brokerCalendar(zoneOf(instrumentId).market),
+    );
     return () => {
       current = false;
     };
@@ -151,14 +152,18 @@ export function StockInfoPanel({
       ) : null}
       {today ? (
         <>
-          <h3>{t("info.hours", { date: today.date })}</h3>
+          <h3>
+            {t(zone.market === "KR" ? "info.hoursKr" : "info.hours", {
+              date: today.date,
+            })}
+          </h3>
           <table className="quote-trades">
             <tbody>
               {today.sessions.map((session) => (
                 <tr key={session.name}>
                   <td>{t(`info.session.${session.name}` as MessageKey)}</td>
                   <td>
-                    {et(session.start_utc)} – {et(session.end_utc)} ET
+                    {et(session.start_utc)} – {et(session.end_utc)} {zone.label}
                   </td>
                   <td>
                     {session.agrees === false && session.local_start_utc

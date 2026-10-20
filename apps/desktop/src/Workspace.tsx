@@ -75,6 +75,7 @@ import {
   saveAddedInstruments,
 } from "./added-instruments";
 import { ImportPanel } from "./ImportPanel";
+import { zoneFormat, zoneOf, type MarketZone } from "./market-zone";
 import { QuotePanel } from "./QuotePanel";
 import { applyLive, type LiveSymbol, type RealtimeSocket } from "./realtime";
 import { AccountPanel } from "./AccountPanel";
@@ -162,17 +163,19 @@ function loadWatchlistWindow(storage: Storage | null | undefined): {
 }
 const NO_TOOLS: ChartTools = { magnet: false, logScale: false, fitRequest: 0 };
 
-const REPLAY_CLOCK = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
+const REPLAY_CLOCK: Intl.DateTimeFormatOptions = {
   month: "2-digit",
   day: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
   hourCycle: "h23",
-});
+};
 
-function replayTimeText(time: number): string {
-  return `${REPLAY_CLOCK.format(new Date(time * 1000))} ET`;
+function replayTimeText(time: number, zone: MarketZone): string {
+  const text = zoneFormat(zone, "en-US", REPLAY_CLOCK).format(
+    new Date(time * 1000),
+  );
+  return `${text} ${zone.label}`;
 }
 
 function shiftDate(date: string, days: number): string {
@@ -181,22 +184,26 @@ function shiftDate(date: string, days: number): string {
   return value.toISOString().slice(0, 10);
 }
 
-const CLOCK = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
+const CLOCK: Intl.DateTimeFormatOptions = {
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit",
   hourCycle: "h23",
-});
+};
 
 /** Current exchange time, like the clock in a terminal's bottom bar. */
-function ExchangeClock() {
+/** Current time at the active chart's exchange (ET or KST). */
+function ExchangeClock({ zone }: { zone: MarketZone }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1_000);
     return () => window.clearInterval(timer);
   }, []);
-  return <span className="exchange-clock">{CLOCK.format(now)} ET</span>;
+  return (
+    <span className="exchange-clock">
+      {zoneFormat(zone, "en-US", CLOCK).format(now)} {zone.label}
+    </span>
+  );
 }
 
 const UNDO_LIMIT = 20;
@@ -1218,7 +1225,7 @@ export function Workspace({
             ))}
           </div>
           <span className="tb-spacer" />
-          <ExchangeClock />
+          <ExchangeClock zone={zoneOf(activeConfig.instrumentId)} />
         </footer>
         {replayOn ? (
           <div
@@ -1232,7 +1239,12 @@ export function Workspace({
             ) : (
               <>
                 <span className="replay-time" aria-live="off">
-                  {replay.time === null ? "" : replayTimeText(replay.time)}
+                  {replay.time === null
+                    ? ""
+                    : replayTimeText(
+                        replay.time,
+                        zoneOf(activeConfig.instrumentId),
+                      )}
                 </span>
                 <button
                   type="button"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import threading
@@ -29,8 +30,8 @@ from services.journal.ledger import manual_positions
 from services.journal.store import JournalStore
 from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
-from services.market_data.broker_common import listed_symbol
 from services.market_data.calendar import CalendarError, UsEquityCalendar
+from services.market_data.instruments import market_of, parse_instrument
 from services.market_data.market_router import MarketRouter
 from services.market_data.provider import (
     BarsQuery,
@@ -54,6 +55,7 @@ from services.market_data.symbol_directory import (
     SymbolDirectory,
     SymbolDirectoryUnavailableError,
     SymbolEntry,
+    search_all,
 )
 from services.market_data.tick_store import TickStore
 from services.market_data.toss import TossConfig, TossMarketDataProvider
@@ -64,6 +66,7 @@ from services.market_data.toss_account import (
 )
 from services.market_data.toss_info import (
     exchange_rate,
+    korean_listings,
     korean_names,
     market_calendar,
     stock_info,
@@ -80,6 +83,7 @@ from services.market_data.toss_session import (
 )
 from services.market_data.toss_stream import Connect, RealtimeHub, default_connect
 
+LOG = logging.getLogger("siw.api")
 APP_NAME = "stock-intelligence-workstation-api"
 REALTIME_SYMBOL = re.compile(r"^[A-Z][A-Z0-9.]{0,9}$")
 MAX_REALTIME_SYMBOLS = 45
@@ -191,10 +195,13 @@ class _LazySymbols:
         directory: SymbolDirectory | None,
         provider: _LazyProvider,
         toss: Callable[[], TossSession | None],
+        korean: SymbolDirectory | None = None,
     ) -> None:
         self._directory = directory
         self._provider = provider
         self._toss = toss
+        self._injected_korean = korean
+        self._korean_directory: SymbolDirectory | None = None
         self._lock = threading.Lock()
 
     def _korean_names(self) -> dict[str, str]:
@@ -215,6 +222,26 @@ class _LazySymbols:
                         local_names=self._korean_names,
                     )
             return self._directory
+
+    def korean(self) -> SymbolDirectory | None:
+        """Korean listings (KOSPI, KOSDAQ) from Toss, when a Toss key is registered."""
+        with self._lock:
+            if self._korean_directory is None and self._injected_korean is None:
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                if configured and self._toss() is not None:
+                    self._korean_directory = SymbolDirectory(
+                        Path(configured), "toss-kr", self._korean_listings
+                    )
+            return self._injected_korean or self._korean_directory
+
+    def _korean_listings(self) -> list[dict[str, str]]:
+        session = self._toss()
+        if session is None:
+            raise SymbolDirectoryUnavailableError("no enabled real-account Toss key")
+        return korean_listings(session)
+
+    def searchable(self) -> list[SymbolDirectory]:
+        return [item for item in (self.get(), self.korean()) if item is not None]
 
     def known(self) -> dict[str, SymbolEntry]:
         directory = self.get()
@@ -308,6 +335,7 @@ def create_app(
     toss_session: Callable[[], TossSession | None] | None = None,
     tick_store: TickStore | None = None,
     korean_provider: MarketDataProvider | None = None,
+    korean_directory: SymbolDirectory | None = None,
     realtime_connect: Connect | None = None,
     clock: Callable[[], datetime] = _utc_now,
 ) -> FastAPI:
@@ -315,7 +343,7 @@ def create_app(
     korean = _LazyKoreanProvider(korean_provider, credentials.get)
     provider = _LazyProvider(market_data_provider, credentials.get, korean.get)
     toss = toss_session or (lambda: _toss_session(credentials.get()))
-    symbols = _LazySymbols(symbol_directory, provider, toss)
+    symbols = _LazySymbols(symbol_directory, provider, toss, korean_directory)
     ticks_holder: list[TickStore | None] = [tick_store]
 
     def ticks() -> TickStore | None:
@@ -436,9 +464,9 @@ def create_app(
         q: Annotated[str, Query(max_length=MAX_QUERY_LENGTH)] = "",
         limit: Annotated[int, Query(ge=1, le=MAX_RESULTS)] = 20,
     ) -> Response:
-        """US-listed stocks whose ticker or company name matches `q`, tickers first."""
-        directory = symbols.get()
-        if directory is None:
+        """US and Korean listings whose ticker, code or company name matches `q`."""
+        directories = symbols.searchable()
+        if not directories:
             return _error_response(
                 request,
                 404,
@@ -446,23 +474,23 @@ def create_app(
                 "the current data provider offers no symbol list, or SIW_DATA_DIR is not set",
             )
         try:
-            found = directory.search(q, limit)
+            found, fetched_at, stale = search_all(directories, q, limit)
         except SymbolDirectoryUnavailableError as exc:
             return _error_response(request, 503, "symbol_directory_unavailable", str(exc))
         document = {
             "kind": "symbol_search_response",
             "schema_version": "0.1",
             "query": q,
-            "source_id": directory.source_id,
-            "fetched_at_utc": found.fetched_at_utc,
-            "stale": found.stale,
+            "source_id": directories[0].source_id,
+            "fetched_at_utc": fetched_at,
+            "stale": stale,
             "results": [
                 {
                     "listing": directory.listing(entry),
                     "name": entry.name,
                     "local_name": entry.local_name,
                 }
-                for entry in found.entries
+                for directory, entry in found
             ],
         }
         validate_document(document)
@@ -496,7 +524,10 @@ def create_app(
         return JSONResponse(content=document, headers={"Cache-Control": "no-store"})
 
     def symbol_of(instrument_id: str) -> str | None:
-        return listed_symbol(instrument_id) or next(
+        parsed = parse_instrument(instrument_id)
+        if parsed is not None:
+            return parsed.symbol
+        return next(
             (
                 item["instrument"]["symbol"]
                 for item in provider.get().instruments()
@@ -514,9 +545,13 @@ def create_app(
         symbol = symbol_of(instrument_id)
         if symbol is None:
             return _error_response(
-                request, 404, "instrument_not_found", "instrument is not a listed US equity ID"
+                request, 404, "instrument_not_found", "instrument is not a listed equity ID"
             )
-        return toss_read(request, lambda session: stock_info(session, instrument_id, symbol, clock))
+        source = "toss-kr" if market_of(instrument_id) == "KR" else "toss-us"
+        return toss_read(
+            request,
+            lambda session: stock_info(session, instrument_id, symbol, clock, source),
+        )
 
     @application.get("/v1/market/exchange-rate", response_model=None)
     def exchange_rate_endpoint(
@@ -548,6 +583,7 @@ def create_app(
         """
         origin = websocket.headers.get("origin")
         if origin is not None and origin not in _cors_origins():
+            LOG.warning("refused a realtime connection from origin %r", origin[:200])
             await websocket.close(code=1008)
             return
         await websocket.accept()
@@ -694,17 +730,10 @@ def create_app(
         instrument_id: Annotated[str, Query(min_length=1, max_length=200)],
     ) -> Response:
         """Last price, order book, recent trades and price limits, read live from Toss."""
-        symbol = listed_symbol(instrument_id) or next(
-            (
-                item["instrument"]["symbol"]
-                for item in provider.get().instruments()
-                if item["instrument"]["instrument_id"] == instrument_id
-            ),
-            None,
-        )
+        symbol = symbol_of(instrument_id)
         if symbol is None:
             return _error_response(
-                request, 404, "instrument_not_found", "instrument is not a listed US equity ID"
+                request, 404, "instrument_not_found", "instrument is not a listed equity ID"
             )
         try:
             session = toss()
@@ -718,7 +747,8 @@ def create_app(
                 "register an enabled real-account Toss key on the Keys screen for live quotes",
             )
         try:
-            document = market_quote(session, instrument_id, symbol, clock)
+            source = "toss-kr" if market_of(instrument_id) == "KR" else "toss-us"
+            document = market_quote(session, instrument_id, symbol, clock, source)
         except InvalidBarsQueryError as exc:
             return _error_response(request, 422, "invalid_market_data_query", str(exc))
         except ProviderAuthError as exc:

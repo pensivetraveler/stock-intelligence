@@ -197,12 +197,25 @@ function shift(values: Series, by: number): Series {
   });
 }
 
-const etDate = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/New_York",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
+/** What some formulas need besides bars: VWAP restarts each exchange-local day. */
+export interface IndicatorContext {
+  timeZone: string;
+}
+
+const dayFormats = new Map<string, Intl.DateTimeFormat>();
+function exchangeDate(time: number, timeZone: string): string {
+  let format = dayFormats.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    dayFormats.set(timeZone, format);
+  }
+  return format.format(new Date(time * 1000));
+}
 
 // ---------------------------------------------------------------------------------
 // Catalog
@@ -242,6 +255,7 @@ export interface IndicatorDefinition {
   compute: (
     bars: OhlcvBar[],
     p: Record<string, number>,
+    context?: IndicatorContext,
   ) => Record<string, Series>;
 }
 
@@ -351,13 +365,14 @@ export const INDICATORS: IndicatorDefinition[] = [
     pane: "price",
     inputs: [],
     outputs: [{ key: "value", label: "VWAP", color: "#e6c547" }],
-    compute: (bars) => {
+    compute: (bars, _p, context) => {
+      const timeZone = context?.timeZone ?? "America/New_York";
       let day = "";
       let priceVolume = 0;
       let volume = 0;
       return {
         value: bars.map((bar) => {
-          const today = etDate.format(new Date(bar.time * 1000));
+          const today = exchangeDate(bar.time, timeZone);
           if (today !== day) {
             day = today;
             priceVolume = 0;
@@ -1263,11 +1278,12 @@ export function renderIndicators(
   bars: OhlcvBar[],
   instances: IndicatorInstance[],
   displayFrom = 0,
+  context?: IndicatorContext,
 ): RenderedIndicator[] {
   return instances.flatMap((instance) => {
     const definition = INDICATOR_BY_ID.get(instance.type);
     if (!definition) return [];
-    const values = definition.compute(bars, instance.params);
+    const values = definition.compute(bars, instance.params, context);
     const lines = definition.outputs.map((output) => {
       const kind = output.kind ?? "line";
       const signed = kind === "histogram" && output.key !== "volume";

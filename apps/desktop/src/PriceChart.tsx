@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { CandlePoint, VolumePoint } from "./chart-data";
 import { COLORS, exchangeTime } from "./chart-data";
+import { zoneFormat, zoneOf } from "./market-zone";
 import type { ChartSyncGroup } from "./chart-sync";
 import { DrawingLayer, type Projection } from "./DrawingLayer";
 import { snapPrice, type Drawing, type DrawingTool } from "./drawings";
@@ -58,17 +59,12 @@ interface PriceChartProps {
   drawingsSelectable?: boolean;
 }
 
-const DAY_TICK = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  month: "short",
-  day: "numeric",
-});
-const DAY_LABEL = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/New_York",
+const DAY_TICK: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+const DAY_LABEL: Intl.DateTimeFormatOptions = {
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
-});
+};
 
 /** Bars in view when a chart first loads; the rest of the history is scrollable. */
 const INITIAL_VISIBLE_BARS = 150;
@@ -143,16 +139,24 @@ export function PriceChart({
         borderColor: "#232a36",
         timeVisible: true,
         secondsVisible: false,
+        // Times are shown in the instrument's exchange zone (ET or KST).
         tickMarkFormatter: (time: Time) =>
           dailyRef.current
-            ? DAY_TICK.format(new Date(timeOf(time) * 1000))
-            : exchangeTime(timeOf(time)).replace(" ET", ""),
+            ? zoneFormat(zoneRef.current, "en-US", DAY_TICK).format(
+                new Date(timeOf(time) * 1000),
+              )
+            : exchangeTime(timeOf(time), zoneRef.current).replace(
+                ` ${zoneRef.current.label}`,
+                "",
+              ),
       },
       localization: {
         timeFormatter: (time: Time) =>
           dailyRef.current
-            ? DAY_LABEL.format(new Date(timeOf(time) * 1000))
-            : exchangeTime(timeOf(time)),
+            ? zoneFormat(zoneRef.current, "en-CA", DAY_LABEL).format(
+                new Date(timeOf(time) * 1000),
+              )
+            : exchangeTime(timeOf(time), zoneRef.current),
       },
     });
     const candlesApi = instance.addSeries(CandlestickSeries, {
@@ -242,6 +246,20 @@ export function PriceChart({
 
   const dailyRef = useRef(daily);
   dailyRef.current = daily;
+  const zone = zoneOf(instrumentId);
+  const zoneRef = useRef(zone);
+  zoneRef.current = zone;
+
+  useEffect(() => {
+    // Whole won for Korean stocks, cents for US ones.
+    candleSeries.current?.applyOptions({
+      priceFormat: {
+        type: "price",
+        precision: zone.priceDecimals,
+        minMove: 10 ** -zone.priceDecimals,
+      },
+    });
+  }, [zone]);
   const shownCount = useRef(0);
   const shownFirst = useRef<number | null>(null);
 

@@ -16,6 +16,7 @@ from typing import Any
 
 from packages.contracts.validator import validate_document
 from services.market_data.calendar import CalendarError, UsEquityCalendar
+from services.market_data.instruments import KR_CODE
 from services.market_data.provider import InvalidBarsQueryError, ProviderDataError
 from services.market_data.toss_session import TossSession
 
@@ -74,7 +75,11 @@ def _validated(document: dict[str, Any]) -> dict[str, Any]:
 
 
 def stock_info(
-    session: TossSession, instrument_id: str, symbol: str, now: Callable[[], datetime]
+    session: TossSession,
+    instrument_id: str,
+    symbol: str,
+    now: Callable[[], datetime],
+    source_id: str = SOURCE_ID,
 ) -> dict[str, Any]:
     """Toss's reference data for one stock plus its active buying warnings."""
     items = session.get("/api/v1/stocks", params={"symbols": symbol})
@@ -95,7 +100,7 @@ def stock_info(
             "schema_version": "0.1",
             "instrument_id": instrument_id,
             "symbol": symbol,
-            "source_id": SOURCE_ID,
+            "source_id": source_id,
             "observed_at_utc": _now_text(now),
             "name": _text(item.get("name")),
             "english_name": _text(item.get("englishName")),
@@ -256,3 +261,21 @@ def korean_names(session: TossSession) -> dict[str, str]:
             if symbol and name and name.upper() != symbol:
                 names[symbol] = name[:200]
     return names
+
+
+KOREAN_MARKETS = (("KOSPI", "XKRX"), ("KOSDAQ", "XKOS"))
+
+
+def korean_listings(session: TossSession) -> list[dict[str, str]]:
+    """Every active KOSPI and KOSDAQ listing Toss trades, with its Korean name."""
+    listings: list[dict[str, str]] = []
+    for market, venue in KOREAN_MARKETS:
+        items = session.get("/api/v1/stocks/all", params={"market": market})
+        for item in items if isinstance(items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            code = str(item.get("symbol", "")).upper()
+            name = " ".join(str(item.get("name") or "").split())[:200]
+            if KR_CODE.fullmatch(code) and name:
+                listings.append({"symbol": code, "name": name, "venue": venue})
+    return listings

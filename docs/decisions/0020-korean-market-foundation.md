@@ -1,6 +1,6 @@
-# ADR 0020 — Korean listings: calendar, instrument IDs, KRW and market routing (stage K1)
+# ADR 0020 — Korean listings: calendar, instrument IDs, KRW and market routing (stages K1–K2)
 
-- **Status:** accepted (implemented; checked live with Toss for Samsung Electronics 005930)
+- **Status:** accepted. K1 and K2 are implemented and were checked live with Toss for Samsung Electronics 005930. K3 is planned.
 - **Date:** 2026-10-20
 
 ## Context
@@ -52,6 +52,21 @@ Toss is the only Korean source. Findings from the live check on 2026-10-20:
   - The regular-session close at 15:30 was 211,000, which shows why the label matters.
   - The daily volume was 27,184,733, about 2.6% above the sum of minute bars (26,482,933).
 - **Weekly bars:** 8, `all_day`.
+
+## Stage K2 — screen (implemented 2026-10-20)
+
+- **Korean symbol directory** (`toss-kr`): built from Toss's KOSPI (XKRX) and KOSDAQ (XKOS) lists, about 4,300 listings with Korean names. It is kept for a day like the US directory.
+- **Search:** `GET /v1/market/symbols` searches the US and Korean directories together and ranks them as one list.
+  - Matches on ticker, KRX code, English name or Korean name; "삼성전자" puts 005930 first.
+  - Korean results are `kr_equity` listings in KRW.
+- **Quotes and stock info** work for Korean codes and are labeled `toss-kr`.
+- **Per-market display:** the screen decides how to show each instrument from its ID (`market-zone.ts`).
+  - Time zone and label: ET or KST.
+  - Exchange calendar for session lookups: XNAS or XKRX.
+  - Price precision: cents or whole won.
+  - This applies to the chart's time axis and crosshair, the price scale, VWAP's daily reset, the gap list, the clock, the replay time, the Live quote and Stock info panels (with Korean market hours), and the trade-entry candle label.
+- **Not yet live:** Korean symbols are not subscribed to the realtime relay yet; that comes in K3.
+- **Live check:** a 005930 5-minute chart for 10/20 had 144 of 144 intervals (08:00–20:00 KST), whole-won prices, a KST axis and clock, and every session request on XKRX.
 
 ## Consequences
 

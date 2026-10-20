@@ -25,6 +25,7 @@ MAX_AGE = timedelta(hours=24)
 RETRY_AFTER_FAILURE = timedelta(minutes=5)
 MAX_RESULTS = 50
 MAX_QUERY_LENGTH = 40
+KOREAN_VENUES = frozenset({"XKRX", "XKOS"})
 
 
 class SymbolDirectoryUnavailableError(RuntimeError):
@@ -39,8 +40,13 @@ class SymbolEntry:
     local_name: str | None = None
 
     @property
+    def korean(self) -> bool:
+        return self.venue in KOREAN_VENUES
+
+    @property
     def instrument_id(self) -> str:
-        return f"us:{self.symbol.lower()}:{self.venue.lower()}:2026"
+        market = "kr" if self.korean else "us"
+        return f"{market}:{self.symbol.lower()}:{self.venue.lower()}:2026"
 
 
 @dataclass(frozen=True)
@@ -123,13 +129,18 @@ class SymbolDirectory:
 
     def listing(self, entry: SymbolEntry) -> dict[str, Any]:
         fetched = (self._fetched_at or self._now()).date().isoformat()
-        return instrument_listing(
+        listing = instrument_listing(
             entry.symbol,
             entry.venue,
             self.source_id,
             f"{self.source_id}-assets-{fetched}",
             f"{self.source_id}-assets",
         )
+        if entry.korean:
+            listing["instrument"].update(
+                instrument_id=entry.instrument_id, asset_class="kr_equity", currency="KRW"
+            )
+        return listing
 
     def _current(self) -> tuple[tuple[SymbolEntry, ...], datetime, bool]:
         with self._lock:
@@ -222,3 +233,35 @@ class SymbolDirectory:
         self._entries = entries
         self._by_id = {entry.instrument_id: entry for entry in entries}
         self._fetched_at = fetched_at
+
+
+def search_all(
+    directories: list[SymbolDirectory], query: str, limit: int = 20
+) -> tuple[list[tuple[SymbolDirectory, SymbolEntry]], str, bool]:
+    """Search several directories (US and Korean listings) and rank the results together.
+
+    Returns the results with their directory, the oldest fetch time and whether any
+    directory is stale. A directory that cannot answer is skipped when another can.
+    """
+    wanted = query.strip().upper()[:MAX_QUERY_LENGTH]
+    found: list[tuple[int, int, str, SymbolDirectory, SymbolEntry]] = []
+    times: list[str] = []
+    stale = False
+    errors: list[SymbolDirectoryUnavailableError] = []
+    for directory in directories:
+        try:
+            result = directory.search(query, MAX_RESULTS)
+        except SymbolDirectoryUnavailableError as exc:
+            errors.append(exc)
+            continue
+        times.append(result.fetched_at_utc)
+        stale = stale or result.stale
+        for entry in result.entries:
+            rank = _rank(entry, wanted)
+            if rank is not None:
+                found.append((rank, len(entry.symbol), entry.symbol, directory, entry))
+    if not times:
+        raise errors[0] if errors else SymbolDirectoryUnavailableError("no symbol list")
+    found.sort(key=lambda item: item[:3])
+    chosen = [(item[3], item[4]) for item in found[: min(limit, MAX_RESULTS)]]
+    return chosen, min(times), stale

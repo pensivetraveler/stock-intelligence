@@ -1,4 +1,5 @@
 import type { MarketBarsResponse, PriceBar } from "@siw/contracts/types";
+import { US_ZONE, zoneFormat, type MarketZone } from "./market-zone";
 
 import { translateDynamic, translator, type Translate } from "./i18n";
 
@@ -88,21 +89,25 @@ export interface ResponseSummary {
   lineage: string;
 }
 
-const EXCHANGE_TIME = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
+const TIME_OPTIONS: Intl.DateTimeFormatOptions = {
   hour: "2-digit",
   minute: "2-digit",
   hourCycle: "h23",
-});
+};
 
-export function exchangeTime(utc: string | number): string {
+/** "09:30 ET" or "09:00 KST": exchange-local time of an instant. */
+export function exchangeTime(
+  utc: string | number,
+  zone: MarketZone = US_ZONE,
+): string {
   const date = typeof utc === "number" ? new Date(utc * 1000) : new Date(utc);
-  return `${EXCHANGE_TIME.format(date)} ET`;
+  return `${zoneFormat(zone, "en-US", TIME_OPTIONS).format(date)} ${zone.label}`;
 }
 
 export function summarize(
   response: MarketBarsResponse,
   t: Translate = translator("en"),
+  zone: MarketZone = US_ZONE,
 ): ResponseSummary {
   const { bars, coverage } = response;
   const counts = new Map<string, number>();
@@ -129,7 +134,7 @@ export function summarize(
     }),
     missing: coverage.missing_intervals.map(
       (gap) =>
-        `${exchangeTime(gap.start_utc)}–${exchangeTime(gap.end_utc)} (${translateDynamic(t, `reason.${gap.reason}`, gap.reason.replaceAll("_", " "))})`,
+        `${exchangeTime(gap.start_utc, zone)}–${exchangeTime(gap.end_utc, zone)} (${translateDynamic(t, `reason.${gap.reason}`, gap.reason.replaceAll("_", " "))})`,
     ),
     quality: uncertain.length ? uncertain.join(", ") : t("summary.allFinal"),
     sessions:

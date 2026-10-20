@@ -2,6 +2,7 @@ import type { PriceBar } from "@siw/contracts/types";
 import { useState, type FormEvent } from "react";
 
 import { exchangeTime } from "./chart-data";
+import { zoneOf } from "./market-zone";
 import { useI18n, type Translate } from "./i18n";
 import {
   MarketApiError,
@@ -116,7 +117,8 @@ export function TradeEntry({
     }
   };
 
-  const candle = `${exchangeTime(bar.interval_start_utc)}–${exchangeTime(bar.interval_end_utc)}`;
+  const zone = zoneOf(bar.instrument_id);
+  const candle = `${exchangeTime(bar.interval_start_utc, zone)}–${exchangeTime(bar.interval_end_utc, zone)}`;
 
   return (
     <form

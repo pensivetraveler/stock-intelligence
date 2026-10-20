@@ -54,6 +54,7 @@ def market_quote(
     instrument_id: str,
     symbol: str,
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    source_id: str = SOURCE_ID,
 ) -> dict[str, Any]:
     prices = session.get("/api/v1/prices", params={"symbols": symbol})
     price = next(
@@ -84,7 +85,7 @@ def market_quote(
         "schema_version": "0.1",
         "instrument_id": instrument_id,
         "symbol": symbol,
-        "source_id": SOURCE_ID,
+        "source_id": source_id,
         "currency": currencies.pop(),
         "observed_at_utc": now()
         .astimezone(timezone.utc)
