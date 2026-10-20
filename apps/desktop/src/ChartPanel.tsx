@@ -15,6 +15,7 @@ import {
   cleanParams,
   paramsText,
   renderIndicators,
+  warmupBars,
   type IndicatorInstance,
   type OhlcvBar,
 } from "./indicators";
@@ -38,6 +39,27 @@ type Load =
   | { status: "error"; error: unknown };
 
 const NOT_OFFERED = Symbol("not offered");
+
+/** At most this many earlier sessions (and calendar days) are searched for warm-up. */
+const WARMUP_SESSIONS = 10;
+const WARMUP_DAYS = 30;
+
+function previousDay(date: string): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() - 1);
+  return value.toISOString().slice(0, 10);
+}
+
+function toOhlcv(bars: PriceBar[]): OhlcvBar[] {
+  return bars.map((bar) => ({
+    time: Math.floor(Date.parse(bar.interval_start_utc) / 1000),
+    open: Number(bar.open),
+    high: Number(bar.high),
+    low: Number(bar.low),
+    close: Number(bar.close),
+    volume: Number(bar.volume),
+  }));
+}
 
 const BAR_SECONDS: Record<ChartConfig["timeframe"], number> = {
   "1m": 60,
@@ -140,6 +162,8 @@ export function ChartPanel({
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [selected, setSelected] = useState<PriceBar | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
+  // Bars from earlier sessions, used only to warm the indicators up; never drawn.
+  const [warmup, setWarmup] = useState<PriceBar[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const { instrumentId, timeframe, sessionDate, sessionScope } = config;
   // A saved layout can name an instrument the current provider does not offer (for
@@ -190,6 +214,55 @@ export function ChartPanel({
   const settled = load.status !== "loading";
   useEffect(() => onSettledChange?.(settled), [onSettledChange, settled]);
 
+  const neededWarmup = warmupBars(config.indicators ?? []);
+  useEffect(() => {
+    let current = true;
+    setWarmup([]);
+    if (neededWarmup === 0 || unavailable || !instrumentsReady) return;
+    void (async () => {
+      const collected: PriceBar[][] = [];
+      let count = 0;
+      let date = sessionDate;
+      let sessions = 0;
+      for (
+        let day = 0;
+        day < WARMUP_DAYS && sessions < WARMUP_SESSIONS;
+        day += 1
+      ) {
+        if (count >= neededWarmup) break;
+        date = previousDay(date);
+        try {
+          const session = await api.session(date);
+          const range = sessionRange(session, sessionScope);
+          if (range === null) continue;
+          sessions += 1;
+          const response = await api.bars({
+            instrumentId,
+            timeframe,
+            ...range,
+          });
+          collected.unshift(response.bars);
+          count += response.bars.length;
+        } catch {
+          break; // Warm-up is best effort: indicators then start later in the day.
+        }
+        if (!current) return;
+      }
+      if (current) setWarmup(collected.flat());
+    })();
+    return () => {
+      current = false;
+    };
+  }, [
+    api,
+    instrumentId,
+    timeframe,
+    sessionDate,
+    sessionScope,
+    neededWarmup,
+    unavailable,
+    instrumentsReady,
+  ]);
   const allBars = load.status === "ready" ? load.response.bars : null;
   // During replay everything below (chart, legend, indicators, markers, candle
   // clicks) sees only the bars that had closed by the replay time.
@@ -243,23 +316,21 @@ export function ChartPanel({
     instruments.find((item) => item.instrument.instrument_id === instrumentId)
       ?.instrument.symbol ?? instrumentId;
   const indicatorList = config.indicators ?? [];
-  const ohlcv = useMemo<OhlcvBar[]>(
-    () =>
-      (bars ?? []).map((bar) => ({
-        time: Math.floor(Date.parse(bar.interval_start_utc) / 1000),
-        open: Number(bar.open),
-        high: Number(bar.high),
-        low: Number(bar.low),
-        close: Number(bar.close),
-        volume: Number(bar.volume),
-      })),
-    [bars],
-  );
+  const ohlcv = useMemo<OhlcvBar[]>(() => {
+    const shown = toOhlcv(bars ?? []);
+    const firstShown = shown[0]?.time ?? Number.POSITIVE_INFINITY;
+    // Only bars strictly before the shown day can warm up (no overlap, no future).
+    return [
+      ...toOhlcv(warmup).filter((bar) => bar.time < firstShown),
+      ...shown,
+    ];
+  }, [bars, warmup]);
+  const warmupCount = ohlcv.length - (bars?.length ?? 0);
   const rendered = useMemo(
-    () => renderIndicators(ohlcv, indicatorList),
+    () => renderIndicators(ohlcv, indicatorList, warmupCount),
     // The list is replaced (never mutated) whenever settings change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ohlcv, config.indicators],
+    [ohlcv, config.indicators, warmupCount],
   );
   const changeIndicator = (
     key: string,

@@ -217,6 +217,8 @@ export interface IndicatorInput {
   min: number;
   max: number;
   step?: number;
+  /** False for settings that are not a number of bars to look back over. */
+  lookback?: boolean;
 }
 
 export interface IndicatorOutput {
@@ -957,7 +959,10 @@ export const INDICATORS: IndicatorDefinition[] = [
     pane: "separate",
     inputs: [
       len(10),
-      input("periods", "Bars per year", "연간 봉 수", 252, 1, 200_000),
+      {
+        ...input("periods", "Bars per year", "연간 봉 수", 252, 1, 200_000),
+        lookback: false,
+      },
     ],
     outputs: [{ key: "value", label: "HV", color: PURPLE }],
     compute: (bars, p) => {
@@ -1222,9 +1227,42 @@ export interface RenderedIndicator {
 const HISTOGRAM_UP = "rgba(63, 182, 139, 0.6)";
 const HISTOGRAM_DOWN = "rgba(229, 86, 107, 0.6)";
 
+/** Most earlier bars any indicator needs; long averages also need time to settle. */
+export const MAX_WARMUP_BARS = 1_000;
+
+/**
+ * How many bars before the shown ones the indicators should see, so their values are
+ * settled from the first shown bar: three times the longest look-back (exponential
+ * averages need about that long to forget their seed), capped at MAX_WARMUP_BARS.
+ */
+export function warmupBars(instances: IndicatorInstance[]): number {
+  let longest = 0;
+  for (const instance of instances) {
+    const definition = INDICATOR_BY_ID.get(instance.type);
+    if (!definition) continue;
+    let total = 0;
+    for (const item of definition.inputs) {
+      const value = instance.params[item.key];
+      if (item.lookback === false || item.step !== undefined) continue;
+      if (Number.isInteger(value)) {
+        longest = Math.max(longest, value);
+        total += value;
+      }
+    }
+    // Ichimoku's leading span B looks back its own length plus the displacement.
+    if (definition.id === "ichimoku") longest = Math.max(longest, total);
+  }
+  return Math.min(MAX_WARMUP_BARS, longest * 3);
+}
+
+/**
+ * Chart series for each indicator. `displayFrom` is the index of the first bar to
+ * draw: bars before it only warm the formulas up and are never drawn.
+ */
 export function renderIndicators(
   bars: OhlcvBar[],
   instances: IndicatorInstance[],
+  displayFrom = 0,
 ): RenderedIndicator[] {
   return instances.flatMap((instance) => {
     const definition = INDICATOR_BY_ID.get(instance.type);
@@ -1235,7 +1273,7 @@ export function renderIndicators(
       const signed = kind === "histogram" && output.key !== "volume";
       const data: RenderedPoint[] = [];
       values[output.key].forEach((value, i) => {
-        if (value === null) return;
+        if (value === null || i < displayFrom) return;
         data.push({
           time: bars[i].time,
           value,
