@@ -17,6 +17,14 @@ import { ChartPanel } from "./ChartPanel";
 import { FloatingWindow, type WindowGeometry } from "./FloatingWindow";
 import type { DrawingTool } from "./drawings";
 import { IndicatorDialog } from "./IndicatorDialog";
+import {
+  REPLAY_OFF,
+  REPLAY_SPEEDS,
+  stepBack,
+  stepForward,
+  TIMEFRAME_SECONDS,
+  type ReplayState,
+} from "./replay";
 import { defaultParams } from "./indicators";
 import { useI18n, type MessageKey, type Translate } from "./i18n";
 import {
@@ -28,6 +36,7 @@ import {
   CrosshairIcon,
   FibIcon,
   FitIcon,
+  GridLayoutIcon,
   HorizontalLinesIcon,
   IndicatorsIcon,
   JournalIcon,
@@ -72,8 +81,10 @@ import {
   type WorkspaceLibrary,
 } from "./workspace-library";
 import {
+  CHART_SLOTS,
   DEFAULT_WORKSPACE,
   type ChartConfig,
+  type LayoutMode,
   type SessionScope,
   type WorkspaceState,
 } from "./workspace-state";
@@ -126,6 +137,19 @@ function loadWatchlistWindow(storage: Storage | null | undefined): {
   return { open: false, geometry: DEFAULT_WATCHLIST_WINDOW };
 }
 const NO_TOOLS: ChartTools = { magnet: false, logScale: false, fitRequest: 0 };
+
+const REPLAY_CLOCK = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+function replayTimeText(time: number): string {
+  return `${REPLAY_CLOCK.format(new Date(time * 1000))} ET`;
+}
 
 function shiftDate(date: string, days: number): string {
   const value = new Date(`${date}T00:00:00Z`);
@@ -196,11 +220,35 @@ export function Workspace({
   const [undoStack, setUndoStack] = useState<WorkspaceState[]>([]);
   const [templateId, setTemplateId] = useState(LAYOUT_TEMPLATES[0].id);
   const [nameForm, setNameForm] = useState<NameForm>(null);
-  const [activeChart, setActiveChart] = useState<0 | 1>(0);
+  const [activeChart, setActiveChart] = useState(0);
   const [search, setSearch] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [indicatorsOpen, setIndicatorsOpen] = useState(false);
   const [drawTool, setDrawTool] = useState<DrawingTool>("cursor");
+  const [replay, setReplay] = useState<ReplayState>(REPLAY_OFF);
+  const replayOn = replay.phase !== "off";
+  // End times of each chart's first and last loaded bar (replay stepping limits).
+  const [bounds, setBounds] = useState<
+    { first: number | null; last: number | null }[]
+  >(() =>
+    Array.from({ length: CHART_SLOTS }, () => ({ first: null, last: null })),
+  );
+  const [onBounds] = useState(() =>
+    Array.from({ length: CHART_SLOTS }, (_, index) => index).map(
+      (index) => (first: number | null, last: number | null) =>
+        setBounds((previous) => {
+          if (
+            previous[index].first === first &&
+            previous[index].last === last
+          ) {
+            return previous;
+          }
+          const next = [...previous];
+          next[index] = { first, last };
+          return next;
+        }),
+    ),
+  );
 
   useEffect(() => {
     if (drawTool === "cursor") return;
@@ -214,11 +262,12 @@ export function Workspace({
   const [panel, setPanel] = useState<Panel | null>(() =>
     loadWatchlistWindow(storage).open ? null : "watchlist",
   );
-  const [tools, setTools] = useState<[ChartTools, ChartTools]>([
-    NO_TOOLS,
-    NO_TOOLS,
-  ]);
-  const [split, setSplitState] = useState(() => {
+  const [tools, setTools] = useState<ChartTools[]>(() =>
+    Array.from({ length: CHART_SLOTS }, () => NO_TOOLS),
+  );
+  // Before layout modes were saved with the workspace, a two-chart choice lived in
+  // its own key; it still decides the mode of layouts saved without one.
+  const [legacySplit] = useState(() => {
     try {
       return storage?.getItem(SPLIT_STORAGE_KEY) === "1";
     } catch {
@@ -244,25 +293,16 @@ export function Workspace({
     setFloating({ ...floating, open: false });
     setPanel("watchlist");
   };
-  const setSplit = (value: boolean) => {
-    setSplitState(value);
-    try {
-      storage?.setItem(SPLIT_STORAGE_KEY, value ? "1" : "0");
-    } catch {
-      // Not saved: the layout still applies until the page reloads.
-    }
-  };
   // Whether each chart finished loading; watchlist quotes wait for the visible ones.
-  const [chartSettled, setChartSettled] = useState<[boolean, boolean]>([
-    false,
-    false,
-  ]);
+  const [chartSettled, setChartSettled] = useState<boolean[]>(() =>
+    Array.from({ length: CHART_SLOTS }, () => false),
+  );
   const [onChartSettled] = useState(() =>
-    ([0, 1] as const).map(
+    Array.from({ length: CHART_SLOTS }, (_, index) => index).map(
       (index) => (settled: boolean) =>
         setChartSettled((previous) => {
           if (previous[index] === settled) return previous;
-          const next: [boolean, boolean] = [...previous];
+          const next = [...previous];
           next[index] = settled;
           return next;
         }),
@@ -376,9 +416,9 @@ export function Workspace({
     }
   };
 
-  const updateChart = (index: 0 | 1) => (config: ChartConfig) =>
+  const updateChart = (index: number) => (config: ChartConfig) =>
     setLayout((previous) => {
-      const charts: [ChartConfig, ChartConfig] = [...previous.charts];
+      const charts = [...previous.charts];
       charts[index] = config;
       return { ...previous, charts };
     });
@@ -413,8 +453,37 @@ export function Workspace({
     LAYOUT_TEMPLATES[0];
 
   const activeConfig = layout.charts[activeChart];
-  const updateActive = (changes: Partial<ChartConfig>) =>
+  const updateActive = (changes: Partial<ChartConfig>) => {
+    // A different day or symbol has nothing to do with the replay in progress.
+    if (
+      (changes.sessionDate &&
+        changes.sessionDate !== activeConfig.sessionDate) ||
+      (changes.instrumentId &&
+        changes.instrumentId !== activeConfig.instrumentId)
+    ) {
+      setReplay(REPLAY_OFF);
+    }
     updateChart(activeChart)({ ...activeConfig, ...changes });
+  };
+  const replayStep = TIMEFRAME_SECONDS[activeConfig.timeframe] ?? 60;
+  const replayLast = bounds[activeChart].last;
+  const replayFirst = bounds[activeChart].first;
+  const advanceReplay = useCallback(
+    () =>
+      setReplay((current) => {
+        if (current.time === null) return current;
+        const next = stepForward(current.time, replayStep, replayLast);
+        return next === null
+          ? { ...current, playing: false }
+          : { ...current, time: next };
+      }),
+    [replayStep, replayLast],
+  );
+  useEffect(() => {
+    if (!replay.playing) return;
+    const timer = window.setInterval(advanceReplay, 1_000 / replay.speed);
+    return () => window.clearInterval(timer);
+  }, [replay.playing, replay.speed, advanceReplay]);
   const activeSymbol = symbolOf(activeConfig.instrumentId);
   const matches = instruments.filter((item) =>
     item.instrument.symbol
@@ -425,7 +494,17 @@ export function Workspace({
     setSearch(null);
     updateActive({ instrumentId });
   };
-  const visibleCharts = split ? [0, 1] : [activeChart];
+  const layoutMode: LayoutMode = layout.layoutMode ?? (legacySplit ? "2" : "1");
+  const setLayoutMode = (mode: LayoutMode) => {
+    setLayout((previous) => ({ ...previous, layoutMode: mode }));
+    if (mode === "2" && activeChart > 1) setActiveChart(0);
+  };
+  const visibleCharts =
+    layoutMode === "4"
+      ? [0, 1, 2, 3]
+      : layoutMode === "2"
+        ? [0, 1]
+        : [activeChart];
   const watchlistVisible = panel === "watchlist" || floating.open;
   const quoteRows = useSessionQuotes(
     api,
@@ -435,12 +514,11 @@ export function Workspace({
   );
   const setChartTool = (patch: Partial<ChartTools>) =>
     setTools((previous) => {
-      const next: [ChartTools, ChartTools] = [...previous];
+      const next = [...previous];
       next[activeChart] = { ...next[activeChart], ...patch };
       return next;
     });
   const tool = tools[activeChart];
-  const comingSoon = (stage: number) => t("tb.comingSoon", { stage });
 
   return (
     <div className={`terminal-shell${panel ? " with-panel" : ""}`}>
@@ -537,21 +615,37 @@ export function Workspace({
           <IndicatorsIcon />
           {t("tb.indicators")}
         </button>
+        <div className="tb-group" role="group" aria-label={t("tb.layout")}>
+          {(
+            [
+              ["1", "tb.singleLayout", SingleLayoutIcon],
+              ["2", "tb.splitLayout", LayoutIcon],
+              ["4", "tb.gridLayout", GridLayoutIcon],
+            ] as const
+          ).map(([mode, key, ModeIcon]) => (
+            <button
+              key={mode}
+              type="button"
+              className="tb-button"
+              aria-label={t(key)}
+              title={t(key)}
+              aria-pressed={layoutMode === mode}
+              onClick={() => setLayoutMode(mode)}
+            >
+              <ModeIcon />
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           className="tb-button"
-          aria-label={t("tb.splitLayout")}
-          title={t("tb.splitLayout")}
-          aria-pressed={split}
-          onClick={() => setSplit(!split)}
-        >
-          {split ? <LayoutIcon /> : <SingleLayoutIcon />}
-        </button>
-        <button
-          type="button"
-          className="tb-button"
-          disabled
-          title={comingSoon(4)}
+          aria-pressed={replayOn}
+          title={t("replay.help")}
+          onClick={() =>
+            setReplay(
+              replayOn ? REPLAY_OFF : { ...REPLAY_OFF, phase: "choosing" },
+            )
+          }
         >
           <ReplayIcon />
           {t("tb.replay")}
@@ -807,7 +901,7 @@ export function Workspace({
           }
           onClick={() => {
             // Undoable like other layout replacements.
-            const charts: [ChartConfig, ChartConfig] = [...layout.charts];
+            const charts = [...layout.charts];
             charts[activeChart] = {
               ...activeConfig,
               drawings: (activeConfig.drawings ?? []).filter(
@@ -827,12 +921,12 @@ export function Workspace({
             {t("ws.instrumentsUnavailable", { error: instrumentsError })}
           </p>
         ) : null}
-        <div className={`chart-grid${split ? " split" : ""}`}>
+        <div className={`chart-grid layout-${layoutMode}`}>
           {visibleCharts.map((index) => (
             <ChartPanel
               key={index}
-              active={split && index === activeChart}
-              onActivate={() => setActiveChart(index as 0 | 1)}
+              active={layoutMode !== "1" && index === activeChart}
+              onActivate={() => setActiveChart(index)}
               chartId={`chart-${index + 1}`}
               title={t("ws.chartTitle", { n: index + 1 })}
               api={api}
@@ -846,15 +940,29 @@ export function Workspace({
               logScale={tools[index].logScale}
               fitRequest={tools[index].fitRequest}
               onSettledChange={onChartSettled[index]}
+              replayTime={replay.phase === "running" ? replay.time : null}
+              replayChoosing={
+                replay.phase === "choosing" && index === activeChart
+              }
+              onReplayPick={(time) => {
+                setActiveChart(index);
+                setReplay({
+                  ...replay,
+                  phase: "running",
+                  time,
+                  playing: false,
+                });
+              }}
+              onReplayBounds={onBounds[index]}
               onIndicatorsChange={(indicators) =>
-                updateChart(index as 0 | 1)({
+                updateChart(index)({
                   ...layout.charts[index],
                   indicators,
                 })
               }
               tool={index === activeChart ? drawTool : "cursor"}
               onDrawingsChange={(drawings) =>
-                updateChart(index as 0 | 1)({
+                updateChart(index)({
                   ...layout.charts[index],
                   drawings,
                 })
@@ -916,6 +1024,107 @@ export function Workspace({
           <span className="tb-spacer" />
           <ExchangeClock />
         </footer>
+        {replayOn ? (
+          <div
+            className="replay-bar"
+            role="toolbar"
+            aria-label={t("replay.controls")}
+          >
+            <strong className="replay-badge">{t("tb.replay")}</strong>
+            {replay.phase === "choosing" ? (
+              <span className="replay-hint">{t("replay.choose")}</span>
+            ) : (
+              <>
+                <span className="replay-time" aria-live="off">
+                  {replay.time === null ? "" : replayTimeText(replay.time)}
+                </span>
+                <button
+                  type="button"
+                  className="tb-button"
+                  aria-label={t("replay.back")}
+                  disabled={
+                    replay.time === null ||
+                    (replayFirst !== null && replay.time <= replayFirst)
+                  }
+                  onClick={() =>
+                    setReplay((current) =>
+                      current.time === null
+                        ? current
+                        : {
+                            ...current,
+                            playing: false,
+                            time: stepBack(
+                              current.time,
+                              replayStep,
+                              replayFirst,
+                            ),
+                          },
+                    )
+                  }
+                >
+                  ⏮
+                </button>
+                <button
+                  type="button"
+                  className="tb-button"
+                  aria-label={t(
+                    replay.playing ? "replay.pause" : "replay.play",
+                  )}
+                  onClick={() =>
+                    setReplay((current) => ({
+                      ...current,
+                      playing: !current.playing,
+                    }))
+                  }
+                >
+                  {replay.playing ? "⏸" : "▶"}
+                </button>
+                <button
+                  type="button"
+                  className="tb-button"
+                  aria-label={t("replay.forward")}
+                  disabled={
+                    replay.time === null ||
+                    (replayLast !== null && replay.time >= replayLast)
+                  }
+                  onClick={advanceReplay}
+                >
+                  ⏭
+                </button>
+                <div
+                  className="tb-group"
+                  role="group"
+                  aria-label={t("replay.speed")}
+                >
+                  {REPLAY_SPEEDS.map((speed) => (
+                    <button
+                      key={speed}
+                      type="button"
+                      className="tb-button"
+                      aria-pressed={replay.speed === speed}
+                      onClick={() =>
+                        setReplay((current) => ({ ...current, speed }))
+                      }
+                    >
+                      {speed}x
+                    </button>
+                  ))}
+                </div>
+                <span className="replay-hint">
+                  {t("replay.step", { timeframe: activeConfig.timeframe })}
+                </span>
+              </>
+            )}
+            <span className="tb-spacer" />
+            <button
+              type="button"
+              className="tb-button"
+              onClick={() => setReplay(REPLAY_OFF)}
+            >
+              {t("replay.exit")}
+            </button>
+          </div>
+        ) : null}
       </main>
 
       {panel ? (
@@ -923,7 +1132,12 @@ export function Workspace({
           className={`side-panel side-panel-${panel}`}
           aria-label={t(`panel.${panel}`)}
         >
-          {panel === "watchlist" ? (
+          {panel === "watchlist" && replayOn ? (
+            <p className="workspace-note" role="status">
+              {t("replay.watchlistHidden")}
+            </p>
+          ) : null}
+          {panel === "watchlist" && !replayOn ? (
             <Watchlist
               instruments={instruments}
               rows={quoteRows}
@@ -1036,14 +1250,20 @@ export function Workspace({
             </>
           }
         >
-          <Watchlist
-            instruments={instruments}
-            rows={quoteRows}
-            sessionDate={activeConfig.sessionDate}
-            activeInstrumentId={activeConfig.instrumentId}
-            onPick={(instrumentId) => updateActive({ instrumentId })}
-            hideTitle
-          />
+          {replayOn ? (
+            <p className="workspace-note" role="status">
+              {t("replay.watchlistHidden")}
+            </p>
+          ) : (
+            <Watchlist
+              instruments={instruments}
+              rows={quoteRows}
+              sessionDate={activeConfig.sessionDate}
+              activeInstrumentId={activeConfig.instrumentId}
+              onPick={(instrumentId) => updateActive({ instrumentId })}
+              hideTitle
+            />
+          )}
         </FloatingWindow>
       ) : null}
     </div>

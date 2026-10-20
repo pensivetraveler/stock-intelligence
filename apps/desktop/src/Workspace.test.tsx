@@ -661,10 +661,18 @@ describe("terminal layout", () => {
       screen.getByRole("button", { name: "Two charts side by side" }),
     );
     expect(await screen.findByTestId("chart-chart-2")).toBeInTheDocument();
-    expect(storage.getItem("siw.chartSplit")).toBe("1");
+    expect(savedLayout(storage).layoutMode).toBe("2");
+
+    fireEvent.click(screen.getByRole("button", { name: "Four charts" }));
+    expect(await screen.findByTestId("chart-chart-4")).toBeInTheDocument();
+    expect(savedLayout(storage).layoutMode).toBe("4");
+
+    fireEvent.click(screen.getByRole("button", { name: "One chart" }));
+    expect(screen.queryByTestId("chart-chart-2")).not.toBeInTheDocument();
+    expect(savedLayout(storage).layoutMode).toBe("1");
   });
 
-  it("keeps the replay control visible but disabled until stage 4", async () => {
+  it("offers the replay control and the drawing tools", async () => {
     render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
     const tools = screen.getByRole("toolbar", { name: "Chart tools" });
@@ -676,7 +684,7 @@ describe("terminal layout", () => {
     });
     fireEvent.click(magnet);
     expect(magnet).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: /Replay/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Replay/ })).toBeEnabled();
   });
 
   it("closes and reopens side panels from the right rail", async () => {
@@ -939,5 +947,61 @@ describe("drawing tools", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(savedLayout(storage).charts[0].drawings).toEqual([trend, elsewhere]);
+  });
+});
+
+describe("replay", () => {
+  it("starts at a picked bar, hides the watchlist and exits cleanly", async () => {
+    const api = fakeApi();
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    expect(await screen.findByText("202.50")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Replay/ }));
+    const bar = screen.getByRole("toolbar", { name: "Replay controls" });
+    expect(
+      within(bar).getByText(/Click a bar on the active chart/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("202.50")).not.toBeInTheDocument();
+    expect(screen.getByText(/Watchlist prices are hidden/)).toBeInTheDocument();
+
+    // While choosing, a candle click picks the start; it does not open trade entry.
+    fireEvent.click(
+      screen.getByRole("button", { name: "click first candle of chart-1" }),
+    );
+    expect(screen.queryByRole("form", { name: "Trade entry" })).toBeNull();
+    expect(within(bar).getByText(/ET$/)).toBeInTheDocument();
+    expect(within(bar).getByRole("button", { name: "Play" })).toBeEnabled();
+    // The only loaded bar has closed at its own end time, so it stays visible.
+    expect(screen.getByTestId("chart-chart-1")).toHaveTextContent("1 candles");
+    // Already at the last loaded bar: nothing further to step to.
+    expect(
+      within(bar).getByRole("button", { name: "Step forward" }),
+    ).toBeDisabled();
+
+    fireEvent.click(within(bar).getByRole("button", { name: "2x" }));
+    expect(within(bar).getByRole("button", { name: "2x" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    fireEvent.click(within(bar).getByRole("button", { name: "Exit replay" }));
+    expect(
+      screen.queryByRole("toolbar", { name: "Replay controls" }),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText("202.50")).toBeInTheDocument();
+  });
+
+  it("leaves replay when the active chart moves to another day", async () => {
+    render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Replay/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "click first candle of chart-1" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Next day" }));
+    expect(
+      screen.queryByRole("toolbar", { name: "Replay controls" }),
+    ).not.toBeInTheDocument();
   });
 });

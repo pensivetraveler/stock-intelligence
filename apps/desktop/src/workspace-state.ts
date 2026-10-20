@@ -18,10 +18,18 @@ export interface ChartConfig {
   drawings?: Drawing[];
 }
 
+/** How many charts the workspace shows: one, two side by side, or a 2x2 grid. */
+export type LayoutMode = "1" | "2" | "4";
+export const LAYOUT_MODES: readonly LayoutMode[] = ["1", "2", "4"];
+export const CHART_SLOTS = 4;
+
 export interface WorkspaceState {
   version: 1;
   syncTimeRange: boolean;
-  charts: [ChartConfig, ChartConfig];
+  /** Always four chart slots; the layout mode decides how many are shown. */
+  charts: ChartConfig[];
+  /** Absent in layouts saved before four-chart layouts existed. */
+  layoutMode?: LayoutMode;
 }
 
 export const WORKSPACE_STORAGE_KEY = "siw.workspace.v1";
@@ -39,6 +47,18 @@ export const DEFAULT_WORKSPACE: WorkspaceState = {
     {
       instrumentId: "us:synth:xnas:2026",
       timeframe: "1m",
+      sessionDate: "2026-10-09",
+      sessionScope: "regular",
+    },
+    {
+      instrumentId: "us:synth:xnas:2026",
+      timeframe: "15m",
+      sessionDate: "2026-10-09",
+      sessionScope: "extended",
+    },
+    {
+      instrumentId: "us:synth:xnas:2026",
+      timeframe: "60m",
       sessionDate: "2026-10-09",
       sessionScope: "regular",
     },
@@ -84,19 +104,34 @@ export function parseWorkspace(value: unknown): WorkspaceState | null {
     state.version !== 1 ||
     typeof state.syncTimeRange !== "boolean" ||
     !Array.isArray(state.charts) ||
-    state.charts.length !== 2
+    state.charts.length < 2 ||
+    state.charts.length > CHART_SLOTS
   ) {
     return null;
   }
-  const first = parseChart(state.charts[0]);
-  const second = parseChart(state.charts[1]);
-  if (first === null || second === null) {
+  const charts = state.charts.map(parseChart);
+  if (charts.some((chart) => chart === null)) {
     return null;
   }
+  // Layouts saved with two charts get a third and fourth slot that show the first
+  // chart's symbol and day (with the default timeframes), not the synthetic default.
+  const first = charts[0] as ChartConfig;
+  const filled = [
+    ...(charts as ChartConfig[]),
+    ...DEFAULT_WORKSPACE.charts.slice(charts.length).map((chart) => ({
+      ...chart,
+      instrumentId: first.instrumentId,
+      sessionDate: first.sessionDate,
+    })),
+  ];
+  const mode = LAYOUT_MODES.includes(state.layoutMode as LayoutMode)
+    ? (state.layoutMode as LayoutMode)
+    : undefined;
   return {
     version: 1,
     syncTimeRange: state.syncTimeRange,
-    charts: [first, second],
+    charts: filled,
+    ...(mode ? { layoutMode: mode } : {}),
   };
 }
 

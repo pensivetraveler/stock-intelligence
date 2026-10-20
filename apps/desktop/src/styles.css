@@ -1767,3 +1767,51 @@ body {
   background: var(--term-bg);
   pointer-events: auto;
 }
+
+.chart-area .chart-grid.layout-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.chart-area .chart-grid.layout-4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+/* Replay */
+.chart-area {
+  grid-template-rows: auto minmax(0, 1fr) 32px auto;
+}
+
+.replay-bar {
+  grid-row: 4;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 8px;
+  border-top: 1px solid #3a4a6b;
+  background: #182237;
+  font-size: 12px;
+}
+
+.replay-bar .tb-button {
+  min-height: 26px;
+}
+
+.replay-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: #10131a;
+  background: #f0b44c;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.replay-time {
+  min-width: 120px;
+  color: var(--term-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.replay-hint {
+  color: var(--term-muted);
+}
