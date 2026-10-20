@@ -113,6 +113,21 @@
     },
     {
       "$ref": "#/$defs/TickListResponse"
+    },
+    {
+      "$ref": "#/$defs/BacktestStrategy"
+    },
+    {
+      "$ref": "#/$defs/BacktestStrategyListResponse"
+    },
+    {
+      "$ref": "#/$defs/BacktestRun"
+    },
+    {
+      "$ref": "#/$defs/BacktestRunListResponse"
+    },
+    {
+      "$ref": "#/$defs/BacktestResults"
     }
   ],
   "$defs": {
@@ -755,7 +770,7 @@
           "$ref": "#/$defs/NonNegativeDecimalString"
         },
         "currency": {
-          "const": "USD"
+          "enum": ["USD", "KRW"]
         },
         "filled_at_utc": {
           "$ref": "#/$defs/UtcTimestamp"
@@ -765,6 +780,16 @@
         },
         "fill_reason": {
           "$ref": "#/$defs/Identifier"
+        },
+        "fee": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "notes": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
         }
       }
     },
@@ -1007,7 +1032,7 @@
           "$ref": "#/$defs/NonNegativeDecimalString"
         },
         "currency": {
-          "const": "USD"
+          "enum": ["USD", "KRW"]
         },
         "fill_policy": {
           "const": "next_eligible_bar_open"
@@ -4074,6 +4099,859 @@
                 "$ref": "#/$defs/UtcTimestamp"
               }
             }
+          }
+        }
+      }
+    },
+    "BacktestStrategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "strategy_id",
+        "name",
+        "version",
+        "strategy_type",
+        "definition",
+        "definition_sha256",
+        "created_at_utc"
+      ],
+      "properties": {
+        "kind": {
+          "const": "backtest_strategy"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "strategy_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "strategy_type": {
+          "enum": ["rules", "python"]
+        },
+        "definition": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "enum": ["rules", "python"]
+            }
+          }
+        },
+        "definition_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "created_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "BacktestStrategyListResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "strategies"],
+      "properties": {
+        "kind": {
+          "const": "backtest_strategy_list_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "strategies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BacktestStrategy"
+          }
+        }
+      }
+    },
+    "BacktestRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "run_id",
+        "status",
+        "progress",
+        "strategy_id",
+        "strategy_version",
+        "strategy_sha256",
+        "config",
+        "created_at_utc",
+        "started_at_utc",
+        "finished_at_utc",
+        "error",
+        "summary"
+      ],
+      "properties": {
+        "kind": {
+          "const": "backtest_run"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "run_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "status": {
+          "enum": ["queued", "running", "succeeded", "failed", "cancelled"]
+        },
+        "progress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "strategy_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "strategy_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "strategy_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instrument_ids",
+            "timeframe",
+            "start_date",
+            "end_date",
+            "initial_capital",
+            "currency",
+            "fee_rate",
+            "fee_per_order",
+            "slippage_bps",
+            "fill_policy",
+            "as_of_utc",
+            "seed"
+          ],
+          "properties": {
+            "instrument_ids": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/Identifier"
+              }
+            },
+            "timeframe": {
+              "type": "string",
+              "pattern": "^([1-9][0-9]{0,2}m|1d|1w)$"
+            },
+            "start_date": {
+              "type": "string",
+              "format": "date"
+            },
+            "end_date": {
+              "type": "string",
+              "format": "date"
+            },
+            "initial_capital": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "currency": {
+              "enum": ["USD", "KRW"]
+            },
+            "fee_rate": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "fee_per_order": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "slippage_bps": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "fill_policy": {
+              "const": "next_eligible_bar_open"
+            },
+            "as_of_utc": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/UtcTimestamp"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "seed": {
+              "type": "integer"
+            }
+          }
+        },
+        "created_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "started_at_utc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finished_at_utc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "final_equity",
+                "net_return",
+                "max_drawdown",
+                "trade_count",
+                "benchmark_return",
+                "warning_count"
+              ],
+              "properties": {
+                "final_equity": {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                "net_return": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/DecimalString"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "max_drawdown": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/DecimalString"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "trade_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "benchmark_return": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/DecimalString"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "warning_count": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "BacktestRunListResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "runs"],
+      "properties": {
+        "kind": {
+          "const": "backtest_run_list_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BacktestRun"
+          }
+        }
+      }
+    },
+    "BacktestResults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "run_id",
+        "engine_version",
+        "fill_model_version",
+        "currency",
+        "initial_capital",
+        "final_equity",
+        "metrics",
+        "metric_definitions",
+        "equity_curve",
+        "orders",
+        "fills",
+        "trades",
+        "per_symbol",
+        "inputs",
+        "warnings",
+        "logs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "backtest_results"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "run_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "engine_version": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "fill_model_version": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "currency": {
+          "enum": ["USD", "KRW"]
+        },
+        "initial_capital": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "final_equity": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "net_return",
+            "gross_return",
+            "max_drawdown",
+            "trade_count",
+            "win_rate",
+            "average_win",
+            "average_loss",
+            "profit_factor",
+            "exposure",
+            "turnover",
+            "fees",
+            "slippage_cost",
+            "benchmark_return"
+          ],
+          "properties": {
+            "net_return": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "gross_return": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "max_drawdown": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "win_rate": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "profit_factor": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "exposure": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "turnover": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "benchmark_return": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "average_win": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "average_loss": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "fees": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "slippage_cost": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "trade_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "metric_definitions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "equity_curve": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "time_utc",
+              "equity",
+              "cash",
+              "drawdown",
+              "benchmark_equity"
+            ],
+            "properties": {
+              "time_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "equity": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "cash": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "drawdown": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "benchmark_equity": {
+                "$ref": "#/$defs/DecimalString"
+              }
+            }
+          }
+        },
+        "orders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "order_id",
+              "instrument_id",
+              "side",
+              "signal_utc",
+              "status",
+              "reason",
+              "filled_at_utc"
+            ],
+            "properties": {
+              "order_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "instrument_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "side": {
+                "$ref": "#/$defs/Side"
+              },
+              "signal_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "status": {
+                "enum": ["queued", "filled", "rejected", "unfilled_at_end"]
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Identifier"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "filled_at_utc": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "fills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BacktestFill"
+          }
+        },
+        "trades": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "instrument_id",
+              "entry_order_id",
+              "entry_utc",
+              "entry_price",
+              "quantity",
+              "exit_utc",
+              "exit_price",
+              "exit_reason",
+              "open_quantity",
+              "net_pnl",
+              "return"
+            ],
+            "properties": {
+              "instrument_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "entry_order_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "entry_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "entry_price": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "quantity": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "exit_utc": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "exit_price": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/NonNegativeDecimalString"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "exit_reason": {
+                "enum": ["signal", "stop_loss", "take_profit", "open_at_end"]
+              },
+              "open_quantity": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "net_pnl": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "return": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DecimalString"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "per_symbol": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "instrument_id",
+              "trade_count",
+              "win_rate",
+              "realized_pnl",
+              "unrealized_pnl"
+            ],
+            "properties": {
+              "instrument_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "trade_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "win_rate": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DecimalString"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "realized_pnl": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "unrealized_pnl": {
+                "$ref": "#/$defs/DecimalString"
+              }
+            }
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "instrument_id",
+              "timeframe",
+              "calendar_id",
+              "calendar_version",
+              "requested_start_utc",
+              "requested_end_utc",
+              "as_of_utc",
+              "source_ids",
+              "feed_scopes",
+              "adjustments",
+              "dataset_revisions",
+              "bar_count",
+              "expected_interval_count",
+              "missing_interval_count",
+              "missing_intervals",
+              "non_final_bar_count",
+              "bars_sha256",
+              "suspected_split_dates"
+            ],
+            "properties": {
+              "instrument_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "timeframe": {
+                "type": "string",
+                "pattern": "^([1-9][0-9]{0,2}m|1d|1w)$"
+              },
+              "calendar_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "calendar_version": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "requested_start_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "requested_end_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "as_of_utc": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/Identifier"
+                }
+              },
+              "feed_scopes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/Identifier"
+                }
+              },
+              "adjustments": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/Identifier"
+                }
+              },
+              "dataset_revisions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/Identifier"
+                }
+              },
+              "bar_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expected_interval_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "missing_interval_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "missing_intervals": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["start_utc", "end_utc", "reason"],
+                  "properties": {
+                    "start_utc": {
+                      "$ref": "#/$defs/UtcTimestamp"
+                    },
+                    "end_utc": {
+                      "$ref": "#/$defs/UtcTimestamp"
+                    },
+                    "reason": {
+                      "$ref": "#/$defs/Identifier"
+                    }
+                  }
+                }
+              },
+              "non_final_bar_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "bars_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "suspected_split_dates": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "logs": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "string",
+            "maxLength": 4000
           }
         }
       }

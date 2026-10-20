@@ -1,0 +1,47 @@
+{
+  "kind": "backtest_strategy",
+  "schema_version": "0.1",
+  "strategy_id": "strategy-5a0cada53ecd",
+  "name": "SMA cross",
+  "version": 1,
+  "strategy_type": "rules",
+  "definition": {
+    "entry": {
+      "left": {
+        "price": "close"
+      },
+      "op": "cross_above",
+      "right": {
+        "indicator": "sma",
+        "output": "value",
+        "params": {
+          "length": 5
+        }
+      }
+    },
+    "exit": {
+      "left": {
+        "price": "close"
+      },
+      "op": "cross_below",
+      "right": {
+        "indicator": "sma",
+        "output": "value",
+        "params": {
+          "length": 5
+        }
+      }
+    },
+    "max_positions": 2,
+    "sizing": {
+      "mode": "percent_equity",
+      "value": "40"
+    },
+    "stop_loss_pct": null,
+    "take_profit_pct": null,
+    "type": "rules"
+  },
+  "definition_sha256": "13904d91f5cdf566b44eb528dff345184ce8305da4386fd3bdf23ecb4bd5c14d",
+  "created_at_utc": "2026-10-21T00:00:00Z",
+  "versions": [1]
+}

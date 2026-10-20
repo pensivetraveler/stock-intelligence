@@ -1,0 +1,140 @@
+{
+  "kind": "backtest_results",
+  "schema_version": "0.1",
+  "run_id": "run-ce1f4640c898",
+  "engine_version": "siw-backtest-1",
+  "fill_model_version": "next-open-slippage-v1",
+  "currency": "USD",
+  "initial_capital": "10000.00",
+  "final_equity": "10691.08",
+  "metrics": {
+    "net_return": "0.069108",
+    "gross_return": "0.069500",
+    "max_drawdown": "0.004470",
+    "trade_count": 0,
+    "win_rate": null,
+    "average_win": null,
+    "average_loss": null,
+    "profit_factor": null,
+    "exposure": "0.256410",
+    "turnover": "0.388281",
+    "fees": "1.96",
+    "slippage_cost": "1.96",
+    "benchmark_return": "0.228309"
+  },
+  "metric_definitions": {
+    "net_return": "final equity / initial capital - 1, after fees and slippage",
+    "gross_return": "(final equity + fees + slippage cost) / initial capital - 1",
+    "max_drawdown": "largest fall from a running equity peak, as a fraction of that peak",
+    "trade_count": "closed round trips (positions still open at the end are not counted)",
+    "win_rate": "closed trades with positive net P&L / closed trades",
+    "average_win": "mean net P&L of winning closed trades",
+    "average_loss": "mean net P&L of losing closed trades",
+    "profit_factor": "sum of wins / |sum of losses| (null without losses)",
+    "exposure": "share of bar times with at least one open position",
+    "turnover": "traded notional / mean equity",
+    "benchmark_return": "equal-weight buy and hold of every instrument at its first open, no costs"
+  },
+  "equity_curve": [
+    {
+      "time_utc": "2026-01-02T14:30:00Z",
+      "equity": "10000.00",
+      "cash": "10000.00",
+      "drawdown": "0.000000",
+      "benchmark_equity": "10111.87"
+    },
+    {
+      "time_utc": "2026-01-05T14:30:00Z",
+      "equity": "10000.00",
+      "cash": "10000.00",
+      "drawdown": "0.000000",
+      "benchmark_equity": "10069.15"
+    },
+    {
+      "time_utc": "2026-01-06T14:30:00Z",
+      "equity": "10000.00",
+      "cash": "10000.00",
+      "drawdown": "0.000000",
+      "benchmark_equity": "10095.95"
+    }
+  ],
+  "orders": [
+    {
+      "order_id": "run-ce1f4640c898-o1",
+      "instrument_id": "us:aapl:xnas:2026",
+      "side": "buy",
+      "signal_utc": "2026-02-12T14:30:00Z",
+      "status": "filled",
+      "reason": null,
+      "filled_at_utc": "2026-02-13T14:30:00Z"
+    }
+  ],
+  "fills": [
+    {
+      "kind": "backtest_fill",
+      "schema_version": "0.1",
+      "fill_id": "run-ce1f4640c898-o1-f",
+      "run_id": "run-ce1f4640c898",
+      "order_id": "run-ce1f4640c898-o1",
+      "instrument_id": "us:aapl:xnas:2026",
+      "side": "buy",
+      "quantity": "42",
+      "price": "93.292723",
+      "fee": "1.96",
+      "currency": "USD",
+      "filled_at_utc": "2026-02-13T14:30:00Z",
+      "fill_model_version": "next-open-slippage-v1",
+      "fill_reason": "signal"
+    }
+  ],
+  "trades": [
+    {
+      "instrument_id": "us:aapl:xnas:2026",
+      "entry_order_id": "run-ce1f4640c898-o1",
+      "entry_utc": "2026-02-13T14:30:00Z",
+      "entry_price": "93.292723",
+      "quantity": "42",
+      "exit_utc": null,
+      "exit_price": null,
+      "exit_reason": "open_at_end",
+      "open_quantity": "42",
+      "net_pnl": "691.08",
+      "return": "0.176284"
+    }
+  ],
+  "per_symbol": [
+    {
+      "instrument_id": "us:aapl:xnas:2026",
+      "trade_count": 0,
+      "win_rate": null,
+      "realized_pnl": "0.00",
+      "unrealized_pnl": "691.08"
+    }
+  ],
+  "inputs": [
+    {
+      "instrument_id": "us:aapl:xnas:2026",
+      "timeframe": "1d",
+      "calendar_id": "XNAS",
+      "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8",
+      "requested_start_utc": "2026-01-02T09:00:00Z",
+      "requested_end_utc": "2026-02-28T01:00:00Z",
+      "as_of_utc": null,
+      "source_ids": ["synthetic"],
+      "feed_scopes": ["synthetic-daily"],
+      "adjustments": ["split_adjusted"],
+      "dataset_revisions": ["synthetic-r1"],
+      "bar_count": 39,
+      "expected_interval_count": 39,
+      "missing_interval_count": 0,
+      "missing_intervals": [],
+      "non_final_bar_count": 0,
+      "bars_sha256": "4020a621a720b6d8159d41e302c77de987bef88f01f126ad9561edbcb059e700",
+      "suspected_split_dates": []
+    }
+  ],
+  "warnings": [
+    "the universe is the list chosen today; instruments delisted before today are not included, which can flatter results (survivorship bias)"
+  ],
+  "logs": []
+}
