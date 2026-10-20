@@ -1664,3 +1664,106 @@ body {
 .indicator-list small {
   color: var(--term-muted);
 }
+
+/* Drawings */
+.price-chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.drawing-layer {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  pointer-events: none;
+}
+
+.drawing-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  font-size: 11px;
+}
+
+.drawing-svg.active {
+  cursor: crosshair;
+  pointer-events: all;
+}
+
+.drawing-svg line {
+  stroke-width: 1.5;
+}
+
+.drawing-svg text {
+  stroke: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.drawing-text {
+  font-size: 13px;
+  paint-order: stroke;
+  stroke: #10131a !important;
+  stroke-width: 4px !important;
+}
+
+.drawing-hit {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 10 !important;
+  cursor: pointer;
+  pointer-events: visible;
+}
+
+.zoom-box {
+  fill: rgba(91, 141, 239, 0.12);
+  stroke: rgba(91, 141, 239, 0.6);
+}
+
+.measure rect {
+  stroke-width: 1;
+}
+
+.measure.up rect {
+  fill: rgba(63, 182, 139, 0.15);
+  stroke: rgba(63, 182, 139, 0.8);
+}
+
+.measure.down rect {
+  fill: rgba(229, 86, 107, 0.15);
+  stroke: rgba(229, 86, 107, 0.8);
+}
+
+.measure text {
+  fill: #e8edf4;
+  font-size: 12px;
+  paint-order: stroke;
+  stroke: #10131a !important;
+  stroke-width: 4px;
+}
+
+.drawing-delete {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--term-line);
+  border-radius: 4px;
+  color: var(--term-text);
+  background: var(--term-surface);
+  font-size: 11px;
+  pointer-events: auto;
+}
+
+.drawing-input {
+  position: absolute;
+  width: 200px;
+  height: 26px;
+  border: 1px solid var(--term-accent);
+  border-radius: 4px;
+  padding: 0 6px;
+  color: var(--term-text);
+  background: var(--term-bg);
+  pointer-events: auto;
+}

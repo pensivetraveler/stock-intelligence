@@ -664,13 +664,13 @@ describe("terminal layout", () => {
     expect(storage.getItem("siw.chartSplit")).toBe("1");
   });
 
-  it("keeps later-stage tools visible but disabled", async () => {
+  it("keeps the replay control visible but disabled until stage 4", async () => {
     render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
     const tools = screen.getByRole("toolbar", { name: "Chart tools" });
     expect(
       within(tools).getByRole("button", { name: "Trend line" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     const magnet = within(tools).getByRole("button", {
       name: "Magnet: snap crosshair to OHLC",
     });
@@ -877,5 +877,67 @@ describe("indicators", () => {
     expect(
       within(dialog).queryByRole("button", { name: /Relative Strength Index/ }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("drawing tools", () => {
+  it("toggles a tool, cancels it with Escape and keeps one tool at a time", async () => {
+    render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    const tools = screen.getByRole("toolbar", { name: "Chart tools" });
+    const trend = within(tools).getByRole("button", { name: "Trend line" });
+    const crosshair = within(tools).getByRole("button", { name: "Crosshair" });
+    expect(crosshair).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(trend);
+    expect(trend).toHaveAttribute("aria-pressed", "true");
+    expect(crosshair).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(
+      within(tools).getByRole("button", { name: "Fibonacci retracement" }),
+    );
+    expect(trend).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(crosshair).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("removes the active chart's drawings for its symbol and can undo it", async () => {
+    const storage = memoryStorage();
+    const trend = {
+      id: "t1",
+      kind: "trend",
+      instrumentId: "us:synth:xnas:2026",
+      points: [
+        { time: 1, price: 50 },
+        { time: 2, price: 51 },
+      ],
+    };
+    const elsewhere = {
+      id: "h1",
+      kind: "hline",
+      instrumentId: "us:aapl:xnas:2026",
+      points: [{ time: 1, price: 200 }],
+    };
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        ...DEFAULT_WORKSPACE,
+        charts: [
+          { ...DEFAULT_WORKSPACE.charts[0], drawings: [trend, elsewhere] },
+          DEFAULT_WORKSPACE.charts[1],
+        ],
+      }),
+    );
+    render(<Workspace api={fakeApi()} storage={storage} />);
+    await screen.findByTestId("chart-chart-1");
+    const remove = screen.getByRole("button", { name: "Remove drawings" });
+    expect(remove).toBeEnabled();
+
+    fireEvent.click(remove);
+    expect(savedLayout(storage).charts[0].drawings).toEqual([elsewhere]);
+    expect(remove).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(savedLayout(storage).charts[0].drawings).toEqual([trend, elsewhere]);
   });
 });
