@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { version as APP_VERSION } from "../package.json";
 import { checkApiHealth, type ApiConnectionState } from "./api-health";
+import { createBacktestApi } from "./backtest-api";
 import { createCredentialApi } from "./credential-api";
 import { AppMark } from "./icons";
 import { LANGUAGES, useI18n, type Language, type MessageKey } from "./i18n";
@@ -54,6 +55,10 @@ function AppContent({
   );
   const credentialApi = useMemo(
     () => createCredentialApi(apiBaseUrl, fetcher),
+    [apiBaseUrl, fetcher],
+  );
+  const backtestApi = useMemo(
+    () => createBacktestApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
   );
   const connected = lastSuccess !== null;
@@ -112,7 +117,11 @@ function AppContent({
     <div className="app-shell">
       <div className="app-main">
         {lastSuccess ? (
-          <Workspace api={api} keysPanel={<KeysPanel api={credentialApi} />} />
+          <Workspace
+            api={api}
+            keysPanel={<KeysPanel api={credentialApi} />}
+            backtestApi={backtestApi}
+          />
         ) : (
           <div className="connect-screen">
             <AppMark />

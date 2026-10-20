@@ -1,4 +1,5 @@
 import type {
+  BacktestFill,
   ManualExecution,
   PriceBar,
   ScenarioDefinition,
@@ -7,7 +8,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { journalMarkers, MARKER_COLORS } from "./journal-markers";
+import {
+  backtestMarkers,
+  journalMarkers,
+  MARKER_COLORS,
+} from "./journal-markers";
 
 const fixtures = resolve(
   import.meta.dirname,
@@ -74,5 +79,31 @@ describe("journal markers", () => {
         [],
       ),
     ).toEqual([]);
+  });
+});
+
+describe("backtest markers", () => {
+  it("draws fills of the chosen run on their bar, in their own colour", () => {
+    const fill = fixture<BacktestFill>("backtest-fill.json");
+    const markers = backtestMarkers(bars, "us:aapl:xnas:2026", [
+      {
+        ...fill,
+        instrument_id: "us:aapl:xnas:2026",
+        filled_at_utc: "2026-10-09T14:06:00Z",
+      },
+      { ...fill, fill_id: "other", instrument_id: "us:msft:xnas:2026" },
+      {
+        ...fill,
+        fill_id: "outside",
+        instrument_id: "us:aapl:xnas:2026",
+        filled_at_utc: "2026-10-09T18:00:00Z",
+      },
+    ]);
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toMatchObject({
+      time: Date.UTC(2026, 9, 9, 14, 5) / 1000,
+      color: MARKER_COLORS.backtest,
+      text: `BT ${fill.side} ${fill.quantity}`,
+    });
   });
 });

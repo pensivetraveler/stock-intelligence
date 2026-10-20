@@ -1,4 +1,5 @@
 import type {
+  BacktestFill,
   ImportedExecution,
   ManualExecution,
   PriceBar,
@@ -20,6 +21,7 @@ export const MARKER_COLORS = {
   imported: "#2ec4b6",
   broker: "#f5a623",
   hypothetical: "#c08bff",
+  backtest: "#ff6f91",
 };
 
 function seconds(utc: string): number {
@@ -96,4 +98,28 @@ export function journalMarkers(
     }
   }
   return markers.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id));
+}
+
+/** Fills of one backtest run, shown on request; they are never journal entries. */
+export function backtestMarkers(
+  bars: PriceBar[],
+  instrumentId: string,
+  fills: BacktestFill[],
+): ChartMarker[] {
+  const markers: ChartMarker[] = [];
+  for (const fill of fills) {
+    if (fill.instrument_id !== instrumentId) continue;
+    const time = barStart(bars, fill.filled_at_utc);
+    if (time === null) continue;
+    const buy = fill.side === "buy";
+    markers.push({
+      id: `backtest:${fill.fill_id}`,
+      time,
+      position: buy ? "belowBar" : "aboveBar",
+      shape: buy ? "arrowUp" : "arrowDown",
+      color: MARKER_COLORS.backtest,
+      text: `BT ${fill.side} ${fill.quantity}`,
+    });
+  }
+  return markers;
 }

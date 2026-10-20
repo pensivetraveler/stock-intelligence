@@ -125,6 +125,11 @@ export const JournalIcon = () => (
     <path d="M3.5 1.5h8l2 2v11h-10zM6 6h5M6 9h5M6 12h3" />
   </Icon>
 );
+export const BacktestIcon = () => (
+  <Icon>
+    <path d="M1.5 14.5h13M2.5 12l3-4 3 2 5-6.5M10.5 3.5h3v3" />
+  </Icon>
+);
 export const KeyIcon = () => (
   <Icon>
     <circle cx="5" cy="11" r="3" />

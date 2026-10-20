@@ -1,4 +1,5 @@
 import type {
+  BacktestFill,
   ImportedExecution,
   ManualExecution,
   MarketBarsResponse,
@@ -30,7 +31,7 @@ import {
 } from "./indicators";
 import { useI18n, type Translate } from "./i18n";
 import type { ChartSyncGroup } from "./chart-sync";
-import { journalMarkers } from "./journal-markers";
+import { backtestMarkers, journalMarkers } from "./journal-markers";
 import {
   MarketApiError,
   type InstrumentListing,
@@ -86,6 +87,8 @@ interface ChartPanelProps {
     scenarios: ScenarioDefinition[];
   };
   onJournalChange: () => void;
+  /** Fills of the backtest run the user chose to show on the charts. */
+  backtestFills?: BacktestFill[];
   /** The chart that the toolbars and the watchlist act on. */
   active?: boolean;
   onActivate?: () => void;
@@ -144,6 +147,7 @@ export function ChartPanel({
   sync,
   journal,
   onJournalChange,
+  backtestFills,
   active = false,
   onActivate,
   magnet = false,
@@ -470,15 +474,18 @@ export function ChartPanel({
   const markers = useMemo(
     () =>
       bars
-        ? journalMarkers(
-            bars,
-            instrumentId,
-            journal.manual,
-            journal.scenarios,
-            journal.imported,
-          )
+        ? [
+            ...journalMarkers(
+              bars,
+              instrumentId,
+              journal.manual,
+              journal.scenarios,
+              journal.imported,
+            ),
+            ...backtestMarkers(bars, instrumentId, backtestFills ?? []),
+          ].sort((a, b) => a.time - b.time || a.id.localeCompare(b.id))
         : [],
-    [bars, instrumentId, journal],
+    [bars, instrumentId, journal, backtestFills],
   );
   const selectCandle = useCallback(
     (time: number) => {

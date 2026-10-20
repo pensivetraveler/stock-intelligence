@@ -1,6 +1,6 @@
 # ADR 0021 — Backtest engine (Phase 5B, stage B1)
 
-- **Status:** accepted; B1 (engine) implemented, B2 adds the screen
+- **Status:** accepted; B1 (engine) and B2 (screen) implemented
 - **Date:** 2026-10-21
 
 ## Context
@@ -93,6 +93,26 @@ On 2026-10-21 the user chose:
 - **Without `SIW_DATA_DIR`** the endpoints answer 503 and nothing is stored. A run left `running` when the app stopped is marked failed at the next start.
 - **Contracts:** new `backtest_strategy`, `backtest_strategy_list_response`, `backtest_run`, `backtest_run_list_response` and `backtest_results`. The existing `backtest_fill` and `backtest_run_config` now also allow KRW, and a fill may carry its `fee` and `notes`.
 - **Separation:** backtest fills live only in `backtests.sqlite3`. They never touch the journal or any ledger.
+
+## Screen (B2)
+
+- **Where:** a "Backtest" button on the right rail opens a large window over the charts. Esc or ✕ closes it.
+- **Strategy editor:**
+  - Rules are edited in a form: entry and exit conditions combined with all/any; operands are the 10 engine indicators (with their parameters and outputs), a bar price or a value; plus stop/target, sizing and max positions.
+  - A saved rule nested deeper than the form can show is displayed as JSON and run exactly as saved.
+  - Python strategies are edited as code with JSON parameters, under a note that the code runs isolated and should be reviewed first.
+  - The API, not the screen, decides whether a definition is valid; its message is shown.
+- **Run:**
+  - Instruments are chosen from the watchlist (configured and added). Only the instruments shown can be selected, and US and Korean stocks cannot be mixed in one run.
+  - "Save and run" saves the editor first; an unchanged definition keeps its version.
+  - Runs are polled every 1.5 s while one is queued or running, and can be cancelled.
+- **Results:**
+  - warnings first, then the metric cards (each card's tooltip is the engine's definition);
+  - the equity curve against buy-and-hold, with the drawdown below on a linked time axis;
+  - the per-instrument table, trades, and orders not filled (with their reasons);
+  - pinned inputs and the strategy's output, behind disclosure toggles.
+- **On the charts:** "Show fills on charts" draws that run's fills on every chart showing the instrument, as pink `BT` markers. A chip on the chart says they are simulated and hides them. They are never journal entries.
+- **Compared with real fills:** for each instrument, backtest buys and sells (count and average price) are shown next to the user's real executions (manual, imported and broker API) within about a day of the run's dates. This is a reference, not a trade-by-trade match; real executions without a known time are left out.
 
 ## Alternatives considered
 
