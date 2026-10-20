@@ -12,6 +12,7 @@ import type {
   ManualLedgerResponse,
   MarketBarsResponse,
   MarketQuote,
+  RealtimeEvent,
   ResearchTable,
   MarketInstrumentsResponse,
   ScenarioDefinition,
@@ -21,6 +22,8 @@ import type {
   StockInfo,
   SymbolSearchResponse,
 } from "@siw/contracts/types";
+
+import { openRealtime, type RealtimeSocket } from "./realtime";
 
 /** Whole minutes written "Nm" (see timeframes.ts); the API aggregates any of them. */
 export type Timeframe = string;
@@ -60,6 +63,8 @@ export interface MarketApi {
     key: string | null,
     params: Record<string, string>,
   ): Promise<ResearchTable>;
+  /** The app's relay of the broker's realtime stream. */
+  openRealtime(onEvent: (event: RealtimeEvent) => void): RealtimeSocket;
   /** Broker reference data and active buying warnings for one stock. */
   stockInfo(instrumentId: string): Promise<StockInfo>;
   /** The broker's USD/KRW reference rate. */
@@ -325,6 +330,12 @@ export function createMarketApi(
       return get<ResearchTable>(
         `/v1/research/${encodeURIComponent(dataset)}?${query.toString()}`,
         "research_table",
+      );
+    },
+    openRealtime(onEvent) {
+      return openRealtime(
+        `${baseUrl.replace(/^http/, "ws")}/v1/realtime`,
+        onEvent,
       );
     },
     stockInfo(instrumentId) {

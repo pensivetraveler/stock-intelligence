@@ -107,6 +107,12 @@
     },
     {
       "$ref": "#/$defs/BrokerSellableQuantity"
+    },
+    {
+      "$ref": "#/$defs/RealtimeEvent"
+    },
+    {
+      "$ref": "#/$defs/TickListResponse"
     }
   ],
   "$defs": {
@@ -3665,6 +3671,400 @@
         },
         "observed_at_utc": {
           "$ref": "#/$defs/UtcTimestamp"
+        }
+      }
+    },
+    "RealtimeEvent": {
+      "description": "One event relayed from the broker's realtime stream to the app. Trade and order book frames can be dropped by the broker (no sequence numbers); order events are lossless only within one connection.",
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "const": "realtime_event"
+        }
+      },
+      "oneOf": [
+        {
+          "description": "A trade print received from the stream.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "schema_version",
+            "event",
+            "source_id",
+            "symbol",
+            "instrument_id",
+            "price",
+            "volume",
+            "currency",
+            "exchange_time_utc",
+            "received_at_utc"
+          ],
+          "properties": {
+            "kind": {
+              "const": "realtime_event"
+            },
+            "schema_version": {
+              "$ref": "#/$defs/SchemaVersion"
+            },
+            "event": {
+              "const": "trade"
+            },
+            "source_id": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "symbol": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "instrument_id": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/Identifier"
+                }
+              ]
+            },
+            "price": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "volume": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 3
+            },
+            "exchange_time_utc": {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            "received_at_utc": {
+              "$ref": "#/$defs/UtcTimestamp"
+            }
+          }
+        },
+        {
+          "description": "An order book update.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "schema_version",
+            "event",
+            "source_id",
+            "symbol",
+            "instrument_id",
+            "currency",
+            "exchange_time_utc",
+            "asks",
+            "bids"
+          ],
+          "properties": {
+            "kind": {
+              "const": "realtime_event"
+            },
+            "schema_version": {
+              "$ref": "#/$defs/SchemaVersion"
+            },
+            "event": {
+              "const": "orderbook"
+            },
+            "source_id": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "symbol": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "instrument_id": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/Identifier"
+                }
+              ]
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 3
+            },
+            "exchange_time_utc": {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            "asks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["price", "volume"],
+                "properties": {
+                  "price": {
+                    "$ref": "#/$defs/NonNegativeDecimalString"
+                  },
+                  "volume": {
+                    "$ref": "#/$defs/NonNegativeDecimalString"
+                  }
+                }
+              }
+            },
+            "bids": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["price", "volume"],
+                "properties": {
+                  "price": {
+                    "$ref": "#/$defs/NonNegativeDecimalString"
+                  },
+                  "volume": {
+                    "$ref": "#/$defs/NonNegativeDecimalString"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "A change to one of the user's own orders.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "schema_version",
+            "event",
+            "broker_id",
+            "account_ref",
+            "order_event",
+            "symbol",
+            "side",
+            "status",
+            "filled_quantity"
+          ],
+          "properties": {
+            "kind": {
+              "const": "realtime_event"
+            },
+            "schema_version": {
+              "$ref": "#/$defs/SchemaVersion"
+            },
+            "event": {
+              "const": "order"
+            },
+            "broker_id": {
+              "const": "toss"
+            },
+            "account_ref": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "order_event": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "symbol": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "side": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10
+            },
+            "status": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "filled_quantity": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/NonNegativeDecimalString"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "description": "The broker ledger was resynced after an order closed or the stream reconnected.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "schema_version",
+            "event",
+            "stored_new",
+            "conflicts"
+          ],
+          "properties": {
+            "kind": {
+              "const": "realtime_event"
+            },
+            "schema_version": {
+              "$ref": "#/$defs/SchemaVersion"
+            },
+            "event": {
+              "const": "ledger_synced"
+            },
+            "stored_new": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "conflicts": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "description": "The relay's connection to the broker.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "schema_version",
+            "event",
+            "connected",
+            "detail",
+            "subscribed",
+            "rejected"
+          ],
+          "properties": {
+            "kind": {
+              "const": "realtime_event"
+            },
+            "schema_version": {
+              "$ref": "#/$defs/SchemaVersion"
+            },
+            "event": {
+              "const": "status"
+            },
+            "connected": {
+              "type": "boolean"
+            },
+            "detail": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                }
+              ]
+            },
+            "subscribed": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            },
+            "rejected": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TickListResponse": {
+      "description": "Trade ticks this app received from a broker stream for one symbol and New York date. Lossy by nature: a received record, never a complete tape, and never an input to bars.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "source_id",
+        "symbol",
+        "session_date",
+        "completeness",
+        "count",
+        "truncated",
+        "ticks"
+      ],
+      "properties": {
+        "kind": {
+          "const": "tick_list_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "source_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "session_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "completeness": {
+          "const": "lossy_stream"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "All stored ticks for the day; `ticks` may hold only the latest of them."
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "ticks": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "price",
+              "volume",
+              "currency",
+              "exchange_time_utc",
+              "received_at_utc"
+            ],
+            "properties": {
+              "price": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "volume": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "currency": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 3
+              },
+              "exchange_time_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "received_at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              }
+            }
+          }
         }
       }
     }

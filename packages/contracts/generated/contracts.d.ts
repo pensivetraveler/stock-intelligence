@@ -35,13 +35,82 @@ export type StockIntelligenceWorkstationContractsV01 =
   | BrokerLedgerResponse
   | BrokerSyncResult
   | BrokerAccountSnapshot
-  | BrokerSellableQuantity;
+  | BrokerSellableQuantity
+  | RealtimeEvent
+  | TickListResponse;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
 export type NonNegativeDecimalString = string;
 export type Side = "buy" | "sell";
 export type DecimalString = string;
+/**
+ * One event relayed from the broker's realtime stream to the app. Trade and order book frames can be dropped by the broker (no sequence numbers); order events are lossless only within one connection.
+ */
+export type RealtimeEvent = {
+  kind: "realtime_event";
+  [k: string]: unknown;
+} & RealtimeEvent1;
+export type RealtimeEvent1 =
+  | {
+      kind: "realtime_event";
+      schema_version: SchemaVersion;
+      event: "trade";
+      source_id: Identifier;
+      symbol: string;
+      instrument_id: null | Identifier;
+      price: NonNegativeDecimalString;
+      volume: NonNegativeDecimalString;
+      currency: string;
+      exchange_time_utc: UtcTimestamp;
+      received_at_utc: UtcTimestamp;
+    }
+  | {
+      kind: "realtime_event";
+      schema_version: SchemaVersion;
+      event: "orderbook";
+      source_id: Identifier;
+      symbol: string;
+      instrument_id: null | Identifier;
+      currency: string;
+      exchange_time_utc: UtcTimestamp;
+      asks: {
+        price: NonNegativeDecimalString;
+        volume: NonNegativeDecimalString;
+      }[];
+      bids: {
+        price: NonNegativeDecimalString;
+        volume: NonNegativeDecimalString;
+      }[];
+    }
+  | {
+      kind: "realtime_event";
+      schema_version: SchemaVersion;
+      event: "order";
+      broker_id: "toss";
+      account_ref: Identifier;
+      order_event: string;
+      symbol: string;
+      side: string;
+      status: string;
+      filled_quantity: null | NonNegativeDecimalString;
+    }
+  | {
+      kind: "realtime_event";
+      schema_version: SchemaVersion;
+      event: "ledger_synced";
+      stored_new: number;
+      conflicts: number;
+    }
+  | {
+      kind: "realtime_event";
+      schema_version: SchemaVersion;
+      event: "status";
+      connected: boolean;
+      detail: null | string;
+      subscribed: string[];
+      rejected: string[];
+    };
 
 export interface InstrumentRef {
   kind: "instrument_ref";
@@ -919,4 +988,30 @@ export interface BrokerSellableQuantity {
   symbol: string;
   sellable_quantity: NonNegativeDecimalString;
   observed_at_utc: UtcTimestamp;
+}
+/**
+ * Trade ticks this app received from a broker stream for one symbol and New York date. Lossy by nature: a received record, never a complete tape, and never an input to bars.
+ */
+export interface TickListResponse {
+  kind: "tick_list_response";
+  schema_version: SchemaVersion;
+  source_id: Identifier;
+  symbol: string;
+  session_date: string;
+  completeness: "lossy_stream";
+  /**
+   * All stored ticks for the day; `ticks` may hold only the latest of them.
+   */
+  count: number;
+  truncated: boolean;
+  /**
+   * @maxItems 5000
+   */
+  ticks: {
+    price: NonNegativeDecimalString;
+    volume: NonNegativeDecimalString;
+    currency: string;
+    exchange_time_utc: UtcTimestamp;
+    received_at_utc: UtcTimestamp;
+  }[];
 }

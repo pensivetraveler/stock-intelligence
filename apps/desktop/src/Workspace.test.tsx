@@ -1,6 +1,7 @@
 import type {
   ImportBatch,
   BrokerOrderExecution,
+  RealtimeEvent,
   ImportedExecution,
   ImportedLedgerResponse,
   ImportPreviewResponse,
@@ -11,6 +12,7 @@ import type {
   SessionWindow,
 } from "@siw/contracts/types";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -65,6 +67,10 @@ const fixture = <T,>(name: string): T =>
 function fakeApi(
   options: { journalOff?: boolean; history?: boolean } = {},
 ): MarketApi & {
+  realtime: {
+    symbols: string[][];
+    push: (event: RealtimeEvent) => void;
+  };
   researchCalls: {
     dataset: string;
     key: string | null;
@@ -90,6 +96,11 @@ function fakeApi(
   const manual: ManualExecution[] = [];
   const imported: ImportedExecution[] = [];
   const broker: BrokerOrderExecution[] = [];
+  const realtime = {
+    symbols: [] as string[][],
+    // Replaced when the workspace opens the relay.
+    push: (() => {}) as (event: RealtimeEvent) => void,
+  };
   const scenarios: ScenarioDefinition[] = [];
   const off = () =>
     Promise.reject(
@@ -101,6 +112,14 @@ function fakeApi(
     manualRequests,
     scenarioRequests,
     importRequests,
+    realtime,
+    openRealtime: (onEvent) => {
+      realtime.push = (event) => act(() => onEvent(event));
+      return {
+        setSymbols: (symbols) => realtime.symbols.push(symbols),
+        close: () => {},
+      };
+    },
     researchCalls,
     research: (dataset, key, params) => {
       researchCalls.push({ dataset, key, params });
@@ -1024,6 +1043,56 @@ describe("chart workspace", () => {
     const ledger = heading.closest(".ledger") as HTMLElement;
     expect(await within(ledger).findByText("250.10")).toBeVisible();
     expect(within(ledger).getByText("0.25")).toBeVisible();
+  });
+
+  it("shows pushed trades live and announces order updates", async () => {
+    const api = fakeApi();
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    await waitFor(() => expect(api.realtime.symbols.at(-1)).toEqual(["SYNTH"]));
+    fireEvent.click(screen.getByRole("button", { name: "Live quote" }));
+    const panel = await screen.findByRole("region", { name: "Live quote" });
+    await within(panel).findAllByText("252.31");
+    api.realtime.push({
+      kind: "realtime_event",
+      schema_version: "0.1",
+      event: "status",
+      connected: true,
+      detail: null,
+      subscribed: [],
+      rejected: [],
+    });
+    api.realtime.push({
+      kind: "realtime_event",
+      schema_version: "0.1",
+      event: "trade",
+      source_id: "toss-us",
+      symbol: "SYNTH",
+      instrument_id: "us:synth:xnas:2026",
+      price: "253.00",
+      volume: "3",
+      currency: "USD",
+      exchange_time_utc: "2026-10-20T15:00:01.000Z",
+      received_at_utc: "2026-10-20T15:00:01.050Z",
+    });
+    expect(await within(panel).findAllByText("253.00")).toHaveLength(2);
+    expect(within(panel).getByText(/live/)).toBeVisible();
+
+    api.realtime.push({
+      kind: "realtime_event",
+      schema_version: "0.1",
+      event: "order",
+      broker_id: "toss",
+      account_ref: "toss-abc-1",
+      order_event: "FILL",
+      symbol: "AAPL",
+      side: "BUY",
+      status: "FILLED",
+      filled_quantity: "10",
+    });
+    expect(
+      await screen.findByText(/Order update: AAPL BUY FILLED/),
+    ).toBeVisible();
   });
 
   it("shows the latest bar in the legend", async () => {

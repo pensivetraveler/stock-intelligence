@@ -11,6 +11,7 @@ dependencies = [
   "keyring>=25.7.0",
   "pyarrow>=25.0.1,<26",
   "uvicorn[standard]>=0.34,<1",
+  "websockets>=16,<17",
 ]
 
 [dependency-groups]
