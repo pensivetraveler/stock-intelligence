@@ -22,10 +22,11 @@ from packages.contracts.validator import validate_document
 from services.api.credential_routes import register_credential_routes
 from services.api.journal_routes import register_import_routes, register_journal_routes
 from services.credentials.pool import PooledProvider
-from services.credentials.store import CredentialStore, KeyringSecretBackend
+from services.credentials.store import CredentialStore, KeyringSecretBackend, SecretStorageError
 from services.journal.store import JournalStore
 from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
+from services.market_data.broker_common import listed_symbol
 from services.market_data.calendar import CalendarError, UsEquityCalendar
 from services.market_data.provider import (
     BarsQuery,
@@ -49,6 +50,15 @@ from services.market_data.symbol_directory import (
     SymbolDirectory,
     SymbolDirectoryUnavailableError,
     SymbolEntry,
+)
+from services.market_data.toss_quotes import market_quote
+from services.market_data.toss_session import (
+    DEFAULT_BASE_URL as DEFAULT_TOSS_URL,
+)
+from services.market_data.toss_session import (
+    TossCredentials,
+    TossSession,
+    session_for,
 )
 
 APP_NAME = "stock-intelligence-workstation-api"
@@ -172,6 +182,20 @@ class _LazySymbols:
         return directory.known() if directory is not None else {}
 
 
+def _toss_session(credentials: CredentialStore | None) -> TossSession | None:
+    """The shared session of the first enabled real-account Toss key on the Keys screen."""
+    if credentials is None:
+        return None
+    for record in credentials.list("toss"):
+        if record.enabled and record.environment == "real":
+            secrets = credentials.secrets(record)
+            base_url = os.getenv("SIW_TOSS_BASE_URL", DEFAULT_TOSS_URL).strip().rstrip("/")
+            return session_for(
+                TossCredentials(secrets["client_id"], secrets["client_secret"], base_url)
+            )
+    return None
+
+
 class _LazyJournal:
     """Open the journal store on first use; None when no data directory is configured."""
 
@@ -198,11 +222,13 @@ def create_app(
     journal_store: JournalStore | None = None,
     credential_store: CredentialStore | None = None,
     symbol_directory: SymbolDirectory | None = None,
+    toss_session: Callable[[], TossSession | None] | None = None,
     clock: Callable[[], datetime] = _utc_now,
 ) -> FastAPI:
     credentials = _LazyCredentials(credential_store)
     provider = _LazyProvider(market_data_provider, credentials.get)
     symbols = _LazySymbols(symbol_directory, provider)
+    toss = toss_session or (lambda: _toss_session(credentials.get()))
     journal = _LazyJournal(journal_store)
 
     @asynccontextmanager
@@ -313,6 +339,49 @@ def create_app(
         }
         validate_document(document)
         return JSONResponse(content=document)
+
+    @application.get("/v1/market/quote", response_model=None)
+    def market_quote_endpoint(
+        request: Request,
+        instrument_id: Annotated[str, Query(min_length=1, max_length=200)],
+    ) -> Response:
+        """Last price, order book, recent trades and price limits, read live from Toss."""
+        symbol = listed_symbol(instrument_id) or next(
+            (
+                item["instrument"]["symbol"]
+                for item in provider.get().instruments()
+                if item["instrument"]["instrument_id"] == instrument_id
+            ),
+            None,
+        )
+        if symbol is None:
+            return _error_response(
+                request, 404, "instrument_not_found", "instrument is not a listed US equity ID"
+            )
+        try:
+            session = toss()
+        except SecretStorageError as exc:
+            return _error_response(request, 502, "provider_auth_failed", str(exc))
+        if session is None:
+            return _error_response(
+                request,
+                404,
+                "quote_source_unavailable",
+                "register an enabled real-account Toss key on the Keys screen for live quotes",
+            )
+        try:
+            document = market_quote(session, instrument_id, symbol, clock)
+        except InvalidBarsQueryError as exc:
+            return _error_response(request, 422, "invalid_market_data_query", str(exc))
+        except ProviderAuthError as exc:
+            return _error_response(request, 502, "provider_auth_failed", str(exc))
+        except ProviderRateLimitError as exc:
+            return _error_response(request, 503, "provider_rate_limited", str(exc))
+        except ProviderUnavailableError as exc:
+            return _error_response(request, 503, "provider_unavailable", str(exc))
+        except ProviderDataError as exc:
+            return _error_response(request, 502, "provider_data_invalid", str(exc))
+        return JSONResponse(content=document, headers={"Cache-Control": "no-store"})
 
     @application.get("/v1/market/sessions", response_model=None)
     def market_sessions(

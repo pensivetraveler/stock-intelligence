@@ -94,6 +94,26 @@ function fakeApi(
         fixture<MarketInstrumentsResponse>("market-instruments-response.json")
           .instruments,
       ),
+    liveQuote: (instrumentId) =>
+      Promise.resolve({
+        kind: "market_quote",
+        schema_version: "0.1",
+        instrument_id: instrumentId,
+        symbol: "SYNTH",
+        source_id: "toss-us",
+        currency: "USD",
+        observed_at_utc: "2026-10-20T15:00:00Z",
+        last: { price: "252.31", at_utc: "2026-10-20T14:59:58.120Z" },
+        orderbook: {
+          at_utc: "2026-10-20T14:59:59Z",
+          asks: [{ price: "252.33", volume: "120" }],
+          bids: [{ price: "252.30", volume: "80" }],
+        },
+        trades: [
+          { price: "252.31", volume: "15", at_utc: "2026-10-20T14:59:58.120Z" },
+        ],
+        price_limits: null,
+      }),
     searchSymbols: (query) =>
       Promise.resolve({
         kind: "symbol_search_response",
@@ -700,6 +720,31 @@ describe("chart workspace", () => {
     expect(
       screen.queryByRole("button", { name: "Show NVDA in the active chart" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows the live quote of the active chart and explains a missing Toss key", async () => {
+    const api = fakeApi();
+    const { unmount } = render(
+      <Workspace api={api} storage={memoryStorage()} />,
+    );
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: "Live quote" }));
+    const panel = await screen.findByRole("region", { name: "Live quote" });
+    // The last price and the latest trade.
+    expect(await within(panel).findAllByText("252.31")).toHaveLength(2);
+    expect(within(panel).getByText("252.33")).toBeInTheDocument();
+    expect(within(panel).getByText("10:59:58 ET")).toBeInTheDocument();
+    unmount();
+
+    const offline = fakeApi();
+    offline.liveQuote = () =>
+      Promise.reject(new MarketApiError("no key", "quote_source_unavailable"));
+    render(<Workspace api={offline} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: "Live quote" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "register an enabled real-account Toss key",
+    );
   });
 
   it("shows the latest bar in the legend", async () => {

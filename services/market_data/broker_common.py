@@ -93,6 +93,15 @@ def account_environment(
     return "demo", demo_base_url
 
 
+LISTED_INSTRUMENT = re.compile(r"^us:([a-z][a-z0-9.]{0,9}):(xnas|xnys|arcx|xase|bats):2026$")
+
+
+def listed_symbol(instrument_id: str) -> str | None:
+    """Ticker of a listed US equity ID (as the symbol directory issues them), else None."""
+    match = LISTED_INSTRUMENT.fullmatch(instrument_id)
+    return match.group(1).upper() if match else None
+
+
 def require(values: dict[str, str] | Any, *names: str) -> list[str]:
     found = [str(values.get(name, "")).strip() for name in names]
     if not all(found):

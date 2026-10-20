@@ -5,6 +5,7 @@ import type {
   ManualExecution,
   ManualLedgerResponse,
   MarketBarsResponse,
+  MarketQuote,
   MarketInstrumentsResponse,
   ScenarioDefinition,
   ScenarioLedgerResponse,
@@ -45,6 +46,8 @@ export interface SessionQuote {
 
 export interface MarketApi {
   instruments(): Promise<InstrumentListing[]>;
+  /** Live last price, order book, recent trades and price limits from the broker. */
+  liveQuote(instrumentId: string): Promise<MarketQuote>;
   /** US-listed stocks whose ticker or company name matches `query`, tickers first. */
   searchSymbols(query: string, limit?: number): Promise<SymbolSearchResponse>;
   quote(
@@ -285,6 +288,13 @@ export function createMarketApi(
         "market_instruments_response",
       );
       return response.instruments;
+    },
+    liveQuote(instrumentId) {
+      const params = new URLSearchParams({ instrument_id: instrumentId });
+      return get<MarketQuote>(
+        `/v1/market/quote?${params.toString()}`,
+        "market_quote",
+      );
     },
     searchSymbols(query, limit = 20) {
       const params = new URLSearchParams({ q: query, limit: String(limit) });

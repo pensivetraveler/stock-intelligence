@@ -1,4 +1,4 @@
-"""토스증권 Open API US minute-bar adapter (read-only, from official docs).
+"""토스증권 Open API US minute and daily bar adapter (read-only, from official docs).
 
 Spec: openapi.tossinvest.com (GET /api/v1/candles, Candle, CandlePageResponse, overview).
 Documented facts used here: a candle `timestamp` is the bar END ([t-1m, t)); newest
@@ -7,53 +7,66 @@ request false); OAuth2 client credentials with one valid token per client (a new
 revokes the old); calls from IPs outside the allowlist get 403 `ip-not-allowed`; US data
 comes from some venues only, not the NBBO; minutes without trades are omitted. Data may be
 used only for the account holder's own trading and must not be passed to third parties.
+
+Requests go through the process-wide `TossSession` of the key (toss_session.py), so the
+chart, quotes and account views share one token. US daily candles (`interval=1d`) are
+stamped at midnight New York of their session date, written in Korean time (live check
+2026-10-20, AAPL: "2026-10-19T13:00:00+09:00" is the 10-19 session), so the session date
+is read in New York time.
 """
 
 from __future__ import annotations
 
-import json
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 import httpx
 
 from services.market_data.broker_common import (
     MAX_QUERY_MINUTES,
-    AllowlistedClient,
     RawMinute,
     SourceIdentity,
-    TokenCache,
     account_environment,
     build_result,
     capabilities,
     decimal_field,
     instrument_listing,
+    listed_symbol,
     parse_sessions,
     parse_symbols,
     require,
     utc_text,
     validate_minute_query,
 )
-from services.market_data.calendar import TradingSessionName, UsEquityCalendar
+from services.market_data.calendar import (
+    NEW_YORK,
+    CalendarError,
+    TradingSessionName,
+    UsEquityCalendar,
+)
+from services.market_data.daily import (
+    DailySource,
+    RawDay,
+    build_daily_result,
+    sessions_in_range,
+    validate_daily_query,
+)
 from services.market_data.provider import (
     BarsQuery,
     BarsResult,
     InstrumentNotFoundError,
     InvalidBarsQueryError,
-    ProviderAuthError,
     ProviderDataError,
-    ProviderRateLimitError,
-    ProviderUnavailableError,
 )
+from services.market_data.toss_session import TossCredentials, session_for
 
-TOKEN_PATH = "/oauth2/token"
 CANDLES_PATH = "/api/v1/candles"
 PAGE_SIZE = 200
-TOKEN_ERRORS = {"expired-token", "token-revoked", "invalid-token"}
+# Daily pages: 40 years of sessions at 200 candles a page.
+DAILY_PAGES = 52
 
 
 @dataclass(frozen=True)
@@ -101,13 +114,10 @@ class TossMarketDataProvider:
         self.config = config
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._calendar = UsEquityCalendar("XNAS")
-        self._http = AllowlistedClient(
-            config.base_url,
-            [("POST", TOKEN_PATH), ("GET", CANDLES_PATH)],
+        self.session = session_for(
+            TossCredentials(config.client_id, config.client_secret, config.base_url),
             transport=transport,
-            min_interval_seconds=0.06,  # documented MARKET_DATA_CHART group: 20 per second
         )
-        self._token = TokenCache(self._issue_token)
         self._instruments = {f"us:{s.lower()}:{v.lower()}:2026": (s, v) for s, v in config.symbols}
         self.last_raw_sample: dict[str, Any] | None = None
         self.identity = SourceIdentity(
@@ -135,35 +145,61 @@ class TossMarketDataProvider:
             for s, v in self.config.symbols
         ]
 
+    def symbol_for(self, instrument_id: str) -> str | None:
+        """Ticker of a configured instrument or of any listed US equity ID."""
+        configured = self._instruments.get(instrument_id)
+        return configured[0] if configured is not None else listed_symbol(instrument_id)
+
     def get_bars(self, query: BarsQuery) -> BarsResult:
         now = self._now()
         validate_minute_query(query, now)
-        if query.instrument_id not in self._instruments:
-            raise InstrumentNotFoundError("instrument is not in SIW_TOSS_SYMBOLS")
-        symbol, _venue = self._instruments[query.instrument_id]
+        symbol = self.symbol_for(query.instrument_id)
+        if symbol is None:
+            raise InstrumentNotFoundError("instrument is not a listed US equity ID")
         raw = self._fetch(symbol, query) if query.start_utc < now else []
         return build_result(query, raw, self.identity, self._calendar, now)
 
-    def _issue_token(self) -> tuple[str, float]:
-        response = self._http.request(
-            "POST",
-            TOKEN_PATH,
-            data={
-                "grant_type": "client_credentials",
-                "client_id": self.config.client_id,
-                "client_secret": self.config.client_secret,
-            },
-        )
-        if response.status_code >= 400:
-            raise ProviderAuthError(
-                f"Toss refused to issue a token ({response.status_code}); check the keys and "
-                "that this machine's IP is on the Open API allowlist"
+    def get_daily_bars(self, query: BarsQuery) -> BarsResult:
+        """Daily bars (Toss `1d`, unadjusted) for sessions opening in the range."""
+        now = self._now()
+        validate_daily_query(query, "1d", now)
+        symbol = self.symbol_for(query.instrument_id)
+        if symbol is None:
+            raise InstrumentNotFoundError("instrument is not a listed US equity ID")
+        try:
+            sessions = sessions_in_range(self._calendar, query.start_utc, query.end_utc)
+        except CalendarError as exc:
+            raise InvalidBarsQueryError(str(exc)) from exc
+        raw: dict[date, RawDay] = {}
+        if sessions and sessions[0].regular_open_utc < now:
+            first = sessions[0].session_date
+            # Inclusive upper bound: the end of the last session's date in New York.
+            before: str | None = utc_text(
+                datetime.combine(sessions[-1].session_date, time(23, 59), NEW_YORK)
             )
-        payload = response.json()
-        token = payload.get("access_token")
-        if not token:
-            raise ProviderAuthError("Toss returned no access token")
-        return str(token), float(payload.get("expires_in", 3_600))
+            for _page in range(DAILY_PAGES):
+                if before is None:
+                    break
+                result = self._candles(symbol, "1d", before)
+                candles = list(result.get("candles") or [])
+                for candle in candles:
+                    day = self._day(candle)
+                    if day.session_date in raw:
+                        raise ProviderDataError("Toss returned two daily candles for one date")
+                    raw[day.session_date] = day
+                if not candles or min(raw) <= first:
+                    break
+                next_before = result.get("nextBefore")
+                before = str(next_before) if next_before else None
+        source = DailySource(
+            source_id=self.source_id,
+            feed_scope=self.identity.feed_scope,
+            dataset_revision=f"{self.identity.dataset_revision}:1d",
+            adjustment="raw",
+            publication_delay_minutes=0,
+            finality_minutes=self.config.finality_minutes,
+        )
+        return build_daily_result(query, raw, source, self._calendar, now)
 
     def _fetch(self, symbol: str, query: BarsQuery) -> list[RawMinute]:
         bars: list[RawMinute] = []
@@ -171,7 +207,7 @@ class TossMarketDataProvider:
         for _page in range(MAX_QUERY_MINUTES // PAGE_SIZE + 2):
             if before is None:
                 break
-            result = self._page(symbol, before)
+            result = self._candles(symbol, "1m", before)
             candles = list(result.get("candles") or [])
             if candles and self.last_raw_sample is None:
                 self.last_raw_sample = dict(candles[0])
@@ -183,53 +219,40 @@ class TossMarketDataProvider:
             before = str(next_before) if next_before else None
         return bars
 
-    def _page(self, symbol: str, before: str) -> dict[str, Any]:
-        params = {
-            "symbol": symbol,
-            "interval": "1m",
-            "count": str(PAGE_SIZE),
-            "before": before,
-            "adjusted": "false",
-        }
-        for attempt in range(2):
-            headers = {
-                "Authorization": f"Bearer {self._token.get(refresh=attempt > 0)}",
-                "Accept": "application/json",
-            }
-            response = self._http.request("GET", CANDLES_PATH, params=params, headers=headers)
-            try:
-                payload = json.loads(response.text, parse_float=Decimal)
-            except ValueError as exc:
-                if response.status_code >= 500:
-                    raise ProviderUnavailableError(
-                        f"Toss is unavailable ({response.status_code})"
-                    ) from exc
-                raise ProviderDataError("Toss returned a response that is not JSON") from exc
-            error = payload.get("error") if isinstance(payload, dict) else None
-            code = str(error.get("code", "")) if isinstance(error, dict) else ""
-            if response.status_code == 401 and code in TOKEN_ERRORS and attempt == 0:
-                continue  # expired, or revoked by another process issuing a token: reissue once
-            if response.status_code == 429:
-                raise ProviderRateLimitError("Toss rate limit reached; retry later")
-            if response.status_code in (401, 403):
-                hint = (
-                    " (this IP is not on the Open API allowlist)"
-                    if code == "ip-not-allowed"
-                    else ""
-                )
-                raise ProviderAuthError(
-                    f"Toss rejected the request ({response.status_code} {code}){hint}"
-                )
-            if response.status_code >= 500:
-                raise ProviderUnavailableError(f"Toss is unavailable ({response.status_code})")
-            if response.status_code >= 400:
-                message = str(error.get("message", ""))[:200] if isinstance(error, dict) else ""
-                raise InvalidBarsQueryError(f"Toss refused the query ({code}): {message}")
-            result = payload.get("result")
-            if not isinstance(result, dict):
-                raise ProviderDataError("Toss returned candles without a result object")
-            return result
-        raise ProviderAuthError("Toss rejected the reissued token")
+    def _candles(self, symbol: str, interval: str, before: str) -> dict[str, Any]:
+        result = self.session.get(
+            CANDLES_PATH,
+            params={
+                "symbol": symbol,
+                "interval": interval,
+                "count": str(PAGE_SIZE),
+                "before": before,
+                "adjusted": "false",
+            },
+        )
+        if not isinstance(result, dict):
+            raise ProviderDataError("Toss returned candles without a result object")
+        return result
+
+    @staticmethod
+    def _day(candle: dict[str, Any]) -> RawDay:
+        try:
+            stamp = datetime.fromisoformat(str(candle["timestamp"]).replace("Z", "+00:00"))
+        except (KeyError, ValueError) as exc:
+            raise ProviderDataError("Toss returned a daily candle without a timestamp") from exc
+        currency = candle.get("currency")
+        if currency not in (None, "USD"):
+            raise ProviderDataError(f"Toss returned a {currency} candle for a US instrument")
+        if stamp.tzinfo is None:
+            raise ProviderDataError("Toss returned a daily candle timestamp without an offset")
+        return RawDay(
+            stamp.astimezone(NEW_YORK).date(),  # midnight New York of the session date
+            decimal_field(candle, "openPrice"),
+            decimal_field(candle, "highPrice"),
+            decimal_field(candle, "lowPrice"),
+            decimal_field(candle, "closePrice"),
+            decimal_field(candle, "volume"),
+        )
 
     @staticmethod
     def _minute(candle: dict[str, Any]) -> RawMinute:

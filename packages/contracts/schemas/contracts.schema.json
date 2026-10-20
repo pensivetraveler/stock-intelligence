@@ -77,6 +77,9 @@
     },
     {
       "$ref": "#/$defs/SymbolSearchResponse"
+    },
+    {
+      "$ref": "#/$defs/MarketQuote"
     }
   ],
   "$defs": {
@@ -1994,6 +1997,162 @@
               }
             }
           }
+        }
+      }
+    },
+    "MarketQuote": {
+      "description": "A point-in-time quote read on demand from a broker: last price, order book, recent trades and daily price limits. Not stored; prices are exact decimal strings and times UTC.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "instrument_id",
+        "symbol",
+        "source_id",
+        "currency",
+        "observed_at_utc",
+        "last",
+        "orderbook",
+        "trades",
+        "price_limits"
+      ],
+      "properties": {
+        "kind": {
+          "const": "market_quote"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "instrument_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "source_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "currency": {
+          "enum": ["USD", "KRW"]
+        },
+        "observed_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp",
+          "description": "When this API read the quote."
+        },
+        "last": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["price", "at_utc"],
+              "properties": {
+                "price": {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                "at_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                }
+              }
+            }
+          ]
+        },
+        "orderbook": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["at_utc", "asks", "bids"],
+              "properties": {
+                "at_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                },
+                "asks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["price", "volume"],
+                    "properties": {
+                      "price": {
+                        "$ref": "#/$defs/DecimalString"
+                      },
+                      "volume": {
+                        "$ref": "#/$defs/NonNegativeDecimalString"
+                      }
+                    }
+                  }
+                },
+                "bids": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["price", "volume"],
+                    "properties": {
+                      "price": {
+                        "$ref": "#/$defs/DecimalString"
+                      },
+                      "volume": {
+                        "$ref": "#/$defs/NonNegativeDecimalString"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "trades": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["price", "volume", "at_utc"],
+            "properties": {
+              "price": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "volume": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              }
+            }
+          }
+        },
+        "price_limits": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["upper", "lower", "at_utc"],
+              "properties": {
+                "upper": {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                "lower": {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                "at_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                }
+              }
+            }
+          ]
         }
       }
     }
