@@ -148,6 +148,11 @@ class RealtimeHub:
         self._clients.discard(client)
         self._resubscribe.set()
 
+    async def stopped(self) -> None:
+        """Wait until the connection loop has ended (after the last client left)."""
+        if self._task is not None:
+            await self._task
+
     def symbols(self) -> list[str]:
         merged = sorted({symbol for client in self._clients for symbol in client.symbols})
         return merged[:MAX_SYMBOLS]
