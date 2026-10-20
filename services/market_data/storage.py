@@ -33,6 +33,7 @@ from services.market_data.provider import (
 MIGRATIONS_DIR = Path(__file__).with_name("migrations")
 OWNER_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 EXCHANGE_TIMEZONE = ZoneInfo("America/New_York")
+SEOUL = ZoneInfo("Asia/Seoul")
 JOB_ERROR_CODE_PATTERN = re.compile(r"^[a-z0-9_]{1,64}$")
 PARQUET_SCHEMA = pa.schema(
     [
@@ -158,6 +159,10 @@ def _parse_utc(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def _exchange_zone(bar: dict[str, Any]) -> ZoneInfo:
+    return SEOUL if str(bar["instrument_id"]).startswith("kr:") else EXCHANGE_TIMEZONE
+
+
 def _session_date(bar: dict[str, Any]) -> str:
     """US exchange-local date of the bar start.
 
@@ -165,7 +170,7 @@ def _session_date(bar: dict[str, Any]) -> str:
     is 00:00-01:00 UTC the next day) across two partitions.
     """
     start = _parse_utc(cast(str, bar["interval_start_utc"]))
-    return start.astimezone(EXCHANGE_TIMEZONE).date().isoformat()
+    return start.astimezone(_exchange_zone(bar)).date().isoformat()
 
 
 def _partition(bar: dict[str, Any]) -> str:
@@ -175,7 +180,7 @@ def _partition(bar: dict[str, Any]) -> str:
     """
     if bar["timeframe"] == "1d":
         start = _parse_utc(cast(str, bar["interval_start_utc"]))
-        return f"year={start.astimezone(EXCHANGE_TIMEZONE).year}"
+        return f"year={start.astimezone(_exchange_zone(bar)).year}"
     return f"session_date={_session_date(bar)}"
 
 

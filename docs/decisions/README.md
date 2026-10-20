@@ -33,3 +33,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0017-toss-direct-integration.md`: 토스 직접 연동(키 1개 공유 세션, 조회 전용 허용목록, 그룹별 호출 한도), 일봉·실시간 시세, 단계 계획
 - `0018-broker-api-execution-ledger.md`: 증권사 API 체결 원장(토스, 주문 1건당 1행·평균가·마지막 체결 시각), 계좌 조회 전용, 계좌번호 끝 4자리
 - `0019-toss-realtime-relay-and-tick-store.md`: 토스 실시간 중계(API 단일 연결, Origin 검사, 재연결·PING), 체결 시 원장 자동 동기화, 유실 표시 틱 저장소(봉과 분리)
+- `0020-korean-market-foundation.md`: 국내 주식 기반(K1) — XKRX 캘린더·NXT 확장 시간, kr: 종목 ID, KRW, 시장별 라우팅(국내=토스), 하루 전체 일봉(all_day)

@@ -118,8 +118,8 @@ export interface InstrumentRef {
   instrument_id: Identifier;
   symbol: string;
   venue: Identifier;
-  asset_class: "us_equity";
-  currency: "USD";
+  asset_class: "us_equity" | "kr_equity";
+  currency: "USD" | "KRW";
   identity_as_of: UtcTimestamp;
   identity_source: Identifier;
 }
@@ -136,7 +136,10 @@ export interface PriceBar {
   close: NonNegativeDecimalString;
   volume: NonNegativeDecimalString;
   volume_unit: "shares" | "provider_units";
-  session: "pre" | "regular" | "post" | "closed" | "unknown";
+  /**
+   * all_day: a daily or weekly bar spanning the whole trading day, extended sessions included (Toss Korean daily candles, 08:00-20:00 KST).
+   */
+  session: "pre" | "regular" | "post" | "all_day" | "closed" | "unknown";
   is_final: boolean;
   quality: "complete" | "partial" | "provisional" | "unknown";
   lineage: {
@@ -543,7 +546,7 @@ export interface CredentialListResponse {
 export interface SessionListResponse {
   kind: "session_list_response";
   schema_version: SchemaVersion;
-  calendar_id: "XNAS" | "XNYS";
+  calendar_id: "XNAS" | "XNYS" | "XKRX" | "XKOS";
   end_date: string;
   /**
    * @maxItems 120
