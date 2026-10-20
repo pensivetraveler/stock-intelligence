@@ -71,6 +71,9 @@
     },
     {
       "$ref": "#/$defs/CredentialListResponse"
+    },
+    {
+      "$ref": "#/$defs/SessionListResponse"
     }
   ],
   "$defs": {
@@ -181,7 +184,8 @@
           "$ref": "#/$defs/Identifier"
         },
         "timeframe": {
-          "enum": ["1m", "5m", "15m", "30m", "60m", "1d"]
+          "type": "string",
+          "pattern": "^([1-9][0-9]{0,2}m|1d|1w)$"
         },
         "interval_start_utc": {
           "$ref": "#/$defs/UtcTimestamp"
@@ -310,7 +314,8 @@
           "$ref": "#/$defs/Identifier"
         },
         "timeframe": {
-          "enum": ["1m", "5m", "15m", "30m", "60m"]
+          "type": "string",
+          "pattern": "^([1-9][0-9]{0,2}m|1d|1w)$"
         },
         "requested_start_utc": {
           "$ref": "#/$defs/UtcTimestamp"
@@ -1866,6 +1871,40 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/CredentialSummary"
+          }
+        }
+      }
+    },
+    "SessionListResponse": {
+      "description": "Consecutive trading sessions ending at end_date (inclusive), oldest first.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "calendar_id",
+        "end_date",
+        "sessions"
+      ],
+      "properties": {
+        "kind": {
+          "const": "session_list_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "calendar_id": {
+          "enum": ["XNAS", "XNYS"]
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "sessions": {
+          "type": "array",
+          "maxItems": 120,
+          "items": {
+            "$ref": "#/$defs/SessionWindow"
           }
         }
       }

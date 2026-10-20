@@ -5,7 +5,7 @@ import re
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -53,6 +53,7 @@ DEFAULT_CORS_ORIGINS = (
     "tauri://localhost",
 )
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+MAX_SESSION_LIST = 120
 
 
 def _cors_origins() -> list[str]:
@@ -246,6 +247,40 @@ def create_app(
         validate_document(document)
         return JSONResponse(content=document)
 
+    @application.get("/v1/market/sessions", response_model=None)
+    def market_sessions(
+        request: Request,
+        end_date: date,
+        count: Annotated[int, Query(ge=1, le=MAX_SESSION_LIST)] = 1,
+        calendar_id: Annotated[Literal["XNAS", "XNYS"], Query()] = "XNAS",
+    ) -> Response:
+        """The latest `count` trading sessions up to and including `end_date`, oldest first."""
+        calendar = UsEquityCalendar(calendar_id)
+        sessions: list[dict[str, object]] = []
+        day = end_date
+        # Holidays and weekends: about 1.5 calendar days per session is enough slack.
+        for _ in range(count * 2 + 10):
+            if len(sessions) == count:
+                break
+            try:
+                document = calendar.session_window_document(day)
+            except CalendarError as exc:
+                if sessions:
+                    break  # Reached the start of the calendar's range.
+                return _error_response(request, 422, "invalid_market_data_query", str(exc))
+            if document["is_trading_day"]:
+                sessions.append(document)
+            day -= timedelta(days=1)
+        document = {
+            "kind": "session_list_response",
+            "schema_version": "0.1",
+            "calendar_id": calendar_id,
+            "end_date": end_date.isoformat(),
+            "sessions": list(reversed(sessions)),
+        }
+        validate_document(document)
+        return JSONResponse(content=document)
+
     @application.get("/v1/market/sessions/{session_date}", response_model=None)
     def market_session(
         request: Request,
@@ -295,7 +330,7 @@ def create_app(
         instrument_id: Annotated[str, Query(min_length=1, max_length=200)],
         start_utc: Annotated[datetime, Query()],
         end_utc: Annotated[datetime, Query()],
-        timeframe: Annotated[Literal["1m", "5m", "15m", "30m", "60m"], Query()] = "1m",
+        timeframe: Annotated[str, Query(pattern=r"^[1-9][0-9]{0,2}m$")] = "1m",
         as_of_utc: Annotated[datetime | None, Query()] = None,
     ) -> Response:
         try:

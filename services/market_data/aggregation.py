@@ -1,22 +1,30 @@
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from collections.abc import Iterable
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from packages.contracts.validator import validate_document
 from services.market_data.calendar import TradingSessionName, UsEquityCalendar
 
-AggregateTimeframe = Literal["5m", "15m", "30m", "60m"]
-TARGET_MINUTES: dict[AggregateTimeframe, int] = {
-    "5m": 5,
-    "15m": 15,
-    "30m": 30,
-    "60m": 60,
-}
+# Any whole number of minutes from 2 up to a full extended session, written "Nm".
+AggregateTimeframe = str
+MIN_AGGREGATE_MINUTES = 2
+MAX_AGGREGATE_MINUTES = 960
+_TIMEFRAME = re.compile(r"^([1-9][0-9]{0,2})m$")
+
+
+def timeframe_minutes(timeframe: str) -> int | None:
+    """Minutes in an aggregate timeframe such as "3m" or "120m"; None if unsupported."""
+    match = _TIMEFRAME.fullmatch(timeframe)
+    if match is None:
+        return None
+    minutes = int(match.group(1))
+    return minutes if MIN_AGGREGATE_MINUTES <= minutes <= MAX_AGGREGATE_MINUTES else None
 
 
 class AggregationError(ValueError):
@@ -60,8 +68,10 @@ class MinuteBarAggregator:
         minute starts the provider settled as having no trades: they are not expected
         source bars, so a bucket is not marked partial for them.
         """
-        if timeframe not in TARGET_MINUTES:
-            raise AggregationError("target timeframe must be 5m, 15m, 30m, or 60m")
+        if timeframe_minutes(timeframe) is None:
+            raise AggregationError(
+                f"target timeframe must be {MIN_AGGREGATE_MINUTES}m to {MAX_AGGREGATE_MINUTES}m"
+            )
         if as_of_utc is not None and as_of_utc.utcoffset() != timedelta(0):
             raise AggregationError("as_of_utc must be UTC")
 
@@ -123,7 +133,9 @@ class MinuteBarAggregator:
         if window is None:
             raise AggregationError("source bar has no exchange session")
         session_start, session_end = window.bounds(session)
-        target_minutes = TARGET_MINUTES[timeframe]
+        target_minutes = timeframe_minutes(timeframe)
+        if target_minutes is None:
+            raise AggregationError(f"unsupported timeframe {timeframe!r}")
         offset_minutes = int((start_utc - session_start).total_seconds() // 60)
         bucket_start = session_start + timedelta(
             minutes=(offset_minutes // target_minutes) * target_minutes

@@ -22,14 +22,6 @@ export interface ReplayState {
 
 export const REPLAY_SPEEDS = [1, 2, 5, 10] as const;
 
-export const TIMEFRAME_SECONDS: Record<string, number> = {
-  "1m": 60,
-  "5m": 300,
-  "15m": 900,
-  "30m": 1_800,
-  "60m": 3_600,
-};
-
 export const REPLAY_OFF: ReplayState = {
   phase: "off",
   time: null,

@@ -2,7 +2,8 @@ import type { SessionWindow } from "@siw/contracts/types";
 
 import { parseDrawings, type Drawing } from "./drawings";
 import { parseIndicators, type IndicatorInstance } from "./indicators";
-import { TIMEFRAMES, type Timeframe } from "./market-api";
+import type { Timeframe } from "./market-api";
+import { isTimeframe } from "./timeframes";
 
 export type SessionScope = "regular" | "extended";
 
@@ -75,7 +76,7 @@ function parseChart(value: unknown): ChartConfig | null {
   if (
     typeof chart.instrumentId !== "string" ||
     chart.instrumentId.length === 0 ||
-    !TIMEFRAMES.includes(chart.timeframe as Timeframe) ||
+    !isTimeframe(chart.timeframe) ||
     typeof chart.sessionDate !== "string" ||
     !SESSION_DATE.test(chart.sessionDate) ||
     (chart.sessionScope !== "regular" && chart.sessionScope !== "extended")

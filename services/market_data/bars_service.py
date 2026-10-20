@@ -6,9 +6,11 @@ from typing import Any, cast
 
 from packages.contracts.validator import validate_document
 from services.market_data.aggregation import (
-    TARGET_MINUTES,
+    MAX_AGGREGATE_MINUTES,
+    MIN_AGGREGATE_MINUTES,
     AggregateTimeframe,
     MinuteBarAggregator,
+    timeframe_minutes,
 )
 from services.market_data.calendar import CalendarError
 from services.market_data.provider import (
@@ -19,8 +21,6 @@ from services.market_data.provider import (
     MarketDataProvider,
     validate_bars_query,
 )
-
-SUPPORTED_TIMEFRAMES = ("1m", *TARGET_MINUTES)
 
 
 def _parse_utc(value: str) -> datetime:
@@ -49,9 +49,9 @@ class MarketBarsService:
     def get_bars(self, query: BarsQuery) -> BarsResult:
         if query.timeframe == "1m":
             return self.provider.get_bars(query)
-        if query.timeframe not in TARGET_MINUTES:
+        if timeframe_minutes(query.timeframe) is None:
             raise InvalidBarsQueryError(
-                f"timeframe must be one of {', '.join(SUPPORTED_TIMEFRAMES)}"
+                f"timeframe must be 1m or {MIN_AGGREGATE_MINUTES}m to {MAX_AGGREGATE_MINUTES}m"
             )
         timeframe: AggregateTimeframe = query.timeframe
         validate_bars_query(query)

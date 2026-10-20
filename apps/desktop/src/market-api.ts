@@ -8,17 +8,12 @@ import type {
   MarketInstrumentsResponse,
   ScenarioDefinition,
   ScenarioLedgerResponse,
+  SessionListResponse,
   SessionWindow,
 } from "@siw/contracts/types";
 
-export type Timeframe = "1m" | "5m" | "15m" | "30m" | "60m";
-export const TIMEFRAMES: readonly Timeframe[] = [
-  "1m",
-  "5m",
-  "15m",
-  "30m",
-  "60m",
-];
+/** Whole minutes written "Nm" (see timeframes.ts); the API aggregates any of them. */
+export type Timeframe = string;
 export type InstrumentListing =
   MarketInstrumentsResponse["instruments"][number];
 
@@ -52,6 +47,8 @@ export interface MarketApi {
     instrumentId: string,
     sessionDate: string,
   ): Promise<SessionQuote | null>;
+  /** The latest `count` trading sessions up to `endDate` (inclusive), oldest first. */
+  sessions(endDate: string, count: number): Promise<SessionWindow[]>;
   session(sessionDate: string): Promise<SessionWindow>;
   bars(request: BarsRequest): Promise<MarketBarsResponse>;
   manualLedger(): Promise<ManualLedgerResponse>;
@@ -287,6 +284,17 @@ export function createMarketApi(
     },
     session,
     bars,
+    async sessions(endDate, count) {
+      const query = new URLSearchParams({
+        end_date: endDate,
+        count: String(count),
+      });
+      const response = await get<SessionListResponse>(
+        `/v1/market/sessions?${query.toString()}`,
+        "session_list_response",
+      );
+      return response.sessions;
+    },
     manualLedger() {
       return get<ManualLedgerResponse>(
         "/v1/trades/manual",
