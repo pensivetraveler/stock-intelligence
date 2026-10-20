@@ -1,4 +1,6 @@
 import type {
+  BacktestResults,
+  BacktestRun,
   ImportBatch,
   BrokerOrderExecution,
   RealtimeEvent,
@@ -30,6 +32,7 @@ import {
   type MarketApi,
   type ScenarioRequest,
 } from "./market-api";
+import type { BacktestApi } from "./backtest-api";
 import { Workspace } from "./Workspace";
 import { LIBRARY_STORAGE_KEY } from "./workspace-library";
 import { DEFAULT_WORKSPACE, WORKSPACE_STORAGE_KEY } from "./workspace-state";
@@ -55,6 +58,10 @@ vi.mock("./PriceChart", () => ({
       </button>
     </div>
   ),
+}));
+
+vi.mock("./BacktestChart", () => ({
+  BacktestChart: () => <div data-testid="backtest-chart" />,
 }));
 
 const fixtures = resolve(
@@ -1735,5 +1742,76 @@ describe("daily and weekly charts", () => {
     fireEvent.click(within(menu).getByRole("button", { name: "1W" }));
     await screen.findByRole("region", { name: /Chart 1: .* 1w/ });
     expect(api.barsCalls.at(-1)?.timeframe).toBe("1w");
+  });
+  it("shows a backtest run's fills on the charts only on request", async () => {
+    const run = {
+      ...fixture<BacktestRun>("backtest-run.json"),
+      config: {
+        ...fixture<BacktestRun>("backtest-run.json").config,
+        instrument_ids: ["us:synth:xnas:2026"],
+      },
+    } as BacktestRun;
+    const results = fixture<BacktestResults>("backtest-results.json");
+    const backtestApi: BacktestApi = {
+      strategies: () => Promise.resolve([]),
+      strategy: () => Promise.reject(new Error("unused")),
+      saveStrategy: () => Promise.reject(new Error("unused")),
+      runs: () => Promise.resolve([run]),
+      run: () => Promise.resolve(run),
+      submit: () => Promise.reject(new Error("unused")),
+      results: () =>
+        Promise.resolve({
+          ...results,
+          fills: results.fills.map((fill) => ({
+            ...fill,
+            instrument_id: "us:synth:xnas:2026",
+            // Inside the single bar the fake serves, so the marker is drawn.
+            filled_at_utc: "2026-10-09T13:30:00Z",
+          })),
+        }),
+      cancel: () => Promise.reject(new Error("unused")),
+    };
+    const api = fakeApi();
+    const { unmount } = render(
+      <Workspace api={api} storage={memoryStorage()} />,
+    );
+    // Without a backtest client the screen is not offered.
+    expect(
+      within(screen.getByRole("navigation", { name: "Panels" })).queryByRole(
+        "button",
+        { name: "Backtest" },
+      ),
+    ).toBeNull();
+    unmount();
+
+    render(
+      <Workspace
+        api={api}
+        storage={memoryStorage()}
+        backtestApi={backtestApi}
+      />,
+    );
+    await screen.findByTestId("chart-chart-1");
+    openPanel("Backtest");
+    const dialog = await screen.findByRole("dialog", { name: "Backtest" });
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: "View" }),
+    );
+    fireEvent.click(
+      await within(dialog).findByRole("button", {
+        name: "Show fills on charts",
+      }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Close backtest" }),
+    );
+
+    expect(await screen.findByText(/BT buy/)).toBeInTheDocument();
+    const chip = screen.getByRole("status", { name: /^Simulated fills only/ });
+    expect(chip).toHaveTextContent("Backtest fills: 1 (simulated)");
+    fireEvent.click(
+      within(chip).getByRole("button", { name: "Hide fills from charts" }),
+    );
+    await waitFor(() => expect(screen.queryByText(/BT buy/)).toBeNull());
   });
 });

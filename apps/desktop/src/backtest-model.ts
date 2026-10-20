@@ -1,0 +1,341 @@
+import type {
+  BacktestFill,
+  BrokerOrderExecution,
+  ImportedExecution,
+  ManualExecution,
+} from "@siw/contracts/types";
+
+import type { StrategyDefinition } from "./backtest-api";
+import { INDICATOR_BY_ID, type IndicatorDefinition } from "./indicators";
+
+/** Indicators the backtest engine computes, with the chart's own definitions. */
+export const BACKTEST_INDICATOR_IDS = [
+  "sma",
+  "ema",
+  "wma",
+  "rsi",
+  "macd",
+  "bb",
+  "atr",
+  "stoch",
+  "vwap",
+  "obv",
+] as const;
+
+export function backtestIndicator(id: string): IndicatorDefinition {
+  const definition = INDICATOR_BY_ID.get(id);
+  if (!definition) throw new Error(`unknown indicator ${id}`);
+  return definition;
+}
+
+export const COMPARISONS = [
+  "cross_above",
+  "cross_below",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+] as const;
+export type Comparison = (typeof COMPARISONS)[number];
+export const PRICES = ["open", "high", "low", "close", "volume"] as const;
+export type PriceField = (typeof PRICES)[number];
+export const SIZING_MODES = [
+  "percent_equity",
+  "fixed_cash",
+  "fixed_shares",
+] as const;
+export type SizingMode = (typeof SIZING_MODES)[number];
+
+export type OperandDraft =
+  | {
+      kind: "indicator";
+      indicator: string;
+      params: Record<string, number>;
+      output: string;
+    }
+  | { kind: "price"; price: PriceField }
+  | { kind: "value"; value: string };
+
+export interface ConditionDraft {
+  key: string;
+  left: OperandDraft;
+  op: Comparison;
+  right: OperandDraft;
+}
+
+export interface RulesDraft {
+  entryMode: "all" | "any";
+  entry: ConditionDraft[];
+  exitMode: "all" | "any";
+  exit: ConditionDraft[];
+  stopLossPct: string;
+  takeProfitPct: string;
+  sizingMode: SizingMode;
+  sizingValue: string;
+  maxPositions: string;
+}
+
+export function indicatorOperand(id: string): OperandDraft {
+  const definition = backtestIndicator(id);
+  return {
+    kind: "indicator",
+    indicator: id,
+    params: Object.fromEntries(
+      definition.inputs.map((input) => [input.key, input.default]),
+    ),
+    output: definition.outputs[0].key,
+  };
+}
+
+let keys = 0;
+export const conditionKey = () => `c${++keys}`;
+
+/** A moving-average crossover: a working strategy to start from. */
+export function defaultRulesDraft(): RulesDraft {
+  const fast = indicatorOperand("ema");
+  const slow = indicatorOperand("sma");
+  if (fast.kind === "indicator") fast.params.length = 10;
+  if (slow.kind === "indicator") slow.params.length = 30;
+  return {
+    entryMode: "all",
+    entry: [
+      { key: conditionKey(), left: fast, op: "cross_above", right: slow },
+    ],
+    exitMode: "all",
+    exit: [{ key: conditionKey(), left: fast, op: "cross_below", right: slow }],
+    stopLossPct: "",
+    takeProfitPct: "",
+    sizingMode: "percent_equity",
+    sizingValue: "20",
+    maxPositions: "5",
+  };
+}
+
+export const PYTHON_TEMPLATE = `# on_bar(ctx) runs at the close of every final bar of every instrument.
+# ctx.instrument_id, ctx.time, ctx.bar (open/high/low/close/volume),
+# ctx.history (this instrument's bars so far), ctx.closes, ctx.params,
+# ctx.position (None or {"quantity", "average_price"}), ctx.cash, ctx.equity,
+# ctx.indicator(id, output=None, **params) -> latest value or None.
+# Return ctx.buy(percent_equity=…|cash=…|quantity=…), ctx.sell(), a list, or None.
+# Orders fill at the next bar's open. No network, files or subprocesses.
+
+def on_bar(ctx):
+    rsi = ctx.indicator("rsi", length=ctx.params.get("length", 14))
+    if rsi is None:
+        return None
+    if ctx.position is None and rsi < 30:
+        return ctx.buy(percent_equity=20)
+    if ctx.position is not None and rsi > 70:
+        return ctx.sell()
+    return None
+`;
+
+function operandJson(operand: OperandDraft): Record<string, unknown> {
+  if (operand.kind === "indicator") {
+    return {
+      indicator: operand.indicator,
+      params: operand.params,
+      output: operand.output,
+    };
+  }
+  if (operand.kind === "price") return { price: operand.price };
+  return { value: operand.value };
+}
+
+function group(
+  mode: "all" | "any",
+  conditions: ConditionDraft[],
+): Record<string, unknown> | null {
+  if (conditions.length === 0) return null;
+  const items = conditions.map((condition) => ({
+    op: condition.op,
+    left: operandJson(condition.left),
+    right: operandJson(condition.right),
+  }));
+  return items.length === 1 ? items[0] : { [mode]: items };
+}
+
+const optionalNumber = (text: string) =>
+  text.trim() === "" ? null : text.trim();
+
+/** The JSON the API validates; it, not this screen, is the judge of what is valid. */
+export function rulesDefinition(draft: RulesDraft): StrategyDefinition {
+  return {
+    type: "rules",
+    entry: group(draft.entryMode, draft.entry),
+    exit: group(draft.exitMode, draft.exit),
+    stop_loss_pct: optionalNumber(draft.stopLossPct),
+    take_profit_pct: optionalNumber(draft.takeProfitPct),
+    sizing: { mode: draft.sizingMode, value: draft.sizingValue.trim() },
+    max_positions: Number(draft.maxPositions),
+  };
+}
+
+function operandDraft(value: unknown): OperandDraft | null {
+  if (typeof value !== "object" || value === null) return null;
+  const item = value as Record<string, unknown>;
+  if (typeof item.indicator === "string") {
+    if (!INDICATOR_BY_ID.has(item.indicator)) return null;
+    const base = indicatorOperand(item.indicator);
+    if (base.kind !== "indicator") return null;
+    return {
+      ...base,
+      params: { ...base.params, ...(item.params as Record<string, number>) },
+      output: typeof item.output === "string" ? item.output : base.output,
+    };
+  }
+  if (typeof item.price === "string") {
+    return { kind: "price", price: item.price as PriceField };
+  }
+  if ("value" in item) return { kind: "value", value: String(item.value) };
+  return null;
+}
+
+function conditionsOf(
+  value: unknown,
+): { mode: "all" | "any"; items: ConditionDraft[] } | null {
+  if (value === null || value === undefined) return { mode: "all", items: [] };
+  if (typeof value !== "object") return null;
+  const item = value as Record<string, unknown>;
+  const mode = "any" in item ? "any" : "all";
+  const list = Array.isArray(item[mode]) ? (item[mode] as unknown[]) : [item];
+  const items: ConditionDraft[] = [];
+  for (const entry of list) {
+    if (typeof entry !== "object" || entry === null) return null;
+    const comparison = entry as Record<string, unknown>;
+    // Nested groups are valid for the engine but too deep for this form.
+    if (!COMPARISONS.includes(comparison.op as Comparison)) return null;
+    const left = operandDraft(comparison.left);
+    const right = operandDraft(comparison.right);
+    if (!left || !right) return null;
+    items.push({
+      key: conditionKey(),
+      left,
+      op: comparison.op as Comparison,
+      right,
+    });
+  }
+  return { mode, items };
+}
+
+/** The form for a saved rules definition, or null when it is too deep to show as one. */
+export function rulesDraftOf(
+  definition: Record<string, unknown>,
+): RulesDraft | null {
+  const entry = conditionsOf(definition.entry);
+  const exit = conditionsOf(definition.exit);
+  const sizing = definition.sizing as { mode: SizingMode; value: string };
+  if (!entry || !exit || !sizing) return null;
+  return {
+    entryMode: entry.mode,
+    entry: entry.items,
+    exitMode: exit.mode,
+    exit: exit.items,
+    stopLossPct: String(definition.stop_loss_pct ?? ""),
+    takeProfitPct: String(definition.take_profit_pct ?? ""),
+    sizingMode: sizing.mode,
+    sizingValue: String(sizing.value),
+    maxPositions: String(definition.max_positions ?? 10),
+  };
+}
+
+export interface FillSummary {
+  buys: number;
+  sells: number;
+  boughtShares: number;
+  averageBuy: number | null;
+  averageSell: number | null;
+}
+
+export interface FillComparison {
+  instrumentId: string;
+  backtest: FillSummary;
+  actual: FillSummary;
+}
+
+interface SimpleFill {
+  instrumentId: string;
+  side: "buy" | "sell";
+  quantity: number;
+  price: number;
+  time: string | null;
+}
+
+function summarize(fills: SimpleFill[]): FillSummary {
+  const average = (side: "buy" | "sell") => {
+    const items = fills.filter((fill) => fill.side === side);
+    const shares = items.reduce((total, fill) => total + fill.quantity, 0);
+    return shares > 0
+      ? items.reduce((total, fill) => total + fill.quantity * fill.price, 0) /
+          shares
+      : null;
+  };
+  return {
+    buys: fills.filter((fill) => fill.side === "buy").length,
+    sells: fills.filter((fill) => fill.side === "sell").length,
+    boughtShares: fills
+      .filter((fill) => fill.side === "buy")
+      .reduce((total, fill) => total + fill.quantity, 0),
+    averageBuy: average("buy"),
+    averageSell: average("sell"),
+  };
+}
+
+/**
+ * Backtest fills next to the user's real ones (manual, imported and broker API
+ * ledgers) for the same instruments and dates. Real executions with no known time
+ * are left out. The two are different things: this is a reference, not a match.
+ */
+export function compareFills(
+  instrumentIds: string[],
+  startDate: string,
+  endDate: string,
+  backtest: BacktestFill[],
+  real: {
+    manual: ManualExecution[];
+    imported: ImportedExecution[];
+    broker: BrokerOrderExecution[];
+  },
+): FillComparison[] {
+  const from = Date.parse(`${startDate}T00:00:00Z`) - 86_400_000;
+  const to = Date.parse(`${endDate}T00:00:00Z`) + 2 * 86_400_000;
+  const actual: SimpleFill[] = [
+    ...real.manual,
+    ...real.imported,
+    ...real.broker,
+  ].map((execution) => ({
+    instrumentId: execution.instrument_id,
+    side: execution.side,
+    quantity: Number(execution.quantity),
+    price: Number(execution.price),
+    time: execution.executed_at_utc ?? null,
+  }));
+  return instrumentIds.map((instrumentId) => ({
+    instrumentId,
+    backtest: summarize(
+      backtest
+        .filter((fill) => fill.instrument_id === instrumentId)
+        .map((fill) => ({
+          instrumentId,
+          side: fill.side,
+          quantity: Number(fill.quantity),
+          price: Number(fill.price),
+          time: fill.filled_at_utc,
+        })),
+    ),
+    actual: summarize(
+      actual.filter((fill) => {
+        if (fill.instrumentId !== instrumentId || fill.time === null)
+          return false;
+        const at = Date.parse(fill.time);
+        return at >= from && at < to;
+      }),
+    ),
+  }));
+}
+
+/** "-0.133158" -> "-13.32%". */
+export function percent(value: string | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  return `${(Number(value) * 100).toFixed(2)}%`;
+}

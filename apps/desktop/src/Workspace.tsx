@@ -1,4 +1,5 @@
 import type {
+  BacktestFill,
   BrokerLedgerResponse,
   ImportedLedgerResponse,
   ManualLedgerResponse,
@@ -48,6 +49,7 @@ import {
   GridLayoutIcon,
   HorizontalLinesIcon,
   IndicatorsIcon,
+  BacktestIcon,
   JournalIcon,
   KeyIcon,
   QuoteIcon,
@@ -80,6 +82,8 @@ import { QuotePanel } from "./QuotePanel";
 import { applyLive, type LiveSymbol, type RealtimeSocket } from "./realtime";
 import { AccountPanel } from "./AccountPanel";
 import { ResearchPanel } from "./ResearchPanel";
+import { BacktestScreen } from "./BacktestScreen";
+import type { BacktestApi } from "./backtest-api";
 import { StockInfoPanel } from "./StockInfoPanel";
 import { JournalPanel } from "./JournalPanel";
 import { useSessionQuotes } from "./session-quotes";
@@ -119,10 +123,19 @@ interface WorkspaceProps {
   newId?: () => string;
   /** The key management screen, shown in the right panel when given. */
   keysPanel?: ReactNode;
+  /** The backtest screen's client; without one the screen is not offered. */
+  backtestApi?: BacktestApi;
 }
 
 type Panel =
-  "watchlist" | "quote" | "info" | "research" | "account" | "journal" | "keys";
+  | "watchlist"
+  | "quote"
+  | "info"
+  | "research"
+  | "account"
+  | "journal"
+  | "keys"
+  | "backtest";
 
 /** Per-chart view options that are not part of the saved layout. */
 interface ChartTools {
@@ -242,6 +255,7 @@ export function Workspace({
   storage = browserStorage(),
   newId = randomId,
   keysPanel,
+  backtestApi,
 }: WorkspaceProps) {
   const { t } = useI18n();
   const [library, setLibrary] = useState<WorkspaceLibrary>(() =>
@@ -466,6 +480,19 @@ export function Workspace({
       imported: ledgers.imported?.executions ?? [],
       scenarios:
         ledgers.scenarios?.scenarios.map((item) => item.scenario) ?? [],
+    }),
+    [ledgers],
+  );
+  // Fills of one backtest run drawn on the charts at the user's request.
+  const [backtestShown, setBacktestShown] = useState<{
+    runId: string;
+    fills: BacktestFill[];
+  } | null>(null);
+  const realFills = useMemo(
+    () => ({
+      manual: ledgers.manual?.executions ?? [],
+      imported: ledgers.imported?.executions ?? [],
+      broker: ledgers.broker?.executions ?? [],
     }),
     [ledgers],
   );
@@ -1129,6 +1156,7 @@ export function Workspace({
               instrumentsReady={instrumentsReady}
               sync={sync}
               journal={journal}
+              backtestFills={backtestShown?.fills}
               onJournalChange={refreshJournal}
               magnet={tools[index].magnet}
               logScale={tools[index].logScale}
@@ -1230,6 +1258,19 @@ export function Workspace({
           <span className="tb-spacer" />
           <ExchangeClock zone={zoneOf(activeConfig.instrumentId)} />
         </footer>
+        {backtestShown ? (
+          <div className="bt-chip" role="status" title={t("bt.subtitle")}>
+            {t("bt.chip", { n: backtestShown.fills.length })}
+            <button
+              type="button"
+              className="tb-button"
+              aria-label={t("bt.hideOnChart")}
+              onClick={() => setBacktestShown(null)}
+            >
+              {t("bt.chipHide")}
+            </button>
+          </div>
+        ) : null}
         {replayOn ? (
           <div
             className="replay-bar"
@@ -1338,7 +1379,19 @@ export function Workspace({
         ) : null}
       </main>
 
-      {panel ? (
+      {panel === "backtest" && backtestApi ? (
+        <BacktestScreen
+          api={backtestApi}
+          instruments={instruments}
+          activeInstrumentId={activeConfig.instrumentId}
+          real={realFills}
+          shownRunId={backtestShown?.runId ?? null}
+          onShowFills={setBacktestShown}
+          onClose={() => setPanel(null)}
+        />
+      ) : null}
+
+      {panel && panel !== "backtest" ? (
         <aside
           className={`side-panel side-panel-${panel}`}
           aria-label={t(`panel.${panel}`)}
@@ -1425,6 +1478,7 @@ export function Workspace({
             ["research", ResearchIcon],
             ["account", AccountIcon],
             ["journal", JournalIcon],
+            ...(backtestApi ? ([["backtest", BacktestIcon]] as const) : []),
             ...(keysPanel ? ([["keys", KeyIcon]] as const) : []),
           ] as const
         ).map(([id, RailIcon]) => (
