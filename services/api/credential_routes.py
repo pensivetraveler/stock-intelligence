@@ -31,6 +31,7 @@ LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "[::1]"})
 Provider = Literal["alpaca", "kis", "toss", "kiwoom", "meritz"]
 Label = Annotated[str, StringConstraints(min_length=1, max_length=60)]
 AccountSuffix = Annotated[str, StringConstraints(pattern=r"^[0-9]{4}$")]
+Environment = Literal["real", "demo"]
 CredentialId = Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{32}$")]
 SecretValues = dict[Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,40}$")], SecretStr]
 ErrorResponse = Callable[[Request, int, str, str], JSONResponse]
@@ -42,6 +43,8 @@ class CredentialCreateRequest(BaseModel):
     provider: Provider
     label: Label
     account_suffix: AccountSuffix | None = None
+    # Required for broker keys (per account), absent for vendor keys.
+    environment: Environment | None = None
     secrets: SecretValues
 
 
@@ -50,6 +53,7 @@ class CredentialUpdateRequest(BaseModel):
     label: Label | None = None
     account_suffix: AccountSuffix | None = None
     enabled: bool | None = None
+    environment: Environment | None = None
 
 
 class SecretsReplaceRequest(BaseModel):
@@ -107,6 +111,7 @@ def register_credential_routes(
             "provider": record.provider,
             "label": record.label,
             "account_suffix": record.account_suffix,
+            "environment": record.environment,
             "priority": record.priority,
             "enabled": record.enabled,
             "active": is_active,
@@ -183,7 +188,13 @@ def register_credential_routes(
         return run(
             request,
             lambda store: respond(
-                store.add(body.provider, body.label, body.account_suffix, _plain(body.secrets)),
+                store.add(
+                    body.provider,
+                    body.label,
+                    body.account_suffix,
+                    _plain(body.secrets),
+                    body.environment,
+                ),
                 201,
             ),
         )

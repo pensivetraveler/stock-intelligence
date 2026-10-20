@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -70,6 +70,27 @@ def parse_sessions(raw: str, setting: str) -> frozenset[TradingSessionName]:
     if not chosen or unknown:
         raise BrokerConfigError(f"{setting} lists pre, regular and/or post: {raw!r}")
     return frozenset(session for session in SESSIONS if session in chosen)
+
+
+def account_environment(
+    values: dict[str, str] | Any, setting: str, demo_base_url: str | None, display_name: str
+) -> tuple[Literal["real", "demo"], str | None]:
+    """The registered account's environment and, for a demo account, the base URL to use.
+
+    A broker with no documented demo (모의투자) domain refuses demo keys rather than
+    sending them to its real domain.
+    """
+    value = str(values.get(setting, "real")).strip() or "real"
+    if value == "real":
+        return "real", None
+    if value != "demo":
+        raise BrokerConfigError(f"{setting} must be real or demo")
+    if demo_base_url is None:
+        raise BrokerConfigError(
+            f"{display_name} documents no demo (모의투자) domain; "
+            "a demo account key cannot fetch market data"
+        )
+    return "demo", demo_base_url
 
 
 def require(values: dict[str, str] | Any, *names: str) -> list[str]:

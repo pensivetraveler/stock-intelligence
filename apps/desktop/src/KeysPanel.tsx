@@ -5,7 +5,11 @@ import type {
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { exchangeTime } from "./chart-data";
-import type { CredentialApi, KeyedProvider } from "./credential-api";
+import type {
+  AccountEnvironment,
+  CredentialApi,
+  KeyedProvider,
+} from "./credential-api";
 import { useI18n, type Translate } from "./i18n";
 import { MarketApiError } from "./market-api";
 
@@ -46,6 +50,8 @@ export function KeysPanel({ api }: KeysPanelProps) {
   const [provider, setProvider] = useState<KeyedProvider>("kis");
   const [label, setLabel] = useState("");
   const [suffix, setSuffix] = useState("");
+  // New broker accounts start as demo, the safer default.
+  const [environment, setEnvironment] = useState<AccountEnvironment>("demo");
   const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [replacing, setReplacing] = useState<string | null>(null);
   const [replacement, setReplacement] = useState<Record<string, string>>({});
@@ -90,6 +96,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
         provider,
         label,
         account_suffix: spec?.per_account && suffix ? suffix : null,
+        environment: spec?.per_account ? environment : null,
         secrets: values,
       }),
     );
@@ -118,6 +125,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
       <p className="workspace-note">
         {t("keys.note", { provider: listing?.active_provider ?? "…" })}
       </p>
+      <p className="workspace-note">{t("keys.environmentNote")}</p>
       {error ? (
         <p className="chart-error" role="alert">
           {describe(t, error.cause)}
@@ -155,6 +163,20 @@ export function KeysPanel({ api }: KeysPanelProps) {
             onChange={(event) => setLabel(event.target.value)}
           />
         </label>
+        {spec?.per_account ? (
+          <label>
+            {t("keys.environment")}
+            <select
+              value={environment}
+              onChange={(event) =>
+                setEnvironment(event.target.value as AccountEnvironment)
+              }
+            >
+              <option value="demo">{t("env.demo")}</option>
+              <option value="real">{t("env.real")}</option>
+            </select>
+          </label>
+        ) : null}
         {spec?.per_account ? (
           <label>
             {t("keys.account")}
@@ -208,6 +230,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
                   <th>{t("keys.order")}</th>
                   <th>{t("keys.label")}</th>
                   <th>{t("keys.accountColumn")}</th>
+                  <th>{t("keys.environment")}</th>
                   <th>{t("keys.enabled")}</th>
                   <th>{t("keys.status")}</th>
                   <th>{t("keys.actions")}</th>
@@ -220,6 +243,30 @@ export function KeysPanel({ api }: KeysPanelProps) {
                     <td>{key.label}</td>
                     <td>
                       {key.account_suffix ? `****${key.account_suffix}` : "—"}
+                    </td>
+                    <td>
+                      {key.environment ? (
+                        <select
+                          aria-label={t("keys.environmentOf", {
+                            label: key.label,
+                          })}
+                          value={key.environment}
+                          disabled={busy}
+                          onChange={(event) =>
+                            void act(() =>
+                              api.update(key.credential_id, {
+                                environment: event.target
+                                  .value as AccountEnvironment,
+                              }),
+                            )
+                          }
+                        >
+                          <option value="real">{t("env.real")}</option>
+                          <option value="demo">{t("env.demo")}</option>
+                        </select>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td>
                       <input

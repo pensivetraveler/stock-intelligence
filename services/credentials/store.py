@@ -26,6 +26,7 @@ KEYCHAIN_SERVICE = "stock-intelligence-workstation"
 ACCOUNT_SUFFIX_PATTERN = re.compile(r"^[0-9]{4}$")
 MAX_LABEL_LENGTH = 60
 MAX_SECRET_LENGTH = 1_024
+ENVIRONMENTS = ("real", "demo")
 
 
 class CredentialError(ValueError):
@@ -117,6 +118,8 @@ class CredentialRecord:
     secret_revision: int
     created_at_utc: str
     updated_at_utc: str
+    # "real" (실전) or "demo" (모의투자) for broker accounts; None for vendor keys.
+    environment: str | None = None
 
     @property
     def keychain_name(self) -> str:
@@ -138,6 +141,7 @@ def _record(row: sqlite3.Row) -> CredentialRecord:
         secret_revision=row["secret_revision"],
         created_at_utc=row["created_at_utc"],
         updated_at_utc=row["updated_at_utc"],
+        environment=row["environment"],
     )
 
 
@@ -196,11 +200,13 @@ class CredentialStore:
         label: str,
         account_suffix: str | None,
         secrets: Mapping[str, str],
+        environment: str | None = None,
     ) -> CredentialRecord:
         if provider not in CATALOG:
             raise CredentialError(f"unknown provider {provider!r}")
         label = self._label(label)
         account_suffix = self._account_suffix(provider, account_suffix)
+        environment = self._environment(provider, environment)
         blob = self._secret_blob(provider, secrets)
         credential_id = self._new_id()
         now = _utc_text(self._now())
@@ -215,8 +221,19 @@ class CredentialStore:
                     (provider,),
                 ).fetchone()
                 connection.execute(
-                    "INSERT INTO credentials VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?)",
-                    (credential_id, provider, label, account_suffix, top + 1, now, now),
+                    "INSERT INTO credentials (credential_id, provider, label, account_suffix, "
+                    "priority, enabled, secret_revision, created_at_utc, updated_at_utc, "
+                    "environment) VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?)",
+                    (
+                        credential_id,
+                        provider,
+                        label,
+                        account_suffix,
+                        top + 1,
+                        now,
+                        now,
+                        environment,
+                    ),
                 )
         except BaseException:
             self._secrets.delete(keychain_name)
@@ -230,8 +247,14 @@ class CredentialStore:
         label: str | None = None,
         account_suffix: str | None = _UNSET,
         enabled: bool | None = None,
+        environment: str | None = None,
     ) -> CredentialRecord:
         current = self.get(credential_id)
+        new_environment = (
+            current.environment
+            if environment is None
+            else self._environment(current.provider, environment)
+        )
         new_label = current.label if label is None else self._label(label)
         new_suffix = (
             current.account_suffix
@@ -243,11 +266,12 @@ class CredentialStore:
             self._check_label_free(connection, current.provider, new_label, credential_id)
             connection.execute(
                 "UPDATE credentials SET label = ?, account_suffix = ?, enabled = ?, "
-                "updated_at_utc = ? WHERE credential_id = ?",
+                "environment = ?, updated_at_utc = ? WHERE credential_id = ?",
                 (
                     new_label,
                     new_suffix,
                     int(new_enabled),
+                    new_environment,
                     _utc_text(self._now()),
                     credential_id,
                 ),
@@ -318,6 +342,18 @@ class CredentialStore:
         if not ACCOUNT_SUFFIX_PATTERN.fullmatch(account_suffix):
             raise CredentialError("account suffix is the last 4 digits only")
         return account_suffix
+
+    @staticmethod
+    def _environment(provider: str, environment: str | None) -> str | None:
+        """Broker keys say whether their account is real or demo; vendor keys do not."""
+        spec = CATALOG[provider]
+        if not spec.per_account:
+            if environment is not None:
+                raise CredentialError(f"{spec.display_name} keys have no real or demo account")
+            return None
+        if environment not in ENVIRONMENTS:
+            raise CredentialError("choose whether the account is real or demo")
+        return environment
 
     @staticmethod
     def _secret_blob(provider: str, secrets: Mapping[str, str]) -> str:

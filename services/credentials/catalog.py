@@ -26,6 +26,11 @@ class ProviderKeySpec:
     # Broker APIs issue keys per brokerage account; a vendor key belongs to the login.
     per_account: bool
 
+    @property
+    def environment_env(self) -> str | None:
+        """Setting that tells a broker adapter whether its key is for a real or demo account."""
+        return f"SIW_{self.provider.upper()}_ENVIRONMENT" if self.per_account else None
+
 
 CATALOG: dict[str, ProviderKeySpec] = {
     spec.provider: spec
@@ -79,6 +84,10 @@ CATALOG: dict[str, ProviderKeySpec] = {
 }
 
 SECRET_ENV_NAMES = frozenset(field.env_name for spec in CATALOG.values() for field in spec.fields)
+# The account environment comes from the registered key, never from the process.
+ENVIRONMENT_ENV_NAMES = frozenset(
+    name for spec in CATALOG.values() if (name := spec.environment_env) is not None
+)
 
 # Stands in for a key when an adapter is built only to list instruments; such an adapter
 # never sends a request.
@@ -86,11 +95,20 @@ _UNUSED = "unused-listing-only"
 
 
 def adapter_settings(
-    environ: Mapping[str, str], provider: str, secrets: Mapping[str, str] | None
+    environ: Mapping[str, str],
+    provider: str,
+    secrets: Mapping[str, str] | None,
+    environment: str | None = None,
 ) -> dict[str, str]:
-    """Environment settings without any key variable, plus one credential's secrets."""
+    """Environment settings without any key variable, plus one credential's secrets.
+
+    `environment` ("real" or "demo") is the registered account's; adapters default to real.
+    """
     spec = CATALOG[provider]
-    values = {name: value for name, value in environ.items() if name not in SECRET_ENV_NAMES}
+    dropped = SECRET_ENV_NAMES | ENVIRONMENT_ENV_NAMES
+    values = {name: value for name, value in environ.items() if name not in dropped}
     for field in spec.fields:
         values[field.env_name] = _UNUSED if secrets is None else secrets[field.name]
+    if spec.environment_env is not None and environment is not None:
+        values[spec.environment_env] = environment
     return values

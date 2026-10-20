@@ -31,6 +31,7 @@ from services.market_data.broker_common import (
     RawMinute,
     SourceIdentity,
     TokenCache,
+    account_environment,
     build_result,
     capabilities,
     decimal_field,
@@ -54,6 +55,8 @@ from services.market_data.provider import (
 
 TOKEN_PATH = "/oauth2/token"
 CHART_PATH = "/api/us/chart"
+# Demo (모의투자) domain from the official spec's "모의투자 도메인".
+DEMO_BASE_URL = "https://mockapi.kiwoom.com"
 # ARCX -> NY was confirmed live (SPY); XASE -> NA follows the spec and is unverified.
 EXCHANGE_CODES = {"XNAS": "ND", "XNYS": "NY", "XASE": "NA", "ARCX": "NY"}
 RATE_LIMIT_CODES = {1700, 1701, 1702}
@@ -70,9 +73,13 @@ class KiwoomConfig:
     symbols: tuple[tuple[str, str], ...] = (("SPY", "ARCX"), ("AAPL", "XNAS"), ("MSFT", "XNAS"))
     sessions: frozenset[TradingSessionName] = frozenset({"regular"})
     finality_minutes: int = 15
+    environment: Literal["real", "demo"] = "real"
 
     def __repr__(self) -> str:
-        return f"KiwoomConfig(base_url={self.base_url!r}, time_zone={self.time_zone!r})"
+        return (
+            f"KiwoomConfig(base_url={self.base_url!r}, time_zone={self.time_zone!r}, "
+            f"environment={self.environment!r})"
+        )
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> KiwoomConfig:
@@ -91,11 +98,15 @@ class KiwoomConfig:
                 raise BrokerConfigError(
                     f"Kiwoom supports MICs {', '.join(EXCHANGE_CODES)}; got {venue}"
                 )
+        environment, demo_url = account_environment(
+            values, "SIW_KIWOOM_ENVIRONMENT", DEMO_BASE_URL, "Kiwoom"
+        )
         return cls(
             app_key=key,
             secret_key=secret,
             time_zone=zone,  # type: ignore[arg-type]
-            base_url=values.get("SIW_KIWOOM_BASE_URL", cls.base_url).rstrip("/"),
+            base_url=demo_url or values.get("SIW_KIWOOM_BASE_URL", cls.base_url).rstrip("/"),
+            environment=environment,
             symbols=symbols,
             sessions=parse_sessions(
                 values.get("SIW_KIWOOM_SESSIONS", "regular"), "SIW_KIWOOM_SESSIONS"
@@ -130,8 +141,9 @@ class KiwoomMarketDataProvider:
         self.last_raw_sample: dict[str, Any] | None = None
         self.identity = SourceIdentity(
             source_id=self.source_id,
-            feed_scope="kiwoom-us",
-            dataset_revision="kiwoom-us-raw-r1",
+            # A demo server's data is kept apart from the real one's.
+            feed_scope="kiwoom-us" + ("-demo" if config.environment == "demo" else ""),
+            dataset_revision="kiwoom-us-raw-r1" + ("-demo" if config.environment == "demo" else ""),
             adjustment="raw",  # upd_stkpc_tp=0 (no price adjustment) is requested explicitly
             covered_sessions=config.sessions,
             publication_delay_minutes=0,

@@ -43,7 +43,7 @@ def make_store(tmp_path: Path) -> tuple[CredentialStore, MemorySecretBackend]:
 
 def test_secrets_live_only_in_the_keychain(tmp_path: Path) -> None:
     store, backend = make_store(tmp_path)
-    record = store.add("kis", " 해외주식 ", "1234", KIS_SECRETS)
+    record = store.add("kis", " 해외주식 ", "1234", KIS_SECRETS, "real")
 
     assert record.label == "해외주식"
     assert record.account_suffix == "1234"
@@ -57,13 +57,13 @@ def test_secrets_live_only_in_the_keychain(tmp_path: Path) -> None:
 def test_registration_validates_before_storing_anything(tmp_path: Path) -> None:
     store, backend = make_store(tmp_path)
     with pytest.raises(CredentialError, match="last 4 digits"):
-        store.add("kis", "a", "12345678", KIS_SECRETS)
+        store.add("kis", "a", "12345678", KIS_SECRETS, "real")
     with pytest.raises(CredentialError, match="not per account"):
         store.add("alpaca", "a", "1234", {"api_key_id": "x", "api_secret_key": "y"})
     with pytest.raises(CredentialError, match="app_key, app_secret"):
-        store.add("kis", "a", None, {"app_key": "x"})
+        store.add("kis", "a", None, {"app_key": "x"}, "real")
     with pytest.raises(CredentialError, match="app_secret must be"):
-        store.add("kis", "a", None, {"app_key": "x", "app_secret": "  "})
+        store.add("kis", "a", None, {"app_key": "x", "app_secret": "  "}, "real")
     with pytest.raises(CredentialError, match="unknown provider"):
         store.add("massive", "a", None, {})
     assert backend.items == {}
@@ -72,18 +72,18 @@ def test_registration_validates_before_storing_anything(tmp_path: Path) -> None:
 
 def test_duplicate_label_keeps_the_keychain_clean(tmp_path: Path) -> None:
     store, backend = make_store(tmp_path)
-    store.add("kis", "main", None, KIS_SECRETS)
+    store.add("kis", "main", None, KIS_SECRETS, "real")
     with pytest.raises(CredentialError, match="already named"):
-        store.add("kis", "main", None, KIS_SECRETS)
+        store.add("kis", "main", None, KIS_SECRETS, "real")
     assert len(backend.items) == 1
     # The same label is fine for another provider.
-    store.add("toss", "main", None, {"client_id": "c", "client_secret": SECRET})
+    store.add("toss", "main", None, {"client_id": "c", "client_secret": SECRET}, "real")
 
 
 def test_update_move_replace_and_delete(tmp_path: Path) -> None:
     store, backend = make_store(tmp_path)
-    first = store.add("kis", "first", None, KIS_SECRETS)
-    second = store.add("kis", "second", "9876", KIS_SECRETS)
+    first = store.add("kis", "first", None, KIS_SECRETS, "real")
+    second = store.add("kis", "second", "9876", KIS_SECRETS, "real")
     assert [item.label for item in store.list("kis")] == ["first", "second"]
 
     store.move(second.credential_id, "up")
@@ -106,7 +106,7 @@ def test_update_move_replace_and_delete(tmp_path: Path) -> None:
 
 def test_missing_keychain_entry_asks_to_reenter(tmp_path: Path) -> None:
     store, backend = make_store(tmp_path)
-    record = store.add("kis", "main", None, KIS_SECRETS)
+    record = store.add("kis", "main", None, KIS_SECRETS, "real")
     backend.items.clear()
     with pytest.raises(SecretStorageError, match="enter it again"):
         store.secrets(record)
@@ -117,7 +117,7 @@ def test_failed_row_insert_removes_the_keychain_entry(tmp_path: Path) -> None:
     with sqlite3.connect(store.database_path) as connection:
         connection.execute("DROP TABLE credentials")
     with pytest.raises(sqlite3.Error):
-        store.add("kis", "main", None, KIS_SECRETS)
+        store.add("kis", "main", None, KIS_SECRETS, "real")
     assert backend.items == {}
 
 
@@ -158,7 +158,7 @@ def pool_for(
 ) -> tuple[PooledProvider, dict[str, StubAdapter]]:
     built: dict[str, StubAdapter] = {}
 
-    def build(secrets: Any) -> StubAdapter:
+    def build(secrets: Any, environment: str | None = None) -> StubAdapter:
         name = "listing" if secrets is None else secrets["app_key"]
         built[name] = StubAdapter(name, behaviour.get(name, []))
         return built[name]
@@ -184,7 +184,7 @@ QUERY = BarsQuery(
 
 
 def add(store: CredentialStore, key: str) -> CredentialRecord:
-    return store.add("kis", key, None, {"app_key": key, "app_secret": SECRET})
+    return store.add("kis", key, None, {"app_key": key, "app_secret": SECRET}, "real")
 
 
 def test_pool_fails_over_on_rate_limit_and_cools_the_key(tmp_path: Path) -> None:

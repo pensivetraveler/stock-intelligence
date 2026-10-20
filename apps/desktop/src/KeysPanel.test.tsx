@@ -25,6 +25,7 @@ function key(changes: Partial<CredentialSummary> = {}): CredentialSummary {
     provider: "kis",
     label: "해외주식",
     account_suffix: "1234",
+    environment: "real",
     priority: 1,
     enabled: true,
     active: true,
@@ -84,6 +85,7 @@ function fakeApi(initial: CredentialSummary[]): MockedCredentialApi {
         credential_id: "f".repeat(32),
         label: request.label,
         account_suffix: request.account_suffix,
+        environment: request.environment,
         priority: credentials.length + 1,
         status: null,
       });
@@ -127,6 +129,10 @@ describe("KeysPanel", () => {
     fireEvent.change(within(form).getByLabelText("Label"), {
       target: { value: "연금계좌" },
     });
+    expect(within(form).getByLabelText("Account type")).toHaveValue("demo");
+    fireEvent.change(within(form).getByLabelText("Account type"), {
+      target: { value: "real" },
+    });
     fireEvent.change(within(form).getByLabelText("Account (last 4 digits)"), {
       target: { value: "5678" },
     });
@@ -143,6 +149,7 @@ describe("KeysPanel", () => {
         provider: "kis",
         label: "연금계좌",
         account_suffix: "5678",
+        environment: "real",
         secrets: { app_key: "test-key", app_secret: SECRET },
       }),
     );
@@ -163,7 +170,23 @@ describe("KeysPanel", () => {
     expect(
       within(form).queryByLabelText("Account (last 4 digits)"),
     ).not.toBeInTheDocument();
+    expect(
+      within(form).queryByLabelText("Account type"),
+    ).not.toBeInTheDocument();
     expect(within(form).getByLabelText("API secret key")).toBeInTheDocument();
+  });
+
+  it("switches a broker key between real and demo accounts", async () => {
+    const api = fakeApi([key()]);
+    render(<KeysPanel api={api} />);
+    const select = await screen.findByLabelText("Account type of 해외주식");
+    expect(select).toHaveValue("real");
+    fireEvent.change(select, { target: { value: "demo" } });
+    await waitFor(() =>
+      expect(api.update).toHaveBeenCalledWith(key().credential_id, {
+        environment: "demo",
+      }),
+    );
   });
 
   it("asks for confirmation before deleting", async () => {
@@ -209,6 +232,7 @@ describe("createCredentialApi", () => {
       provider: "kis",
       label: "a",
       account_suffix: null,
+      environment: "demo",
       secrets: { app_key: "k", app_secret: SECRET },
     });
     const [url, init] = fetcher.mock.calls[0];

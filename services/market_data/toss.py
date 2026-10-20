@@ -27,6 +27,7 @@ from services.market_data.broker_common import (
     RawMinute,
     SourceIdentity,
     TokenCache,
+    account_environment,
     build_result,
     capabilities,
     decimal_field,
@@ -71,6 +72,8 @@ class TossConfig:
     def from_env(cls, env: dict[str, str] | None = None) -> TossConfig:
         values = os.environ if env is None else env
         client_id, secret = require(values, "SIW_TOSS_CLIENT_ID", "SIW_TOSS_CLIENT_SECRET")
+        # No demo domain is documented, so demo account keys are refused.
+        account_environment(values, "SIW_TOSS_ENVIRONMENT", None, "Toss Securities")
         return cls(
             client_id=client_id,
             client_secret=secret,

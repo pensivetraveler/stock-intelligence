@@ -49,7 +49,8 @@ class PooledProvider:
         *,
         records: Callable[[], list[CredentialRecord]],
         secrets: Callable[[CredentialRecord], Mapping[str, str]],
-        build: Callable[[Mapping[str, str] | None], MarketDataProvider],
+        # Builds one adapter from a key's secrets and its account environment ("real"/"demo").
+        build: Callable[[Mapping[str, str] | None, str | None], MarketDataProvider],
         cooldown_seconds: float = DEFAULT_COOLDOWN_SECONDS,
         monotonic: Callable[[], float] = time.monotonic,
         now: Callable[[], datetime] | None = None,
@@ -62,8 +63,8 @@ class PooledProvider:
         self._monotonic = monotonic
         self._now = now or (lambda: datetime.now(timezone.utc))
         # Built without a key: lists instruments and capabilities, never sends a request.
-        self._listing = build(None)
-        self._adapters: dict[str, tuple[int, MarketDataProvider]] = {}
+        self._listing = build(None, None)
+        self._adapters: dict[str, tuple[tuple[int, str | None], MarketDataProvider]] = {}
         self._status: dict[str, KeyStatus] = {}
         self._lock = threading.Lock()
         self.last_raw_sample: dict[str, Any] | None = None
@@ -109,6 +110,17 @@ class PooledProvider:
     def _call(self, request: Callable[[MarketDataProvider], BarsResult]) -> BarsResult:
         candidates = self._candidates()
         if not candidates:
+            with self._lock:
+                errors = [
+                    status.last_error
+                    for record in self._records()
+                    if record.enabled
+                    and (status := self._status.get(record.credential_id)) is not None
+                    and status.state == "error"
+                    and status.last_error
+                ]
+            if errors:
+                raise ProviderAuthError(f"{self.provider}: no usable key; {errors[0]}")
             raise ProviderAuthError(
                 f"no enabled {self.provider} key is registered; add one on the Keys screen"
             )
@@ -159,15 +171,19 @@ class PooledProvider:
                 del self._adapters[stale]
             for record in records:
                 cached = self._adapters.get(record.credential_id)
-                if cached is None or cached[0] != record.secret_revision:
+                version = (record.secret_revision, record.environment)
+                if cached is None or cached[0] != version:
                     try:
-                        adapter = self._build(self._secrets(record))
-                    except SecretStorageError as exc:
+                        adapter = self._build(self._secrets(record), record.environment)
+                    except (SecretStorageError, ValueError) as exc:
+                        # A missing secret, or settings the adapter refuses (such as a
+                        # demo account where the broker's demo domain is unknown).
+                        self._adapters.pop(record.credential_id, None)
                         self._status.setdefault(record.credential_id, KeyStatus())
                         self._status[record.credential_id].state = "error"
-                        self._status[record.credential_id].last_error = str(exc)
+                        self._status[record.credential_id].last_error = str(exc)[:200]
                         continue
-                    cached = (record.secret_revision, adapter)
+                    cached = (version, adapter)
                     self._adapters[record.credential_id] = cached
                     self._status[record.credential_id] = KeyStatus()
                 chosen.append((record, cached[1]))

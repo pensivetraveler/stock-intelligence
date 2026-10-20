@@ -31,6 +31,7 @@ from services.market_data.broker_common import (
     RawMinute,
     SourceIdentity,
     TokenCache,
+    account_environment,
     build_result,
     capabilities,
     decimal_field,
@@ -82,6 +83,8 @@ class MeritzConfig:
         key, secret, mac = require(
             values, "SIW_MERITZ_APP_KEY", "SIW_MERITZ_APP_SECRET", "SIW_MERITZ_MAC_ADDRESS"
         )
+        # No demo domain is documented, so demo account keys are refused.
+        account_environment(values, "SIW_MERITZ_ENVIRONMENT", None, "Meritz Securities")
         mac = mac.replace(":", "").replace("-", "").upper()
         if not MAC_PATTERN.fullmatch(mac):
             raise BrokerConfigError("SIW_MERITZ_MAC_ADDRESS must be 12 hexadecimal characters")
