@@ -236,6 +236,35 @@ function memoryStorage(): Storage {
   };
 }
 
+/** Storage with the two-chart layout on, for tests that need both charts. */
+function splitStorage(): Storage {
+  const storage = memoryStorage();
+  storage.setItem("siw.chartSplit", "1");
+  return storage;
+}
+
+function openWorkspaceMenu() {
+  fireEvent.click(screen.getByRole("button", { name: /^Workspace: / }));
+}
+
+function openPanel(name: string) {
+  fireEvent.click(
+    within(screen.getByRole("navigation", { name: "Panels" })).getByRole(
+      "button",
+      { name },
+    ),
+  );
+}
+
+function pickTimeframe(value: string) {
+  fireEvent.click(
+    within(screen.getByRole("group", { name: "Timeframe" })).getByRole(
+      "button",
+      { name: value },
+    ),
+  );
+}
+
 function savedLayout(storage: Storage) {
   const library = JSON.parse(storage.getItem(LIBRARY_STORAGE_KEY) ?? "{}");
   return library.workspaces.find(
@@ -246,7 +275,7 @@ function savedLayout(storage: Storage) {
 describe("chart workspace", () => {
   it("renders two charts with their own settings, coverage and lineage", async () => {
     const api = fakeApi();
-    render(<Workspace api={api} storage={memoryStorage()} />);
+    render(<Workspace api={api} storage={splitStorage()} />);
 
     expect(await screen.findByTestId("chart-chart-1")).toHaveTextContent(
       "1 candles",
@@ -263,17 +292,12 @@ describe("chart workspace", () => {
 
   it("changes one chart without touching the other and saves the layout", async () => {
     const api = fakeApi();
-    const storage = memoryStorage();
+    const storage = splitStorage();
     render(<Workspace api={api} storage={storage} />);
     await screen.findByTestId("chart-chart-2");
 
-    const first = screen.getByRole("region", { name: /Chart 1/ });
-    fireEvent.click(
-      within(within(first).getByRole("group", { name: "Timeframe" })).getByRole(
-        "button",
-        { name: "60m" },
-      ),
-    );
+    // The toolbar acts on the active chart, which is chart 1 at first.
+    pickTimeframe("60m");
     await screen.findByRole("region", { name: /Chart 1: .* 60m/ });
 
     const saved = savedLayout(storage);
@@ -307,6 +331,7 @@ describe("chart workspace", () => {
     render(<Workspace api={fakeApi()} storage={storage} />);
     await screen.findByTestId("chart-chart-1");
 
+    openWorkspaceMenu();
     fireEvent.click(screen.getByLabelText("Sync visible time range"));
 
     expect(savedLayout(storage).syncTimeRange).toBe(false);
@@ -314,11 +339,10 @@ describe("chart workspace", () => {
 
   it("applies a template to both charts explicitly and can undo it", async () => {
     const api = fakeApi();
-    render(
-      <Workspace api={api} storage={memoryStorage()} newId={sequence()} />,
-    );
+    render(<Workspace api={api} storage={splitStorage()} newId={sequence()} />);
     await screen.findByTestId("chart-chart-1");
 
+    openWorkspaceMenu();
     fireEvent.change(screen.getByLabelText("Layout template"), {
       target: { value: "review" },
     });
@@ -346,8 +370,8 @@ describe("chart workspace", () => {
     const storage = memoryStorage();
     render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
     await screen.findByTestId("chart-chart-1");
-    const first = () => screen.getByRole("region", { name: /Chart 1/ });
 
+    openWorkspaceMenu();
     fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
     fireEvent.change(screen.getByLabelText("New workspace name"), {
       target: { value: "default" },
@@ -359,11 +383,7 @@ describe("chart workspace", () => {
       target: { value: "Scalping" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    fireEvent.click(
-      within(
-        within(first()).getByRole("group", { name: "Timeframe" }),
-      ).getByRole("button", { name: "30m" }),
-    );
+    pickTimeframe("30m");
     await screen.findByRole("region", { name: /Chart 1: .* 30m/ });
 
     fireEvent.change(screen.getByLabelText("Workspace"), {
@@ -393,9 +413,7 @@ describe("chart workspace", () => {
 
   it("records an actual execution from a candle without treating the candle as the fill", async () => {
     const api = fakeApi();
-    render(
-      <Workspace api={api} storage={memoryStorage()} newId={sequence()} />,
-    );
+    render(<Workspace api={api} storage={splitStorage()} newId={sequence()} />);
     fireEvent.click(
       await screen.findByRole("button", {
         name: "click first candle of chart-1",
@@ -426,6 +444,7 @@ describe("chart workspace", () => {
       executed_time_et: "09:31",
       selected_interval_start_utc: "2026-10-09T13:30:00Z",
     });
+    openPanel("Trade journal");
     const actual = screen.getByRole("region", { name: "Trade journal" });
     expect(within(actual).getByText("250.20")).toBeInTheDocument();
     expect(
@@ -464,6 +483,8 @@ describe("chart workspace", () => {
       within(form).getByRole("button", { name: "Save hypothetical scenario" }),
     );
 
+    await waitFor(() => expect(api.scenarioRequests).toHaveLength(1));
+    openPanel("Trade journal");
     expect(
       await screen.findByText(/9 USD \(gross 10, costs 1\)/),
     ).toBeInTheDocument();
@@ -487,6 +508,8 @@ describe("chart workspace", () => {
       />,
     );
 
+    await screen.findByTestId("chart-chart-1");
+    openPanel("Trade journal");
     expect(await screen.findByText(/Trade journal is off/)).toBeInTheDocument();
   });
 
@@ -497,6 +520,7 @@ describe("chart workspace", () => {
     );
     await screen.findByTestId("chart-chart-1");
 
+    openPanel("Import broker statement (CSV)");
     fireEvent.click(screen.getByText("Import broker statement (CSV)"));
     const csv = new File(["Date/Time,Symbol\n"], "without_ids.csv", {
       type: "text/csv",
@@ -524,6 +548,7 @@ describe("chart workspace", () => {
       await screen.findByText(/Imported 3 of 3 rows from without_ids.csv/),
     ).toBeInTheDocument();
     expect(api.importRequests[0].decisions).toEqual({ "2": "import" });
+    openPanel("Trade journal");
     expect(
       await screen.findByText(/kept after duplicate review/),
     ).toBeInTheDocument();
@@ -536,11 +561,12 @@ describe("chart workspace", () => {
   });
 
   it("shows the watchlist and puts a picked symbol in the active chart", async () => {
-    const storage = memoryStorage();
+    const storage = splitStorage();
     render(<Workspace api={fakeApi()} storage={storage} />);
     const watchlist = await screen.findByRole("complementary", {
       name: "Watchlist",
     });
+    await screen.findByTestId("chart-chart-2");
     expect(await within(watchlist).findByText("202.50")).toBeInTheDocument();
     expect(within(watchlist).getByText("+1.25%")).toBeInTheDocument();
     expect(await within(watchlist).findByText("no bars")).toBeInTheDocument();
@@ -566,20 +592,20 @@ describe("chart workspace", () => {
     const storage = memoryStorage();
     render(<Workspace api={fakeApi()} storage={storage} />);
     await screen.findByTestId("chart-chart-1");
-    const first = screen.getByRole("region", { name: /Chart 1/ });
 
-    fireEvent.click(within(first).getByRole("button", { name: "Instrument" }));
-    const search = within(first).getByRole("textbox", {
+    fireEvent.click(screen.getByRole("button", { name: "Instrument" }));
+    const popover = screen.getByRole("dialog", { name: "Search symbol" });
+    const search = within(popover).getByRole("textbox", {
       name: "Search symbol",
     });
     fireEvent.change(search, { target: { value: "aa" } });
     expect(
-      within(first).queryByRole("button", { name: /SYNTH/ }),
+      within(popover).queryByRole("button", { name: /SYNTH/ }),
     ).not.toBeInTheDocument();
     fireEvent.keyDown(search, { key: "Enter" });
     await screen.findByRole("region", { name: /Chart 1: AAPL/ });
 
-    fireEvent.click(within(first).getByRole("button", { name: "Next day" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next day" }));
     expect(savedLayout(storage).charts[0].sessionDate).toBe("2026-10-10");
   });
 
@@ -606,6 +632,7 @@ describe("chart workspace", () => {
         ],
       }),
     );
+    storage.setItem("siw.chartSplit", "1");
     render(<Workspace api={api} storage={storage} />);
 
     expect(
@@ -622,3 +649,46 @@ function sequence(): () => string {
   let next = 0;
   return () => `id-${++next}`;
 }
+
+describe("terminal layout", () => {
+  it("shows one chart by default and splits into two on request", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} />);
+    await screen.findByTestId("chart-chart-1");
+    expect(screen.queryByTestId("chart-chart-2")).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Two charts side by side" }),
+    );
+    expect(await screen.findByTestId("chart-chart-2")).toBeInTheDocument();
+    expect(storage.getItem("siw.chartSplit")).toBe("1");
+  });
+
+  it("keeps later-stage tools visible but disabled", async () => {
+    render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    const tools = screen.getByRole("toolbar", { name: "Chart tools" });
+    expect(
+      within(tools).getByRole("button", { name: "Trend line" }),
+    ).toBeDisabled();
+    const magnet = within(tools).getByRole("button", {
+      name: "Magnet: snap crosshair to OHLC",
+    });
+    fireEvent.click(magnet);
+    expect(magnet).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Indicators/ })).toBeDisabled();
+  });
+
+  it("closes and reopens side panels from the right rail", async () => {
+    render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
+    await screen.findByRole("complementary", { name: "Watchlist" });
+    openPanel("Watchlist");
+    expect(
+      screen.queryByRole("complementary", { name: "Watchlist" }),
+    ).not.toBeInTheDocument();
+    openPanel("Watchlist");
+    expect(
+      screen.getByRole("complementary", { name: "Watchlist" }),
+    ).toBeInTheDocument();
+  });
+});

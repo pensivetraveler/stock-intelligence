@@ -65,7 +65,7 @@ export function Watchlist({
   }, [api, instruments, sessionDate]);
 
   return (
-    <aside className="watchlist" aria-label={t("watch.title")}>
+    <div className="watchlist">
       <h2>{t("watch.title")}</h2>
       <table>
         <thead>
@@ -130,6 +130,6 @@ export function Watchlist({
         </tbody>
       </table>
       <p className="workspace-note">{t("watch.note", { date: sessionDate })}</p>
-    </aside>
+    </div>
   );
 }

@@ -3,19 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { version as APP_VERSION } from "../package.json";
 import { checkApiHealth, type ApiConnectionState } from "./api-health";
 import { createCredentialApi } from "./credential-api";
+import { AppMark } from "./icons";
 import { LANGUAGES, useI18n, type Language, type MessageKey } from "./i18n";
 import { I18nProvider } from "./I18nProvider";
 import { KeysPanel } from "./KeysPanel";
 import { createMarketApi } from "./market-api";
 import "./styles.css";
 import { Workspace } from "./Workspace";
-
-type View = "workspace" | "keys";
-
-const VIEWS: { id: View; label: MessageKey }[] = [
-  { id: "workspace", label: "nav.workspace" },
-  { id: "keys", label: "nav.keys" },
-];
 
 // checkApiHealth reports these fixed messages; anything else is a raw network error.
 const HEALTH_MESSAGES: Record<string, MessageKey> = {
@@ -54,7 +48,6 @@ function AppContent({
   const [state, setState] = useState<ApiConnectionState>("checking");
   const [message, setMessage] = useState("Checking API health");
   const [lastSuccess, setLastSuccess] = useState<string | null>(null);
-  const [view, setView] = useState<View>("workspace");
   const api = useMemo(
     () => createMarketApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
@@ -116,22 +109,53 @@ function AppContent({
   }, [runCheck]);
 
   return (
-    <div className="shell">
-      <nav className="side-nav" aria-label={t("app.menu")}>
-        {VIEWS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={
-              item.id === view ? "side-nav-item active" : "side-nav-item"
-            }
-            aria-current={item.id === view ? "page" : undefined}
-            onClick={() => setView(item.id)}
-          >
-            {t(item.label)}
-          </button>
-        ))}
-        <label className="side-nav-language">
+    <div className="app-shell">
+      <div className="app-main">
+        {lastSuccess ? (
+          <Workspace api={api} keysPanel={<KeysPanel api={credentialApi} />} />
+        ) : (
+          <div className="connect-screen">
+            <AppMark />
+            <h1 id="app-title">Stock Intelligence Workstation</h1>
+            <p className="subtitle">{t("app.connecting")}</p>
+          </div>
+        )}
+      </div>
+      <footer className="status-bar" aria-label={t("status.label")}>
+        <strong className="status-title">Stock Intelligence Workstation</strong>
+        <span className="status-item">
+          {t("app.subtitle", { provider: provider ?? "…" })}
+        </span>
+        <span className="status-item">
+          {t("app.connection")}{" "}
+          <span className={`status status-${state}`}>
+            {t(`state.${state}`)}
+          </span>
+        </span>
+        <span className="status-item" role="status" aria-live="polite">
+          {message in HEALTH_MESSAGES ? t(HEALTH_MESSAGES[message]) : message}
+        </span>
+        {lastSuccess ? (
+          <small className="status-item">
+            {t("app.lastSuccess", { time: lastSuccess })}
+          </small>
+        ) : null}
+        <button
+          type="button"
+          className="tb-button"
+          onClick={() => void runCheck()}
+          disabled={state === "checking"}
+        >
+          {t("app.retry")}
+        </button>
+        <span className="tb-spacer" />
+        <span className="status-item">
+          {t("app.version")} {APP_VERSION}
+        </span>
+        <span className="status-item">
+          {t("app.endpoint")} {apiBaseUrl}
+        </span>
+        <label className="status-item status-language">
           {t("app.language")}
           <select
             value={language}
@@ -144,63 +168,7 @@ function AppContent({
             ))}
           </select>
         </label>
-      </nav>
-      <main className="app">
-        <header className="app-bar" aria-labelledby="app-title">
-          <div>
-            <p className="eyebrow">{t("app.eyebrow")}</p>
-            <h1 id="app-title">Stock Intelligence Workstation</h1>
-            <p className="subtitle">
-              {t("app.subtitle", { provider: provider ?? "…" })}
-            </p>
-          </div>
-          <dl className="app-facts">
-            <div>
-              <dt>{t("app.version")}</dt>
-              <dd>{APP_VERSION}</dd>
-            </div>
-            <div>
-              <dt>{t("app.endpoint")}</dt>
-              <dd>{apiBaseUrl}</dd>
-            </div>
-            <div>
-              <dt>{t("app.connection")}</dt>
-              <dd>
-                <span className={`status status-${state}`}>
-                  {t(`state.${state}`)}
-                </span>
-              </dd>
-            </div>
-          </dl>
-          <div className="health" role="status" aria-live="polite">
-            <strong>/health</strong>
-            <span>
-              {message in HEALTH_MESSAGES
-                ? t(HEALTH_MESSAGES[message])
-                : message}
-            </span>
-            {lastSuccess ? (
-              <small>{t("app.lastSuccess", { time: lastSuccess })}</small>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => void runCheck()}
-              disabled={state === "checking"}
-            >
-              {t("app.retry")}
-            </button>
-          </div>
-        </header>
-        {lastSuccess ? (
-          // Kept mounted while hidden so charts keep their data and scroll position.
-          <div hidden={view !== "workspace"}>
-            <Workspace api={api} />
-          </div>
-        ) : null}
-        {lastSuccess && view === "keys" ? (
-          <KeysPanel api={credentialApi} />
-        ) : null}
-      </main>
+      </footer>
     </div>
   );
 }
