@@ -61,3 +61,7 @@ Toss does not report individual fills. For each order it returns the total fille
 - Toss exposes per-fill executions. Each one would then be stored as its own record.
 - The Korean-market stage lands, so KRW orders can be stored.
 - Another broker's account API is connected. It would get the same ledger with its own `broker_id`.
+
+## Amendment 2026-10-20 — Korean orders
+
+KRW orders are now stored under Korean instrument IDs (ADR 0020, K3). The skip counter `not_us` became `unsupported_currency`. The single remaining page cap is 200 pages per account; a full live sync of 7,633 closed orders fits within it.

@@ -37,6 +37,15 @@ from services.market_data.toss_session import TossSession
 LOG = logging.getLogger(__name__)
 URL = "wss://openapi-ws.tossinvest.com/ws/v1"
 SOURCE_ID = "toss-us"
+# Per market: Toss topic suffix, source ID and currency. Korean codes start with a digit
+# and US tickers with a letter, so a symbol's market is never ambiguous.
+MARKETS = {"us": ("toss-us", "USD"), "kr": ("toss-kr", "KRW")}
+
+
+def market_key(symbol: str) -> str:
+    return "kr" if symbol[:1].isdigit() else "us"
+
+
 MAX_SYMBOLS = 45  # trade + orderbook per symbol, plus account topics, stay under 100
 PING_SECONDS = 60.0
 FLUSH_SECONDS = 10.0
@@ -110,7 +119,7 @@ class RealtimeHub:
         session: Callable[[], TossSession | None],
         *,
         ticks: Callable[[], TickStore | None],
-        instrument_for: Callable[[str], str | None],
+        instrument_for: Callable[[str, str], str | None],
         sync_ledger: Callable[[str], dict[str, Any] | None],
         connect: Connect = default_connect,
         now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
@@ -229,11 +238,13 @@ class RealtimeHub:
             self._resubscribe.clear()
             symbols = self.symbols()
             declaration: list[dict[str, Any]] = []
-            if symbols:
-                declaration += [
-                    {"type": "trade:us", "codes": symbols},
-                    {"type": "orderbook:us", "codes": symbols},
-                ]
+            for key in MARKETS:
+                codes = [symbol for symbol in symbols if market_key(symbol) == key]
+                if codes:
+                    declaration += [
+                        {"type": f"trade:{key}", "codes": codes},
+                        {"type": f"orderbook:{key}", "codes": codes},
+                    ]
             if accounts:
                 declaration.append({"type": "personal:order", "codes": accounts})
             if declaration != declared:
@@ -287,28 +298,31 @@ class RealtimeHub:
         elif kind == "message":
             topic = str(frame.get("topic", ""))
             data = _as_dict(frame.get("data"))
-            if topic.startswith("trade:us:"):
-                self._trade(topic.removeprefix("trade:us:"), data)
-            elif topic.startswith("orderbook:us:"):
-                self._orderbook(topic.removeprefix("orderbook:us:"), data)
+            channel, _, rest = topic.partition(":")
+            key, _, symbol = rest.partition(":")
+            if channel == "trade" and key in MARKETS and symbol:
+                self._trade(symbol, data, key)
+            elif channel == "orderbook" and key in MARKETS and symbol:
+                self._orderbook(symbol, data, key)
             elif topic.startswith("personal:order:"):
                 self._order(data, session)
 
-    def _trade(self, symbol: str, data: dict[str, Any]) -> None:
+    def _trade(self, symbol: str, data: dict[str, Any], key: str) -> None:
         price, volume = _decimal(data.get("price")), _decimal(data.get("volume"))
         at = _utc(data.get("timestamp"))
         if price is None or volume is None or at is None:
             return
+        source_id, default_currency = MARKETS[key]
         received = now_utc_text(self._now)
-        instrument_id = self._instrument_for(symbol)
-        currency = str(data.get("currency") or "USD")[:3]
+        currency = str(data.get("currency") or default_currency)[:3]
+        instrument_id = self._instrument_for(symbol, currency)
         store = self._ticks()
         if store is not None:
-            store.add(Tick(SOURCE_ID, symbol, instrument_id, price, volume, currency, at, received))
+            store.add(Tick(source_id, symbol, instrument_id, price, volume, currency, at, received))
         self._broadcast(
             _event(
                 "trade",
-                source_id=SOURCE_ID,
+                source_id=source_id,
                 symbol=symbol,
                 instrument_id=instrument_id,
                 price=price,
@@ -320,10 +334,12 @@ class RealtimeHub:
             symbol,
         )
 
-    def _orderbook(self, symbol: str, data: dict[str, Any]) -> None:
+    def _orderbook(self, symbol: str, data: dict[str, Any], key: str) -> None:
         at = _utc(data.get("timestamp"))
         if at is None:
             return
+        source_id, default_currency = MARKETS[key]
+        currency = str(data.get("currency") or default_currency)[:3]
 
         def levels(items: object) -> list[dict[str, str]]:
             out = []
@@ -337,10 +353,10 @@ class RealtimeHub:
         self._broadcast(
             _event(
                 "orderbook",
-                source_id=SOURCE_ID,
+                source_id=source_id,
                 symbol=symbol,
-                instrument_id=self._instrument_for(symbol),
-                currency=str(data.get("currency") or "USD")[:3],
+                instrument_id=self._instrument_for(symbol, currency),
+                currency=currency,
                 exchange_time_utc=at,
                 asks=levels(data.get("asks")),
                 bids=levels(data.get("bids")),

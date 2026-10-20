@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, time, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from services.journal.ledger import ExchangeTimeError, exchange_local_to_utc
 
@@ -32,7 +33,7 @@ MAPPING_FIELDS = (
     "fees",
     "broker_execution_id",
 )
-Timezone = Literal["America/New_York", "UTC"]
+Timezone = Literal["America/New_York", "Asia/Seoul", "UTC"]
 
 # Header names (lower case) suggested for each field; the user can change any of them.
 HEADER_HINTS: dict[str, tuple[str, ...]] = {
@@ -226,7 +227,7 @@ def parse_timestamp(
     else:
         try:
             utc = exchange_local_to_utc(
-                parsed.date(), time(parsed.hour, parsed.minute, parsed.second)
+                parsed.date(), time(parsed.hour, parsed.minute, parsed.second), ZoneInfo(zone)
             )
         except ExchangeTimeError as exc:
             raise ValueError(str(exc)) from exc
@@ -304,7 +305,7 @@ def normalize_rows(
                 "quantity": _text(quantity),
                 "price": _text(price),
                 "fees": _text(fees),
-                "currency": "USD",
+                "currency": "KRW" if instrument_id.startswith("kr:") else "USD",
                 "executed_at_utc": executed_at,
                 "time_precision": precision,
                 "broker_label": request.broker_label,

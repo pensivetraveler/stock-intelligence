@@ -55,6 +55,16 @@ function compareMagnitude(left: ParsedDecimal, right: ParsedDecimal): number {
   return leftFraction < rightFraction ? -1 : 1;
 }
 
+/** Kinds whose currency must match the instrument's market (kr: listings trade in KRW). */
+const CURRENCY_BY_MARKET_KINDS = new Set([
+  "manual_execution",
+  "scenario_definition",
+  "imported_execution",
+  "broker_order_execution",
+  "broker_confirmed_execution",
+  "market_quote",
+]);
+
 export function compareDecimal(left: string, right: string): number {
   const a = parseDecimal(left);
   const b = parseDecimal(right);
@@ -332,6 +342,20 @@ export function semanticErrors(document: Document): string[] {
     );
     if (new Set(identifiers).size !== identifiers.length) {
       errors.push("instrument_id must be unique within the response");
+    }
+  }
+
+  if (CURRENCY_BY_MARKET_KINDS.has(String(document.kind))) {
+    const instrument = document.instrument_id;
+    const currency = document.currency;
+    if (
+      typeof instrument === "string" &&
+      (currency === "USD" || currency === "KRW")
+    ) {
+      const expected = instrument.startsWith("kr:") ? "KRW" : "USD";
+      if (currency !== expected) {
+        errors.push(`${instrument} trades in ${expected}`);
+      }
     }
   }
 

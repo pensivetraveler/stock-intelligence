@@ -17,19 +17,22 @@ class ExchangeTimeError(ValueError):
     """A US exchange-local time that does not exist or is ambiguous (DST)."""
 
 
-def exchange_local_to_utc(session_date: date, local_time: time) -> datetime:
-    """Convert an America/New_York wall-clock time on a date to UTC.
+def exchange_local_to_utc(
+    session_date: date, local_time: time, zone: ZoneInfo = NEW_YORK
+) -> datetime:
+    """Convert an exchange wall-clock time on a date to UTC (New York by default).
 
     Rejects the skipped hour when clocks spring forward and the repeated hour when
     they fall back, instead of silently picking one.
     """
     naive = datetime.combine(session_date, local_time)
-    first = naive.replace(tzinfo=NEW_YORK, fold=0)
+    first = naive.replace(tzinfo=zone, fold=0)
     as_utc = first.astimezone(timezone.utc)
     # Check the gap first: inside it, fold=0 and fold=1 also disagree on the offset.
-    if as_utc.astimezone(NEW_YORK).replace(tzinfo=None) != naive:
+    # (Korea has no daylight saving time, so neither case arises for KST.)
+    if as_utc.astimezone(zone).replace(tzinfo=None) != naive:
         raise ExchangeTimeError(f"{naive.isoformat()} ET does not exist during the DST change")
-    if first.utcoffset() != naive.replace(tzinfo=NEW_YORK, fold=1).utcoffset():
+    if first.utcoffset() != naive.replace(tzinfo=zone, fold=1).utcoffset():
         raise ExchangeTimeError(f"{naive.isoformat()} ET is ambiguous during the DST change")
     return as_utc
 

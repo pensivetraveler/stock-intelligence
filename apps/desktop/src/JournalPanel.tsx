@@ -6,6 +6,7 @@ import type {
 } from "@siw/contracts/types";
 
 import { exchangeTime } from "./chart-data";
+import { zoneOf } from "./market-zone";
 import { useI18n } from "./i18n";
 import { MARKER_COLORS } from "./journal-markers";
 
@@ -57,6 +58,7 @@ export function JournalPanel({
               <li key={position.instrument_id}>
                 {t("journal.position", {
                   symbol: symbolOf(position.instrument_id),
+                  currency: zoneOf(position.instrument_id).currency,
                   pnl: position.realized_pnl,
                   fees: position.fees,
                   open: position.open_quantity,
@@ -120,6 +122,7 @@ export function JournalPanel({
               <li key={position.instrument_id}>
                 {t("journal.position", {
                   symbol: symbolOf(position.instrument_id),
+                  currency: zoneOf(position.instrument_id).currency,
                   pnl: position.realized_pnl,
                   fees: position.fees,
                   open: position.open_quantity,
@@ -183,6 +186,7 @@ export function JournalPanel({
               <li key={position.instrument_id}>
                 {t("journal.position", {
                   symbol: symbolOf(position.instrument_id),
+                  currency: zoneOf(position.instrument_id).currency,
                   pnl: position.realized_pnl,
                   fees: position.fees,
                   open: position.open_quantity,

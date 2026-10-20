@@ -232,7 +232,10 @@ export interface BrokerConfirmedExecution {
   side: Side;
   quantity: NonNegativeDecimalString;
   price: NonNegativeDecimalString;
-  currency: "USD";
+  /**
+   * USD for US listings, KRW for Korean (kr:) listings.
+   */
+  currency: "USD" | "KRW";
   executed_at_utc: UtcTimestamp;
   broker_id: Identifier;
   broker_account_ref: Identifier;
@@ -249,7 +252,10 @@ export interface ManualExecution {
   side: Side;
   quantity: NonNegativeDecimalString;
   price: NonNegativeDecimalString;
-  currency: "USD";
+  /**
+   * USD for US listings, KRW for Korean (kr:) listings.
+   */
+  currency: "USD" | "KRW";
   /**
    * When the server recorded the user's assertion.
    */
@@ -293,7 +299,10 @@ export interface ScenarioDefinition {
   entry_price: NonNegativeDecimalString;
   exit_price: NonNegativeDecimalString;
   quantity: NonNegativeDecimalString;
-  currency: "USD";
+  /**
+   * USD for US listings, KRW for Korean (kr:) listings.
+   */
+  currency: "USD" | "KRW";
   /**
    * Total fees for the round trip.
    */
@@ -413,7 +422,10 @@ export interface ImportedExecution {
   quantity: NonNegativeDecimalString;
   price: NonNegativeDecimalString;
   fees: NonNegativeDecimalString;
-  currency: "USD";
+  /**
+   * USD for US listings, KRW for Korean (kr:) listings.
+   */
+  currency: "USD" | "KRW";
   executed_at_utc: UtcTimestamp;
   time_precision: "exact" | "minute";
   broker_label: string;
@@ -448,7 +460,7 @@ export interface ImportPreviewResponse {
     fees: string | null;
     broker_execution_id: string | null;
   };
-  timestamp_timezone: "America/New_York" | "UTC";
+  timestamp_timezone: "America/New_York" | "Asia/Seoul" | "UTC";
   already_imported: boolean;
   rows: {
     row_number: number;
@@ -845,7 +857,10 @@ export interface BrokerOrderExecution {
   fees: NonNegativeDecimalString;
   commission: NonNegativeDecimalString;
   tax: NonNegativeDecimalString;
-  currency: "USD";
+  /**
+   * USD for US listings, KRW for Korean (kr:) listings.
+   */
+  currency: "USD" | "KRW";
   executed_at_utc: null | UtcTimestamp;
   /**
    * The broker's filledAt for the order: when its last fill happened, as reported. Not a per-fill time.
@@ -886,7 +901,7 @@ export interface BrokerSyncResult {
   already_stored: number;
   skipped: {
     not_filled: number;
-    not_us: number;
+    unsupported_currency: number;
     unknown_instrument: number;
   };
   /**

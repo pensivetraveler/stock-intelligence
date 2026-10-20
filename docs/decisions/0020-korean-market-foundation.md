@@ -1,6 +1,6 @@
-# ADR 0020 — Korean listings: calendar, instrument IDs, KRW and market routing (stages K1–K2)
+# ADR 0020 — Korean listings: calendar, instrument IDs, KRW and market routing (stages K1–K3)
 
-- **Status:** accepted. K1 and K2 are implemented and were checked live with Toss for Samsung Electronics 005930. K3 is planned.
+- **Status:** accepted. K1–K3 are implemented and were checked live with Toss.
 - **Date:** 2026-10-20
 
 ## Context
@@ -67,6 +67,30 @@ Toss is the only Korean source. Findings from the live check on 2026-10-20:
   - This applies to the chart's time axis and crosshair, the price scale, VWAP's daily reset, the gap list, the clock, the replay time, the Live quote and Stock info panels (with Korean market hours), and the trade-entry candle label.
 - **Not yet live:** Korean symbols are not subscribed to the realtime relay yet; that comes in K3.
 - **Live check:** a 005930 5-minute chart for 10/20 had 144 of 144 intervals (08:00–20:00 KST), whole-won prices, a KST axis and clock, and every session request on XKRX.
+
+## Stage K3 — ledgers and realtime (implemented 2026-10-20)
+
+- **Currency:** ledger contracts (manual, scenario, imported, broker API and broker-confirmed executions) allow KRW.
+  - Both validators check that the currency matches the instrument's market: `kr:` listings trade in KRW and the rest in USD. Quotes are checked the same way.
+- **Times:** manual entries and scenario exits take exchange-local times, KST for Korean listings. The `*_et` field names stay for compatibility.
+  - CSV statements can be read in `Asia/Seoul` time.
+  - The journal accepts Korean instruments from the Korean directory.
+- **Broker sync:** KRW orders are stored under Korean instrument IDs, resolved through the Korean directory. The skip counter `not_us` became `unsupported_currency`, for orders in neither USD nor KRW.
+- **Realtime:** Korean codes are subscribed on `trade:kr`/`orderbook:kr`, and events carry `toss-kr` and KRW.
+  - Korean codes start with a digit and US tickers with a letter, so a symbol's market is never ambiguous.
+  - Korean ticks are filed under the KST date, and `GET /v1/market/ticks` reads each market's source.
+- **Screen:**
+  - Trade-entry time labels show the instrument's zone.
+  - The CSV import offers KST.
+  - Journal positions show their currency.
+  - The sync message counts unsupported currencies.
+- **Live check:**
+  - Subscriptions: `trade:kr:005930`, `trade:kr:000660` and the matching order books were acknowledged with no rejections, alongside `trade:us:AAPL`.
+  - A full sync into a scratch journal, deleted afterwards:
+    - 7,633 closed orders seen;
+    - 5,710 stored: 1,668 KRW under `kr:` IDs and 4,042 USD;
+    - 1,417 had no fills and 506 had no known listing;
+    - no conflicts.
 
 ## Consequences
 
