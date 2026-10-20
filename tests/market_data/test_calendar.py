@@ -86,7 +86,7 @@ def test_calendar_rejects_naive_time_and_unsupported_calendar() -> None:
 
     with pytest.raises(CalendarError, match="must be UTC"):
         calendar.classify_interval(datetime(2026, 10, 9, 13, 30), datetime(2026, 10, 9, 13, 31))
-    with pytest.raises(CalendarError, match="only XNAS/XNYS"):
+    with pytest.raises(CalendarError, match="unsupported calendar"):
         UsEquityCalendar("XLON")
 
 
@@ -127,4 +127,35 @@ def test_fixture_lineage_matches_current_calendar_schedule() -> None:
     assert versions == {us_equity_calendar_version()}, (
         "The exchange calendar schedule changed. Review the schedule difference, "
         "then regenerate calendar_version in the test fixtures."
+    )
+
+
+def test_korean_sessions_add_nxt_hours_around_the_krx_regular_session() -> None:
+    from services.market_data.calendar import ExchangeCalendar
+
+    calendar = ExchangeCalendar("XKRX")
+    assert calendar.market == "KR"
+    assert calendar.calendar_version.startswith("xkrx-regular-")
+    window = calendar.window_for_date(date(2026, 10, 20))
+    assert window is not None
+    # 08:00 / 09:00 / 15:30 / 20:00 KST.
+    assert window.pre_open_utc == datetime(2026, 10, 19, 23, 0, tzinfo=timezone.utc)
+    assert window.regular_open_utc == datetime(2026, 10, 20, 0, 0, tzinfo=timezone.utc)
+    assert window.regular_close_utc == datetime(2026, 10, 20, 6, 30, tzinfo=timezone.utc)
+    assert window.post_close_utc == datetime(2026, 10, 20, 11, 0, tzinfo=timezone.utc)
+    # The first session of the year opens an hour late; National Foundation Day is closed.
+    late = calendar.window_for_date(date(2026, 1, 2))
+    assert late is not None and late.regular_open_utc.hour == 1
+    assert calendar.window_for_date(date(2026, 10, 3)) is None
+    # KOSDAQ listings trade on the same schedule.
+    assert ExchangeCalendar("XKOS").window_for_date(date(2026, 10, 20)) == window.__class__(
+        **{**window.__dict__, "calendar_id": "XKOS"}
+    )
+    # A KST morning minute belongs to that Korean date, not the previous UTC/NY day.
+    assert (
+        calendar.classify_interval(
+            datetime(2026, 10, 19, 23, 30, tzinfo=timezone.utc),
+            datetime(2026, 10, 19, 23, 31, tzinfo=timezone.utc),
+        )
+        == "pre"
     )

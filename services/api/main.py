@@ -31,6 +31,7 @@ from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
 from services.market_data.broker_common import listed_symbol
 from services.market_data.calendar import CalendarError, UsEquityCalendar
+from services.market_data.market_router import MarketRouter
 from services.market_data.provider import (
     BarsQuery,
     InstrumentNotFoundError,
@@ -55,6 +56,7 @@ from services.market_data.symbol_directory import (
     SymbolEntry,
 )
 from services.market_data.tick_store import TickStore
+from services.market_data.toss import TossConfig, TossMarketDataProvider
 from services.market_data.toss_account import (
     account_snapshot,
     sellable_quantity,
@@ -160,16 +162,20 @@ class _LazyProvider:
         self,
         provider: MarketDataProvider | None,
         credentials: Callable[[], CredentialStore | None],
+        korean: Callable[[], MarketDataProvider | None],
     ) -> None:
         self._provider = provider
         self._credentials = credentials
+        self._korean = korean
+        self._router: MarketRouter | None = None
         self._lock = threading.Lock()
 
-    def get(self) -> MarketDataProvider:
+    def get(self) -> MarketRouter:
         with self._lock:
-            if self._provider is None:
-                self._provider = _default_market_data_provider(self._credentials())
-            return self._provider
+            if self._router is None:
+                us = self._provider or _default_market_data_provider(self._credentials())
+                self._router = MarketRouter(us, self._korean)
+            return self._router
 
     def key_status(self) -> dict[str, dict[str, object]]:
         """Per-key runtime state when the provider is served through registered keys."""
@@ -215,18 +221,62 @@ class _LazySymbols:
         return directory.known() if directory is not None else {}
 
 
-def _toss_session(credentials: CredentialStore | None) -> TossSession | None:
-    """The shared session of the first enabled real-account Toss key on the Keys screen."""
+def _toss_credentials(credentials: CredentialStore | None) -> TossCredentials | None:
+    """The first enabled real-account Toss key on the Keys screen."""
     if credentials is None:
         return None
     for record in credentials.list("toss"):
         if record.enabled and record.environment == "real":
             secrets = credentials.secrets(record)
             base_url = os.getenv("SIW_TOSS_BASE_URL", DEFAULT_TOSS_URL).strip().rstrip("/")
-            return session_for(
-                TossCredentials(secrets["client_id"], secrets["client_secret"], base_url)
-            )
+            return TossCredentials(secrets["client_id"], secrets["client_secret"], base_url)
     return None
+
+
+def _toss_session(credentials: CredentialStore | None) -> TossSession | None:
+    """The shared session of that key (one token per key for the whole process)."""
+    found = _toss_credentials(credentials)
+    return session_for(found) if found is not None else None
+
+
+class _LazyKoreanProvider:
+    """Toss bars for Korean listings, cached like any provider when SIW_DATA_DIR is set."""
+
+    def __init__(
+        self,
+        provider: MarketDataProvider | None,
+        credentials: Callable[[], CredentialStore | None],
+    ) -> None:
+        self._provider = provider
+        self._credentials = credentials
+        self._key: tuple[str, str] | None = None
+        self._lock = threading.Lock()
+
+    def get(self) -> MarketDataProvider | None:
+        with self._lock:
+            if self._provider is not None and self._key is None:
+                return self._provider  # injected
+            found = _toss_credentials(self._credentials())
+            if found is None:
+                return None
+            key = (found.client_id, found.client_secret)
+            if self._provider is None or self._key != key:
+                adapter = TossMarketDataProvider(
+                    TossConfig(
+                        client_id=found.client_id,
+                        client_secret=found.client_secret,
+                        base_url=found.base_url,
+                        market="KR",
+                    )
+                )
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                self._provider = (
+                    CachedMarketDataProvider(adapter, LocalMarketDataStore(Path(configured)))
+                    if configured
+                    else adapter
+                )
+                self._key = key
+            return self._provider
 
 
 class _LazyJournal:
@@ -257,11 +307,13 @@ def create_app(
     symbol_directory: SymbolDirectory | None = None,
     toss_session: Callable[[], TossSession | None] | None = None,
     tick_store: TickStore | None = None,
+    korean_provider: MarketDataProvider | None = None,
     realtime_connect: Connect | None = None,
     clock: Callable[[], datetime] = _utc_now,
 ) -> FastAPI:
     credentials = _LazyCredentials(credential_store)
-    provider = _LazyProvider(market_data_provider, credentials.get)
+    korean = _LazyKoreanProvider(korean_provider, credentials.get)
+    provider = _LazyProvider(market_data_provider, credentials.get, korean.get)
     toss = toss_session or (lambda: _toss_session(credentials.get()))
     symbols = _LazySymbols(symbol_directory, provider, toss)
     ticks_holder: list[TickStore | None] = [tick_store]
@@ -684,7 +736,7 @@ def create_app(
         request: Request,
         end_date: date,
         count: Annotated[int, Query(ge=1, le=MAX_SESSION_LIST)] = 1,
-        calendar_id: Annotated[Literal["XNAS", "XNYS"], Query()] = "XNAS",
+        calendar_id: Annotated[Literal["XNAS", "XNYS", "XKRX", "XKOS"], Query()] = "XNAS",
     ) -> Response:
         """The latest `count` trading sessions up to and including `end_date`, oldest first."""
         calendar = UsEquityCalendar(calendar_id)
@@ -717,7 +769,7 @@ def create_app(
     def market_session(
         request: Request,
         session_date: date,
-        calendar_id: Annotated[Literal["XNAS", "XNYS"], Query()] = "XNAS",
+        calendar_id: Annotated[Literal["XNAS", "XNYS", "XKRX", "XKOS"], Query()] = "XNAS",
     ) -> Response:
         try:
             document = UsEquityCalendar(calendar_id).session_window_document(session_date)

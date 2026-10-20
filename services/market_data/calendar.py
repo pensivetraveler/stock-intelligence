@@ -13,11 +13,61 @@ from exchange_calendars.errors import DateOutOfBounds
 SessionName = Literal["pre", "regular", "post", "closed", "unknown"]
 TradingSessionName = Literal["pre", "regular", "post"]
 NEW_YORK = ZoneInfo("America/New_York")
+SEOUL = ZoneInfo("Asia/Seoul")
 # Fixed bounds keep the supported range and the schedule fingerprint independent of
 # the date the process happens to start on.
 CALENDAR_FIRST_SESSION = date(2000, 1, 3)
 CALENDAR_LAST_SESSION = date(2030, 12, 31)
 EXTENDED_HOURS_POLICY_VERSION = "us-equity-extended-hours-v1-2026-10-12"
+# Korean extended hours are the NXT (Nextrade) pre-market 08:00-09:00 and after-market
+# 15:30-20:00 KST around the KRX regular session (Toss market calendar, checked 2026-10-20).
+KR_EXTENDED_HOURS_POLICY_VERSION = "kr-equity-nxt-extended-hours-v1-2026-10-20"
+
+
+@dataclass(frozen=True)
+class MarketProfile:
+    market: Literal["US", "KR"]
+    zone: ZoneInfo
+    canonical_calendar_id: str
+    version_prefix: str
+    pre_open: time
+    regular_close: time  # a normal day's close; an earlier one is an early close
+    post_close: time
+    early_post_close: time
+    policy_version: str
+
+
+US_PROFILE = MarketProfile(
+    "US",
+    NEW_YORK,
+    "XNYS",
+    "xnys",
+    time(4, 0),
+    time(16, 0),
+    time(20, 0),
+    time(17, 0),
+    EXTENDED_HOURS_POLICY_VERSION,
+)
+KR_PROFILE = MarketProfile(
+    "KR",
+    SEOUL,
+    "XKRX",
+    "xkrx",
+    time(8, 0),
+    time(15, 30),
+    time(20, 0),
+    time(20, 0),
+    KR_EXTENDED_HOURS_POLICY_VERSION,
+)
+# Calendar IDs accepted and the market each belongs to. XNAS resolves to XNYS and
+# KOSDAQ (XKOS) trades on the KRX schedule.
+PROFILES: dict[str, MarketProfile] = {
+    "XNAS": US_PROFILE,
+    "XNYS": US_PROFILE,
+    "XKRX": KR_PROFILE,
+    "XKOS": KR_PROFILE,
+}
+LOADED_AS = {"XNAS": "XNAS", "XNYS": "XNYS", "XKRX": "XKRX", "XKOS": "XKRX"}
 
 
 class CalendarError(ValueError):
@@ -39,7 +89,7 @@ def _load_calendar(calendar_id: str) -> tuple[Any, str]:
     bounds changes, not when the library version changes without schedule changes.
     """
     calendar: Any = xcals.get_calendar(
-        calendar_id,
+        LOADED_AS[calendar_id],
         start=CALENDAR_FIRST_SESSION.isoformat(),
         end=CALENDAR_LAST_SESSION.isoformat(),
     )
@@ -52,8 +102,8 @@ def _load_calendar(calendar_id: str) -> tuple[Any, str]:
     ]
     digest = hashlib.sha256("\n".join(lines).encode()).hexdigest()
     version = (
-        f"xnys-regular-{CALENDAR_FIRST_SESSION.isoformat()}-{CALENDAR_LAST_SESSION.isoformat()}"
-        f"-sha256-{digest[:16]}"
+        f"{PROFILES[calendar_id].version_prefix}-regular-{CALENDAR_FIRST_SESSION.isoformat()}"
+        f"-{CALENDAR_LAST_SESSION.isoformat()}-sha256-{digest[:16]}"
     )
     return calendar, version
 
@@ -90,23 +140,27 @@ class SessionWindow:
 @cache
 def _window_for_date(calendar_id: str, session_date: date) -> SessionWindow | None:
     """Session windows per (calendar, date); the schedule is fixed for the process."""
-    return UsEquityCalendar(calendar_id)._compute_window(session_date)
+    return ExchangeCalendar(calendar_id)._compute_window(session_date)
 
 
-class UsEquityCalendar:
-    """US equity schedule with explicit versioned extended-hours policy.
+class ExchangeCalendar:
+    """US or Korean equity schedule with an explicit, versioned extended-hours policy.
 
-    `exchange_calendars` currently resolves XNAS to its canonical XNYS calendar.
-    Regular sessions and holidays come from that calendar. Extended sessions are
-    a separate application policy and are not treated as provider entitlement.
+    Regular sessions and holidays come from `exchange_calendars` (XNAS resolves to
+    XNYS; Korean listings use XKRX). Extended sessions are a separate application
+    policy per market and are not treated as provider entitlement.
     """
 
     def __init__(self, calendar_id: str = "XNAS") -> None:
-        if calendar_id not in {"XNAS", "XNYS"}:
-            raise CalendarError("Phase 1C supports only XNAS/XNYS US equity calendars")
+        profile = PROFILES.get(calendar_id)
+        if profile is None:
+            raise CalendarError(f"unsupported calendar {calendar_id!r}")
         self.calendar_id = calendar_id
-        self.canonical_calendar_id = "XNYS"
-        self.extended_hours_policy_version = EXTENDED_HOURS_POLICY_VERSION
+        self.market = profile.market
+        self.zone = profile.zone
+        self.canonical_calendar_id = profile.canonical_calendar_id
+        self.extended_hours_policy_version = profile.policy_version
+        self._profile = profile
         self._calendar, self.calendar_version = _load_calendar(calendar_id)
 
     def window_for_date(self, session_date: date) -> SessionWindow | None:
@@ -127,11 +181,14 @@ class UsEquityCalendar:
             return None
         regular_open = self._as_datetime(self._calendar.session_open(label))
         regular_close = self._as_datetime(self._calendar.session_close(label))
-        local_close = regular_close.astimezone(NEW_YORK)
-        is_early_close = local_close.time() < time(16, 0)
-        pre_open = datetime.combine(session_date, time(4, 0), NEW_YORK).astimezone(timezone.utc)
-        post_close_time = time(17, 0) if is_early_close else time(20, 0)
-        post_close = datetime.combine(session_date, post_close_time, NEW_YORK).astimezone(
+        profile = self._profile
+        local_close = regular_close.astimezone(profile.zone)
+        is_early_close = local_close.time() < profile.regular_close
+        pre_open = datetime.combine(session_date, profile.pre_open, profile.zone).astimezone(
+            timezone.utc
+        )
+        post_close_time = profile.early_post_close if is_early_close else profile.post_close
+        post_close = datetime.combine(session_date, post_close_time, profile.zone).astimezone(
             timezone.utc
         )
         return SessionWindow(
@@ -171,7 +228,7 @@ class UsEquityCalendar:
 
     def window_for_timestamp(self, timestamp_utc: datetime) -> SessionWindow | None:
         self._require_utc(timestamp_utc, "timestamp_utc")
-        return self.window_for_date(timestamp_utc.astimezone(NEW_YORK).date())
+        return self.window_for_date(timestamp_utc.astimezone(self.zone).date())
 
     def classify_interval(self, start_utc: datetime, end_utc: datetime) -> SessionName:
         self._require_utc(start_utc, "start_utc")
@@ -224,3 +281,7 @@ class UsEquityCalendar:
     def _require_utc(value: datetime, name: str) -> None:
         if value.utcoffset() != timedelta(0):
             raise CalendarError(f"{name} must be UTC")
+
+
+# The original name, kept for the many US call sites.
+UsEquityCalendar = ExchangeCalendar

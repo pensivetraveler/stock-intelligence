@@ -21,7 +21,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -34,7 +34,6 @@ from services.market_data.broker_common import (
     capabilities,
     decimal_field,
     instrument_listing,
-    listed_symbol,
     parse_sessions,
     parse_symbols,
     require,
@@ -43,9 +42,10 @@ from services.market_data.broker_common import (
 )
 from services.market_data.calendar import (
     NEW_YORK,
+    SEOUL,
     CalendarError,
+    ExchangeCalendar,
     TradingSessionName,
-    UsEquityCalendar,
 )
 from services.market_data.daily import (
     DailySource,
@@ -54,6 +54,7 @@ from services.market_data.daily import (
     sessions_in_range,
     validate_daily_query,
 )
+from services.market_data.instruments import parse_instrument
 from services.market_data.provider import (
     BarsQuery,
     BarsResult,
@@ -77,9 +78,14 @@ class TossConfig:
     symbols: tuple[tuple[str, str], ...] = (("SPY", "ARCX"), ("AAPL", "XNAS"), ("MSFT", "XNAS"))
     sessions: frozenset[TradingSessionName] = frozenset({"regular"})
     finality_minutes: int = 15
+    # US listings, or Korean listings (KRX and NXT trading combined by Toss).
+    market: Literal["US", "KR"] = "US"
 
     def __repr__(self) -> str:
-        return f"TossConfig(base_url={self.base_url!r}, symbols={self.symbols!r})"
+        return (
+            f"TossConfig(base_url={self.base_url!r}, symbols={self.symbols!r}, "
+            f"market={self.market!r})"
+        )
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> TossConfig:
@@ -102,8 +108,6 @@ class TossConfig:
 
 
 class TossMarketDataProvider:
-    source_id = "toss-us"
-
     def __init__(
         self,
         config: TossConfig,
@@ -113,19 +117,29 @@ class TossMarketDataProvider:
     ) -> None:
         self.config = config
         self._now = now or (lambda: datetime.now(timezone.utc))
-        self._calendar = UsEquityCalendar("XNAS")
+        korean = config.market == "KR"
+        self.source_id = "toss-kr" if korean else "toss-us"
+        self._currency = "KRW" if korean else "USD"
+        self._calendar = ExchangeCalendar("XKRX" if korean else "XNAS")
+        self._zone = SEOUL if korean else NEW_YORK
+        feed_scope = "toss-kr-krx-nxt-integrated" if korean else "toss-us-partial-venues"
         self.session = session_for(
             TossCredentials(config.client_id, config.client_secret, config.base_url),
             transport=transport,
         )
-        self._instruments = {f"us:{s.lower()}:{v.lower()}:2026": (s, v) for s, v in config.symbols}
+        self._instruments = (
+            {}
+            if korean
+            else {f"us:{s.lower()}:{v.lower()}:2026": (s, v) for s, v in config.symbols}
+        )
         self.last_raw_sample: dict[str, Any] | None = None
         self.identity = SourceIdentity(
             source_id=self.source_id,
-            feed_scope="toss-us-partial-venues",
-            dataset_revision="toss-us-raw-r1",
+            feed_scope=feed_scope,
+            dataset_revision=f"{self.source_id}-raw-r1",
             adjustment="raw",  # adjusted=false is requested explicitly
-            covered_sessions=config.sessions,
+            # Toss's Korean minute candles cover 08:00-20:00 KST (checked 2026-10-20).
+            covered_sessions=frozenset({"pre", "regular", "post"}) if korean else config.sessions,
             publication_delay_minutes=0,
             finality_minutes=config.finality_minutes,
         )
@@ -134,7 +148,7 @@ class TossMarketDataProvider:
         # Live check 2026-10-19: SPY 30/30 minutes with the user's key.
         return capabilities(
             self.source_id,
-            "toss-us-partial-venues",
+            self.identity.feed_scope,
             self._now(),
             verification_status="integration_tested",
         )
@@ -146,16 +160,21 @@ class TossMarketDataProvider:
         ]
 
     def symbol_for(self, instrument_id: str) -> str | None:
-        """Ticker of a configured instrument or of any listed US equity ID."""
+        """Ticker or KRX code of an instrument of this adapter's market."""
         configured = self._instruments.get(instrument_id)
-        return configured[0] if configured is not None else listed_symbol(instrument_id)
+        if configured is not None:
+            return configured[0]
+        parsed = parse_instrument(instrument_id)
+        if parsed is None or parsed.market != self.config.market:
+            return None
+        return parsed.symbol
 
     def get_bars(self, query: BarsQuery) -> BarsResult:
         now = self._now()
         validate_minute_query(query, now)
         symbol = self.symbol_for(query.instrument_id)
         if symbol is None:
-            raise InstrumentNotFoundError("instrument is not a listed US equity ID")
+            raise InstrumentNotFoundError(f"not a listed {self.config.market} equity ID")
         raw = self._fetch(symbol, query) if query.start_utc < now else []
         return build_result(query, raw, self.identity, self._calendar, now)
 
@@ -165,7 +184,7 @@ class TossMarketDataProvider:
         validate_daily_query(query, "1d", now)
         symbol = self.symbol_for(query.instrument_id)
         if symbol is None:
-            raise InstrumentNotFoundError("instrument is not a listed US equity ID")
+            raise InstrumentNotFoundError(f"not a listed {self.config.market} equity ID")
         try:
             sessions = sessions_in_range(self._calendar, query.start_utc, query.end_utc)
         except CalendarError as exc:
@@ -175,7 +194,7 @@ class TossMarketDataProvider:
             first = sessions[0].session_date
             # Inclusive upper bound: the end of the last session's date in New York.
             before: str | None = utc_text(
-                datetime.combine(sessions[-1].session_date, time(23, 59), NEW_YORK)
+                datetime.combine(sessions[-1].session_date, time(23, 59), self._zone)
             )
             for _page in range(DAILY_PAGES):
                 if before is None:
@@ -198,6 +217,8 @@ class TossMarketDataProvider:
             adjustment="raw",
             publication_delay_minutes=0,
             finality_minutes=self.config.finality_minutes,
+            # Korean daily candles cover the whole KRX+NXT day; US ones the regular session.
+            span="all_day" if self.config.market == "KR" else "regular",
         )
         return build_daily_result(query, raw, source, self._calendar, now)
 
@@ -234,19 +255,18 @@ class TossMarketDataProvider:
             raise ProviderDataError("Toss returned candles without a result object")
         return result
 
-    @staticmethod
-    def _day(candle: dict[str, Any]) -> RawDay:
+    def _day(self, candle: dict[str, Any]) -> RawDay:
         try:
             stamp = datetime.fromisoformat(str(candle["timestamp"]).replace("Z", "+00:00"))
         except (KeyError, ValueError) as exc:
             raise ProviderDataError("Toss returned a daily candle without a timestamp") from exc
-        currency = candle.get("currency")
-        if currency not in (None, "USD"):
-            raise ProviderDataError(f"Toss returned a {currency} candle for a US instrument")
+        self._check_currency(candle)
         if stamp.tzinfo is None:
             raise ProviderDataError("Toss returned a daily candle timestamp without an offset")
         return RawDay(
-            stamp.astimezone(NEW_YORK).date(),  # midnight New York of the session date
+            # Midnight of the session date in the exchange's zone (US candles write it in
+            # KST, Korean ones are already KST).
+            stamp.astimezone(self._zone).date(),
             decimal_field(candle, "openPrice"),
             decimal_field(candle, "highPrice"),
             decimal_field(candle, "lowPrice"),
@@ -254,17 +274,21 @@ class TossMarketDataProvider:
             decimal_field(candle, "volume"),
         )
 
-    @staticmethod
-    def _minute(candle: dict[str, Any]) -> RawMinute:
+    def _check_currency(self, candle: dict[str, Any]) -> None:
+        currency = candle.get("currency")
+        if currency not in (None, self._currency):
+            raise ProviderDataError(
+                f"Toss returned a {currency} candle for a {self.config.market} instrument"
+            )
+
+    def _minute(self, candle: dict[str, Any]) -> RawMinute:
         try:
             end = datetime.fromisoformat(str(candle["timestamp"]).replace("Z", "+00:00"))
         except (KeyError, ValueError) as exc:
             raise ProviderDataError("Toss returned a candle without a valid timestamp") from exc
         if end.tzinfo is None:
             raise ProviderDataError("Toss returned a candle timestamp without an offset")
-        currency = candle.get("currency")
-        if currency not in (None, "USD"):
-            raise ProviderDataError(f"Toss returned a {currency} candle for a US instrument")
+        self._check_currency(candle)
         return RawMinute(
             start_utc=end.astimezone(timezone.utc) - timedelta(minutes=1),
             open=decimal_field(candle, "openPrice"),

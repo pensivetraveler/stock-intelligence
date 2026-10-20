@@ -14,6 +14,7 @@ from services.market_data.aggregation import (
 )
 from services.market_data.calendar import CalendarError
 from services.market_data.daily import DailyBarsProvider, aggregate_weekly
+from services.market_data.instruments import calendar_for
 from services.market_data.provider import (
     SETTLED_MISSING_REASONS,
     BarsQuery,
@@ -45,9 +46,13 @@ class MarketBarsService:
         aggregator: MinuteBarAggregator | None = None,
     ) -> None:
         self.provider = provider
+        self._fixed_aggregator = aggregator
         self.aggregator = aggregator or MinuteBarAggregator()
 
     def get_bars(self, query: BarsQuery) -> BarsResult:
+        # Each instrument is aggregated on its own exchange's calendar.
+        if self._fixed_aggregator is None:
+            self.aggregator = MinuteBarAggregator(calendar_for(query.instrument_id))
         if query.timeframe == "1m":
             return self.provider.get_bars(query)
         if query.timeframe in ("1d", "1w"):

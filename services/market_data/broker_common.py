@@ -347,7 +347,7 @@ def _bar(
             "expected_source_bar_count": 1,
             "observed_source_bar_count": 1,
             "source_dataset_revision": None,
-            "calendar_id": "XNAS",
+            "calendar_id": calendar.calendar_id,
             "calendar_version": calendar.calendar_version,
         },
         "adjustment": identity.adjustment,

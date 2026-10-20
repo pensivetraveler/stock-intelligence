@@ -173,10 +173,10 @@
           "$ref": "#/$defs/Identifier"
         },
         "asset_class": {
-          "const": "us_equity"
+          "enum": ["us_equity", "kr_equity"]
         },
         "currency": {
-          "const": "USD"
+          "enum": ["USD", "KRW"]
         },
         "identity_as_of": {
           "$ref": "#/$defs/UtcTimestamp"
@@ -251,7 +251,8 @@
           "enum": ["shares", "provider_units"]
         },
         "session": {
-          "enum": ["pre", "regular", "post", "closed", "unknown"]
+          "enum": ["pre", "regular", "post", "all_day", "closed", "unknown"],
+          "description": "all_day: a daily or weekly bar spanning the whole trading day, extended sessions included (Toss Korean daily candles, 08:00-20:00 KST)."
         },
         "is_final": {
           "type": "boolean"
@@ -1938,7 +1939,7 @@
           "$ref": "#/$defs/SchemaVersion"
         },
         "calendar_id": {
-          "enum": ["XNAS", "XNYS"]
+          "enum": ["XNAS", "XNYS", "XKRX", "XKOS"]
         },
         "end_date": {
           "type": "string",
