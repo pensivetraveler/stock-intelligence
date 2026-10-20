@@ -1,11 +1,13 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { useI18n } from "./i18n";
-import type { InstrumentListing, MarketApi, SessionQuote } from "./market-api";
+import type { InstrumentListing, SessionQuote } from "./market-api";
+import type { QuoteRow } from "./session-quotes";
 
 interface WatchlistProps {
-  api: MarketApi;
   instruments: InstrumentListing[];
+  /** Quotes by instrument ID, shared by every watchlist view (see useSessionQuotes). */
+  rows: Record<string, QuoteRow>;
   sessionDate: string;
   activeInstrumentId: string;
   onPick: (instrumentId: string) => void;
@@ -14,11 +16,6 @@ interface WatchlistProps {
   /** Hide the title when the surrounding window already shows one. */
   hideTitle?: boolean;
 }
-
-type Row =
-  | { status: "loading" }
-  | { status: "ready"; quote: SessionQuote | null }
-  | { status: "error" };
 
 /** Change from the session open, for display only (prices stay strings elsewhere). */
 function change(quote: SessionQuote): { text: string; rising: boolean } {
@@ -35,8 +32,8 @@ function change(quote: SessionQuote): { text: string; rising: boolean } {
  * chart's day. Clicking a row shows that instrument in the active chart.
  */
 export function Watchlist({
-  api,
   instruments,
+  rows,
   sessionDate,
   activeInstrumentId,
   onPick,
@@ -44,31 +41,6 @@ export function Watchlist({
   hideTitle = false,
 }: WatchlistProps) {
   const { t } = useI18n();
-  const [rows, setRows] = useState<Record<string, Row>>({});
-
-  useEffect(() => {
-    let current = true;
-    setRows({});
-    for (const item of instruments) {
-      const id = item.instrument.instrument_id;
-      api
-        .quote(id, sessionDate)
-        .then((quote) => {
-          if (current)
-            setRows((previous) => ({
-              ...previous,
-              [id]: { status: "ready", quote },
-            }));
-        })
-        .catch(() => {
-          if (current)
-            setRows((previous) => ({ ...previous, [id]: { status: "error" } }));
-        });
-    }
-    return () => {
-      current = false;
-    };
-  }, [api, instruments, sessionDate]);
 
   return (
     <div className="watchlist">
@@ -89,7 +61,7 @@ export function Watchlist({
         <tbody>
           {instruments.map((item) => {
             const id = item.instrument.instrument_id;
-            const row = rows[id] ?? { status: "loading" };
+            const row: QuoteRow = rows[id] ?? { status: "loading" };
             const quote = row.status === "ready" ? row.quote : null;
             const delta = quote ? change(quote) : null;
             return (

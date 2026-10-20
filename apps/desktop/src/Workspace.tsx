@@ -46,6 +46,7 @@ import {
 } from "./icons";
 import { ImportPanel } from "./ImportPanel";
 import { JournalPanel } from "./JournalPanel";
+import { useSessionQuotes } from "./session-quotes";
 import { Watchlist } from "./Watchlist";
 import {
   MarketApiError,
@@ -195,7 +196,10 @@ export function Workspace({
   const [activeChart, setActiveChart] = useState<0 | 1>(0);
   const [search, setSearch] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [panel, setPanel] = useState<Panel | null>("watchlist");
+  // A watchlist reopened floating after a reload is not also shown in the side panel.
+  const [panel, setPanel] = useState<Panel | null>(() =>
+    loadWatchlistWindow(storage).open ? null : "watchlist",
+  );
   const [tools, setTools] = useState<[ChartTools, ChartTools]>([
     NO_TOOLS,
     NO_TOOLS,
@@ -234,6 +238,22 @@ export function Workspace({
       // Not saved: the layout still applies until the page reloads.
     }
   };
+  // Whether each chart finished loading; watchlist quotes wait for the visible ones.
+  const [chartSettled, setChartSettled] = useState<[boolean, boolean]>([
+    false,
+    false,
+  ]);
+  const [onChartSettled] = useState(() =>
+    ([0, 1] as const).map(
+      (index) => (settled: boolean) =>
+        setChartSettled((previous) => {
+          if (previous[index] === settled) return previous;
+          const next: [boolean, boolean] = [...previous];
+          next[index] = settled;
+          return next;
+        }),
+    ),
+  );
   const [instruments, setInstruments] = useState<InstrumentListing[]>([]);
   const [instrumentsError, setInstrumentsError] = useState<string | null>(null);
   const [instrumentsReady, setInstrumentsReady] = useState(false);
@@ -392,6 +412,13 @@ export function Workspace({
     updateActive({ instrumentId });
   };
   const visibleCharts = split ? [0, 1] : [activeChart];
+  const watchlistVisible = panel === "watchlist" || floating.open;
+  const quoteRows = useSessionQuotes(
+    api,
+    instruments,
+    activeConfig.sessionDate,
+    watchlistVisible && visibleCharts.every((index) => chartSettled[index]),
+  );
   const setChartTool = (patch: Partial<ChartTools>) =>
     setTools((previous) => {
       const next: [ChartTools, ChartTools] = [...previous];
@@ -787,6 +814,7 @@ export function Workspace({
               magnet={tools[index].magnet}
               logScale={tools[index].logScale}
               fitRequest={tools[index].fitRequest}
+              onSettledChange={onChartSettled[index]}
             />
           ))}
         </div>
@@ -851,8 +879,8 @@ export function Workspace({
         >
           {panel === "watchlist" ? (
             <Watchlist
-              api={api}
               instruments={instruments}
+              rows={quoteRows}
               sessionDate={activeConfig.sessionDate}
               activeInstrumentId={activeConfig.instrumentId}
               onPick={(instrumentId) => updateActive({ instrumentId })}
@@ -944,8 +972,8 @@ export function Workspace({
           }
         >
           <Watchlist
-            api={api}
             instruments={instruments}
+            rows={quoteRows}
             sessionDate={activeConfig.sessionDate}
             activeInstrumentId={activeConfig.instrumentId}
             onPick={(instrumentId) => updateActive({ instrumentId })}

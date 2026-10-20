@@ -754,3 +754,64 @@ describe("floating watchlist", () => {
     ).toBe(false);
   });
 });
+
+describe("watchlist quotes", () => {
+  it("waits for the chart's bars before requesting quotes", async () => {
+    const api = fakeApi();
+    const serve = api.bars;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let barsRequested = false;
+    api.bars = async (request) => {
+      barsRequested = true;
+      await gate;
+      return serve(request);
+    };
+    const quote = vi.spyOn(api, "quote");
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    const panel = await screen.findByRole("complementary", {
+      name: "Watchlist",
+    });
+    await waitFor(() => expect(barsRequested).toBe(true));
+    expect(quote).not.toHaveBeenCalled();
+
+    release();
+    expect(await within(panel).findByText("202.50")).toBeInTheDocument();
+    expect(api.barsCalls).toHaveLength(1);
+    expect(quote).toHaveBeenCalled();
+  });
+
+  it("requests each quote once for every watchlist view", async () => {
+    const api = fakeApi();
+    const quote = vi.spyOn(api, "quote");
+    const storage = memoryStorage();
+    storage.setItem(
+      "siw.watchlistWindow",
+      JSON.stringify({
+        open: true,
+        geometry: { x: 10, y: 10, width: 300, height: 200 },
+      }),
+    );
+    render(<Workspace api={api} storage={storage} />);
+    const floating = await screen.findByRole("dialog", { name: "Watchlist" });
+    expect(await within(floating).findByText("202.50")).toBeInTheDocument();
+    // Reopened floating after a reload, the watchlist is not also in the side panel.
+    expect(
+      screen.queryByRole("complementary", { name: "Watchlist" }),
+    ).not.toBeInTheDocument();
+    const instruments = (await api.instruments()).length;
+    expect(quote).toHaveBeenCalledTimes(instruments);
+
+    // Docking shows the quotes already loaded instead of requesting them again.
+    fireEvent.click(
+      within(floating).getByRole("button", {
+        name: "Dock the watchlist in the side panel",
+      }),
+    );
+    const panel = screen.getByRole("complementary", { name: "Watchlist" });
+    expect(within(panel).getByText("202.50")).toBeInTheDocument();
+    expect(quote).toHaveBeenCalledTimes(instruments);
+  });
+});

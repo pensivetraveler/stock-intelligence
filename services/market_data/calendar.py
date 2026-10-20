@@ -87,6 +87,12 @@ class SessionWindow:
         return int((end - start).total_seconds() // 60)
 
 
+@cache
+def _window_for_date(calendar_id: str, session_date: date) -> SessionWindow | None:
+    """Session windows per (calendar, date); the schedule is fixed for the process."""
+    return UsEquityCalendar(calendar_id)._compute_window(session_date)
+
+
 class UsEquityCalendar:
     """US equity schedule with explicit versioned extended-hours policy.
 
@@ -104,6 +110,11 @@ class UsEquityCalendar:
         self._calendar, self.calendar_version = _load_calendar(calendar_id)
 
     def window_for_date(self, session_date: date) -> SessionWindow | None:
+        # Bar paths look a window up once per minute; the pandas lookups behind it hold
+        # the GIL, so concurrent requests would otherwise serialize on this CPU work.
+        return _window_for_date(self.calendar_id, session_date)
+
+    def _compute_window(self, session_date: date) -> SessionWindow | None:
         label = session_date.isoformat()
         try:
             is_session = self._calendar.is_session(label)

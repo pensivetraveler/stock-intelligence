@@ -69,6 +69,18 @@ def test_session_classification_is_boundary_explicit() -> None:
     )
 
 
+def test_session_windows_are_computed_once_per_calendar_and_date() -> None:
+    # Bar paths look a window up per minute; a fresh lookup each time made concurrent
+    # bar requests contend for the GIL.
+    first = UsEquityCalendar("XNAS").window_for_date(date(2026, 10, 16))
+    again = UsEquityCalendar("XNAS").window_for_date(date(2026, 10, 16))
+    other = UsEquityCalendar("XNYS").window_for_date(date(2026, 10, 16))
+
+    assert first is not None and first is again
+    assert other is not None and other.calendar_id == "XNYS"
+    assert UsEquityCalendar("XNAS").window_for_date(date(2026, 11, 26)) is None
+
+
 def test_calendar_rejects_naive_time_and_unsupported_calendar() -> None:
     calendar = UsEquityCalendar("XNAS")
 

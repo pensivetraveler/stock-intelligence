@@ -51,6 +51,8 @@ interface ChartPanelProps {
   magnet?: boolean;
   logScale?: boolean;
   fitRequest?: number;
+  /** Told whether this chart has finished loading (ready, closed or failed). */
+  onSettledChange?: (settled: boolean) => void;
 }
 
 function describeError(t: Translate, error: unknown): string {
@@ -92,6 +94,7 @@ export function ChartPanel({
   magnet = false,
   logScale = false,
   fitRequest = 0,
+  onSettledChange,
 }: ChartPanelProps) {
   const { t } = useI18n();
   const [load, setLoad] = useState<Load>({ status: "loading" });
@@ -142,6 +145,9 @@ export function ChartPanel({
     unavailable,
     instrumentsReady,
   ]);
+
+  const settled = load.status !== "loading";
+  useEffect(() => onSettledChange?.(settled), [onSettledChange, settled]);
 
   const series = useMemo(
     () => (load.status === "ready" ? toSeries(load.response.bars) : null),
