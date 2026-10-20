@@ -1,0 +1,1266 @@
+/**
+ * Standard technical indicators, written from their published formulas.
+ *
+ * Values are computed from the bars currently loaded for a chart, in order, and each
+ * value uses only that bar and earlier ones (no look-ahead), except where a formula
+ * plots a value at a shifted time on purpose (Ichimoku spans), which is noted. Until a
+ * formula has enough bars (its warm-up), the value is null and nothing is drawn.
+ *
+ * Numbers are JS floats: indicators are for display and analysis, not for accounting.
+ */
+
+export interface OhlcvBar {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export type Series = (number | null)[];
+
+// ---------------------------------------------------------------------------------
+// Building blocks
+// ---------------------------------------------------------------------------------
+
+export function sma(values: Series, length: number): Series {
+  const out: Series = [];
+  let sum = 0;
+  let count = 0;
+  const window: (number | null)[] = [];
+  for (const value of values) {
+    window.push(value);
+    if (value !== null) {
+      sum += value;
+      count += 1;
+    }
+    if (window.length > length) {
+      const dropped = window.shift();
+      if (dropped !== null && dropped !== undefined) {
+        sum -= dropped;
+        count -= 1;
+      }
+    }
+    out.push(
+      window.length === length && count === length ? sum / length : null,
+    );
+  }
+  return out;
+}
+
+/** Exponential average seeded with the simple average of the first `length` values. */
+function smoothed(values: Series, length: number, alpha: number): Series {
+  const out: Series = [];
+  let previous: number | null = null;
+  const seed: number[] = [];
+  for (const value of values) {
+    if (value === null) {
+      out.push(previous === null ? null : previous);
+      continue;
+    }
+    if (previous === null) {
+      seed.push(value);
+      if (seed.length === length) {
+        previous = seed.reduce((total, item) => total + item, 0) / length;
+        out.push(previous);
+      } else {
+        out.push(null);
+      }
+      continue;
+    }
+    previous = alpha * value + (1 - alpha) * previous;
+    out.push(previous);
+  }
+  return out;
+}
+
+export function ema(values: Series, length: number): Series {
+  return smoothed(values, length, 2 / (length + 1));
+}
+
+/** Wilder's moving average (RMA), used by RSI, ATR and ADX. */
+export function rma(values: Series, length: number): Series {
+  return smoothed(values, length, 1 / length);
+}
+
+export function wma(values: Series, length: number): Series {
+  const out: Series = [];
+  const denominator = (length * (length + 1)) / 2;
+  for (let i = 0; i < values.length; i += 1) {
+    if (i < length - 1) {
+      out.push(null);
+      continue;
+    }
+    let total = 0;
+    let valid = true;
+    for (let k = 0; k < length; k += 1) {
+      const value = values[i - k];
+      if (value === null) {
+        valid = false;
+        break;
+      }
+      total += value * (length - k);
+    }
+    out.push(valid ? total / denominator : null);
+  }
+  return out;
+}
+
+/** Population standard deviation over a window. */
+export function stdev(values: Series, length: number): Series {
+  const mean = sma(values, length);
+  return values.map((_, i) => {
+    const average = mean[i];
+    if (average === null) return null;
+    let total = 0;
+    for (let k = 0; k < length; k += 1) {
+      const value = values[i - k] as number;
+      total += (value - average) ** 2;
+    }
+    return Math.sqrt(total / length);
+  });
+}
+
+function rolling(
+  values: Series,
+  length: number,
+  pick: (window: number[]) => number,
+): Series {
+  return values.map((_, i) => {
+    if (i < length - 1) return null;
+    const window = values.slice(i - length + 1, i + 1);
+    return window.every((value) => value !== null)
+      ? pick(window as number[])
+      : null;
+  });
+}
+
+export const highest = (values: Series, length: number) =>
+  rolling(values, length, (window) => Math.max(...window));
+export const lowest = (values: Series, length: number) =>
+  rolling(values, length, (window) => Math.min(...window));
+
+function combine(
+  a: Series,
+  b: Series,
+  op: (x: number, y: number) => number | null,
+): Series {
+  return a.map((x, i) => {
+    const y = b[i];
+    return x === null || y === null ? null : op(x, y);
+  });
+}
+
+const minus = (a: Series, b: Series) => combine(a, b, (x, y) => x - y);
+const plus = (a: Series, b: Series) => combine(a, b, (x, y) => x + y);
+const ratio = (a: Series, b: Series, scale = 1) =>
+  combine(a, b, (x, y) => (y === 0 ? null : (scale * x) / y));
+const times = (a: Series, k: number): Series =>
+  a.map((x) => (x === null ? null : x * k));
+
+function trueRange(bars: OhlcvBar[]): Series {
+  return bars.map((bar, i) =>
+    i === 0
+      ? bar.high - bar.low
+      : Math.max(
+          bar.high - bar.low,
+          Math.abs(bar.high - bars[i - 1].close),
+          Math.abs(bar.low - bars[i - 1].close),
+        ),
+  );
+}
+
+function change(values: Series, length = 1): Series {
+  return values.map((value, i) => {
+    const before = values[i - length];
+    return i < length ||
+      value === null ||
+      before === null ||
+      before === undefined
+      ? null
+      : value - before;
+  });
+}
+
+const closes = (bars: OhlcvBar[]): Series => bars.map((bar) => bar.close);
+const hl2 = (bars: OhlcvBar[]): Series =>
+  bars.map((bar) => (bar.high + bar.low) / 2);
+const hlc3 = (bars: OhlcvBar[]): Series =>
+  bars.map((bar) => (bar.high + bar.low + bar.close) / 3);
+
+function shift(values: Series, by: number): Series {
+  // Positive `by` moves values later in time (plotted `by` bars after their bar).
+  return values.map((_, i) => {
+    const source = i - by;
+    return source >= 0 && source < values.length ? values[source] : null;
+  });
+}
+
+const etDate = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+// ---------------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------------
+
+export type IndicatorCategory = "trend" | "momentum" | "volatility" | "volume";
+
+export interface IndicatorInput {
+  key: string;
+  label: { en: string; ko: string };
+  default: number;
+  min: number;
+  max: number;
+  step?: number;
+}
+
+export interface IndicatorOutput {
+  key: string;
+  label: string;
+  color: string;
+  kind?: "line" | "histogram";
+}
+
+export interface IndicatorDefinition {
+  id: string;
+  name: { en: string; ko: string };
+  short: string;
+  category: IndicatorCategory;
+  /** Drawn over the price candles, or in its own pane below. */
+  pane: "price" | "separate";
+  inputs: IndicatorInput[];
+  outputs: IndicatorOutput[];
+  /** Horizontal guide levels for oscillators (e.g. RSI 30/70). */
+  levels?: number[];
+  compute: (
+    bars: OhlcvBar[],
+    p: Record<string, number>,
+  ) => Record<string, Series>;
+}
+
+const len = (fallback: number, max = 500): IndicatorInput => ({
+  key: "length",
+  label: { en: "Length", ko: "기간" },
+  default: fallback,
+  min: 1,
+  max,
+});
+const input = (
+  key: string,
+  en: string,
+  ko: string,
+  fallback: number,
+  min = 1,
+  max = 500,
+  step?: number,
+): IndicatorInput => ({
+  key,
+  label: { en, ko },
+  default: fallback,
+  min,
+  max,
+  ...(step === undefined ? {} : { step }),
+});
+
+const BLUE = "#4f8ff7";
+const ORANGE = "#f39c3d";
+const PURPLE = "#a777e8";
+const TEAL = "#2bb5a5";
+const RED = "#e5566b";
+const GREEN = "#3fb68b";
+const GREY = "#8b95a5";
+
+export const INDICATORS: IndicatorDefinition[] = [
+  // --- Moving averages and trend overlays ------------------------------------------
+  {
+    id: "sma",
+    name: { en: "Moving Average Simple", ko: "단순 이동평균(SMA)" },
+    short: "SMA",
+    category: "trend",
+    pane: "price",
+    inputs: [len(9)],
+    outputs: [{ key: "value", label: "SMA", color: BLUE }],
+    compute: (bars, p) => ({ value: sma(closes(bars), p.length) }),
+  },
+  {
+    id: "ema",
+    name: { en: "Moving Average Exponential", ko: "지수 이동평균(EMA)" },
+    short: "EMA",
+    category: "trend",
+    pane: "price",
+    inputs: [len(9)],
+    outputs: [{ key: "value", label: "EMA", color: ORANGE }],
+    compute: (bars, p) => ({ value: ema(closes(bars), p.length) }),
+  },
+  {
+    id: "wma",
+    name: { en: "Moving Average Weighted", ko: "가중 이동평균(WMA)" },
+    short: "WMA",
+    category: "trend",
+    pane: "price",
+    inputs: [len(9)],
+    outputs: [{ key: "value", label: "WMA", color: PURPLE }],
+    compute: (bars, p) => ({ value: wma(closes(bars), p.length) }),
+  },
+  {
+    id: "vwma",
+    name: {
+      en: "Volume Weighted Moving Average",
+      ko: "거래량 가중 이동평균(VWMA)",
+    },
+    short: "VWMA",
+    category: "trend",
+    pane: "price",
+    inputs: [len(20)],
+    outputs: [{ key: "value", label: "VWMA", color: TEAL }],
+    compute: (bars, p) => {
+      const volume = bars.map((bar) => bar.volume);
+      const priceVolume = bars.map((bar) => bar.close * bar.volume);
+      return {
+        value: ratio(sma(priceVolume, p.length), sma(volume, p.length)),
+      };
+    },
+  },
+  {
+    id: "hma",
+    name: { en: "Hull Moving Average", ko: "헐 이동평균(HMA)" },
+    short: "HMA",
+    category: "trend",
+    pane: "price",
+    inputs: [len(9)],
+    outputs: [{ key: "value", label: "HMA", color: "#e0b341" }],
+    compute: (bars, p) => {
+      const source = closes(bars);
+      const half = Math.max(1, Math.floor(p.length / 2));
+      const raw = minus(times(wma(source, half), 2), wma(source, p.length));
+      return { value: wma(raw, Math.max(1, Math.round(Math.sqrt(p.length)))) };
+    },
+  },
+  {
+    id: "vwap",
+    name: { en: "VWAP (session anchored)", ko: "VWAP(거래일 기준)" },
+    short: "VWAP",
+    category: "volume",
+    pane: "price",
+    inputs: [],
+    outputs: [{ key: "value", label: "VWAP", color: "#e6c547" }],
+    compute: (bars) => {
+      let day = "";
+      let priceVolume = 0;
+      let volume = 0;
+      return {
+        value: bars.map((bar) => {
+          const today = etDate.format(new Date(bar.time * 1000));
+          if (today !== day) {
+            day = today;
+            priceVolume = 0;
+            volume = 0;
+          }
+          priceVolume += ((bar.high + bar.low + bar.close) / 3) * bar.volume;
+          volume += bar.volume;
+          return volume === 0 ? null : priceVolume / volume;
+        }),
+      };
+    },
+  },
+  {
+    id: "bb",
+    name: { en: "Bollinger Bands", ko: "볼린저 밴드" },
+    short: "BB",
+    category: "volatility",
+    pane: "price",
+    inputs: [
+      len(20),
+      input("mult", "StdDev", "표준편차 배수", 2, 0.1, 10, 0.1),
+    ],
+    outputs: [
+      { key: "basis", label: "Basis", color: ORANGE },
+      { key: "upper", label: "Upper", color: BLUE },
+      { key: "lower", label: "Lower", color: BLUE },
+    ],
+    compute: (bars, p) => {
+      const basis = sma(closes(bars), p.length);
+      const deviation = times(stdev(closes(bars), p.length), p.mult);
+      return {
+        basis,
+        upper: plus(basis, deviation),
+        lower: minus(basis, deviation),
+      };
+    },
+  },
+  {
+    id: "kc",
+    name: { en: "Keltner Channels", ko: "켈트너 채널" },
+    short: "KC",
+    category: "volatility",
+    pane: "price",
+    inputs: [
+      len(20),
+      input("mult", "Multiplier", "배수", 2, 0.1, 10, 0.1),
+      input("atr", "ATR length", "ATR 기간", 10),
+    ],
+    outputs: [
+      { key: "basis", label: "Basis", color: BLUE },
+      { key: "upper", label: "Upper", color: TEAL },
+      { key: "lower", label: "Lower", color: TEAL },
+    ],
+    compute: (bars, p) => {
+      const basis = ema(closes(bars), p.length);
+      const range = times(rma(trueRange(bars), p.atr), p.mult);
+      return { basis, upper: plus(basis, range), lower: minus(basis, range) };
+    },
+  },
+  {
+    id: "dc",
+    name: { en: "Donchian Channels", ko: "돈치안 채널" },
+    short: "DC",
+    category: "volatility",
+    pane: "price",
+    inputs: [len(20)],
+    outputs: [
+      { key: "upper", label: "Upper", color: BLUE },
+      { key: "basis", label: "Basis", color: ORANGE },
+      { key: "lower", label: "Lower", color: BLUE },
+    ],
+    compute: (bars, p) => {
+      const upper = highest(
+        bars.map((bar) => bar.high),
+        p.length,
+      );
+      const lower = lowest(
+        bars.map((bar) => bar.low),
+        p.length,
+      );
+      return { upper, lower, basis: times(plus(upper, lower), 0.5) };
+    },
+  },
+  {
+    id: "env",
+    name: { en: "Envelope", ko: "엔벨로프" },
+    short: "ENV",
+    category: "trend",
+    pane: "price",
+    inputs: [len(20), input("percent", "Percent", "퍼센트", 10, 0.1, 100, 0.1)],
+    outputs: [
+      { key: "basis", label: "Basis", color: ORANGE },
+      { key: "upper", label: "Upper", color: BLUE },
+      { key: "lower", label: "Lower", color: BLUE },
+    ],
+    compute: (bars, p) => {
+      const basis = sma(closes(bars), p.length);
+      return {
+        basis,
+        upper: times(basis, 1 + p.percent / 100),
+        lower: times(basis, 1 - p.percent / 100),
+      };
+    },
+  },
+  {
+    id: "psar",
+    name: { en: "Parabolic SAR", ko: "파라볼릭 SAR" },
+    short: "SAR",
+    category: "trend",
+    pane: "price",
+    inputs: [
+      input("start", "Start", "시작", 0.02, 0.001, 1, 0.001),
+      input("increment", "Increment", "증가", 0.02, 0.001, 1, 0.001),
+      input("maximum", "Maximum", "최대", 0.2, 0.01, 1, 0.01),
+    ],
+    outputs: [{ key: "value", label: "SAR", color: "#d1d4dc" }],
+    compute: (bars, p) => {
+      const out: Series = bars.map(() => null);
+      if (bars.length < 2) return { value: out };
+      let rising = bars[1].close >= bars[0].close;
+      let sar = rising ? bars[0].low : bars[0].high;
+      let extreme = rising ? bars[0].high : bars[0].low;
+      let factor = p.start;
+      for (let i = 1; i < bars.length; i += 1) {
+        const bar = bars[i];
+        sar = sar + factor * (extreme - sar);
+        if (rising) {
+          sar = Math.min(sar, bars[i - 1].low, bars[Math.max(0, i - 2)].low);
+          if (bar.low < sar) {
+            rising = false;
+            sar = extreme;
+            extreme = bar.low;
+            factor = p.start;
+          } else if (bar.high > extreme) {
+            extreme = bar.high;
+            factor = Math.min(factor + p.increment, p.maximum);
+          }
+        } else {
+          sar = Math.max(sar, bars[i - 1].high, bars[Math.max(0, i - 2)].high);
+          if (bar.high > sar) {
+            rising = true;
+            sar = extreme;
+            extreme = bar.high;
+            factor = p.start;
+          } else if (bar.low < extreme) {
+            extreme = bar.low;
+            factor = Math.min(factor + p.increment, p.maximum);
+          }
+        }
+        out[i] = sar;
+      }
+      return { value: out };
+    },
+  },
+  {
+    id: "supertrend",
+    name: { en: "Supertrend", ko: "슈퍼트렌드" },
+    short: "ST",
+    category: "trend",
+    pane: "price",
+    inputs: [
+      input("atr", "ATR length", "ATR 기간", 10),
+      input("factor", "Factor", "배수", 3, 0.1, 20, 0.1),
+    ],
+    outputs: [
+      { key: "up", label: "Up trend", color: GREEN },
+      { key: "down", label: "Down trend", color: RED },
+    ],
+    compute: (bars, p) => {
+      const atr = rma(trueRange(bars), p.atr);
+      const mid = hl2(bars);
+      const up: Series = bars.map(() => null);
+      const down: Series = bars.map(() => null);
+      let upper = 0;
+      let lower = 0;
+      let direction = 1;
+      let started = false;
+      for (let i = 0; i < bars.length; i += 1) {
+        const range = atr[i];
+        const middle = mid[i] as number;
+        if (range === null) continue;
+        let nextUpper = middle + p.factor * range;
+        let nextLower = middle - p.factor * range;
+        if (started) {
+          const previousClose = bars[i - 1].close;
+          nextLower =
+            nextLower > lower || previousClose < lower ? nextLower : lower;
+          nextUpper =
+            nextUpper < upper || previousClose > upper ? nextUpper : upper;
+          if (direction === 1 && bars[i].close < nextLower) direction = -1;
+          else if (direction === -1 && bars[i].close > nextUpper) direction = 1;
+        }
+        upper = nextUpper;
+        lower = nextLower;
+        started = true;
+        if (direction === 1) up[i] = lower;
+        else down[i] = upper;
+      }
+      return { up, down };
+    },
+  },
+  {
+    id: "ichimoku",
+    name: { en: "Ichimoku Cloud", ko: "일목균형표" },
+    short: "Ichimoku",
+    category: "trend",
+    pane: "price",
+    inputs: [
+      input("conversion", "Conversion line", "전환선 기간", 9),
+      input("base", "Base line", "기준선 기간", 26),
+      input("spanB", "Leading span B", "선행스팬2 기간", 52),
+      input("displacement", "Displacement", "이동 간격", 26),
+    ],
+    outputs: [
+      { key: "conversion", label: "Conversion", color: BLUE },
+      { key: "base", label: "Base", color: RED },
+      { key: "spanA", label: "Span A", color: GREEN },
+      { key: "spanB", label: "Span B", color: "#c75a5a" },
+      { key: "lagging", label: "Lagging", color: "#7fb37f" },
+    ],
+    compute: (bars, p) => {
+      const highs = bars.map((bar) => bar.high);
+      const lows = bars.map((bar) => bar.low);
+      const middle = (length: number) =>
+        times(plus(highest(highs, length), lowest(lows, length)), 0.5);
+      const conversion = middle(p.conversion);
+      const base = middle(p.base);
+      // Leading spans are plotted `displacement` bars later; only spans that land on a
+      // loaded bar are drawn. The lagging span is today's close plotted in the past:
+      // a display convention that must not be used as a signal at that past time.
+      return {
+        conversion,
+        base,
+        spanA: shift(times(plus(conversion, base), 0.5), p.displacement - 1),
+        spanB: shift(middle(p.spanB), p.displacement - 1),
+        lagging: shift(closes(bars), -(p.displacement - 1)),
+      };
+    },
+  },
+
+  // --- Momentum oscillators ----------------------------------------------------------
+  {
+    id: "rsi",
+    name: { en: "Relative Strength Index", ko: "상대강도지수(RSI)" },
+    short: "RSI",
+    category: "momentum",
+    pane: "separate",
+    inputs: [len(14)],
+    outputs: [{ key: "value", label: "RSI", color: PURPLE }],
+    levels: [70, 30],
+    compute: (bars, p) => ({ value: rsi(closes(bars), p.length) }),
+  },
+  {
+    id: "macd",
+    name: { en: "MACD", ko: "MACD" },
+    short: "MACD",
+    category: "momentum",
+    pane: "separate",
+    inputs: [
+      input("fast", "Fast length", "단기 기간", 12),
+      input("slow", "Slow length", "장기 기간", 26),
+      input("signal", "Signal smoothing", "시그널 기간", 9),
+    ],
+    outputs: [
+      { key: "histogram", label: "Histogram", color: GREY, kind: "histogram" },
+      { key: "macd", label: "MACD", color: BLUE },
+      { key: "signal", label: "Signal", color: ORANGE },
+    ],
+    compute: (bars, p) => {
+      const macd = minus(ema(closes(bars), p.fast), ema(closes(bars), p.slow));
+      const signal = ema(macd, p.signal);
+      return { macd, signal, histogram: minus(macd, signal) };
+    },
+  },
+  {
+    id: "stoch",
+    name: { en: "Stochastic", ko: "스토캐스틱" },
+    short: "Stoch",
+    category: "momentum",
+    pane: "separate",
+    inputs: [
+      input("k", "%K length", "%K 기간", 14),
+      input("smoothK", "%K smoothing", "%K 평활", 1),
+      input("d", "%D smoothing", "%D 기간", 3),
+    ],
+    outputs: [
+      { key: "k", label: "%K", color: BLUE },
+      { key: "d", label: "%D", color: ORANGE },
+    ],
+    levels: [80, 20],
+    compute: (bars, p) => {
+      const k = sma(stochastic(bars, closes(bars), p.k), p.smoothK);
+      return { k, d: sma(k, p.d) };
+    },
+  },
+  {
+    id: "stochrsi",
+    name: { en: "Stochastic RSI", ko: "스토캐스틱 RSI" },
+    short: "Stoch RSI",
+    category: "momentum",
+    pane: "separate",
+    inputs: [
+      input("k", "K", "K", 3),
+      input("d", "D", "D", 3),
+      input("rsi", "RSI length", "RSI 기간", 14),
+      input("stoch", "Stochastic length", "스토캐스틱 기간", 14),
+    ],
+    outputs: [
+      { key: "k", label: "K", color: BLUE },
+      { key: "d", label: "D", color: ORANGE },
+    ],
+    levels: [80, 20],
+    compute: (bars, p) => {
+      const strength = rsi(closes(bars), p.rsi);
+      const high = highest(strength, p.stoch);
+      const low = lowest(strength, p.stoch);
+      const raw = strength.map((value, i) => {
+        const top = high[i];
+        const bottom = low[i];
+        return value === null ||
+          top === null ||
+          bottom === null ||
+          top === bottom
+          ? null
+          : (100 * (value - bottom)) / (top - bottom);
+      });
+      const k = sma(raw, p.k);
+      return { k, d: sma(k, p.d) };
+    },
+  },
+  {
+    id: "cci",
+    name: { en: "Commodity Channel Index", ko: "상품채널지수(CCI)" },
+    short: "CCI",
+    category: "momentum",
+    pane: "separate",
+    inputs: [len(20)],
+    outputs: [{ key: "value", label: "CCI", color: TEAL }],
+    levels: [100, -100],
+    compute: (bars, p) => {
+      const typical = hlc3(bars);
+      const mean = sma(typical, p.length);
+      return {
+        value: typical.map((value, i) => {
+          const average = mean[i];
+          if (value === null || average === null) return null;
+          let deviation = 0;
+          for (let k = 0; k < p.length; k += 1) {
+            deviation += Math.abs((typical[i - k] as number) - average);
+          }
+          deviation /= p.length;
+          return deviation === 0
+            ? null
+            : (value - average) / (0.015 * deviation);
+        }),
+      };
+    },
+  },
+  {
+    id: "willr",
+    name: { en: "Williams %R", ko: "윌리엄스 %R" },
+    short: "%R",
+    category: "momentum",
+    pane: "separate",
+    inputs: [len(14)],
+    outputs: [{ key: "value", label: "%R", color: PURPLE }],
+    levels: [-20, -80],
+    compute: (bars, p) => ({
+      value: stochastic(bars, closes(bars), p.length).map((value) =>
+        value === null ? null : value - 100,
+      ),
+    }),
+  },
+  {
+    id: "mom",
+    name: { en: "Momentum", ko: "모멘텀" },
+    short: "MOM",
+    category: "momentum",
+    pane: "separate",
+    inputs: [len(10)],
+    outputs: [{ key: "value", label: "MOM", color: BLUE }],
+    compute: (bars, p) => ({ value: change(closes(bars), p.length) }),
+  },
+  {
+    id: "roc",
+    name: { en: "Rate Of Change", ko: "변화율(ROC)" },
+    short: "ROC",
+    category: "momentum",
+    pane: "separate",
+    inputs: [len(9)],
+    outputs: [{ key: "value", label: "ROC", color: BLUE }],
+    levels: [0],
+    compute: (bars, p) => {
+      const source = closes(bars);
+      return {
+        value: source.map((value, i) => {
+          const before = source[i - p.length];
+          return i < p.length || value === null || !before
+            ? null
+            : (100 * (value - before)) / before;
+        }),
+      };
+    },
+  },
+  {
+    id: "ao",
+    name: { en: "Awesome Oscillator", ko: "어썸 오실레이터" },
+    short: "AO",
+    category: "momentum",
+    pane: "separate",
+    inputs: [],
+    outputs: [{ key: "value", label: "AO", color: GREY, kind: "histogram" }],
+    compute: (bars) => ({
+      value: minus(sma(hl2(bars), 5), sma(hl2(bars), 34)),
+    }),
+  },
+  {
+    id: "trix",
+    name: { en: "TRIX", ko: "TRIX" },
+    short: "TRIX",
+    category: "momentum",
+    pane: "separate",
+    inputs: [len(18)],
+    outputs: [{ key: "value", label: "TRIX", color: RED }],
+    levels: [0],
+    compute: (bars, p) => {
+      const log = bars.map((bar) =>
+        bar.close > 0 ? Math.log(bar.close) : null,
+      );
+      const triple = ema(ema(ema(log, p.length), p.length), p.length);
+      return { value: times(change(triple), 10_000) };
+    },
+  },
+  {
+    id: "uo",
+    name: { en: "Ultimate Oscillator", ko: "얼티밋 오실레이터" },
+    short: "UO",
+    category: "momentum",
+    pane: "separate",
+    inputs: [
+      input("fast", "Fast length", "단기 기간", 7),
+      input("middle", "Middle length", "중기 기간", 14),
+      input("slow", "Slow length", "장기 기간", 28),
+    ],
+    outputs: [{ key: "value", label: "UO", color: "#e0b341" }],
+    levels: [70, 30],
+    compute: (bars, p) => {
+      const buying: Series = bars.map((bar, i) =>
+        i === 0 ? null : bar.close - Math.min(bar.low, bars[i - 1].close),
+      );
+      const range: Series = bars.map((bar, i) =>
+        i === 0
+          ? null
+          : Math.max(bar.high, bars[i - 1].close) -
+            Math.min(bar.low, bars[i - 1].close),
+      );
+      const average = (length: number) =>
+        ratio(sma(buying, length), sma(range, length));
+      const fast = average(p.fast);
+      const middle = average(p.middle);
+      const slow = average(p.slow);
+      return {
+        value: fast.map((value, i) => {
+          const m = middle[i];
+          const s = slow[i];
+          return value === null || m === null || s === null
+            ? null
+            : (100 * (4 * value + 2 * m + s)) / 7;
+        }),
+      };
+    },
+  },
+  {
+    id: "aroon",
+    name: { en: "Aroon", ko: "아룬" },
+    short: "Aroon",
+    category: "trend",
+    pane: "separate",
+    inputs: [len(14)],
+    outputs: [
+      { key: "up", label: "Up", color: ORANGE },
+      { key: "down", label: "Down", color: BLUE },
+    ],
+    compute: (bars, p) => {
+      const up: Series = [];
+      const down: Series = [];
+      bars.forEach((_, i) => {
+        if (i < p.length) {
+          up.push(null);
+          down.push(null);
+          return;
+        }
+        let highIndex = i;
+        let lowIndex = i;
+        for (let k = i - p.length; k <= i; k += 1) {
+          if (bars[k].high >= bars[highIndex].high) highIndex = k;
+          if (bars[k].low <= bars[lowIndex].low) lowIndex = k;
+        }
+        up.push((100 * (p.length - (i - highIndex))) / p.length);
+        down.push((100 * (p.length - (i - lowIndex))) / p.length);
+      });
+      return { up, down };
+    },
+  },
+  {
+    id: "dmi",
+    name: {
+      en: "Directional Movement Index (ADX)",
+      ko: "방향성 지수(DMI·ADX)",
+    },
+    short: "DMI",
+    category: "trend",
+    pane: "separate",
+    inputs: [
+      input("length", "DI length", "DI 기간", 14),
+      input("smoothing", "ADX smoothing", "ADX 평활", 14),
+    ],
+    outputs: [
+      { key: "adx", label: "ADX", color: RED },
+      { key: "plus", label: "+DI", color: BLUE },
+      { key: "minus", label: "-DI", color: ORANGE },
+    ],
+    compute: (bars, p) => {
+      const plusMove: Series = bars.map((bar, i) => {
+        if (i === 0) return null;
+        const up = bar.high - bars[i - 1].high;
+        const down = bars[i - 1].low - bar.low;
+        return up > down && up > 0 ? up : 0;
+      });
+      const minusMove: Series = bars.map((bar, i) => {
+        if (i === 0) return null;
+        const up = bar.high - bars[i - 1].high;
+        const down = bars[i - 1].low - bar.low;
+        return down > up && down > 0 ? down : 0;
+      });
+      const range = rma(trueRange(bars), p.length);
+      const plusDi = ratio(rma(plusMove, p.length), range, 100);
+      const minusDi = ratio(rma(minusMove, p.length), range, 100);
+      const dx = combine(plusDi, minusDi, (a, b) =>
+        a + b === 0 ? 0 : (100 * Math.abs(a - b)) / (a + b),
+      );
+      return { plus: plusDi, minus: minusDi, adx: rma(dx, p.smoothing) };
+    },
+  },
+
+  // --- Volatility --------------------------------------------------------------------
+  {
+    id: "atr",
+    name: { en: "Average True Range", ko: "평균 실제 범위(ATR)" },
+    short: "ATR",
+    category: "volatility",
+    pane: "separate",
+    inputs: [len(14)],
+    outputs: [{ key: "value", label: "ATR", color: RED }],
+    compute: (bars, p) => ({ value: rma(trueRange(bars), p.length) }),
+  },
+  {
+    id: "bbw",
+    name: { en: "Bollinger BandWidth", ko: "볼린저 밴드폭" },
+    short: "BBW",
+    category: "volatility",
+    pane: "separate",
+    inputs: [
+      len(20),
+      input("mult", "StdDev", "표준편차 배수", 2, 0.1, 10, 0.1),
+    ],
+    outputs: [{ key: "value", label: "BBW", color: BLUE }],
+    compute: (bars, p) => {
+      const basis = sma(closes(bars), p.length);
+      const band = times(stdev(closes(bars), p.length), 2 * p.mult);
+      return { value: ratio(band, basis) };
+    },
+  },
+  {
+    id: "bbpb",
+    name: { en: "Bollinger Bands %B", ko: "볼린저 %B" },
+    short: "%B",
+    category: "volatility",
+    pane: "separate",
+    inputs: [
+      len(20),
+      input("mult", "StdDev", "표준편차 배수", 2, 0.1, 10, 0.1),
+    ],
+    outputs: [{ key: "value", label: "%B", color: TEAL }],
+    levels: [1, 0],
+    compute: (bars, p) => {
+      const basis = sma(closes(bars), p.length);
+      const deviation = times(stdev(closes(bars), p.length), p.mult);
+      const lower = minus(basis, deviation);
+      const width = times(deviation, 2);
+      return { value: ratio(minus(closes(bars), lower), width) };
+    },
+  },
+  {
+    id: "hv",
+    name: { en: "Historical Volatility", ko: "역사적 변동성" },
+    short: "HV",
+    category: "volatility",
+    pane: "separate",
+    inputs: [
+      len(10),
+      input("periods", "Bars per year", "연간 봉 수", 252, 1, 200_000),
+    ],
+    outputs: [{ key: "value", label: "HV", color: PURPLE }],
+    compute: (bars, p) => {
+      const returns: Series = bars.map((bar, i) =>
+        i === 0 || bars[i - 1].close <= 0 || bar.close <= 0
+          ? null
+          : Math.log(bar.close / bars[i - 1].close),
+      );
+      return {
+        value: times(stdev(returns, p.length), 100 * Math.sqrt(p.periods)),
+      };
+    },
+  },
+
+  // --- Volume ------------------------------------------------------------------------
+  {
+    id: "obv",
+    name: { en: "On Balance Volume", ko: "OBV" },
+    short: "OBV",
+    category: "volume",
+    pane: "separate",
+    inputs: [],
+    outputs: [{ key: "value", label: "OBV", color: BLUE }],
+    compute: (bars) => {
+      let total = 0;
+      return {
+        value: bars.map((bar, i) => {
+          if (i > 0) {
+            const previous = bars[i - 1].close;
+            total +=
+              bar.close > previous
+                ? bar.volume
+                : bar.close < previous
+                  ? -bar.volume
+                  : 0;
+          }
+          return total;
+        }),
+      };
+    },
+  },
+  {
+    id: "mfi",
+    name: { en: "Money Flow Index", ko: "자금흐름지수(MFI)" },
+    short: "MFI",
+    category: "volume",
+    pane: "separate",
+    inputs: [len(14)],
+    outputs: [{ key: "value", label: "MFI", color: PURPLE }],
+    levels: [80, 20],
+    compute: (bars, p) => {
+      const typical = hlc3(bars) as number[];
+      const positive: Series = bars.map((bar, i) =>
+        i > 0 && typical[i] > typical[i - 1]
+          ? typical[i] * bar.volume
+          : i > 0
+            ? 0
+            : null,
+      );
+      const negative: Series = bars.map((bar, i) =>
+        i > 0 && typical[i] < typical[i - 1]
+          ? typical[i] * bar.volume
+          : i > 0
+            ? 0
+            : null,
+      );
+      const up = sma(positive, p.length);
+      const down = sma(negative, p.length);
+      return {
+        value: combine(up, down, (a, b) =>
+          a + b === 0 ? null : (100 * a) / (a + b),
+        ),
+      };
+    },
+  },
+  {
+    id: "cmf",
+    name: { en: "Chaikin Money Flow", ko: "차이킨 자금흐름(CMF)" },
+    short: "CMF",
+    category: "volume",
+    pane: "separate",
+    inputs: [len(20)],
+    outputs: [{ key: "value", label: "CMF", color: GREEN }],
+    levels: [0],
+    compute: (bars, p) => {
+      const flow: Series = bars.map((bar) =>
+        bar.high === bar.low
+          ? 0
+          : ((bar.close - bar.low - (bar.high - bar.close)) /
+              (bar.high - bar.low)) *
+            bar.volume,
+      );
+      return {
+        value: ratio(
+          sma(flow, p.length),
+          sma(
+            bars.map((bar) => bar.volume),
+            p.length,
+          ),
+        ),
+      };
+    },
+  },
+  {
+    id: "volma",
+    name: { en: "Volume Moving Average", ko: "거래량 이동평균" },
+    short: "Vol MA",
+    category: "volume",
+    pane: "separate",
+    inputs: [len(20)],
+    outputs: [
+      { key: "volume", label: "Volume", color: GREY, kind: "histogram" },
+      { key: "average", label: "MA", color: BLUE },
+    ],
+    compute: (bars, p) => {
+      const volume = bars.map((bar) => bar.volume);
+      return { volume, average: sma(volume, p.length) };
+    },
+  },
+];
+
+function rsi(source: Series, length: number): Series {
+  const delta = change(source);
+  const gains = delta.map((value) =>
+    value === null ? null : Math.max(value, 0),
+  );
+  const losses = delta.map((value) =>
+    value === null ? null : Math.max(-value, 0),
+  );
+  const up = rma(gains, length);
+  const down = rma(losses, length);
+  return combine(up, down, (gain, loss) =>
+    loss === 0 ? 100 : gain === 0 ? 0 : 100 - 100 / (1 + gain / loss),
+  );
+}
+
+function stochastic(bars: OhlcvBar[], source: Series, length: number): Series {
+  const high = highest(
+    bars.map((bar) => bar.high),
+    length,
+  );
+  const low = lowest(
+    bars.map((bar) => bar.low),
+    length,
+  );
+  return source.map((value, i) => {
+    const top = high[i];
+    const bottom = low[i];
+    return value === null || top === null || bottom === null || top === bottom
+      ? null
+      : (100 * (value - bottom)) / (top - bottom);
+  });
+}
+
+export const INDICATOR_BY_ID = new Map(
+  INDICATORS.map((item) => [item.id, item]),
+);
+
+/** One indicator placed on one chart, with its own settings. */
+export interface IndicatorInstance {
+  key: string;
+  type: string;
+  params: Record<string, number>;
+  hidden?: boolean;
+}
+
+export function defaultParams(
+  definition: IndicatorDefinition,
+): Record<string, number> {
+  return Object.fromEntries(
+    definition.inputs.map((item) => [item.key, item.default]),
+  );
+}
+
+/** Settings from storage, with unknown keys dropped and bad numbers replaced. */
+export function cleanParams(
+  definition: IndicatorDefinition,
+  params: unknown,
+): Record<string, number> {
+  const given = (
+    typeof params === "object" && params !== null ? params : {}
+  ) as Record<string, unknown>;
+  return Object.fromEntries(
+    definition.inputs.map((item) => {
+      const value = given[item.key];
+      return [
+        item.key,
+        typeof value === "number" &&
+        Number.isFinite(value) &&
+        value >= item.min &&
+        value <= item.max
+          ? value
+          : item.default,
+      ];
+    }),
+  );
+}
+
+export function parseIndicators(value: unknown): IndicatorInstance[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): IndicatorInstance[] => {
+    if (typeof item !== "object" || item === null) return [];
+    const record = item as Record<string, unknown>;
+    const definition =
+      typeof record.type === "string"
+        ? INDICATOR_BY_ID.get(record.type)
+        : undefined;
+    if (
+      !definition ||
+      typeof record.key !== "string" ||
+      record.key.length === 0
+    ) {
+      return [];
+    }
+    return [
+      {
+        key: record.key,
+        type: definition.id,
+        params: cleanParams(definition, record.params),
+        ...(record.hidden === true ? { hidden: true } : {}),
+      },
+    ];
+  });
+}
+
+/** The params as the legend shows them, e.g. "14" or "12, 26, 9". */
+export function paramsText(
+  definition: IndicatorDefinition,
+  params: Record<string, number>,
+): string {
+  return definition.inputs.map((item) => params[item.key]).join(", ");
+}
+
+// ---------------------------------------------------------------------------------
+// Chart-ready series
+// ---------------------------------------------------------------------------------
+
+export interface RenderedPoint {
+  time: number;
+  value: number;
+  color?: string;
+}
+
+export interface RenderedLine {
+  id: string;
+  label: string;
+  color: string;
+  kind: "line" | "histogram";
+  data: RenderedPoint[];
+}
+
+export interface RenderedIndicator {
+  key: string;
+  definition: IndicatorDefinition;
+  params: Record<string, number>;
+  hidden: boolean;
+  lines: RenderedLine[];
+  /** Value of each output at every bar index, for the legend under the crosshair. */
+  values: Record<string, Series>;
+}
+
+const HISTOGRAM_UP = "rgba(63, 182, 139, 0.6)";
+const HISTOGRAM_DOWN = "rgba(229, 86, 107, 0.6)";
+
+export function renderIndicators(
+  bars: OhlcvBar[],
+  instances: IndicatorInstance[],
+): RenderedIndicator[] {
+  return instances.flatMap((instance) => {
+    const definition = INDICATOR_BY_ID.get(instance.type);
+    if (!definition) return [];
+    const values = definition.compute(bars, instance.params);
+    const lines = definition.outputs.map((output) => {
+      const kind = output.kind ?? "line";
+      const signed = kind === "histogram" && output.key !== "volume";
+      const data: RenderedPoint[] = [];
+      values[output.key].forEach((value, i) => {
+        if (value === null) return;
+        data.push({
+          time: bars[i].time,
+          value,
+          ...(signed
+            ? { color: value >= 0 ? HISTOGRAM_UP : HISTOGRAM_DOWN }
+            : {}),
+        });
+      });
+      return {
+        id: `${instance.key}:${output.key}`,
+        label: output.label,
+        color: output.color,
+        kind,
+        data,
+      };
+    });
+    return [
+      {
+        key: instance.key,
+        definition,
+        params: instance.params,
+        hidden: instance.hidden === true,
+        lines,
+        values,
+      },
+    ];
+  });
+}

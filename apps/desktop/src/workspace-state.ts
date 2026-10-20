@@ -1,5 +1,6 @@
 import type { SessionWindow } from "@siw/contracts/types";
 
+import { parseIndicators, type IndicatorInstance } from "./indicators";
 import { TIMEFRAMES, type Timeframe } from "./market-api";
 
 export type SessionScope = "regular" | "extended";
@@ -10,6 +11,8 @@ export interface ChartConfig {
   timeframe: Timeframe;
   sessionDate: string;
   sessionScope: SessionScope;
+  /** Indicators on this chart only; never shared with the other chart implicitly. */
+  indicators?: IndicatorInstance[];
 }
 
 export interface WorkspaceState {
@@ -56,11 +59,13 @@ function parseChart(value: unknown): ChartConfig | null {
   ) {
     return null;
   }
+  const indicators = parseIndicators(chart.indicators);
   return {
     instrumentId: chart.instrumentId,
     timeframe: chart.timeframe as Timeframe,
     sessionDate: chart.sessionDate,
     sessionScope: chart.sessionScope,
+    ...(indicators.length > 0 ? { indicators } : {}),
   };
 }
 

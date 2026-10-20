@@ -6,6 +6,8 @@ import {
   PriceScaleMode,
   createSeriesMarkers,
   HistogramSeries,
+  LineSeries,
+  LineStyle,
   type IChartApi,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
@@ -18,6 +20,7 @@ import { useEffect, useRef } from "react";
 import type { CandlePoint, VolumePoint } from "./chart-data";
 import { COLORS, exchangeTime } from "./chart-data";
 import type { ChartSyncGroup } from "./chart-sync";
+import type { RenderedIndicator } from "./indicators";
 import type { ChartMarker } from "./journal-markers";
 
 interface PriceChartProps {
@@ -35,6 +38,8 @@ interface PriceChartProps {
   logScale?: boolean;
   /** Changing this number fits all bars into view again. */
   fitRequest?: number;
+  /** Indicators to draw: price overlays on the candles, others in panes below. */
+  indicators?: RenderedIndicator[];
 }
 
 function timeOf(value: Time): number {
@@ -53,6 +58,7 @@ export function PriceChart({
   magnet = false,
   logScale = false,
   fitRequest = 0,
+  indicators = [],
 }: PriceChartProps) {
   const container = useRef<HTMLDivElement | null>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -60,6 +66,7 @@ export function PriceChart({
   const volumeSeries = useRef<ISeriesApi<"Histogram"> | null>(null);
   const markerLayer = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const applyingSyncedRange = useRef(false);
+  const indicatorSeries = useRef<ISeriesApi<"Line" | "Histogram">[]>([]);
   const clickHandler = useRef(onCandleClick);
   const hoverHandler = useRef(onHover);
 
@@ -150,6 +157,7 @@ export function PriceChart({
       instance.unsubscribeClick(onClick);
       instance.timeScale().unsubscribeVisibleTimeRangeChange(onRange);
       instance.remove();
+      indicatorSeries.current = [];
       chart.current = null;
       markerLayer.current = null;
     };
@@ -181,6 +189,65 @@ export function PriceChart({
       chart.current?.timeScale().fitContent();
     }
   }, [fitRequest]);
+
+  useEffect(() => {
+    const instance = chart.current;
+    if (!instance) return;
+    for (const series of indicatorSeries.current) {
+      instance.removeSeries(series);
+    }
+    indicatorSeries.current = [];
+    while (instance.panes().length > 1) {
+      instance.removePane(instance.panes().length - 1);
+    }
+    let nextPane = 1;
+    for (const indicator of indicators) {
+      if (indicator.hidden) continue;
+      const pane = indicator.definition.pane === "price" ? 0 : nextPane++;
+      indicator.lines.forEach((line, index) => {
+        const series =
+          line.kind === "histogram"
+            ? instance.addSeries(
+                HistogramSeries,
+                {
+                  color: line.color,
+                  priceLineVisible: false,
+                  lastValueVisible: false,
+                },
+                pane,
+              )
+            : instance.addSeries(
+                LineSeries,
+                {
+                  color: line.color,
+                  lineWidth: 1,
+                  priceLineVisible: false,
+                  lastValueVisible: pane > 0,
+                  crosshairMarkerVisible: false,
+                },
+                pane,
+              );
+        series.setData(
+          line.data.map((point) => ({
+            ...point,
+            time: point.time as UTCTimestamp,
+          })),
+        );
+        if (index === 0) {
+          for (const level of indicator.definition.levels ?? []) {
+            series.createPriceLine({
+              price: level,
+              color: "#4a566b",
+              lineWidth: 1,
+              lineStyle: LineStyle.Dashed,
+              axisLabelVisible: false,
+            });
+          }
+        }
+        indicatorSeries.current.push(series);
+      });
+    }
+  }, [indicators]);
 
   useEffect(() => {
     markerLayer.current?.setMarkers(
