@@ -37,6 +37,8 @@ interface DrawingLayerProps {
   /** Seconds per bar, for the measure tool. */
   barSeconds: number;
   formatPrice: (price: number) => string;
+  /** False while clicks must reach the chart (e.g. picking a replay start). */
+  selectable?: boolean;
   onCreate: (drawing: Omit<Drawing, "id">) => void;
   onDelete: (id: string) => void;
   onToolDone: () => void;
@@ -81,6 +83,7 @@ export function DrawingLayer({
   instrumentId,
   barSeconds,
   formatPrice,
+  selectable = true,
   onCreate,
   onDelete,
   onToolDone,
@@ -288,7 +291,7 @@ export function DrawingLayer({
         {drawings.map((drawing) => (
           <g key={drawing.id}>
             {shape(drawing, `${drawing.id}:shape`, drawing.id === selected)}
-            {tool === "cursor" ? hitArea(drawing) : null}
+            {tool === "cursor" && selectable ? hitArea(drawing) : null}
           </g>
         ))}
 

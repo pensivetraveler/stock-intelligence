@@ -12,7 +12,7 @@ const projection: Projection = {
   toAnchor: (x, y) => ({ time: Math.round(x), price: 200 - y }),
 };
 
-function setup(tool: DrawingTool, drawings: Drawing[] = []) {
+function setup(tool: DrawingTool, drawings: Drawing[] = [], selectable = true) {
   const handlers = {
     onCreate: vi.fn(),
     onDelete: vi.fn(),
@@ -30,6 +30,7 @@ function setup(tool: DrawingTool, drawings: Drawing[] = []) {
       instrumentId="us:aapl:xnas:2026"
       barSeconds={60}
       formatPrice={(price) => price.toFixed(2)}
+      selectable={selectable}
       {...handlers}
     />,
   );
@@ -110,6 +111,19 @@ describe("DrawingLayer", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Delete drawing" }));
     expect(onDelete).toHaveBeenCalledWith("d1");
+  });
+
+  it("leaves drawings unclickable while clicks must reach the chart", () => {
+    const drawing: Drawing = {
+      id: "d1",
+      kind: "hline",
+      instrumentId: "us:aapl:xnas:2026",
+      points: [{ time: 10, price: 150 }],
+    };
+    setup("cursor", [drawing], false);
+    expect(
+      screen.queryByRole("button", { name: "Horizontal line" }),
+    ).not.toBeInTheDocument();
   });
 
   it("lets clicks through to the chart in cursor mode", () => {
