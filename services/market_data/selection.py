@@ -60,12 +60,10 @@ def pooled_provider(
     def records() -> list[CredentialRecord]:
         return [item for item in credentials.list(choice) if only is None or only(item)]
 
-    return PooledProvider(
-        choice,
-        records=records,
-        secrets=credentials.secrets,
-        build=lambda secrets: build_adapter(choice, adapter_settings(os.environ, choice, secrets)),
-    )
+    def build(secrets: Mapping[str, str] | None, environment: str | None) -> MarketDataProvider:
+        return build_adapter(choice, adapter_settings(os.environ, choice, secrets, environment))
+
+    return PooledProvider(choice, records=records, secrets=credentials.secrets, build=build)
 
 
 def build_adapter(choice: str, settings: Mapping[str, str]) -> MarketDataProvider:

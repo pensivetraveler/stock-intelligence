@@ -12,7 +12,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -24,6 +24,7 @@ from services.market_data.broker_common import (
     RawMinute,
     SourceIdentity,
     TokenCache,
+    account_environment,
     build_result,
     capabilities,
     decimal_field,
@@ -55,6 +56,10 @@ TOKEN_ERRORS = {"EGW00121", "EGW00123"}
 RATE_LIMIT_ERROR = "EGW00201"
 
 
+# Demo (모의투자) domain, "vps" in the official open-trading-api kis_devlp.yaml.
+DEMO_BASE_URL = "https://openapivts.koreainvestment.com:29443"
+
+
 @dataclass(frozen=True)
 class KisConfig:
     app_key: str
@@ -64,9 +69,13 @@ class KisConfig:
     sessions: frozenset[TradingSessionName] = frozenset({"regular"})
     finality_minutes: int = 15
     timestamp_is_bar_end: bool = False
+    environment: Literal["real", "demo"] = "real"
 
     def __repr__(self) -> str:
-        return f"KisConfig(base_url={self.base_url!r}, symbols={self.symbols!r})"
+        return (
+            f"KisConfig(base_url={self.base_url!r}, symbols={self.symbols!r}, "
+            f"environment={self.environment!r})"
+        )
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> KisConfig:
@@ -80,10 +89,14 @@ class KisConfig:
                 raise BrokerConfigError(
                     f"KIS supports MICs {', '.join(EXCHANGE_CODES)}; got {venue}"
                 )
+        environment, demo_url = account_environment(
+            values, "SIW_KIS_ENVIRONMENT", DEMO_BASE_URL, "KIS"
+        )
         return cls(
             app_key=key,
             app_secret=secret,
-            base_url=values.get("SIW_KIS_BASE_URL", cls.base_url).rstrip("/"),
+            base_url=demo_url or values.get("SIW_KIS_BASE_URL", cls.base_url).rstrip("/"),
+            environment=environment,
             symbols=symbols,
             sessions=parse_sessions(values.get("SIW_KIS_SESSIONS", "regular"), "SIW_KIS_SESSIONS"),
             finality_minutes=int(values.get("SIW_KIS_FINALITY_MINUTES", "15")),
@@ -118,8 +131,9 @@ class KisMarketDataProvider:
         self.last_raw_sample: dict[str, Any] | None = None
         self.identity = SourceIdentity(
             source_id=self.source_id,
-            feed_scope="kis-us",
-            dataset_revision="kis-us-r1",
+            # A demo server's data is kept apart from the real one's.
+            feed_scope="kis-us" + ("-demo" if config.environment == "demo" else ""),
+            dataset_revision="kis-us-r1" + ("-demo" if config.environment == "demo" else ""),
             adjustment="unknown",  # the minute-bar spec does not say whether prices are adjusted
             covered_sessions=config.sessions,
             publication_delay_minutes=0,  # documented as free real-time for US quotes

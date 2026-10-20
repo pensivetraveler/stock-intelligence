@@ -6,11 +6,14 @@ import type {
 import { callApi, callForKind, type ApiTarget } from "./market-api";
 
 export type KeyedProvider = CredentialSummary["provider"];
+/** Real (실전) or demo (모의투자) brokerage account; vendor keys have none. */
+export type AccountEnvironment = NonNullable<CredentialSummary["environment"]>;
 
 export interface CredentialCreateRequest {
   provider: KeyedProvider;
   label: string;
   account_suffix: string | null;
+  environment: AccountEnvironment | null;
   secrets: Record<string, string>;
 }
 
@@ -18,6 +21,7 @@ export interface CredentialUpdateRequest {
   label?: string;
   account_suffix?: string | null;
   enabled?: boolean;
+  environment?: AccountEnvironment;
 }
 
 /**

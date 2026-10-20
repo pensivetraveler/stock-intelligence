@@ -1699,6 +1699,7 @@
         "provider",
         "label",
         "account_suffix",
+        "environment",
         "priority",
         "enabled",
         "active",
@@ -1735,6 +1736,10 @@
               "type": "null"
             }
           ]
+        },
+        "environment": {
+          "description": "Whether a broker key belongs to a real (실전) or a demo (모의투자) account; null for vendor keys, which are not per account.",
+          "enum": ["real", "demo", null]
         },
         "priority": {
           "type": "integer",

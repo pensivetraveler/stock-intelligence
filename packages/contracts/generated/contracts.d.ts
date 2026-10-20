@@ -414,6 +414,10 @@ export interface CredentialSummary {
   provider: "alpaca" | "kis" | "toss" | "kiwoom" | "meritz";
   label: string;
   account_suffix: string | null;
+  /**
+   * Whether a broker key belongs to a real (실전) or a demo (모의투자) account; null for vendor keys, which are not per account.
+   */
+  environment: "real" | "demo" | null;
   priority: number;
   enabled: boolean;
   /**

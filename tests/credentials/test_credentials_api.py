@@ -39,6 +39,7 @@ def kis_body(**changes: Any) -> dict[str, Any]:
         "provider": "kis",
         "label": "해외주식",
         "account_suffix": "1234",
+        "environment": "real",
         "secrets": {"app_key": "test-key-not-real", "app_secret": SECRET},
     }
     body.update(changes)
@@ -169,12 +170,12 @@ def test_active_provider_keys_show_runtime_status(
 ) -> None:
     monkeypatch.delenv("SIW_DATA_DIR", raising=False)
     monkeypatch.setenv("SIW_MARKET_DATA_PROVIDER", "kis")
-    record = store.add("kis", "main", None, {"app_key": "k", "app_secret": SECRET})
+    record = store.add("kis", "main", None, {"app_key": "k", "app_secret": SECRET}, "real")
     pool = PooledProvider(
         "kis",
         records=lambda: store.list("kis"),
         secrets=store.secrets,
-        build=lambda _secrets: LimitedAdapter(),
+        build=lambda _secrets, _environment: LimitedAdapter(),
         now=lambda: NOW,
     )
     with TestClient(

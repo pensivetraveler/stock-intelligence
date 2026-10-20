@@ -64,3 +64,17 @@ The user asked for a screen to manage keys. On 2026-10-19 they chose:
 - A broker's terms are confirmed to allow several account keys for one user's market data. Optional rotation could then be enabled for that broker.
 - Account APIs (fills, balances) are added. Full account numbers and a per-key purpose would then be needed.
 - Keys must be shared with a NAS or cloud collector. The keychain is per machine.
+
+## Amendment 2026-10-20 — real and demo accounts
+
+The user asked that every broker key record whether its account is a real (실전) or a demo (모의투자) account. Real and demo keys are issued separately and only work against the matching server.
+
+- **Storage:** credentials migration `0002` adds `environment` (`real` | `demo`). It is required for per-account (broker) keys and absent for vendor keys (Alpaca). Broker keys registered earlier were all used against the real domains, so the migration marks them `real`. New keys default to demo on the Keys screen. The type can be changed later; the pool then rebuilds that key's adapter.
+- **Contract and API:** `credential_summary.environment` is `real`, `demo` or null, and `POST`/`PATCH /v1/credentials` accept `environment`.
+- **Routing:** the account type reaches an adapter as `SIW_<PROVIDER>_ENVIRONMENT`, taken only from the registered key and never from the process environment.
+  - **Kiwoom:** demo goes to `https://mockapi.kiwoom.com` (from the official API spec).
+  - **KIS:** demo goes to `https://openapivts.koreainvestment.com:29443` (`vps` in the official `kis_devlp.yaml`). The `SIW_*_BASE_URL` override applies to real keys only.
+  - **Toss, Meritz:** their documentation names no demo domain, so their adapters refuse demo keys with a clear error rather than sending them to the real server. The key shows that error and the next key is used.
+- **No mixing:** bars from a demo server get their own feed scope and revision (`kiwoom-us-demo`, `kis-us-demo`). They are therefore never combined or cached together with real data.
+- **Kiwoom MCP:** `scripts/kiwoom_mcp_launcher.py` starts Kiwoom's `kiwoom-exec` MCP server with the first enabled Kiwoom key from the Keys screen. It sets `KIWOOM_MODE` from that key's type, so the key and server always match.
+- **Unverified:** no demo key has been tried against either demo server yet, and it is unknown whether the demo servers serve US minute or daily charts.
