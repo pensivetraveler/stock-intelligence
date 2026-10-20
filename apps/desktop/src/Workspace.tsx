@@ -9,16 +9,44 @@ import {
   useMemo,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 
 import { ChartSyncGroup } from "./chart-sync";
 import { ChartPanel } from "./ChartPanel";
 import { useI18n, type MessageKey, type Translate } from "./i18n";
+import {
+  AppMark,
+  CandlesIcon,
+  ChevronDownIcon,
+  CrosshairIcon,
+  FibIcon,
+  FitIcon,
+  HorizontalLinesIcon,
+  ImportIcon,
+  IndicatorsIcon,
+  JournalIcon,
+  KeyIcon,
+  LayoutIcon,
+  LogScaleIcon,
+  MagnetIcon,
+  ReplayIcon,
+  RulerIcon,
+  SearchIcon,
+  SingleLayoutIcon,
+  TextIcon,
+  TrashIcon,
+  TrendLineIcon,
+  UndoIcon,
+  WatchlistIcon,
+  ZoomIcon,
+} from "./icons";
 import { ImportPanel } from "./ImportPanel";
 import { JournalPanel } from "./JournalPanel";
 import { Watchlist } from "./Watchlist";
 import {
   MarketApiError,
+  TIMEFRAMES,
   type InstrumentListing,
   type MarketApi,
 } from "./market-api";
@@ -39,6 +67,7 @@ import {
 import {
   DEFAULT_WORKSPACE,
   type ChartConfig,
+  type SessionScope,
   type WorkspaceState,
 } from "./workspace-state";
 
@@ -46,6 +75,44 @@ interface WorkspaceProps {
   api: MarketApi;
   storage?: Storage | null;
   newId?: () => string;
+  /** The key management screen, shown in the right panel when given. */
+  keysPanel?: ReactNode;
+}
+
+type Panel = "watchlist" | "journal" | "import" | "keys";
+
+/** Per-chart view options that are not part of the saved layout. */
+interface ChartTools {
+  magnet: boolean;
+  logScale: boolean;
+  fitRequest: number;
+}
+
+const SPLIT_STORAGE_KEY = "siw.chartSplit";
+const NO_TOOLS: ChartTools = { magnet: false, logScale: false, fitRequest: 0 };
+
+function shiftDate(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+const CLOCK = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+/** Current exchange time, like the clock in a terminal's bottom bar. */
+function ExchangeClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <span className="exchange-clock">{CLOCK.format(now)} ET</span>;
 }
 
 const UNDO_LIMIT = 20;
@@ -83,6 +150,7 @@ export function Workspace({
   api,
   storage = browserStorage(),
   newId = randomId,
+  keysPanel,
 }: WorkspaceProps) {
   const { t } = useI18n();
   const [library, setLibrary] = useState<WorkspaceLibrary>(() =>
@@ -93,6 +161,28 @@ export function Workspace({
   const [templateId, setTemplateId] = useState(LAYOUT_TEMPLATES[0].id);
   const [nameForm, setNameForm] = useState<NameForm>(null);
   const [activeChart, setActiveChart] = useState<0 | 1>(0);
+  const [search, setSearch] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [panel, setPanel] = useState<Panel | null>("watchlist");
+  const [tools, setTools] = useState<[ChartTools, ChartTools]>([
+    NO_TOOLS,
+    NO_TOOLS,
+  ]);
+  const [split, setSplitState] = useState(() => {
+    try {
+      return storage?.getItem(SPLIT_STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setSplit = (value: boolean) => {
+    setSplitState(value);
+    try {
+      storage?.setItem(SPLIT_STORAGE_KEY, value ? "1" : "0");
+    } catch {
+      // Not saved: the layout still applies until the page reloads.
+    }
+  };
   const [instruments, setInstruments] = useState<InstrumentListing[]>([]);
   const [instrumentsError, setInstrumentsError] = useState<string | null>(null);
   const [instrumentsReady, setInstrumentsReady] = useState(false);
@@ -237,202 +327,529 @@ export function Workspace({
     LAYOUT_TEMPLATES.find((item) => item.id === templateId) ??
     LAYOUT_TEMPLATES[0];
 
+  const activeConfig = layout.charts[activeChart];
+  const updateActive = (changes: Partial<ChartConfig>) =>
+    updateChart(activeChart)({ ...activeConfig, ...changes });
+  const activeSymbol = symbolOf(activeConfig.instrumentId);
+  const matches = instruments.filter((item) =>
+    item.instrument.symbol
+      .toLowerCase()
+      .includes((search ?? "").trim().toLowerCase()),
+  );
+  const chooseInstrument = (instrumentId: string) => {
+    setSearch(null);
+    updateActive({ instrumentId });
+  };
+  const visibleCharts = split ? [0, 1] : [activeChart];
+  const setChartTool = (patch: Partial<ChartTools>) =>
+    setTools((previous) => {
+      const next: [ChartTools, ChartTools] = [...previous];
+      next[activeChart] = { ...next[activeChart], ...patch };
+      return next;
+    });
+  const tool = tools[activeChart];
+  const comingSoon = (stage: number) => t("tb.comingSoon", { stage });
+
   return (
-    <div className="workspace">
-      <div
-        className="workspace-bar"
-        role="toolbar"
-        aria-label={t("ws.controls")}
-      >
-        <label className="inline-field">
-          {t("ws.workspace")}
-          <select
-            value={active.id}
-            onChange={(event) =>
-              changeWorkspace(switchTo(library, event.target.value))
-            }
+    <div className={`terminal-shell${panel ? " with-panel" : ""}`}>
+      <header className="top-bar" role="toolbar" aria-label={t("tb.label")}>
+        <span className="brand" title="Stock Intelligence Workstation">
+          <AppMark />
+        </span>
+        <div className="symbol-search">
+          <button
+            type="button"
+            className="tb-button symbol-button"
+            aria-label={t("chart.instrument")}
+            aria-expanded={search !== null}
+            onClick={() => setSearch(search === null ? "" : null)}
           >
-            {library.workspaces.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
+            <SearchIcon />
+            {activeSymbol}
+          </button>
+          {search !== null ? (
+            <div
+              className="popover symbol-popover"
+              role="dialog"
+              aria-label={t("chart.searchSymbol")}
+            >
+              <input
+                autoFocus
+                value={search}
+                placeholder={t("chart.searchSymbol")}
+                aria-label={t("chart.searchSymbol")}
+                onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setSearch(null);
+                  if (event.key === "Enter" && matches[0])
+                    chooseInstrument(matches[0].instrument.instrument_id);
+                }}
+              />
+              <ul>
+                {matches.map((item) => (
+                  <li key={item.instrument.instrument_id}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        chooseInstrument(item.instrument.instrument_id)
+                      }
+                    >
+                      <strong>{item.instrument.symbol}</strong>
+                      <small>
+                        {item.instrument.venue} · {item.source_id}
+                      </small>
+                    </button>
+                  </li>
+                ))}
+                {matches.length === 0 ? (
+                  <li className="symbol-empty">{t("chart.noMatch")}</li>
+                ) : null}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+        <span className="tb-divider" aria-hidden="true" />
+        <div
+          className="tb-group"
+          role="group"
+          aria-label={t("chart.timeframe")}
+        >
+          {TIMEFRAMES.map((value) => (
+            <button
+              key={value}
+              type="button"
+              className="tb-button"
+              aria-pressed={value === activeConfig.timeframe}
+              onClick={() => updateActive({ timeframe: value })}
+            >
+              {value}
+            </button>
+          ))}
+        </div>
+        <span className="tb-divider" aria-hidden="true" />
         <button
           type="button"
-          className="secondary"
-          onClick={() =>
-            setNameForm({ mode: "save-as", value: "", error: null })
-          }
+          className="tb-button"
+          aria-label={t("tb.candles")}
+          title={t("tb.candles")}
+          aria-pressed="true"
         >
-          {t("ws.saveAs")}
+          <CandlesIcon />
         </button>
         <button
           type="button"
-          className="secondary"
-          onClick={() =>
-            setNameForm({ mode: "rename", value: active.name, error: null })
-          }
+          className="tb-button"
+          disabled
+          title={comingSoon(2)}
         >
-          {t("ws.rename")}
+          <IndicatorsIcon />
+          {t("tb.indicators")}
         </button>
         <button
           type="button"
-          className="secondary"
-          disabled={library.workspaces.length === 1}
-          title={
-            library.workspaces.length === 1
-              ? t("ws.lastCannotDelete")
-              : undefined
-          }
-          onClick={() => changeWorkspace(removeWorkspace(library, active.id))}
+          className="tb-button"
+          aria-label={t("tb.splitLayout")}
+          title={t("tb.splitLayout")}
+          aria-pressed={split}
+          onClick={() => setSplit(!split)}
         >
-          {t("ws.delete")}
-        </button>
-        <span className="toolbar-divider" aria-hidden="true" />
-        <label className="inline-field">
-          {t("ws.template")}
-          <select
-            value={templateId}
-            onChange={(event) =>
-              setTemplateId(event.target.value as typeof templateId)
-            }
-          >
-            {LAYOUT_TEMPLATES.map((item) => (
-              <option key={item.id} value={item.id}>
-                {t(`template.${item.id}.name`)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          className="secondary"
-          title={t(`template.${template.id}.description`)}
-          onClick={() => replaceLayout(applyTemplate(layout, template))}
-        >
-          {t("ws.applyBoth")}
+          {split ? <LayoutIcon /> : <SingleLayoutIcon />}
         </button>
         <button
           type="button"
-          className="secondary"
-          onClick={() => replaceLayout(DEFAULT_WORKSPACE)}
+          className="tb-button"
+          disabled
+          title={comingSoon(4)}
         >
-          {t("ws.reset")}
+          <ReplayIcon />
+          {t("tb.replay")}
         </button>
+        <span className="tb-divider" aria-hidden="true" />
         <button
           type="button"
-          className="secondary"
+          className="tb-button"
+          aria-label={t("ws.undo")}
+          title={t("ws.undo")}
           disabled={undoStack.length === 0}
           onClick={undo}
         >
-          {t("ws.undo")}
+          <UndoIcon />
         </button>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={layout.syncTimeRange}
-            onChange={(event) =>
-              setLayout((previous) => ({
-                ...previous,
-                syncTimeRange: event.target.checked,
-              }))
-            }
-          />
-          {t("ws.sync")}
-        </label>
-      </div>
-
-      {nameForm ? (
-        <form className="name-form" onSubmit={submitName}>
-          <label className="inline-field">
-            {nameForm.mode === "save-as" ? t("ws.newName") : t("ws.name")}
-            <input
-              autoFocus
-              value={nameForm.value}
-              maxLength={80}
-              aria-invalid={nameForm.error !== null}
-              onChange={(event) =>
-                setNameForm({
-                  ...nameForm,
-                  value: event.target.value,
-                  error: null,
-                })
-              }
-            />
-          </label>
-          <button type="submit">
-            {nameForm.mode === "save-as" ? t("ws.save") : t("ws.saveName")}
-          </button>
+        <span className="tb-spacer" />
+        <div className="workspace-menu">
           <button
             type="button"
-            className="secondary"
-            onClick={() => setNameForm(null)}
+            className="tb-button"
+            aria-expanded={menuOpen}
+            aria-label={t("ws.menu", { name: active.name })}
+            onClick={() => setMenuOpen(!menuOpen)}
           >
-            {t("ws.cancel")}
+            {active.name}
+            <ChevronDownIcon />
           </button>
-          {nameForm.error ? (
-            <span className="chart-error" role="alert">
-              {nameError(t, nameForm.error)}
-            </span>
-          ) : null}
-        </form>
-      ) : null}
+          {menuOpen ? (
+            <div className="popover workspace-popover">
+              <div
+                className="workspace-bar"
+                role="toolbar"
+                aria-label={t("ws.controls")}
+              >
+                <label className="inline-field">
+                  {t("ws.workspace")}
+                  <select
+                    value={active.id}
+                    onChange={(event) =>
+                      changeWorkspace(switchTo(library, event.target.value))
+                    }
+                  >
+                    {library.workspaces.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() =>
+                    setNameForm({ mode: "save-as", value: "", error: null })
+                  }
+                >
+                  {t("ws.saveAs")}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() =>
+                    setNameForm({
+                      mode: "rename",
+                      value: active.name,
+                      error: null,
+                    })
+                  }
+                >
+                  {t("ws.rename")}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={library.workspaces.length === 1}
+                  title={
+                    library.workspaces.length === 1
+                      ? t("ws.lastCannotDelete")
+                      : undefined
+                  }
+                  onClick={() =>
+                    changeWorkspace(removeWorkspace(library, active.id))
+                  }
+                >
+                  {t("ws.delete")}
+                </button>
+                <label className="inline-field">
+                  {t("ws.template")}
+                  <select
+                    value={templateId}
+                    onChange={(event) =>
+                      setTemplateId(event.target.value as typeof templateId)
+                    }
+                  >
+                    {LAYOUT_TEMPLATES.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {t(`template.${item.id}.name`)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="secondary"
+                  title={t(`template.${template.id}.description`)}
+                  onClick={() => replaceLayout(applyTemplate(layout, template))}
+                >
+                  {t("ws.applyBoth")}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => replaceLayout(DEFAULT_WORKSPACE)}
+                >
+                  {t("ws.reset")}
+                </button>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={layout.syncTimeRange}
+                    onChange={(event) =>
+                      setLayout((previous) => ({
+                        ...previous,
+                        syncTimeRange: event.target.checked,
+                      }))
+                    }
+                  />
+                  {t("ws.sync")}
+                </label>
+              </div>
 
-      <p className="workspace-note">
-        {t("ws.note", {
-          description: t(`template.${template.id}.description`),
-        })}
-      </p>
-      {instrumentsError ? (
-        <p className="chart-error" role="alert">
-          {t("ws.instrumentsUnavailable", { error: instrumentsError })}
-        </p>
-      ) : null}
-      <div className="terminal">
-        <div className="chart-grid">
-          {layout.charts.map((config, index) => (
+              {nameForm ? (
+                <form className="name-form" onSubmit={submitName}>
+                  <label className="inline-field">
+                    {nameForm.mode === "save-as"
+                      ? t("ws.newName")
+                      : t("ws.name")}
+                    <input
+                      autoFocus
+                      value={nameForm.value}
+                      maxLength={80}
+                      aria-invalid={nameForm.error !== null}
+                      onChange={(event) =>
+                        setNameForm({
+                          ...nameForm,
+                          value: event.target.value,
+                          error: null,
+                        })
+                      }
+                    />
+                  </label>
+                  <button type="submit">
+                    {nameForm.mode === "save-as"
+                      ? t("ws.save")
+                      : t("ws.saveName")}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setNameForm(null)}
+                  >
+                    {t("ws.cancel")}
+                  </button>
+                  {nameForm.error ? (
+                    <span className="chart-error" role="alert">
+                      {nameError(t, nameForm.error)}
+                    </span>
+                  ) : null}
+                </form>
+              ) : null}
+              <p className="workspace-note">
+                {t("ws.note", {
+                  description: t(`template.${template.id}.description`),
+                })}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </header>
+
+      <aside
+        className="left-tools"
+        role="toolbar"
+        aria-label={t("chart.tools")}
+        aria-orientation="vertical"
+      >
+        <button
+          type="button"
+          aria-pressed="true"
+          aria-label={t("tools.crosshair")}
+          title={t("tools.crosshair")}
+        >
+          <CrosshairIcon />
+        </button>
+        {(
+          [
+            ["tools.trendLine", TrendLineIcon],
+            ["tools.horizontalLine", HorizontalLinesIcon],
+            ["tools.fib", FibIcon],
+            ["tools.text", TextIcon],
+            ["tools.measure", RulerIcon],
+            ["tools.zoom", ZoomIcon],
+          ] as const
+        ).map(([key, ToolIcon]) => (
+          <button
+            key={key}
+            type="button"
+            disabled
+            aria-label={t(key)}
+            title={`${t(key)} — ${comingSoon(3)}`}
+          >
+            <ToolIcon />
+          </button>
+        ))}
+        <span className="tool-divider" aria-hidden="true" />
+        <button
+          type="button"
+          aria-pressed={tool.magnet}
+          aria-label={t("chart.magnet")}
+          title={t("chart.magnet")}
+          onClick={() => setChartTool({ magnet: !tool.magnet })}
+        >
+          <MagnetIcon />
+        </button>
+        <button
+          type="button"
+          aria-pressed={tool.logScale}
+          aria-label={t("chart.logScale")}
+          title={t("chart.logScale")}
+          onClick={() => setChartTool({ logScale: !tool.logScale })}
+        >
+          <LogScaleIcon />
+        </button>
+        <button
+          type="button"
+          aria-label={t("chart.fit")}
+          title={t("chart.fit")}
+          onClick={() => setChartTool({ fitRequest: tool.fitRequest + 1 })}
+        >
+          <FitIcon />
+        </button>
+        <span className="tool-divider" aria-hidden="true" />
+        <button
+          type="button"
+          disabled
+          aria-label={t("tools.removeDrawings")}
+          title={`${t("tools.removeDrawings")} — ${comingSoon(3)}`}
+        >
+          <TrashIcon />
+        </button>
+      </aside>
+
+      <main className="chart-area">
+        {instrumentsError ? (
+          <p className="chart-error banner" role="alert">
+            {t("ws.instrumentsUnavailable", { error: instrumentsError })}
+          </p>
+        ) : null}
+        <div className={`chart-grid${split ? " split" : ""}`}>
+          {visibleCharts.map((index) => (
             <ChartPanel
               key={index}
-              active={index === activeChart}
+              active={split && index === activeChart}
               onActivate={() => setActiveChart(index as 0 | 1)}
               chartId={`chart-${index + 1}`}
               title={t("ws.chartTitle", { n: index + 1 })}
               api={api}
-              config={config}
+              config={layout.charts[index]}
               instruments={instruments}
               instrumentsReady={instrumentsReady}
               sync={sync}
-              onChange={updateChart(index as 0 | 1)}
               journal={journal}
               onJournalChange={refreshJournal}
+              magnet={tools[index].magnet}
+              logScale={tools[index].logScale}
+              fitRequest={tools[index].fitRequest}
             />
           ))}
         </div>
-        <Watchlist
-          api={api}
-          instruments={instruments}
-          sessionDate={layout.charts[activeChart].sessionDate}
-          activeInstrumentId={layout.charts[activeChart].instrumentId}
-          onPick={(instrumentId) =>
-            updateChart(activeChart)({
-              ...layout.charts[activeChart],
-              instrumentId,
-            })
-          }
-        />
-      </div>
-      <JournalPanel
-        manual={ledgers.manual}
-        imported={ledgers.imported}
-        scenarios={ledgers.scenarios}
-        error={journalError}
-        symbolOf={symbolOf}
-      />
-      {journalError ? null : (
-        <ImportPanel api={api} onImported={refreshJournal} />
-      )}
+        <footer className="range-bar" aria-label={t("tb.sessionBar")}>
+          <div className="date-stepper">
+            <button
+              type="button"
+              className="tb-button"
+              aria-label={t("chart.previousDay")}
+              onClick={() =>
+                updateActive({
+                  sessionDate: shiftDate(activeConfig.sessionDate, -1),
+                })
+              }
+            >
+              ‹
+            </button>
+            <input
+              type="date"
+              aria-label={t("chart.sessionDate")}
+              value={activeConfig.sessionDate}
+              onChange={(event) =>
+                event.target.value &&
+                updateActive({ sessionDate: event.target.value })
+              }
+            />
+            <button
+              type="button"
+              className="tb-button"
+              aria-label={t("chart.nextDay")}
+              onClick={() =>
+                updateActive({
+                  sessionDate: shiftDate(activeConfig.sessionDate, 1),
+                })
+              }
+            >
+              ›
+            </button>
+          </div>
+          <div className="tb-group" role="group" aria-label={t("chart.hours")}>
+            {(["regular", "extended"] as SessionScope[]).map((value) => (
+              <button
+                key={value}
+                type="button"
+                className="tb-button"
+                aria-pressed={value === activeConfig.sessionScope}
+                onClick={() => updateActive({ sessionScope: value })}
+              >
+                {t(value === "regular" ? "chart.regular" : "chart.extended")}
+              </button>
+            ))}
+          </div>
+          <span className="tb-spacer" />
+          <ExchangeClock />
+        </footer>
+      </main>
+
+      {panel ? (
+        <aside
+          className={`side-panel side-panel-${panel}`}
+          aria-label={t(`panel.${panel}`)}
+        >
+          {panel === "watchlist" ? (
+            <Watchlist
+              api={api}
+              instruments={instruments}
+              sessionDate={activeConfig.sessionDate}
+              activeInstrumentId={activeConfig.instrumentId}
+              onPick={(instrumentId) => updateActive({ instrumentId })}
+            />
+          ) : null}
+          {panel === "journal" ? (
+            <JournalPanel
+              manual={ledgers.manual}
+              imported={ledgers.imported}
+              scenarios={ledgers.scenarios}
+              error={journalError}
+              symbolOf={symbolOf}
+            />
+          ) : null}
+          {panel === "import" ? (
+            journalError ? (
+              <p className="workspace-note" role="status">
+                {journalError}
+              </p>
+            ) : (
+              <ImportPanel api={api} onImported={refreshJournal} />
+            )
+          ) : null}
+          {panel === "keys" ? keysPanel : null}
+        </aside>
+      ) : null}
+
+      <nav className="right-rail" aria-label={t("panel.rail")}>
+        {(
+          [
+            ["watchlist", WatchlistIcon],
+            ["journal", JournalIcon],
+            ["import", ImportIcon],
+            ...(keysPanel ? ([["keys", KeyIcon]] as const) : []),
+          ] as const
+        ).map(([id, RailIcon]) => (
+          <button
+            key={id}
+            type="button"
+            aria-label={t(`panel.${id}`)}
+            title={t(`panel.${id}`)}
+            aria-pressed={panel === id}
+            onClick={() => setPanel(panel === id ? null : id)}
+          >
+            <RailIcon />
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }

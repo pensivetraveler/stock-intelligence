@@ -75,16 +75,16 @@ export function PriceChart({
     const instance = createChart(container.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: "#131a24" },
-        textColor: "#9eabba",
+        background: { type: ColorType.Solid, color: "#10131a" },
+        textColor: "#8b95a5",
       },
       grid: {
-        vertLines: { color: "#1f2834" },
-        horzLines: { color: "#1f2834" },
+        vertLines: { color: "#1a202a" },
+        horzLines: { color: "#1a202a" },
       },
-      rightPriceScale: { borderColor: "#2d3746" },
+      rightPriceScale: { borderColor: "#232a36" },
       timeScale: {
-        borderColor: "#2d3746",
+        borderColor: "#232a36",
         timeVisible: true,
         secondsVisible: false,
         tickMarkFormatter: (time: Time) =>
