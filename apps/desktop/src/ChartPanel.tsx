@@ -12,6 +12,12 @@ import { isUncertain, summarize, toSeries } from "./chart-data";
 import type { Drawing, DrawingTool } from "./drawings";
 import { barEnd, barsAsOf } from "./replay";
 import {
+  DEFAULT_CANDLES,
+  sessionsForCandles,
+  timeframeLabel,
+  timeframeSeconds,
+} from "./timeframes";
+import {
   cleanParams,
   paramsText,
   renderIndicators,
@@ -40,9 +46,10 @@ type Load =
 
 const NOT_OFFERED = Symbol("not offered");
 
-/** At most this many earlier sessions (and calendar days) are searched for warm-up. */
+/** Earlier sessions searched for indicator warm-up. */
 const WARMUP_SESSIONS = 10;
-const WARMUP_DAYS = 30;
+/** Earlier sessions requested at the same time while history loads. */
+const HISTORY_REQUESTS = 4;
 
 function previousDay(date: string): string {
   const value = new Date(`${date}T00:00:00Z`);
@@ -60,14 +67,6 @@ function toOhlcv(bars: PriceBar[]): OhlcvBar[] {
     volume: Number(bar.volume),
   }));
 }
-
-const BAR_SECONDS: Record<ChartConfig["timeframe"], number> = {
-  "1m": 60,
-  "5m": 300,
-  "15m": 900,
-  "30m": 1_800,
-  "60m": 3_600,
-};
 
 interface ChartPanelProps {
   chartId: string;
@@ -214,41 +213,64 @@ export function ChartPanel({
   const settled = load.status !== "loading";
   useEffect(() => onSettledChange?.(settled), [onSettledChange, settled]);
 
-  const neededWarmup = warmupBars(config.indicators ?? []);
+  // Earlier sessions shown before the chart's day, so it holds about DEFAULT_CANDLES
+  // bars. They arrive newest first, a few at a time, and fill in behind today's bars.
+  const historySessions = sessionsForCandles(timeframe, sessionScope) - 1;
+  const [history, setHistory] = useState<{
+    sessions: SessionWindow[];
+    bars: Map<string, PriceBar[]>;
+    /** All requested sessions answered (or failed); warm-up waits for this. */
+    done: boolean;
+  }>({ sessions: [], bars: new Map(), done: false });
   useEffect(() => {
     let current = true;
-    setWarmup([]);
-    if (neededWarmup === 0 || unavailable || !instrumentsReady) return;
+    const finish = () => {
+      if (current) setHistory((previous) => ({ ...previous, done: true }));
+    };
+    setHistory({ sessions: [], bars: new Map(), done: false });
+    // Not ready yet: stay "not done" so warm-up does not start from the wrong day.
+    if (unavailable || !instrumentsReady) return;
+    if (historySessions <= 0) {
+      finish();
+      return;
+    }
     void (async () => {
-      const collected: PriceBar[][] = [];
-      let count = 0;
-      let date = sessionDate;
-      let sessions = 0;
-      for (
-        let day = 0;
-        day < WARMUP_DAYS && sessions < WARMUP_SESSIONS;
-        day += 1
-      ) {
-        if (count >= neededWarmup) break;
-        date = previousDay(date);
-        try {
-          const session = await api.session(date);
-          const range = sessionRange(session, sessionScope);
-          if (range === null) continue;
-          sessions += 1;
-          const response = await api.bars({
-            instrumentId,
-            timeframe,
-            ...range,
-          });
-          collected.unshift(response.bars);
-          count += response.bars.length;
-        } catch {
-          break; // Warm-up is best effort: indicators then start later in the day.
-        }
-        if (!current) return;
+      let sessions: SessionWindow[];
+      try {
+        sessions = await api.sessions(
+          previousDay(sessionDate),
+          historySessions,
+        );
+      } catch {
+        finish(); // History is best effort: the chart still shows its own day.
+        return;
       }
-      if (current) setWarmup(collected.flat());
+      if (!current) return;
+      setHistory({ sessions, bars: new Map(), done: false });
+      const queue = [...sessions].reverse(); // newest first
+      const worker = async () => {
+        for (let item = queue.shift(); item; item = queue.shift()) {
+          const range = sessionRange(item, sessionScope);
+          if (range === null) continue;
+          try {
+            const response = await api.bars({
+              instrumentId,
+              timeframe,
+              ...range,
+            });
+            if (!current) return;
+            setHistory((previous) => {
+              const bars = new Map(previous.bars);
+              bars.set(item.session_date, response.bars);
+              return { ...previous, bars };
+            });
+          } catch {
+            // A missing session leaves a gap in history, never wrong bars.
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: HISTORY_REQUESTS }, worker));
+      finish();
     })();
     return () => {
       current = false;
@@ -259,11 +281,90 @@ export function ChartPanel({
     timeframe,
     sessionDate,
     sessionScope,
+    historySessions,
+    unavailable,
+    instrumentsReady,
+  ]);
+  // Only a contiguous run of loaded sessions back from the chart's day is shown, so a
+  // slow older session never appears before the ones between it and today.
+  const historyBars = useMemo(() => {
+    const loaded: PriceBar[][] = [];
+    for (let i = history.sessions.length - 1; i >= 0; i -= 1) {
+      const bars = history.bars.get(history.sessions[i].session_date);
+      if (!bars) break;
+      loaded.unshift(bars);
+    }
+    return loaded.flat();
+  }, [history]);
+  const earliestDate =
+    history.sessions.length > 0 && historyBars.length > 0
+      ? (history.sessions.find((item) => history.bars.has(item.session_date))
+          ?.session_date ?? sessionDate)
+      : sessionDate;
+
+  const neededWarmup = warmupBars(config.indicators ?? []);
+  useEffect(() => {
+    let current = true;
+    setWarmup([]);
+    // Start once history is complete, so warm-up begins before the earliest shown day.
+    if (
+      neededWarmup === 0 ||
+      unavailable ||
+      !instrumentsReady ||
+      !history.done
+    ) {
+      return;
+    }
+    void (async () => {
+      const collected: PriceBar[][] = [];
+      let count = 0;
+      try {
+        const sessions = await api.sessions(
+          previousDay(earliestDate),
+          WARMUP_SESSIONS,
+        );
+        for (const item of [...sessions].reverse()) {
+          if (count >= neededWarmup || !current) break;
+          const range = sessionRange(item, sessionScope);
+          if (range === null) continue;
+          const response = await api.bars({
+            instrumentId,
+            timeframe,
+            ...range,
+          });
+          collected.unshift(response.bars);
+          count += response.bars.length;
+        }
+      } catch {
+        // Warm-up is best effort: indicators then start later in the day.
+      }
+      if (current) setWarmup(collected.flat());
+    })();
+    return () => {
+      current = false;
+    };
+  }, [
+    api,
+    instrumentId,
+    timeframe,
+    earliestDate,
+    history.done,
+    sessionScope,
     neededWarmup,
     unavailable,
     instrumentsReady,
   ]);
-  const allBars = load.status === "ready" ? load.response.bars : null;
+  const dayBars = load.status === "ready" ? load.response.bars : null;
+  const allBars = useMemo(
+    () =>
+      dayBars === null
+        ? null
+        : // The most recent DEFAULT_CANDLES bars, always including the whole day.
+          [...historyBars, ...dayBars].slice(
+            -Math.max(DEFAULT_CANDLES, dayBars.length),
+          ),
+    [historyBars, dayBars],
+  );
 
   // Replay asks the API for the session as of the replay time, so bars this account
   // could not yet have had (a feed's publication delay, unfinished bars) never reach
@@ -328,9 +429,9 @@ export function ChartPanel({
   // as-of answer arrives, only the bars it says were available by then.
   const bars = useMemo(() => {
     if (replayTime === null) return allBars;
-    const source = asOf ? asOf.response.bars : allBars;
+    const source = asOf ? [...historyBars, ...asOf.response.bars] : allBars;
     return source ? barsAsOf(source, replayTime) : null;
-  }, [allBars, replayTime, asOf]);
+  }, [allBars, historyBars, replayTime, asOf]);
   const series = useMemo(() => (bars ? toSeries(bars) : null), [bars]);
   // In replay the summary describes the as-of answer; the whole-day one is hidden.
   const summary =
@@ -457,7 +558,7 @@ export function ChartPanel({
               )}
               tool={tool}
               instrumentId={instrumentId}
-              barSeconds={BAR_SECONDS[timeframe]}
+              barSeconds={timeframeSeconds(timeframe)}
               onDrawingCreate={(drawing) =>
                 onDrawingsChange?.([
                   ...(config.drawings ?? []),
@@ -475,7 +576,8 @@ export function ChartPanel({
             {legendBar && change ? (
               <div className="chart-legend" aria-live="off">
                 <span className="legend-title">
-                  {symbol} · {timeframe} · {load.response.coverage.source_id}
+                  {symbol} · {timeframeLabel(timeframe)} ·{" "}
+                  {load.response.coverage.source_id}
                 </span>
                 <span>
                   {t("legend.open")} <b>{legendBar.open}</b>

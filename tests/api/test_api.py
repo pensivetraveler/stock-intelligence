@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from packages.contracts.validator import validate_document
 from services.api.main import APP_NAME, APP_VERSION, create_app
 from services.market_data.fake import DEFAULT_FIXTURE_PATH, FakeMarketDataProvider
 from services.market_data.provider import BarsQuery, BarsResult
@@ -433,3 +434,34 @@ async def test_extended_session_aggregate_is_served() -> None:
     assert response.status_code == 200
     sessions = [bar["session"] for bar in response.json()["bars"]]
     assert sessions[0] == "pre" and sessions[-1] == "post"
+
+
+async def test_market_sessions_lists_recent_trading_days_oldest_first() -> None:
+    async with client() as test_client:
+        # 2026-11-30 (Mon) back over Thanksgiving (11-26) and the weekend.
+        response = await test_client.get(
+            "/v1/market/sessions", params={"end_date": "2026-11-30", "count": 4}
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    validate_document(body)
+    assert [item["session_date"] for item in body["sessions"]] == [
+        "2026-11-24",
+        "2026-11-25",
+        "2026-11-27",
+        "2026-11-30",
+    ]
+    assert all(item["is_trading_day"] for item in body["sessions"])
+
+
+@pytest.mark.parametrize(
+    "params",
+    [{"end_date": "2026-10-09", "count": 0}, {"end_date": "2026-10-09", "count": 121}],
+)
+async def test_market_sessions_limits_the_count(params: dict[str, object]) -> None:
+    async with client() as test_client:
+        response = await test_client.get("/v1/market/sessions", params=params)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"

@@ -17,12 +17,18 @@ import { ChartPanel } from "./ChartPanel";
 import { FloatingWindow, type WindowGeometry } from "./FloatingWindow";
 import type { DrawingTool } from "./drawings";
 import { IndicatorDialog } from "./IndicatorDialog";
+import { TimeframePicker } from "./TimeframePicker";
+import {
+  loadFavorites,
+  normalizeFavorites,
+  saveFavorites,
+  timeframeSeconds,
+} from "./timeframes";
 import {
   REPLAY_OFF,
   REPLAY_SPEEDS,
   stepBack,
   stepForward,
-  TIMEFRAME_SECONDS,
   type ReplayState,
 } from "./replay";
 import { defaultParams } from "./indicators";
@@ -62,7 +68,6 @@ import { useSessionQuotes } from "./session-quotes";
 import { Watchlist } from "./Watchlist";
 import {
   MarketApiError,
-  TIMEFRAMES,
   type InstrumentListing,
   type MarketApi,
 } from "./market-api";
@@ -225,6 +230,17 @@ export function Workspace({
   const [menuOpen, setMenuOpen] = useState(false);
   const [indicatorsOpen, setIndicatorsOpen] = useState(false);
   const [drawTool, setDrawTool] = useState<DrawingTool>("cursor");
+  const [favorites, setFavorites] = useState(() => loadFavorites(storage));
+  const toggleFavorite = (timeframe: string) =>
+    setFavorites((current) => {
+      const next = normalizeFavorites(
+        current.includes(timeframe)
+          ? current.filter((item) => item !== timeframe)
+          : [...current, timeframe],
+      );
+      saveFavorites(storage, next);
+      return next;
+    });
   const [replay, setReplay] = useState<ReplayState>(REPLAY_OFF);
   const replayOn = replay.phase !== "off";
   // End times of each chart's first and last loaded bar (replay stepping limits).
@@ -465,7 +481,7 @@ export function Workspace({
     }
     updateChart(activeChart)({ ...activeConfig, ...changes });
   };
-  const replayStep = TIMEFRAME_SECONDS[activeConfig.timeframe] ?? 60;
+  const replayStep = timeframeSeconds(activeConfig.timeframe);
   const replayLast = bounds[activeChart].last;
   const replayFirst = bounds[activeChart].first;
   const advanceReplay = useCallback(
@@ -579,23 +595,12 @@ export function Workspace({
           ) : null}
         </div>
         <span className="tb-divider" aria-hidden="true" />
-        <div
-          className="tb-group"
-          role="group"
-          aria-label={t("chart.timeframe")}
-        >
-          {TIMEFRAMES.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className="tb-button"
-              aria-pressed={value === activeConfig.timeframe}
-              onClick={() => updateActive({ timeframe: value })}
-            >
-              {value}
-            </button>
-          ))}
-        </div>
+        <TimeframePicker
+          value={activeConfig.timeframe}
+          favorites={favorites}
+          onChange={(timeframe) => updateActive({ timeframe })}
+          onToggleFavorite={toggleFavorite}
+        />
         <span className="tb-divider" aria-hidden="true" />
         <button
           type="button"

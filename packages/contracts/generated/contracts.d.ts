@@ -23,7 +23,8 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ImportBatch
   | ImportedLedgerResponse
   | CredentialSummary
-  | CredentialListResponse;
+  | CredentialListResponse
+  | SessionListResponse;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -46,7 +47,7 @@ export interface PriceBar {
   kind: "price_bar";
   schema_version: SchemaVersion;
   instrument_id: Identifier;
-  timeframe: "1m" | "5m" | "15m" | "30m" | "60m" | "1d";
+  timeframe: string;
   interval_start_utc: UtcTimestamp;
   interval_end_utc: UtcTimestamp;
   open: NonNegativeDecimalString;
@@ -77,7 +78,7 @@ export interface CoverageManifest {
   kind: "coverage_manifest";
   schema_version: SchemaVersion;
   instrument_id: Identifier;
-  timeframe: "1m" | "5m" | "15m" | "30m" | "60m";
+  timeframe: string;
   requested_start_utc: UtcTimestamp;
   requested_end_utc: UtcTimestamp;
   coverage_status: "complete" | "partial" | "empty";
@@ -451,4 +452,17 @@ export interface CredentialListResponse {
     ];
   }[];
   credentials: CredentialSummary[];
+}
+/**
+ * Consecutive trading sessions ending at end_date (inclusive), oldest first.
+ */
+export interface SessionListResponse {
+  kind: "session_list_response";
+  schema_version: SchemaVersion;
+  calendar_id: "XNAS" | "XNYS";
+  end_date: string;
+  /**
+   * @maxItems 120
+   */
+  sessions: SessionWindow[];
 }

@@ -56,6 +56,9 @@ interface PriceChartProps {
   drawingsSelectable?: boolean;
 }
 
+/** Bars in view when a chart first loads; the rest of the history is scrollable. */
+const INITIAL_VISIBLE_BARS = 150;
+
 function timeOf(value: Time): number {
   return typeof value === "number" ? value : 0;
 }
@@ -218,6 +221,7 @@ export function PriceChart({
   }, [chartId, sync]);
 
   const shownCount = useRef(0);
+  const shownFirst = useRef<number | null>(null);
 
   useEffect(() => {
     // When the view already reaches the latest bar, keep following new bars (as a live
@@ -229,6 +233,12 @@ export function PriceChart({
       range !== undefined &&
       shownCount.current > 0 &&
       range.to >= shownCount.current - 1.5;
+    // Older bars added at the front shift every index; keep the same times in view.
+    const prepended =
+      shownFirst.current !== null &&
+      candles.length > 0 &&
+      candles[0].time < shownFirst.current;
+    const visibleTimes = prepended ? scale?.getVisibleRange() : null;
     candleSeries.current?.setData(
       candles.map((point) => ({ ...point, time: point.time as UTCTimestamp })),
     );
@@ -238,11 +248,22 @@ export function PriceChart({
     // Fit once per chart; replay steps add bars without resetting the view.
     if (fittedKey.current !== fitKey && candles.length > 0) {
       fittedKey.current = fitKey;
-      chart.current?.timeScale().fitContent();
+      // Show the latest bars at a readable width; older ones are a scroll away.
+      if (candles.length > INITIAL_VISIBLE_BARS) {
+        scale?.setVisibleLogicalRange({
+          from: candles.length - INITIAL_VISIBLE_BARS,
+          to: candles.length + 2,
+        });
+      } else {
+        scale?.fitContent();
+      }
+    } else if (visibleTimes) {
+      scale?.setVisibleRange(visibleTimes);
     } else if (followLatest && candles.length > shownCount.current) {
       scale?.scrollToRealTime();
     }
     shownCount.current = candles.length;
+    shownFirst.current = candles[0]?.time ?? null;
   }, [candles, volume, fitKey]);
 
   useEffect(() => {

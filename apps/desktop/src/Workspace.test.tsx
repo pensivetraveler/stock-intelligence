@@ -61,14 +61,18 @@ const fixtures = resolve(
 const fixture = <T,>(name: string): T =>
   JSON.parse(readFileSync(resolve(fixtures, name), "utf8")) as T;
 
-function fakeApi(options: { journalOff?: boolean } = {}): MarketApi & {
+function fakeApi(
+  options: { journalOff?: boolean; history?: boolean } = {},
+): MarketApi & {
   barsCalls: BarsRequest[];
+  sessionsCalls: { endDate: string; count: number }[];
   manualRequests: ManualExecutionRequest[];
   scenarioRequests: ScenarioRequest[];
   importRequests: { decisions: Record<string, string> }[];
 } {
   const session = fixture<SessionWindow>("session-window-early-close.json");
   const barsCalls: BarsRequest[] = [];
+  const sessionsCalls: { endDate: string; count: number }[] = [];
   const manualRequests: ManualExecutionRequest[] = [];
   const scenarioRequests: ScenarioRequest[] = [];
   const importRequests: { decisions: Record<string, string> }[] = [];
@@ -81,6 +85,7 @@ function fakeApi(options: { journalOff?: boolean } = {}): MarketApi & {
     );
   return {
     barsCalls,
+    sessionsCalls,
     manualRequests,
     scenarioRequests,
     importRequests,
@@ -101,6 +106,18 @@ function fakeApi(options: { journalOff?: boolean } = {}): MarketApi & {
             }
           : null,
       ),
+    // Earlier sessions only when asked for, so other tests load just the chart's day.
+    sessions: (endDate, count) => {
+      sessionsCalls.push({ endDate, count });
+      return Promise.resolve(
+        options.history
+          ? Array.from({ length: count }, (_, index) => ({
+              ...session,
+              session_date: `2026-09-${String(index + 1).padStart(2, "0")}`,
+            }))
+          : [],
+      );
+    },
     session: (sessionDate) =>
       Promise.resolve(
         sessionDate === "2026-11-26"
@@ -297,7 +314,7 @@ describe("chart workspace", () => {
     await screen.findByTestId("chart-chart-2");
 
     // The toolbar acts on the active chart, which is chart 1 at first.
-    pickTimeframe("60m");
+    pickTimeframe("1h");
     await screen.findByRole("region", { name: /Chart 1: .* 60m/ });
 
     const saved = savedLayout(storage);
@@ -1016,12 +1033,13 @@ describe("replay", () => {
 
 describe("indicator warm-up", () => {
   it("loads earlier sessions only when the chart has indicators", async () => {
-    const plain = fakeApi();
+    const plain = fakeApi({ history: true });
     const { unmount } = render(
       <Workspace api={plain} storage={memoryStorage()} />,
     );
     await screen.findByTestId("chart-chart-1");
-    await waitFor(() => expect(plain.barsCalls.length).toBeGreaterThan(0));
+    // The chart day plus six earlier sessions of history.
+    await waitFor(() => expect(plain.barsCalls.length).toBe(7));
     const plainCalls = plain.barsCalls.length;
     unmount();
 
@@ -1039,10 +1057,111 @@ describe("indicator warm-up", () => {
         ],
       }),
     );
-    const withRsi = fakeApi();
+    const withRsi = fakeApi({ history: true });
     render(<Workspace api={withRsi} storage={storage} />);
     await screen.findByTestId("chart-chart-1");
-    // Each fake session has one bar, so the chart looks back through ten sessions.
+    // Each fake session has one bar, so warm-up looks back through ten sessions.
     await waitFor(() => expect(withRsi.barsCalls.length).toBe(plainCalls + 10));
+    // Warm-up starts once, before the earliest history session.
+    expect(withRsi.sessionsCalls).toEqual([
+      { endDate: "2026-10-08", count: 6 },
+      { endDate: "2026-08-31", count: 10 },
+    ]);
+  });
+});
+
+describe("history and timeframes", () => {
+  it("loads earlier sessions to reach about 1,200 candles", async () => {
+    const api = fakeApi({ history: true });
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    // 5m extended has 192 bars a day: the chart day plus six earlier sessions.
+    await waitFor(() =>
+      expect(api.sessionsCalls).toContainEqual({
+        endDate: "2026-10-08",
+        count: 6,
+      }),
+    );
+    await waitFor(() => expect(api.barsCalls.length).toBe(7));
+    expect(new Set(api.barsCalls.map((call) => call.timeframe))).toEqual(
+      new Set(["5m"]),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("chart-chart-1")).toHaveTextContent(
+        "7 candles",
+      ),
+    );
+  });
+
+  it("shows favorite timeframes and lets the user star a preset", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} />);
+    await screen.findByTestId("chart-chart-1");
+    const group = screen.getByRole("group", { name: "Timeframe" });
+    expect(
+      within(group)
+        .getAllByRole("button")
+        .map((item) => item.textContent),
+    ).toEqual(["1m", "5m", "15m", "30m", "1h"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "More timeframes" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add 3m to favorites" }),
+    );
+    expect(
+      JSON.parse(storage.getItem("siw.timeframeFavorites") ?? "[]"),
+    ).toEqual(["1m", "3m", "5m", "15m", "30m", "60m"]);
+    expect(
+      within(group).getByRole("button", { name: "3m" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove 1h from favorites" }),
+    );
+    expect(
+      within(group).queryByRole("button", { name: "1h" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("applies a custom timeframe in hours", async () => {
+    const api = fakeApi();
+    const storage = memoryStorage();
+    render(<Workspace api={api} storage={storage} />);
+    await screen.findByTestId("chart-chart-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "More timeframes" }));
+    const menu = screen.getByRole("dialog", { name: "Timeframes" });
+    fireEvent.change(within(menu).getByLabelText("Custom"), {
+      target: { value: "2" },
+    });
+    fireEvent.change(within(menu).getByLabelText("Unit"), {
+      target: { value: "hours" },
+    });
+    fireEvent.click(within(menu).getByRole("button", { name: "Apply" }));
+
+    await screen.findByRole("region", { name: /Chart 1: .* 120m/ });
+    expect(savedLayout(storage).charts[0].timeframe).toBe("120m");
+    expect(api.barsCalls.at(-1)?.timeframe).toBe("120m");
+    // Not a favorite, but shown while it is the chart's timeframe.
+    const group = screen.getByRole("group", { name: "Timeframe" });
+    expect(within(group).getByRole("button", { name: "2h" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("rejects a custom timeframe longer than 16 hours", async () => {
+    render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: "More timeframes" }));
+    const menu = screen.getByRole("dialog", { name: "Timeframes" });
+    fireEvent.change(within(menu).getByLabelText("Custom"), {
+      target: { value: "17" },
+    });
+    fireEvent.change(within(menu).getByLabelText("Unit"), {
+      target: { value: "hours" },
+    });
+    fireEvent.click(within(menu).getByRole("button", { name: "Apply" }));
+    expect(within(menu).getByRole("alert")).toHaveTextContent("16 hours");
   });
 });

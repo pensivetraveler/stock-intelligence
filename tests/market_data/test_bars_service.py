@@ -119,3 +119,31 @@ def test_one_minute_queries_pass_through_unchanged(
     direct = FakeMarketDataProvider(document, now=lambda: NOW).get_bars(query("1m", 10))
 
     assert service(document).get_bars(query("1m", 10)) == direct
+
+
+def test_any_minute_timeframe_is_aggregated_by_session_buckets(
+    synthetic_document: SyntheticDocument,
+) -> None:
+    three = service(synthetic_document(9)).get_bars(query("3m", 9))
+    validate_document(three.to_document())
+    assert [bar["interval_start_utc"][11:16] for bar in three.bars] == [
+        "13:30",
+        "13:33",
+        "13:36",
+    ]
+    assert three.coverage["dataset_revision"].startswith("fake-aapl-20261009-r1:agg:3m:")
+
+    # 120m over the regular session: 13:30, 15:30, 17:30, and 19:30 capped at the close.
+    two_hours = service(synthetic_document(390)).get_bars(query("120m", 390))
+    validate_document(two_hours.to_document())
+    assert [
+        (bar["interval_start_utc"][11:16], bar["interval_end_utc"][11:16]) for bar in two_hours.bars
+    ] == [("13:30", "15:30"), ("15:30", "17:30"), ("17:30", "19:30"), ("19:30", "20:00")]
+
+
+@pytest.mark.parametrize("timeframe", ["1h", "0m", "961m", "1d", "05m"])
+def test_unsupported_timeframes_are_rejected(
+    synthetic_document: SyntheticDocument, timeframe: str
+) -> None:
+    with pytest.raises(InvalidBarsQueryError, match="timeframe must be"):
+        service(synthetic_document(30)).get_bars(query(timeframe, 30))
