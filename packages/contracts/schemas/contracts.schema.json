@@ -234,10 +234,10 @@
           ],
           "properties": {
             "kind": {
-              "enum": ["provider", "aggregated_1m"]
+              "enum": ["provider", "aggregated_1m", "aggregated_1d"]
             },
             "source_timeframe": {
-              "const": "1m"
+              "enum": ["1m", "1d"]
             },
             "expected_source_bar_count": {
               "type": "integer",

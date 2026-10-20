@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   customTimeframe,
+  dailyRange,
   DEFAULT_FAVORITES,
   FAVORITES_STORAGE_KEY,
   loadFavorites,
@@ -59,5 +60,29 @@ describe("timeframes", () => {
     expect(sessionsForCandles("1m", "extended")).toBe(2); // 960 a day
     expect(sessionsForCandles("5m", "regular")).toBe(16); // 78 a day
     expect(sessionsForCandles("60m", "regular")).toBe(60); // 7 a day: capped
+  });
+});
+
+describe("daily and weekly timeframes", () => {
+  it("labels, orders and steps daily and weekly bars", () => {
+    expect(timeframeLabel("1d")).toBe("1D");
+    expect(timeframeLabel("1w")).toBe("1W");
+    expect(normalizeFavorites(["1w", "1m", "1d", "240m"])).toEqual([
+      "1m",
+      "240m",
+      "1d",
+      "1w",
+    ]);
+    expect(sessionsForCandles("1d", "regular")).toBe(1);
+  });
+
+  it("asks for about 1,200 sessions ending with the chosen day", () => {
+    expect(dailyRange("1d", "2026-10-09")).toEqual({
+      startUtc: "2022-01-04T00:00:00Z",
+      endUtc: "2026-10-10T00:00:00Z",
+    });
+    expect(dailyRange("1w", "2026-10-09").startUtc).toBe(
+      "2003-10-10T00:00:00Z",
+    );
   });
 });

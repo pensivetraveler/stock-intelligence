@@ -117,10 +117,16 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
             expected != 1 or observed != 1 or lineage["source_dataset_revision"] is not None
         ):
             errors.append("provider lineage must represent one direct source bar")
-        if lineage["kind"] == "aggregated_1m" and (
-            document["timeframe"] == "1m" or lineage["source_dataset_revision"] is None
+        if lineage["kind"] in ("aggregated_1m", "aggregated_1d") and (
+            document["timeframe"] == lineage["source_timeframe"]
+            or lineage["source_dataset_revision"] is None
         ):
             errors.append("aggregated lineage requires a derived timeframe and source revision")
+        expected_source = {"aggregated_1m": "1m", "aggregated_1d": "1d"}.get(lineage["kind"])
+        if expected_source is not None and lineage["source_timeframe"] != expected_source:
+            errors.append(f"{lineage['kind']} lineage must come from {expected_source} bars")
+        if lineage["kind"] == "provider" and lineage["source_timeframe"] != document["timeframe"]:
+            errors.append("provider lineage must name the bar's own timeframe as its source")
 
     if kind == "manual_execution":
         start = _utc(document["selected_interval_start_utc"])

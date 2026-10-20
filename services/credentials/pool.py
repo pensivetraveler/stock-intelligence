@@ -13,12 +13,14 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 
 from services.credentials.store import CredentialRecord, SecretStorageError
+from services.market_data.daily import DailyBarsProvider
 from services.market_data.provider import (
     BarsQuery,
     BarsResult,
+    InvalidBarsQueryError,
     MarketDataError,
     MarketDataProvider,
     ProviderAuthError,
@@ -97,6 +99,14 @@ class PooledProvider:
             return report
 
     def get_bars(self, query: BarsQuery) -> BarsResult:
+        return self._call(lambda adapter: adapter.get_bars(query))
+
+    def get_daily_bars(self, query: BarsQuery) -> BarsResult:
+        if not isinstance(self._listing, DailyBarsProvider):
+            raise InvalidBarsQueryError(f"{self.provider} does not offer daily bars yet")
+        return self._call(lambda adapter: cast(DailyBarsProvider, adapter).get_daily_bars(query))
+
+    def _call(self, request: Callable[[MarketDataProvider], BarsResult]) -> BarsResult:
         candidates = self._candidates()
         if not candidates:
             raise ProviderAuthError(
@@ -110,7 +120,7 @@ class PooledProvider:
                     continue
             tried += 1
             try:
-                result = adapter.get_bars(query)
+                result = request(adapter)
             except ProviderRateLimitError as exc:
                 with self._lock:
                     status.state = "cooling"

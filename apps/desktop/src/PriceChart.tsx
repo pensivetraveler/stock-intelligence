@@ -40,6 +40,8 @@ interface PriceChartProps {
   logScale?: boolean;
   /** Changing this number fits all bars into view again. */
   fitRequest?: number;
+  /** Daily or weekly bars: the time axis shows dates, not clock times. */
+  daily?: boolean;
   /** Bars are fitted into view when this changes (a new chart, not a replay step). */
   fitKey?: string;
   /** Indicators to draw: price overlays on the candles, others in panes below. */
@@ -55,6 +57,18 @@ interface PriceChartProps {
   /** False while clicks must reach the candles (e.g. picking a replay start). */
   drawingsSelectable?: boolean;
 }
+
+const DAY_TICK = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  month: "short",
+  day: "numeric",
+});
+const DAY_LABEL = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 
 /** Bars in view when a chart first loads; the rest of the history is scrollable. */
 const INITIAL_VISIBLE_BARS = 150;
@@ -77,6 +91,7 @@ export function PriceChart({
   fitRequest = 0,
   indicators = [],
   fitKey = "",
+  daily = false,
   drawings = [],
   tool = "cursor",
   instrumentId = "",
@@ -129,10 +144,15 @@ export function PriceChart({
         timeVisible: true,
         secondsVisible: false,
         tickMarkFormatter: (time: Time) =>
-          exchangeTime(timeOf(time)).replace(" ET", ""),
+          dailyRef.current
+            ? DAY_TICK.format(new Date(timeOf(time) * 1000))
+            : exchangeTime(timeOf(time)).replace(" ET", ""),
       },
       localization: {
-        timeFormatter: (time: Time) => exchangeTime(timeOf(time)),
+        timeFormatter: (time: Time) =>
+          dailyRef.current
+            ? DAY_LABEL.format(new Date(timeOf(time) * 1000))
+            : exchangeTime(timeOf(time)),
       },
     });
     const candlesApi = instance.addSeries(CandlestickSeries, {
@@ -220,6 +240,8 @@ export function PriceChart({
     };
   }, [chartId, sync]);
 
+  const dailyRef = useRef(daily);
+  dailyRef.current = daily;
   const shownCount = useRef(0);
   const shownFirst = useRef<number | null>(null);
 

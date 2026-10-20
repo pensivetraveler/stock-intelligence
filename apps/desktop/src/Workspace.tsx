@@ -19,6 +19,7 @@ import type { DrawingTool } from "./drawings";
 import { IndicatorDialog } from "./IndicatorDialog";
 import { TimeframePicker } from "./TimeframePicker";
 import {
+  isDailyTimeframe,
   loadFavorites,
   normalizeFavorites,
   saveFavorites,
@@ -1020,6 +1021,13 @@ export function Workspace({
                 type="button"
                 className="tb-button"
                 aria-pressed={value === activeConfig.sessionScope}
+                // Daily and weekly bars always cover the regular session.
+                disabled={isDailyTimeframe(activeConfig.timeframe)}
+                title={
+                  isDailyTimeframe(activeConfig.timeframe)
+                    ? t("tf.dailyHours")
+                    : undefined
+                }
                 onClick={() => updateActive({ sessionScope: value })}
               >
                 {t(value === "regular" ? "chart.regular" : "chart.extended")}

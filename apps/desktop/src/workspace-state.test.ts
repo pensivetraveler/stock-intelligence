@@ -104,7 +104,7 @@ describe("workspace persistence", () => {
       JSON.stringify({
         ...DEFAULT_WORKSPACE,
         charts: [
-          { ...DEFAULT_WORKSPACE.charts[0], timeframe: "1d" },
+          { ...DEFAULT_WORKSPACE.charts[0], timeframe: "2d" },
           DEFAULT_WORKSPACE.charts[1],
         ],
       }),

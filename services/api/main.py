@@ -330,7 +330,7 @@ def create_app(
         instrument_id: Annotated[str, Query(min_length=1, max_length=200)],
         start_utc: Annotated[datetime, Query()],
         end_utc: Annotated[datetime, Query()],
-        timeframe: Annotated[str, Query(pattern=r"^[1-9][0-9]{0,2}m$")] = "1m",
+        timeframe: Annotated[str, Query(pattern=r"^([1-9][0-9]{0,2}m|1d|1w)$")] = "1m",
         as_of_utc: Annotated[datetime | None, Query()] = None,
     ) -> Response:
         try:

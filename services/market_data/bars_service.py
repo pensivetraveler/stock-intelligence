@@ -13,6 +13,7 @@ from services.market_data.aggregation import (
     timeframe_minutes,
 )
 from services.market_data.calendar import CalendarError
+from services.market_data.daily import DailyBarsProvider, aggregate_weekly
 from services.market_data.provider import (
     SETTLED_MISSING_REASONS,
     BarsQuery,
@@ -49,9 +50,12 @@ class MarketBarsService:
     def get_bars(self, query: BarsQuery) -> BarsResult:
         if query.timeframe == "1m":
             return self.provider.get_bars(query)
+        if query.timeframe in ("1d", "1w"):
+            return self._daily_or_weekly(query)
         if timeframe_minutes(query.timeframe) is None:
             raise InvalidBarsQueryError(
-                f"timeframe must be 1m or {MIN_AGGREGATE_MINUTES}m to {MAX_AGGREGATE_MINUTES}m"
+                f"timeframe must be 1m, {MIN_AGGREGATE_MINUTES}m to "
+                f"{MAX_AGGREGATE_MINUTES}m, 1d or 1w"
             )
         timeframe: AggregateTimeframe = query.timeframe
         validate_bars_query(query)
@@ -100,6 +104,15 @@ class MarketBarsService:
         result = BarsResult(bars, coverage)
         validate_document(result.to_document())
         return result
+
+    def _daily_or_weekly(self, query: BarsQuery) -> BarsResult:
+        """1d from the provider's daily bars; 1w aggregated from those daily bars."""
+        if not isinstance(self.provider, DailyBarsProvider):
+            raise InvalidBarsQueryError("this data provider does not offer daily bars yet")
+        if query.timeframe == "1d":
+            return self.provider.get_daily_bars(query)
+        daily = self.provider.get_daily_bars(replace(query, timeframe="1d"))
+        return aggregate_weekly(query, daily, self.aggregator.calendar)
 
     def _expected_buckets(
         self, query: BarsQuery, timeframe: AggregateTimeframe

@@ -13,14 +13,22 @@ import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Literal, cast
 
 import httpx
 
 from packages.contracts.validator import validate_document
-from services.market_data.calendar import CalendarError, UsEquityCalendar
+from services.market_data.calendar import NEW_YORK, CalendarError, UsEquityCalendar
+from services.market_data.daily import (
+    DailySource,
+    RawDay,
+    build_daily_result,
+    session_date_of,
+    sessions_in_range,
+    validate_daily_query,
+)
 from services.market_data.provider import (
     BarsQuery,
     BarsResult,
@@ -37,6 +45,8 @@ Feed = Literal["sip", "iex"]
 DEFAULT_DATA_URL = "https://data.alpaca.markets"
 DEFAULT_SYMBOLS = "SPY:ARCX,AAPL:XNAS,MSFT:XNAS"
 MAX_QUERY_MINUTES = 1_440
+# Daily pages: 40 years of sessions even at a 1,000-bar page size.
+DAILY_PAGES = 12
 SYMBOL_PATTERN = re.compile(r"^[A-Z][A-Z0-9.]{0,9}$")
 VENUE_PATTERN = re.compile(r"^[A-Z]{4}$")
 PAGE_LIMIT = 10_000
@@ -283,6 +293,43 @@ class AlpacaMarketDataProvider:
             raise ProviderDataError(f"provider data violates the contract: {exc}") from exc
         return result
 
+    def get_daily_bars(self, query: BarsQuery) -> BarsResult:
+        """Daily bars (Alpaca "1Day", unadjusted) for sessions opening in the range."""
+        now = self._now()
+        validate_daily_query(query, "1d", now)
+        symbol = self._symbols.get(query.instrument_id)
+        if symbol is None:
+            raise InstrumentNotFoundError("instrument is not in SIW_ALPACA_SYMBOLS")
+        try:
+            sessions = sessions_in_range(self._calendar, query.start_utc, query.end_utc)
+        except CalendarError as exc:
+            raise InvalidBarsQueryError(str(exc)) from exc
+        raw: dict[date, RawDay] = {}
+        published_until = now - timedelta(minutes=self.config.publication_delay_minutes)
+        if sessions and sessions[0].regular_open_utc < published_until:
+            start = datetime.combine(sessions[0].session_date, time(0, 0), NEW_YORK)
+            end = min(sessions[-1].regular_close_utc, published_until.replace(microsecond=0))
+            for item in self._fetch_pages(symbol, "1Day", start, end, DAILY_PAGES):
+                try:
+                    day = session_date_of(str(item["t"]))
+                    values = {key: Decimal(str(item[key])) for key in ("o", "h", "l", "c", "v")}
+                except (KeyError, ValueError, ArithmeticError) as exc:
+                    raise ProviderDataError("Alpaca returned a malformed daily bar") from exc
+                if day in raw:
+                    raise ProviderDataError("Alpaca returned two daily bars for one session")
+                raw[day] = RawDay(
+                    day, values["o"], values["h"], values["l"], values["c"], values["v"]
+                )
+        source = DailySource(
+            source_id=self.source_id,
+            feed_scope=f"alpaca-{self.config.feed}",
+            dataset_revision=f"{self.dataset_revision}:1d",
+            adjustment="raw",
+            publication_delay_minutes=self.config.publication_delay_minutes,
+            finality_minutes=self.config.finality_minutes,
+        )
+        return build_daily_result(query, raw, source, self._calendar, now)
+
     def _validate(self, query: BarsQuery) -> None:
         if query.timeframe != "1m":
             raise InvalidBarsQueryError("the Alpaca adapter serves canonical 1m bars")
@@ -296,9 +343,17 @@ class AlpacaMarketDataProvider:
             raise InvalidBarsQueryError("as_of_utc cannot be in the future")
 
     def _fetch(self, symbol: str, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        # Enough pages for a full 1,440-minute range even at small test page sizes.
+        return self._fetch_pages(
+            symbol, "1Min", start, end, MAX_QUERY_MINUTES // self.config.page_limit + 2
+        )
+
+    def _fetch_pages(
+        self, symbol: str, timeframe: str, start: datetime, end: datetime, max_pages: int
+    ) -> list[dict[str, Any]]:
         params: dict[str, str | int] = {
             "symbols": symbol,
-            "timeframe": "1Min",
+            "timeframe": timeframe,
             "start": _utc_text(start),
             "end": _utc_text(end),
             "limit": self.config.page_limit,
@@ -307,8 +362,7 @@ class AlpacaMarketDataProvider:
             "sort": "asc",
         }
         bars: list[dict[str, Any]] = []
-        # Enough pages for a full 1,440-minute range even at small test page sizes.
-        for _page in range(MAX_QUERY_MINUTES // self.config.page_limit + 2):
+        for _page in range(max_pages):
             try:
                 response = self._client.get("/v2/stocks/bars", params=params)
             except httpx.TimeoutException as exc:

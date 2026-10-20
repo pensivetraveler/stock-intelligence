@@ -1165,3 +1165,50 @@ describe("history and timeframes", () => {
     expect(within(menu).getByRole("alert")).toHaveTextContent("16 hours");
   });
 });
+
+describe("daily and weekly charts", () => {
+  it("loads a daily chart in one request and turns the hours toggle off", async () => {
+    const api = fakeApi({ history: true });
+    const storage = memoryStorage();
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        ...DEFAULT_WORKSPACE,
+        charts: [
+          {
+            ...DEFAULT_WORKSPACE.charts[0],
+            timeframe: "1d",
+            indicators: [{ key: "r", type: "rsi", params: { length: 14 } }],
+          },
+          DEFAULT_WORKSPACE.charts[1],
+        ],
+      }),
+    );
+    render(<Workspace api={api} storage={storage} />);
+    await screen.findByRole("region", { name: /Chart 1: .* 1d/ });
+    await waitFor(() => expect(api.barsCalls.length).toBe(1));
+    expect(api.barsCalls[0]).toMatchObject({
+      timeframe: "1d",
+      startUtc: "2022-01-04T00:00:00Z",
+      endUtc: "2026-10-10T00:00:00Z",
+    });
+    // No session-by-session history and no separate warm-up.
+    expect(api.sessionsCalls).toEqual([]);
+
+    const hours = screen.getByRole("group", { name: "Hours" });
+    for (const button of within(hours).getAllByRole("button")) {
+      expect(button).toBeDisabled();
+    }
+  });
+
+  it("offers 1D and 1W in the timeframe menu", async () => {
+    const api = fakeApi();
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: "More timeframes" }));
+    const menu = screen.getByRole("dialog", { name: "Timeframes" });
+    fireEvent.click(within(menu).getByRole("button", { name: "1W" }));
+    await screen.findByRole("region", { name: /Chart 1: .* 1w/ });
+    expect(api.barsCalls.at(-1)?.timeframe).toBe("1w");
+  });
+});

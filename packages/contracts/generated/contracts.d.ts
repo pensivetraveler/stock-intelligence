@@ -60,8 +60,8 @@ export interface PriceBar {
   is_final: boolean;
   quality: "complete" | "partial" | "provisional" | "unknown";
   lineage: {
-    kind: "provider" | "aggregated_1m";
-    source_timeframe: "1m";
+    kind: "provider" | "aggregated_1m" | "aggregated_1d";
+    source_timeframe: "1m" | "1d";
     expected_source_bar_count: number;
     observed_source_bar_count: number;
     source_dataset_revision: Identifier | null;
