@@ -30,7 +30,12 @@ export type StockIntelligenceWorkstationContractsV01 =
   | StockInfo
   | ExchangeRate
   | BrokerMarketCalendar
-  | ResearchTable;
+  | ResearchTable
+  | BrokerOrderExecution
+  | BrokerLedgerResponse
+  | BrokerSyncResult
+  | BrokerAccountSnapshot
+  | BrokerSellableQuantity;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -752,4 +757,166 @@ export interface ResearchTable {
    * @maxItems 2000
    */
   rows: (null | boolean | string)[][];
+}
+/**
+ * An order's execution as reported by a broker API, read on demand and stored append-only. A separate ledger from manual entries and statement imports; never summed with them.
+ */
+export interface BrokerOrderExecution {
+  kind: "broker_order_execution";
+  schema_version: SchemaVersion;
+  execution_id: Identifier;
+  instrument_id: Identifier;
+  symbol: string;
+  side: Side;
+  quantity: NonNegativeDecimalString;
+  price: NonNegativeDecimalString;
+  fees: NonNegativeDecimalString;
+  commission: NonNegativeDecimalString;
+  tax: NonNegativeDecimalString;
+  currency: "USD";
+  executed_at_utc: null | UtcTimestamp;
+  /**
+   * The broker's filledAt for the order: when its last fill happened, as reported. Not a per-fill time.
+   */
+  time_meaning: "reported_last_fill";
+  /**
+   * One record per order: total filled quantity at the average fill price. The broker reports no individual fills.
+   */
+  granularity: "order_aggregate";
+  order_type: string;
+  order_status: string;
+  ordered_at_utc: UtcTimestamp;
+  settlement_date: null | string;
+  broker_id: "toss";
+  broker_account_ref: Identifier;
+  broker_order_id: string;
+  verification_status: "broker_api_reported";
+  synced_at_utc: UtcTimestamp;
+}
+export interface BrokerLedgerResponse {
+  kind: "broker_ledger_response";
+  schema_version: SchemaVersion;
+  ledger: "broker_api";
+  executions: BrokerOrderExecution[];
+  positions: LedgerPosition[];
+}
+/**
+ * What one on-demand sync of closed broker orders stored.
+ */
+export interface BrokerSyncResult {
+  kind: "broker_sync_result";
+  schema_version: SchemaVersion;
+  broker_id: "toss";
+  synced_at_utc: UtcTimestamp;
+  accounts: number;
+  orders_seen: number;
+  stored_new: number;
+  already_stored: number;
+  skipped: {
+    not_filled: number;
+    not_us: number;
+    unknown_instrument: number;
+  };
+  /**
+   * Broker order IDs whose reported execution changed after it was stored; the stored record is kept.
+   */
+  conflicts: string[];
+}
+/**
+ * A broker account view read on demand: holdings, buying power, commission rates and open orders. Account numbers appear only as their last four digits. Nothing here is stored.
+ */
+export interface BrokerAccountSnapshot {
+  kind: "broker_account_snapshot";
+  schema_version: SchemaVersion;
+  broker_id: "toss";
+  observed_at_utc: UtcTimestamp;
+  accounts: {
+    account_ref: Identifier;
+    account_seq: number;
+    account_suffix: null | string;
+    account_type: string;
+    summary: null | {
+      purchase_amount: {
+        krw: null | DecimalString;
+        usd: null | DecimalString;
+      };
+      market_value: {
+        krw: null | DecimalString;
+        usd: null | DecimalString;
+      };
+      profit_loss: {
+        krw: null | DecimalString;
+        usd: null | DecimalString;
+      };
+      profit_loss_rate: null | DecimalString;
+      daily_profit_loss: {
+        krw: null | DecimalString;
+        usd: null | DecimalString;
+      };
+      daily_profit_loss_rate: null | DecimalString;
+    };
+    holdings: {
+      symbol: string;
+      name: null | string;
+      market_country: null | string;
+      currency: null | string;
+      quantity: null | NonNegativeDecimalString;
+      last_price: null | DecimalString;
+      average_purchase_price: null | DecimalString;
+      purchase_amount: null | DecimalString;
+      market_value: null | DecimalString;
+      profit_loss: null | DecimalString;
+      profit_loss_rate: null | DecimalString;
+      daily_profit_loss: null | DecimalString;
+      commission: null | DecimalString;
+      tax: null | DecimalString;
+    }[];
+    buying_power: {
+      usd: null | DecimalString;
+      krw: null | DecimalString;
+    };
+    commission_rates: {
+      market_country: string;
+      rate: null | DecimalString;
+      start_date: null | string;
+      end_date: null | string;
+    }[];
+    open_orders: {
+      broker_order_id: string;
+      symbol: string;
+      side: string;
+      order_type: null | string;
+      status: string;
+      price: null | DecimalString;
+      quantity: null | NonNegativeDecimalString;
+      filled_quantity: null | NonNegativeDecimalString;
+      currency: null | string;
+      ordered_at_utc: null | UtcTimestamp;
+    }[];
+    open_conditional_orders: {
+      conditional_order_id: string;
+      type: string;
+      status: string;
+      symbol: string;
+      quantity: null | NonNegativeDecimalString;
+      expire_date: null | string;
+      created_at_utc: null | UtcTimestamp;
+    }[];
+    /**
+     * Parts of this account that could not be read; the rest is shown.
+     */
+    errors: string[];
+  }[];
+}
+/**
+ * How much of one stock a broker account can sell now, read on demand.
+ */
+export interface BrokerSellableQuantity {
+  kind: "broker_sellable_quantity";
+  schema_version: SchemaVersion;
+  broker_id: "toss";
+  account_ref: Identifier;
+  symbol: string;
+  sellable_quantity: NonNegativeDecimalString;
+  observed_at_utc: UtcTimestamp;
 }

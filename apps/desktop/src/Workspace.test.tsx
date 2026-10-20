@@ -1,5 +1,6 @@
 import type {
   ImportBatch,
+  BrokerOrderExecution,
   ImportedExecution,
   ImportedLedgerResponse,
   ImportPreviewResponse,
@@ -88,6 +89,7 @@ function fakeApi(
   }[] = [];
   const manual: ManualExecution[] = [];
   const imported: ImportedExecution[] = [];
+  const broker: BrokerOrderExecution[] = [];
   const scenarios: ScenarioDefinition[] = [];
   const off = () =>
     Promise.reject(
@@ -328,6 +330,105 @@ function fakeApi(
             positions: [],
             batches: [],
           }),
+    brokerLedger: () =>
+      options.journalOff
+        ? off()
+        : Promise.resolve({
+            kind: "broker_ledger_response",
+            schema_version: "0.1",
+            ledger: "broker_api",
+            executions: broker,
+            positions: [],
+          }),
+    brokerAccount: () =>
+      Promise.resolve({
+        kind: "broker_account_snapshot",
+        schema_version: "0.1",
+        broker_id: "toss",
+        observed_at_utc: "2026-10-20T13:00:00Z",
+        accounts: [
+          {
+            account_ref: "toss-abc-1",
+            account_seq: 1,
+            account_suffix: "8901",
+            account_type: "BROKERAGE",
+            summary: null,
+            holdings: [
+              {
+                symbol: "AAPL",
+                name: "Apple Inc.",
+                market_country: "US",
+                currency: "USD",
+                quantity: "10",
+                last_price: "178.5",
+                average_purchase_price: "155.3",
+                purchase_amount: "1553",
+                market_value: "1785",
+                profit_loss: "232",
+                profit_loss_rate: "0.1494",
+                daily_profit_loss: "25",
+                commission: "3.57",
+                tax: "10",
+              },
+            ],
+            buying_power: { usd: "5000.5", krw: null },
+            commission_rates: [],
+            open_orders: [],
+            open_conditional_orders: [],
+            errors: [],
+          },
+        ],
+      }),
+    sellableQuantity: (accountSeq, symbol) =>
+      Promise.resolve({
+        kind: "broker_sellable_quantity",
+        schema_version: "0.1",
+        broker_id: "toss",
+        account_ref: `toss-abc-${accountSeq}`,
+        symbol,
+        sellable_quantity: "7",
+        observed_at_utc: "2026-10-20T13:00:00Z",
+      }),
+    syncBroker: () => {
+      broker.push({
+        kind: "broker_order_execution",
+        schema_version: "0.1",
+        execution_id: "toss-exec-1",
+        instrument_id: "us:aapl:xnas:2026",
+        symbol: "AAPL",
+        side: "buy",
+        quantity: "10",
+        price: "250.10",
+        fees: "0.25",
+        commission: "0.25",
+        tax: "0",
+        currency: "USD",
+        executed_at_utc: "2026-10-16T13:30:05Z",
+        time_meaning: "reported_last_fill",
+        granularity: "order_aggregate",
+        order_type: "LIMIT",
+        order_status: "FILLED",
+        ordered_at_utc: "2026-10-16T13:30:01Z",
+        settlement_date: "2026-10-19",
+        broker_id: "toss",
+        broker_account_ref: "toss-abc-1",
+        broker_order_id: "o-aapl",
+        verification_status: "broker_api_reported",
+        synced_at_utc: "2026-10-20T13:00:00Z",
+      });
+      return Promise.resolve({
+        kind: "broker_sync_result",
+        schema_version: "0.1",
+        broker_id: "toss",
+        synced_at_utc: "2026-10-20T13:00:00Z",
+        accounts: 1,
+        orders_seen: 2,
+        stored_new: 1,
+        already_stored: 0,
+        skipped: { not_filled: 1, not_us: 0, unknown_instrument: 0 },
+        conflicts: [],
+      });
+    },
     previewImport: () =>
       Promise.resolve(
         fixture<ImportPreviewResponse>("import-preview-response.json"),
@@ -898,6 +999,31 @@ describe("chart workspace", () => {
     await waitFor(() =>
       expect(api.researchCalls.at(-1)?.params.until).toBe("2026-10-16"),
     );
+  });
+
+  it("shows the Toss account read-only and syncs fills into the journal", async () => {
+    render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: "Account" }));
+    const panel = await screen.findByRole("region", { name: "Toss account" });
+    expect(
+      await within(panel).findByText("Account ****8901 (BROKERAGE)"),
+    ).toBeVisible();
+    expect(within(panel).getByText(/Read-only/)).toBeVisible();
+    fireEvent.click(within(panel).getByRole("button", { name: "Check" }));
+    expect(await within(panel).findByText("7")).toBeVisible();
+
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Sync fills to the journal" }),
+    );
+    expect(await within(panel).findByRole("status")).toHaveTextContent(
+      "1 new, 0 already stored, 1 without fills",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Trade journal" }));
+    const heading = await screen.findByText("Broker API executions (Toss)");
+    const ledger = heading.closest(".ledger") as HTMLElement;
+    expect(await within(ledger).findByText("250.10")).toBeVisible();
+    expect(within(ledger).getByText("0.25")).toBeVisible();
   });
 
   it("shows the latest bar in the legend", async () => {

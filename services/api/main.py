@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 from uuid import uuid4
 
 from fastapi import FastAPI, Query, Request
@@ -24,6 +24,7 @@ from services.api.credential_routes import register_credential_routes
 from services.api.journal_routes import register_import_routes, register_journal_routes
 from services.credentials.pool import PooledProvider
 from services.credentials.store import CredentialStore, KeyringSecretBackend, SecretStorageError
+from services.journal.ledger import manual_positions
 from services.journal.store import JournalStore
 from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
@@ -51,6 +52,11 @@ from services.market_data.symbol_directory import (
     SymbolDirectory,
     SymbolDirectoryUnavailableError,
     SymbolEntry,
+)
+from services.market_data.toss_account import (
+    account_snapshot,
+    sellable_quantity,
+    sync_executions,
 )
 from services.market_data.toss_info import (
     exchange_rate,
@@ -436,6 +442,71 @@ def create_app(
         return toss_read(
             request, lambda session: market_calendar(session, market, day, local, clock)
         )
+
+    def instrument_for(symbol: str) -> str | None:
+        """Instrument ID of a US ticker: configured instruments first, then the directory."""
+        for item in provider.get().instruments():
+            if item["instrument"]["symbol"].upper() == symbol:
+                return cast(str, item["instrument"]["instrument_id"])
+        for instrument_id, entry in symbols.known().items():
+            if entry.symbol == symbol:
+                return instrument_id
+        return None
+
+    @application.get("/v1/brokers/toss/account", response_model=None)
+    def toss_account_endpoint(request: Request) -> Response:
+        """Holdings, buying power, commission rates and open orders of every Toss account."""
+        return toss_read(request, lambda session: account_snapshot(session, clock))
+
+    @application.get("/v1/brokers/toss/sellable", response_model=None)
+    def toss_sellable_endpoint(
+        request: Request,
+        account_seq: Annotated[int, Query(ge=1, le=1000)],
+        symbol: Annotated[str, Query(pattern=r"^[A-Za-z0-9.\-]{1,32}$")],
+    ) -> Response:
+        return toss_read(
+            request,
+            lambda session: sellable_quantity(session, account_seq, symbol.upper(), clock),
+        )
+
+    @application.post("/v1/brokers/toss/sync", response_model=None)
+    def toss_sync_endpoint(request: Request) -> Response:
+        """Store the executions of closed, filled US orders in the broker ledger."""
+        store = journal.get()
+        if store is None:
+            return _error_response(
+                request,
+                503,
+                "journal_storage_unconfigured",
+                "set SIW_DATA_DIR to keep the broker ledger",
+            )
+        return toss_read(
+            request, lambda session: sync_executions(session, store, instrument_for, clock)
+        )
+
+    @application.get("/v1/trades/broker", response_model=None)
+    def broker_ledger(
+        request: Request,
+        instrument_id: Annotated[str | None, Query(max_length=200)] = None,
+    ) -> Response:
+        store = journal.get()
+        if store is None:
+            return _error_response(
+                request,
+                503,
+                "journal_storage_unconfigured",
+                "set SIW_DATA_DIR to keep the broker ledger",
+            )
+        executions = store.broker_executions(instrument_id)
+        document = {
+            "kind": "broker_ledger_response",
+            "schema_version": "0.1",
+            "ledger": "broker_api",
+            "executions": executions,
+            "positions": manual_positions(executions),
+        }
+        validate_document(document)
+        return JSONResponse(content=document)
 
     @application.get("/v1/research/{dataset}", response_model=None)
     def research_endpoint(

@@ -1,6 +1,6 @@
 # ADR 0017 — Toss data through one shared read-only session
 
-- **Status:** accepted. Stages 1–4 are implemented; stages 5–6 and full Korean-market support are planned.
+- **Status:** accepted. Stages 1–5 are implemented (stage 5: ADR 0018); stage 6 and full Korean-market support are planned.
 - **Date:** 2026-10-20
 
 ## Context
@@ -62,7 +62,6 @@ On 2026-10-20 the user decided:
 
 ## Planned stages
 
-5. Account (read-only): accounts, holdings, orders and conditional-order history, buying power, sellable quantity and commissions. Filled orders go into the broker-confirmed ledger with provenance.
 6. Realtime WebSocket: trade ticks (stored apart from minute bars), the order book, and personal order events.
 
 - Korean stocks with full charts: a KRX calendar, KRW and Korean sessions.

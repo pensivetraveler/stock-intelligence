@@ -1,4 +1,5 @@
 import type {
+  BrokerLedgerResponse,
   ImportedLedgerResponse,
   ManualLedgerResponse,
   ScenarioLedgerResponse,
@@ -11,18 +12,21 @@ import { MARKER_COLORS } from "./journal-markers";
 interface JournalPanelProps {
   manual: ManualLedgerResponse | null;
   imported: ImportedLedgerResponse | null;
+  broker: BrokerLedgerResponse | null;
   scenarios: ScenarioLedgerResponse | null;
   error: string | null;
   symbolOf: (instrumentId: string) => string;
 }
 
 /**
- * Three ledgers side by side and never summed: manual entries, statement imports (both
- * actual fills, possibly of the same trades) and hypothetical scenarios.
+ * Four ledgers side by side and never summed: manual entries, statement imports and
+ * broker-API executions (all actual fills, possibly of the same trades) and hypothetical
+ * scenarios.
  */
 export function JournalPanel({
   manual,
   imported,
+  broker,
   scenarios,
   error,
   symbolOf,
@@ -159,6 +163,65 @@ export function JournalPanel({
             ) : (
               <tr>
                 <td colSpan={6}>{t("journal.noImported")}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="ledger">
+        <h2>
+          <span
+            className="swatch"
+            style={{ background: MARKER_COLORS.broker }}
+          />{" "}
+          {t("journal.brokerTitle")}
+        </h2>
+        <p className="workspace-note">{t("journal.brokerNote")}</p>
+        {broker && broker.positions.length > 0 ? (
+          <ul className="ledger-summary">
+            {broker.positions.map((position) => (
+              <li key={position.instrument_id}>
+                {t("journal.position", {
+                  symbol: symbolOf(position.instrument_id),
+                  pnl: position.realized_pnl,
+                  fees: position.fees,
+                  open: position.open_quantity,
+                })}
+                {position.average_cost ? ` @ ${position.average_cost}` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <table>
+          <thead>
+            <tr>
+              <th>{t("journal.symbol")}</th>
+              <th>{t("journal.side")}</th>
+              <th>{t("journal.qty")}</th>
+              <th>{t("journal.avgPrice")}</th>
+              <th>{t("journal.lastFill")}</th>
+              <th>{t("journal.fees")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {broker?.executions.length ? (
+              broker.executions.map((item) => (
+                <tr key={item.execution_id}>
+                  <td>{item.symbol}</td>
+                  <td>{item.side}</td>
+                  <td>{item.quantity}</td>
+                  <td>{item.price}</td>
+                  <td>
+                    {item.executed_at_utc
+                      ? exchangeTime(item.executed_at_utc)
+                      : t("journal.unknownTime")}
+                  </td>
+                  <td>{item.fees}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6}>{t("journal.noBroker")}</td>
               </tr>
             )}
           </tbody>

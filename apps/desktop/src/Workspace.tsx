@@ -1,4 +1,5 @@
 import type {
+  BrokerLedgerResponse,
   ImportedLedgerResponse,
   ManualLedgerResponse,
   ScenarioLedgerResponse,
@@ -51,6 +52,7 @@ import {
   QuoteIcon,
   InfoIcon,
   ResearchIcon,
+  AccountIcon,
   LayoutIcon,
   LogScaleIcon,
   MagnetIcon,
@@ -73,6 +75,7 @@ import {
 } from "./added-instruments";
 import { ImportPanel } from "./ImportPanel";
 import { QuotePanel } from "./QuotePanel";
+import { AccountPanel } from "./AccountPanel";
 import { ResearchPanel } from "./ResearchPanel";
 import { StockInfoPanel } from "./StockInfoPanel";
 import { JournalPanel } from "./JournalPanel";
@@ -115,7 +118,8 @@ interface WorkspaceProps {
   keysPanel?: ReactNode;
 }
 
-type Panel = "watchlist" | "quote" | "info" | "research" | "journal" | "keys";
+type Panel =
+  "watchlist" | "quote" | "info" | "research" | "account" | "journal" | "keys";
 
 /** Per-chart view options that are not part of the saved layout. */
 interface ChartTools {
@@ -367,10 +371,17 @@ export function Workspace({
   const [ledgers, setLedgers] = useState<{
     manual: ManualLedgerResponse | null;
     imported: ImportedLedgerResponse | null;
+    broker: BrokerLedgerResponse | null;
     scenarios: ScenarioLedgerResponse | null;
     // Kept raw and worded at render time, in the current language.
     error: { cause: unknown } | null;
-  }>({ manual: null, imported: null, scenarios: null, error: null });
+  }>({
+    manual: null,
+    imported: null,
+    broker: null,
+    scenarios: null,
+    error: null,
+  });
   const active = activeWorkspace(library);
   const layout = active.layout;
   const [sync] = useState(() => new ChartSyncGroup(layout.syncTimeRange));
@@ -408,15 +419,17 @@ export function Workspace({
     Promise.all([
       api.manualLedger(),
       api.importedLedger(),
+      api.brokerLedger(),
       api.scenarioLedger(),
     ])
-      .then(([manual, imported, scenarios]) =>
-        setLedgers({ manual, imported, scenarios, error: null }),
+      .then(([manual, imported, broker, scenarios]) =>
+        setLedgers({ manual, imported, broker, scenarios, error: null }),
       )
       .catch((error: unknown) =>
         setLedgers({
           manual: null,
           imported: null,
+          broker: null,
           scenarios: null,
           error: { cause: error },
         }),
@@ -1303,11 +1316,15 @@ export function Workspace({
             />
           ) : null}
           {panel === "research" ? <ResearchPanel api={api} /> : null}
+          {panel === "account" ? (
+            <AccountPanel api={api} onSynced={refreshJournal} />
+          ) : null}
           {panel === "journal" ? (
             <>
               <JournalPanel
                 manual={ledgers.manual}
                 imported={ledgers.imported}
+                broker={ledgers.broker}
                 scenarios={ledgers.scenarios}
                 error={journalError}
                 symbolOf={symbolOf}
@@ -1328,6 +1345,7 @@ export function Workspace({
             ["quote", QuoteIcon],
             ["info", InfoIcon],
             ["research", ResearchIcon],
+            ["account", AccountIcon],
             ["journal", JournalIcon],
             ...(keysPanel ? ([["keys", KeyIcon]] as const) : []),
           ] as const

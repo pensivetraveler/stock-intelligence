@@ -31,3 +31,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0015-daily-bar-cache-by-year.md`: 일봉 캐시를 확정된 연도 단위로 저장, 올해는 항상 새로 조회, 리비전 혼합 금지
 - `0016-ticker-search-symbol-directory.md`: 미국 상장 전 종목 티커 검색(Alpaca 자산 목록, 하루 단위 로컬 사본), 검색한 종목 차트·관심종목 추가
 - `0017-toss-direct-integration.md`: 토스 직접 연동(키 1개 공유 세션, 조회 전용 허용목록, 그룹별 호출 한도), 일봉·실시간 시세, 단계 계획
+- `0018-broker-api-execution-ledger.md`: 증권사 API 체결 원장(토스, 주문 1건당 1행·평균가·마지막 체결 시각), 계좌 조회 전용, 계좌번호 끝 4자리

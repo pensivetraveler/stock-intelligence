@@ -131,6 +131,12 @@ export const KeyIcon = () => (
     <path d="M7.2 8.8L14 2M11 5l2 2M12.5 3.5l1.5 1.5" />
   </Icon>
 );
+export const AccountIcon = () => (
+  <Icon>
+    <rect x="2" y="4" width="12" height="9" rx="1.5" />
+    <path d="M2 7h12M5 10.5h2.5" />
+  </Icon>
+);
 export const ResearchIcon = () => (
   <Icon>
     <path d="M2 14h12M4 11V7M7.5 11V4M11 11V8.5" />

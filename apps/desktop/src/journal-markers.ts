@@ -18,6 +18,7 @@ export interface ChartMarker {
 export const MARKER_COLORS = {
   manual: "#4c8dff",
   imported: "#2ec4b6",
+  broker: "#f5a623",
   hypothetical: "#c08bff",
 };
 
