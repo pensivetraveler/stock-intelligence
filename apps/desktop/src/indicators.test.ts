@@ -6,9 +6,11 @@ import {
   INDICATOR_BY_ID,
   INDICATORS,
   parseIndicators,
+  renderIndicators,
   rma,
   sma,
   stdev,
+  warmupBars,
   wma,
   type OhlcvBar,
 } from "./indicators";
@@ -194,5 +196,45 @@ describe("saved indicator settings", () => {
         expect(item.default).toBeLessThanOrEqual(item.max);
       }
     }
+  });
+});
+
+describe("warm-up", () => {
+  const instance = (type: string, params: Record<string, number> = {}) => {
+    const definition = INDICATOR_BY_ID.get(type);
+    if (!definition) throw new Error(type);
+    return {
+      key: type,
+      type,
+      params: { ...defaultParams(definition), ...params },
+    };
+  };
+
+  it("asks for three times the longest look-back, capped", () => {
+    expect(warmupBars([])).toBe(0);
+    expect(warmupBars([instance("rsi")])).toBe(42);
+    expect(warmupBars([instance("rsi"), instance("macd")])).toBe(78);
+    // Ichimoku needs span B's length plus the displacement.
+    expect(warmupBars([instance("ichimoku")])).toBe(3 * (9 + 26 + 52 + 26));
+    // "Bars per year" is a scale, not a look-back.
+    expect(warmupBars([instance("hv")])).toBe(30);
+    expect(warmupBars([instance("vwap")])).toBe(0);
+    expect(warmupBars([instance("sma", { length: 500 })])).toBe(1_000);
+  });
+
+  it("draws only from the first shown bar but keeps warmed-up values", () => {
+    const bars = path(40);
+    const [rendered] = renderIndicators(
+      bars,
+      [instance("sma", { length: 5 })],
+      30,
+    );
+    const line = rendered.lines[0];
+    expect(line.data[0].time).toBe(bars[30].time);
+    expect(line.data).toHaveLength(10);
+    // The first drawn value already averages five earlier bars.
+    expect(rendered.values.value[30]).toBeCloseTo(
+      bars.slice(26, 31).reduce((total, bar) => total + bar.close, 0) / 5,
+    );
   });
 });

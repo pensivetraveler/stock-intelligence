@@ -1005,3 +1005,36 @@ describe("replay", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("indicator warm-up", () => {
+  it("loads earlier sessions only when the chart has indicators", async () => {
+    const plain = fakeApi();
+    const { unmount } = render(
+      <Workspace api={plain} storage={memoryStorage()} />,
+    );
+    await screen.findByTestId("chart-chart-1");
+    await waitFor(() => expect(plain.barsCalls.length).toBeGreaterThan(0));
+    const plainCalls = plain.barsCalls.length;
+    unmount();
+
+    const storage = memoryStorage();
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        ...DEFAULT_WORKSPACE,
+        charts: [
+          {
+            ...DEFAULT_WORKSPACE.charts[0],
+            indicators: [{ key: "r", type: "rsi", params: { length: 14 } }],
+          },
+          DEFAULT_WORKSPACE.charts[1],
+        ],
+      }),
+    );
+    const withRsi = fakeApi();
+    render(<Workspace api={withRsi} storage={storage} />);
+    await screen.findByTestId("chart-chart-1");
+    // Each fake session has one bar, so the chart looks back through ten sessions.
+    await waitFor(() => expect(withRsi.barsCalls.length).toBe(plainCalls + 10));
+  });
+});
