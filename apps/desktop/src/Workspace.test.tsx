@@ -94,6 +94,82 @@ function fakeApi(
         fixture<MarketInstrumentsResponse>("market-instruments-response.json")
           .instruments,
       ),
+    stockInfo: (instrumentId) =>
+      Promise.resolve({
+        kind: "stock_info",
+        schema_version: "0.1",
+        instrument_id: instrumentId,
+        symbol: "SYNTH",
+        source_id: "toss-us",
+        observed_at_utc: "2026-10-20T15:00:00Z",
+        name: "신스",
+        english_name: "Synth Corp",
+        isin: "US0000000001",
+        market: "NASDAQ",
+        security_type: "STOCK",
+        is_common_share: true,
+        status: "ACTIVE",
+        currency: "USD",
+        list_date: "2001-01-02",
+        delist_date: null,
+        shares_outstanding: "1000000",
+        leverage_factor: null,
+        warnings: [
+          {
+            type: "VI_STATIC",
+            exchange: "NASDAQ",
+            start_date: "2026-10-20",
+            end_date: null,
+          },
+        ],
+      }),
+    exchangeRate: () =>
+      Promise.resolve({
+        kind: "exchange_rate",
+        schema_version: "0.1",
+        source_id: "toss-us",
+        observed_at_utc: "2026-10-20T15:00:00Z",
+        base_currency: "USD",
+        quote_currency: "KRW",
+        rate: "1331.27",
+        mid_rate: "1330.77",
+        basis_point: "4",
+        change: "DOWN",
+        valid_from_utc: "2026-10-20T11:21:52Z",
+        valid_until_utc: "2026-10-20T11:26:51Z",
+      }),
+    brokerCalendar: () =>
+      Promise.resolve({
+        kind: "broker_market_calendar",
+        schema_version: "0.1",
+        source_id: "toss-us",
+        market: "US",
+        observed_at_utc: "2026-10-20T15:00:00Z",
+        days: [
+          {
+            role: "today",
+            date: "2026-10-20",
+            sessions: [
+              {
+                name: "regular",
+                start_utc: "2026-10-20T13:30:00Z",
+                end_utc: "2026-10-20T20:00:00Z",
+                local_start_utc: "2026-10-20T13:30:00Z",
+                local_end_utc: "2026-10-20T20:00:00Z",
+                agrees: true,
+              },
+              {
+                name: "after_market",
+                start_utc: "2026-10-20T20:00:00Z",
+                end_utc: "2026-10-20T23:50:00Z",
+                local_start_utc: "2026-10-20T20:00:00Z",
+                local_end_utc: "2026-10-21T00:00:00Z",
+                agrees: false,
+              },
+            ],
+          },
+        ],
+      }),
     liveQuote: (instrumentId) =>
       Promise.resolve({
         kind: "market_quote",
@@ -126,6 +202,7 @@ function fakeApi(
           ? [
               {
                 name: "NVIDIA Corporation Common Stock",
+                local_name: "엔비디아",
                 listing: {
                   instrument: {
                     kind: "instrument_ref",
@@ -745,6 +822,19 @@ describe("chart workspace", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "register an enabled real-account Toss key",
     );
+  });
+
+  it("shows stock info, the reference rate and market-hour differences", async () => {
+    render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: "Stock info" }));
+    const panel = await screen.findByRole("region", { name: "Stock info" });
+    expect(await within(panel).findByText("신스 (Synth Corp)")).toBeVisible();
+    expect(within(panel).getByText("VI_STATIC")).toBeVisible();
+    expect(
+      within(panel).getByText(/USD\/KRW reference rate 1331.27/),
+    ).toBeVisible();
+    expect(within(panel).getByText("Charts use 16:00 – 20:00")).toBeVisible();
   });
 
   it("shows the latest bar in the legend", async () => {

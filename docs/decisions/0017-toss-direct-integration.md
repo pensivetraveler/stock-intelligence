@@ -1,6 +1,6 @@
 # ADR 0017 — Toss data through one shared read-only session
 
-- **Status:** accepted. Stages 1 and 2 are implemented; stages 3–6 and full Korean-market support are planned.
+- **Status:** accepted. Stages 1–3 are implemented; stages 4–6 and full Korean-market support are planned.
 - **Date:** 2026-10-20
 
 ## Context
@@ -33,9 +33,22 @@ On 2026-10-20 the user decided:
   - Nothing is stored, and responses are `no-store`.
   - The Live quote panel refreshes every 5 seconds and pauses during replay.
 
+## Stage 3 — stock and market info (implemented 2026-10-20)
+
+- **Stock info:** `GET /v1/market/stock-info` returns the `stock_info` contract. It holds Toss's reference data (Korean and English name, ISIN, Toss market label, security type, status, listing dates, shares outstanding, leverage) and the active buying warnings.
+- **Exchange rate:** `GET /v1/market/exchange-rate` returns the `exchange_rate` contract with Toss's USD/KRW reference rate. It is display only, and real trades may use another rate.
+- **Market hours:** `GET /v1/market/broker-calendar` returns the `broker_market_calendar` contract with Toss's US or KR hours for the previous, current and next business day.
+  - Each US session is compared with the local calendar the charts use.
+  - Live check: Toss's pre-market and regular hours agree with the local calendar. Its after-hours session ends at 19:50 ET instead of 20:00, and the screen shows that difference rather than changing either calendar.
+  - The Toss "day market" (20:00–04:00 ET) has no local counterpart.
+- **Korean names in ticker search:** the symbol directory adds Toss's Korean names (`stocks/all` for NASDAQ, NYSE and AMEX, fetched daily), and `symbol_search_response` results carry `local_name`.
+  - An exact Korean name ranks first, like an exact ticker.
+  - A list saved before names existed is refreshed once per process.
+- **Venues stay Alpaca's:** Toss's US market labels are not listing exchanges. SPY, listed on NYSE Arca, appears under Toss "AMEX", and `US_ETC` holds OTC stocks. Toss therefore never decides the venue in an instrument ID.
+- **Screen:** a "Stock info" panel shows the reference data, warnings, the rate and today's US hours with any differences.
+
 ## Planned stages
 
-3. Stock and market info: the full symbol lists (US and KR), buying warnings, exchange rate and market calendars.
 4. Research: rankings, market indicators, sectors and Korean trading trends.
 5. Account (read-only): accounts, holdings, orders and conditional-order history, buying power, sellable quantity and commissions. Filled orders go into the broker-confirmed ledger with provenance.
 6. Realtime WebSocket: trade ticks (stored apart from minute bars), the order book, and personal order events.

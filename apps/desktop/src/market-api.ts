@@ -1,4 +1,6 @@
 import type {
+  BrokerMarketCalendar,
+  ExchangeRate,
   ImportBatch,
   ImportedLedgerResponse,
   ImportPreviewResponse,
@@ -11,6 +13,7 @@ import type {
   ScenarioLedgerResponse,
   SessionListResponse,
   SessionWindow,
+  StockInfo,
   SymbolSearchResponse,
 } from "@siw/contracts/types";
 
@@ -46,6 +49,12 @@ export interface SessionQuote {
 
 export interface MarketApi {
   instruments(): Promise<InstrumentListing[]>;
+  /** Broker reference data and active buying warnings for one stock. */
+  stockInfo(instrumentId: string): Promise<StockInfo>;
+  /** The broker's USD/KRW reference rate. */
+  exchangeRate(): Promise<ExchangeRate>;
+  /** The broker's market hours around today, compared with the local calendar. */
+  brokerCalendar(market: "US" | "KR"): Promise<BrokerMarketCalendar>;
   /** Live last price, order book, recent trades and price limits from the broker. */
   liveQuote(instrumentId: string): Promise<MarketQuote>;
   /** US-listed stocks whose ticker or company name matches `query`, tickers first. */
@@ -288,6 +297,22 @@ export function createMarketApi(
         "market_instruments_response",
       );
       return response.instruments;
+    },
+    stockInfo(instrumentId) {
+      const params = new URLSearchParams({ instrument_id: instrumentId });
+      return get<StockInfo>(
+        `/v1/market/stock-info?${params.toString()}`,
+        "stock_info",
+      );
+    },
+    exchangeRate() {
+      return get<ExchangeRate>("/v1/market/exchange-rate", "exchange_rate");
+    },
+    brokerCalendar(market) {
+      return get<BrokerMarketCalendar>(
+        `/v1/market/broker-calendar?market=${market}`,
+        "broker_market_calendar",
+      );
     },
     liveQuote(instrumentId) {
       const params = new URLSearchParams({ instrument_id: instrumentId });

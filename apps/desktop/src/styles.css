@@ -1951,3 +1951,18 @@ body {
 .quote-book tr.bid td:first-child {
   color: #f23645;
 }
+
+.info-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 8px 0;
+}
+
+.info-list dt {
+  color: var(--term-muted, #8b93a7);
+}
+
+.info-list dd {
+  margin: 0;
+}

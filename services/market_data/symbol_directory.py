@@ -3,7 +3,8 @@
 The provider's asset list (about 12,000 symbols) is kept in `SIW_DATA_DIR/symbols/` and
 refreshed when it is more than a day old. If a refresh fails, the previous copy is served
 and marked stale, and the next attempt waits a few minutes so a provider outage does not
-turn every keystroke into a request. Search matches tickers first, then company names.
+turn every keystroke into a request. Search matches tickers first, then company names,
+including Korean names when a source of them is given (Toss; see toss_info.korean_names).
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ class SymbolEntry:
     symbol: str
     name: str
     venue: str
+    local_name: str | None = None
 
     @property
     def instrument_id(self) -> str:
@@ -53,14 +55,17 @@ def _utc_text(value: datetime) -> str:
 
 
 def _rank(entry: SymbolEntry, query: str) -> int | None:
+    """0 exact ticker or Korean name, 1 ticker prefix, 2 name word prefix, 3 name match."""
     symbol, name = entry.symbol, entry.name.upper()
-    if symbol == query:
+    local = (entry.local_name or "").upper()
+    if symbol == query or local == query:
         return 0
     if symbol.startswith(query):
         return 1
-    if any(word.startswith(query) for word in name.replace(",", " ").split()):
+    words = name.replace(",", " ").split() + local.split()
+    if any(word.startswith(query) for word in words):
         return 2
-    if query in name:
+    if query in name or query in local:
         return 3
     return None
 
@@ -72,17 +77,22 @@ class SymbolDirectory:
         source_id: str,
         fetch: Callable[[], list[dict[str, str]]],
         *,
+        local_names: Callable[[], dict[str, str]] | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self.path = root / "symbols" / f"{source_id}.json"
         self.source_id = source_id
         self._fetch = fetch
+        self._local_names = local_names
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._lock = threading.Lock()
         self._entries: tuple[SymbolEntry, ...] | None = None
         self._by_id: dict[str, SymbolEntry] = {}
         self._fetched_at: datetime | None = None
         self._failed_at: datetime | None = None
+        # Whether the stored list has Korean names, and whether this process tried to add them.
+        self._has_names = False
+        self._names_tried = False
 
     def search(self, query: str, limit: int = 20) -> SearchResult:
         entries, fetched_at, stale = self._current()
@@ -127,10 +137,13 @@ class SymbolDirectory:
                 self._load()
             now = self._now()
             fresh = self._fetched_at is not None and now - self._fetched_at < MAX_AGE
+            # A list saved without Korean names is refreshed once when a source exists.
+            fresh = fresh and (self._local_names is None or self._has_names or self._names_tried)
             waiting = self._failed_at is not None and now - self._failed_at < RETRY_AFTER_FAILURE
             if not fresh and not waiting:
+                self._names_tried = True
                 try:
-                    self._store(self._fetch(), now)
+                    self._store(self._fetch(), self._names(), now)
                     self._failed_at = None
                 except Exception as exc:
                     self._failed_at = now
@@ -149,17 +162,35 @@ class SymbolDirectory:
             fetched_text = str(document["fetched_at_utc"]).replace("Z", "+00:00")
             fetched_at = datetime.fromisoformat(fetched_text)
             entries = tuple(
-                SymbolEntry(str(item["symbol"]), str(item["name"]), str(item["venue"]))
+                SymbolEntry(
+                    str(item["symbol"]),
+                    str(item["name"]),
+                    str(item["venue"]),
+                    str(item["local_name"]) if item.get("local_name") else None,
+                )
                 for item in document["symbols"]
             )
         except (OSError, ValueError, KeyError, TypeError):
             return  # missing or unreadable: fetched again on the next search
         self._set(entries, fetched_at)
+        self._has_names = bool(document.get("with_local_names"))
 
-    def _store(self, assets: list[dict[str, str]], fetched_at: datetime) -> None:
+    def _names(self) -> dict[str, str]:
+        """Korean names by ticker; the previous ones when the source fails or is absent."""
+        previous = {e.symbol: e.local_name for e in self._entries or () if e.local_name}
+        if self._local_names is None:
+            return previous
+        try:
+            return self._local_names() or previous
+        except Exception:
+            return previous
+
+    def _store(
+        self, assets: list[dict[str, str]], names: dict[str, str], fetched_at: datetime
+    ) -> None:
         unique = {
             (item["symbol"], item["venue"]): SymbolEntry(
-                item["symbol"], item["name"], item["venue"]
+                item["symbol"], item["name"], item["venue"], names.get(item["symbol"])
             )
             for item in assets
         }
@@ -169,8 +200,14 @@ class SymbolDirectory:
         document = {
             "source_id": self.source_id,
             "fetched_at_utc": _utc_text(fetched_at),
+            "with_local_names": bool(names),
             "symbols": [
-                {"symbol": entry.symbol, "name": entry.name, "venue": entry.venue}
+                {
+                    "symbol": entry.symbol,
+                    "name": entry.name,
+                    "venue": entry.venue,
+                    "local_name": entry.local_name,
+                }
                 for entry in entries
             ],
         }
@@ -179,6 +216,7 @@ class SymbolDirectory:
         temporary.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
         os.replace(temporary, self.path)
         self._set(entries, fetched_at)
+        self._has_names = bool(names)
 
     def _set(self, entries: tuple[SymbolEntry, ...], fetched_at: datetime) -> None:
         self._entries = entries

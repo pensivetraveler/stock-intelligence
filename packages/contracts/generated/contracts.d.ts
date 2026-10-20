@@ -26,7 +26,10 @@ export type StockIntelligenceWorkstationContractsV01 =
   | CredentialListResponse
   | SessionListResponse
   | SymbolSearchResponse
-  | MarketQuote;
+  | MarketQuote
+  | StockInfo
+  | ExchangeRate
+  | BrokerMarketCalendar;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -499,6 +502,10 @@ export interface SymbolSearchResponse {
       session_dates: string[];
     };
     name: string;
+    /**
+     * Korean display name from Toss, when a Toss key is registered and Toss has one.
+     */
+    local_name: null | string;
   }[];
 }
 /**
@@ -543,4 +550,161 @@ export interface MarketQuote {
     lower: DecimalString;
     at_utc: UtcTimestamp;
   };
+}
+/**
+ * A broker's reference data for one stock and its active buying warnings, read on demand.
+ */
+export interface StockInfo {
+  kind: "stock_info";
+  schema_version: SchemaVersion;
+  instrument_id: Identifier;
+  symbol: string;
+  source_id: Identifier;
+  observed_at_utc: UtcTimestamp;
+  name: null | string;
+  english_name: null | string;
+  isin: null | string;
+  market: null | string;
+  security_type: null | string;
+  is_common_share: null | boolean;
+  status: null | string;
+  currency: null | string;
+  list_date: null | string;
+  delist_date: null | string;
+  shares_outstanding: null | NonNegativeDecimalString;
+  leverage_factor: null | DecimalString;
+  warnings: {
+    type: string;
+    exchange: null | string;
+    start_date: null | string;
+    end_date: null | string;
+  }[];
+}
+/**
+ * A broker's reference (display) exchange rate for one minute-long window; actual trades may use a different rate.
+ */
+export interface ExchangeRate {
+  kind: "exchange_rate";
+  schema_version: SchemaVersion;
+  source_id: Identifier;
+  observed_at_utc: UtcTimestamp;
+  base_currency: "USD" | "KRW";
+  quote_currency: "USD" | "KRW";
+  rate: NonNegativeDecimalString;
+  mid_rate: null | NonNegativeDecimalString;
+  basis_point: null | DecimalString;
+  change: null | string;
+  valid_from_utc: UtcTimestamp;
+  valid_until_utc: UtcTimestamp;
+}
+/**
+ * A broker's market hours for the previous, current and next business day, compared with the local exchange calendar where one exists. Closed sessions are absent.
+ */
+export interface BrokerMarketCalendar {
+  kind: "broker_market_calendar";
+  schema_version: SchemaVersion;
+  source_id: Identifier;
+  market: "US" | "KR";
+  observed_at_utc: UtcTimestamp;
+  /**
+   * @maxItems 3
+   */
+  days:
+    | []
+    | [
+        {
+          role: "previous" | "today" | "next";
+          date: string;
+          sessions: {
+            name: "day_market" | "pre_market" | "regular" | "after_market";
+            start_utc: UtcTimestamp;
+            end_utc: UtcTimestamp;
+            local_start_utc: null | UtcTimestamp;
+            local_end_utc: null | UtcTimestamp;
+            /**
+             * Whether the local calendar the charts use has the same bounds; null when there is no local session to compare.
+             */
+            agrees: null | boolean;
+          }[];
+        },
+      ]
+    | [
+        {
+          role: "previous" | "today" | "next";
+          date: string;
+          sessions: {
+            name: "day_market" | "pre_market" | "regular" | "after_market";
+            start_utc: UtcTimestamp;
+            end_utc: UtcTimestamp;
+            local_start_utc: null | UtcTimestamp;
+            local_end_utc: null | UtcTimestamp;
+            /**
+             * Whether the local calendar the charts use has the same bounds; null when there is no local session to compare.
+             */
+            agrees: null | boolean;
+          }[];
+        },
+        {
+          role: "previous" | "today" | "next";
+          date: string;
+          sessions: {
+            name: "day_market" | "pre_market" | "regular" | "after_market";
+            start_utc: UtcTimestamp;
+            end_utc: UtcTimestamp;
+            local_start_utc: null | UtcTimestamp;
+            local_end_utc: null | UtcTimestamp;
+            /**
+             * Whether the local calendar the charts use has the same bounds; null when there is no local session to compare.
+             */
+            agrees: null | boolean;
+          }[];
+        },
+      ]
+    | [
+        {
+          role: "previous" | "today" | "next";
+          date: string;
+          sessions: {
+            name: "day_market" | "pre_market" | "regular" | "after_market";
+            start_utc: UtcTimestamp;
+            end_utc: UtcTimestamp;
+            local_start_utc: null | UtcTimestamp;
+            local_end_utc: null | UtcTimestamp;
+            /**
+             * Whether the local calendar the charts use has the same bounds; null when there is no local session to compare.
+             */
+            agrees: null | boolean;
+          }[];
+        },
+        {
+          role: "previous" | "today" | "next";
+          date: string;
+          sessions: {
+            name: "day_market" | "pre_market" | "regular" | "after_market";
+            start_utc: UtcTimestamp;
+            end_utc: UtcTimestamp;
+            local_start_utc: null | UtcTimestamp;
+            local_end_utc: null | UtcTimestamp;
+            /**
+             * Whether the local calendar the charts use has the same bounds; null when there is no local session to compare.
+             */
+            agrees: null | boolean;
+          }[];
+        },
+        {
+          role: "previous" | "today" | "next";
+          date: string;
+          sessions: {
+            name: "day_market" | "pre_market" | "regular" | "after_market";
+            start_utc: UtcTimestamp;
+            end_utc: UtcTimestamp;
+            local_start_utc: null | UtcTimestamp;
+            local_end_utc: null | UtcTimestamp;
+            /**
+             * Whether the local calendar the charts use has the same bounds; null when there is no local session to compare.
+             */
+            agrees: null | boolean;
+          }[];
+        },
+      ];
 }
