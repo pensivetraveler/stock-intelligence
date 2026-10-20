@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import { useI18n } from "./i18n";
 import { MarketApiError, type MarketApi } from "./market-api";
+import type { LiveSymbol } from "./realtime";
 
 const SECOND_TIME = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",
@@ -25,6 +26,9 @@ interface QuotePanelProps {
   symbol: string;
   /** Live data would show the present during a replay of the past, so it pauses. */
   replayOn: boolean;
+  /** Trades and order book pushed by the realtime relay for this symbol. */
+  live?: LiveSymbol | null;
+  liveConnected?: boolean;
 }
 
 /**
@@ -37,6 +41,8 @@ export function QuotePanel({
   instrumentId,
   symbol,
   replayOn,
+  live = null,
+  liveConnected = false,
 }: QuotePanelProps) {
   const { t } = useI18n();
   const [quote, setQuote] = useState<MarketQuote | null>(null);
@@ -80,7 +86,38 @@ export function QuotePanel({
   const unavailable =
     error instanceof MarketApiError &&
     error.code === "quote_source_unavailable";
-  const asks = quote?.orderbook ? [...quote.orderbook.asks].reverse() : [];
+  // Pushed data replaces polled data when it is newer.
+  const liveBook =
+    live?.orderbook &&
+    (!quote?.orderbook ||
+      live.orderbook.exchange_time_utc > quote.orderbook.at_utc)
+      ? live.orderbook
+      : null;
+  const book = liveBook ?? quote?.orderbook ?? null;
+  const asks = book ? [...book.asks].reverse() : [];
+  const newestLive = live?.trades[0];
+  const last =
+    newestLive &&
+    (!quote?.last || newestLive.exchange_time_utc > quote.last.at_utc)
+      ? { price: newestLive.price, at_utc: newestLive.exchange_time_utc }
+      : (quote?.last ?? null);
+  const seen = new Set(
+    (live?.trades ?? []).map(
+      (trade) => `${trade.exchange_time_utc}|${trade.price}|${trade.volume}`,
+    ),
+  );
+  const trades = [
+    ...(live?.trades ?? []).map((trade) => ({
+      price: trade.price,
+      volume: trade.volume,
+      at_utc: trade.exchange_time_utc,
+    })),
+    ...(quote?.trades ?? []).filter(
+      (trade) => !seen.has(`${trade.at_utc}|${trade.price}|${trade.volume}`),
+    ),
+  ]
+    .sort((a, b) => (a.at_utc < b.at_utc ? 1 : -1))
+    .slice(0, 30);
   return (
     <section className="quote-panel" aria-label={t("quote.title")}>
       <h2>
@@ -101,10 +138,12 @@ export function QuotePanel({
       {quote ? (
         <>
           <p className="quote-last">
-            <strong>{quote.last ? quote.last.price : "—"}</strong>{" "}
+            <strong>{last ? last.price : "—"}</strong>{" "}
             <small>
               {quote.currency}
-              {quote.last ? ` · ${at(quote.last.at_utc)}` : ""}
+              {last ? ` · ${at(last.at_utc)}` : ""}
+              {" · "}
+              {liveConnected ? t("quote.live") : t("quote.polling")}
             </small>
           </p>
           {quote.price_limits ? (
@@ -130,7 +169,7 @@ export function QuotePanel({
                   <td>{level.volume}</td>
                 </tr>
               ))}
-              {(quote.orderbook?.bids ?? []).map((level) => (
+              {(book?.bids ?? []).map((level) => (
                 <tr key={`bid-${level.price}`} className="bid">
                   <td>{level.price}</td>
                   <td>{level.volume}</td>
@@ -148,7 +187,7 @@ export function QuotePanel({
               </tr>
             </thead>
             <tbody>
-              {quote.trades.map((trade, index) => (
+              {trades.map((trade, index) => (
                 <tr key={`${trade.at_utc}-${index}`}>
                   <td>{at(trade.at_utc)}</td>
                   <td>{trade.price}</td>

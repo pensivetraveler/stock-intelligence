@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import threading
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Annotated, Literal, cast
 from uuid import uuid4
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi import Path as PathParam
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,6 +54,7 @@ from services.market_data.symbol_directory import (
     SymbolDirectoryUnavailableError,
     SymbolEntry,
 )
+from services.market_data.tick_store import TickStore
 from services.market_data.toss_account import (
     account_snapshot,
     sellable_quantity,
@@ -74,8 +76,12 @@ from services.market_data.toss_session import (
     TossSession,
     session_for,
 )
+from services.market_data.toss_stream import Connect, RealtimeHub, default_connect
 
 APP_NAME = "stock-intelligence-workstation-api"
+REALTIME_SYMBOL = re.compile(r"^[A-Z][A-Z0-9.]{0,9}$")
+MAX_REALTIME_SYMBOLS = 45
+MAX_TICKS_RETURNED = 5_000
 APP_VERSION = "0.4.0-dev"
 API_VERSION = "v1"
 DEFAULT_CORS_ORIGINS = (
@@ -250,12 +256,47 @@ def create_app(
     credential_store: CredentialStore | None = None,
     symbol_directory: SymbolDirectory | None = None,
     toss_session: Callable[[], TossSession | None] | None = None,
+    tick_store: TickStore | None = None,
+    realtime_connect: Connect | None = None,
     clock: Callable[[], datetime] = _utc_now,
 ) -> FastAPI:
     credentials = _LazyCredentials(credential_store)
     provider = _LazyProvider(market_data_provider, credentials.get)
     toss = toss_session or (lambda: _toss_session(credentials.get()))
     symbols = _LazySymbols(symbol_directory, provider, toss)
+    ticks_holder: list[TickStore | None] = [tick_store]
+
+    def ticks() -> TickStore | None:
+        if ticks_holder[0] is None:
+            configured = os.getenv("SIW_DATA_DIR", "").strip()
+            if configured:
+                ticks_holder[0] = TickStore(Path(configured))
+        return ticks_holder[0]
+
+    def instrument_for(symbol: str) -> str | None:
+        """Instrument ID of a US ticker: configured instruments first, then the directory."""
+        for item in provider.get().instruments():
+            if item["instrument"]["symbol"].upper() == symbol:
+                return cast(str, item["instrument"]["instrument_id"])
+        for instrument_id, entry in symbols.known().items():
+            if entry.symbol == symbol:
+                return instrument_id
+        return None
+
+    def sync_recent(since: str) -> dict[str, object] | None:
+        session, store = toss(), journal.get()
+        if session is None or store is None:
+            return None
+        return sync_executions(session, store, instrument_for, clock, since)
+
+    hub = RealtimeHub(
+        toss,
+        ticks=ticks,
+        instrument_for=instrument_for,
+        sync_ledger=sync_recent,
+        connect=realtime_connect or default_connect,
+        now=clock,
+    )
     journal = _LazyJournal(journal_store)
 
     @asynccontextmanager
@@ -264,6 +305,9 @@ def create_app(
         # fast; clients that skip lifespan events still get the provider on first request.
         provider.get()
         yield
+        store = ticks_holder[0]
+        if store is not None:
+            store.flush()  # ticks still in memory when the server stops
 
     application = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
 
@@ -443,15 +487,87 @@ def create_app(
             request, lambda session: market_calendar(session, market, day, local, clock)
         )
 
-    def instrument_for(symbol: str) -> str | None:
-        """Instrument ID of a US ticker: configured instruments first, then the directory."""
-        for item in provider.get().instruments():
-            if item["instrument"]["symbol"].upper() == symbol:
-                return cast(str, item["instrument"]["instrument_id"])
-        for instrument_id, entry in symbols.known().items():
-            if entry.symbol == symbol:
-                return instrument_id
-        return None
+    @application.websocket("/v1/realtime")
+    async def realtime(websocket: WebSocket) -> None:
+        """Relay of the broker's realtime stream. The client sends {"symbols": [...]}.
+
+        Browsers do not apply CORS to WebSockets, so the Origin is checked here: another
+        site open in the same browser must not read the user's order events.
+        """
+        origin = websocket.headers.get("origin")
+        if origin is not None and origin not in _cors_origins():
+            await websocket.close(code=1008)
+            return
+        await websocket.accept()
+        client = hub.add_client(frozenset())
+
+        async def pump() -> None:
+            while True:
+                await websocket.send_json(await client.queue.get())
+
+        sender = asyncio.create_task(pump())
+        try:
+            while True:
+                try:
+                    message = await websocket.receive_json()
+                except (ValueError, KeyError):
+                    continue
+                wanted = message.get("symbols") if isinstance(message, dict) else None
+                if isinstance(wanted, list):
+                    hub.update_client(
+                        client,
+                        frozenset(
+                            str(item).upper()
+                            for item in wanted[:MAX_REALTIME_SYMBOLS]
+                            if isinstance(item, str) and REALTIME_SYMBOL.fullmatch(item.upper())
+                        ),
+                    )
+        except WebSocketDisconnect:
+            pass
+        finally:
+            sender.cancel()
+            hub.remove_client(client)
+
+    @application.get("/v1/market/ticks", response_model=None)
+    def ticks_endpoint(
+        request: Request,
+        instrument_id: Annotated[str, Query(min_length=1, max_length=200)],
+        session_date: date,
+    ) -> Response:
+        """Trade ticks received from the broker stream for one stock and New York date."""
+        symbol = symbol_of(instrument_id)
+        store = ticks()
+        if symbol is None or store is None:
+            return _error_response(
+                request, 404, "ticks_unavailable", "no tick store or unknown instrument"
+            )
+        rows = store.read("toss-us", symbol, session_date.isoformat())
+        latest = rows[-MAX_TICKS_RETURNED:]
+        document = {
+            "kind": "tick_list_response",
+            "schema_version": "0.1",
+            "source_id": "toss-us",
+            "symbol": symbol,
+            "session_date": session_date.isoformat(),
+            "completeness": "lossy_stream",
+            "count": len(rows),
+            "truncated": len(rows) > len(latest),
+            "ticks": [
+                {
+                    key: row[key]
+                    for key in (
+                        "price",
+                        "volume",
+                        "currency",
+                        "exchange_time_utc",
+                        "received_at_utc",
+                    )
+                }
+                for row in latest
+            ],
+        }
+        validate_document(document)
+        return JSONResponse(content=document)
 
     @application.get("/v1/brokers/toss/account", response_model=None)
     def toss_account_endpoint(request: Request) -> Response:

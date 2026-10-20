@@ -8,6 +8,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -75,6 +76,7 @@ import {
 } from "./added-instruments";
 import { ImportPanel } from "./ImportPanel";
 import { QuotePanel } from "./QuotePanel";
+import { applyLive, type LiveSymbol, type RealtimeSocket } from "./realtime";
 import { AccountPanel } from "./AccountPanel";
 import { ResearchPanel } from "./ResearchPanel";
 import { StockInfoPanel } from "./StockInfoPanel";
@@ -611,6 +613,60 @@ export function Workspace({
         ? [0, 1]
         : [activeChart];
   const watchlistVisible = panel === "watchlist" || floating.open;
+
+  // Realtime relay: trades and order book of the charts on screen, plus order events.
+  const [live, setLive] = useState<Record<string, LiveSymbol>>({});
+  const [liveConnected, setLiveConnected] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const realtimeRef = useRef<RealtimeSocket | null>(null);
+  useEffect(() => {
+    const socket = api.openRealtime((event) => {
+      if (event.event === "trade" || event.event === "orderbook") {
+        setLive((previous) => applyLive(previous, event));
+      } else if (event.event === "status") {
+        setLiveConnected(event.connected);
+      } else if (event.event === "order") {
+        setNotice(
+          t("live.order", {
+            symbol: event.symbol,
+            side: event.side,
+            status: event.status,
+            filled: event.filled_quantity ?? "0",
+          }),
+        );
+      } else if (event.event === "ledger_synced") {
+        refreshJournal();
+        if (event.stored_new > 0) {
+          setNotice(t("live.ledger", { n: event.stored_new }));
+        }
+      }
+    });
+    realtimeRef.current = socket;
+    return () => {
+      socket.close();
+      realtimeRef.current = null;
+    };
+    // The socket lives as long as the API; t and refreshJournal only word events.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api]);
+  const liveSymbols = [
+    ...new Set(
+      visibleCharts
+        .map((index) => symbolOf(layout.charts[index].instrumentId))
+        .filter((symbol) => /^[A-Z][A-Z0-9.]{0,9}$/.test(symbol)),
+    ),
+  ].sort();
+  const liveKey = replayOn ? "" : liveSymbols.join(",");
+  useEffect(() => {
+    // Replay shows the past, so nothing live is requested meanwhile.
+    realtimeRef.current?.setSymbols(liveKey ? liveKey.split(",") : []);
+  }, [liveKey]);
+  useEffect(() => {
+    if (notice === null) return;
+    const timer = window.setTimeout(() => setNotice(null), 8_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   const quoteRows = useSessionQuotes(
     api,
     instruments,
@@ -1100,6 +1156,11 @@ export function Workspace({
             />
           ))}
         </div>
+        {notice ? (
+          <div className="live-notice" role="status">
+            {notice}
+          </div>
+        ) : null}
         <footer className="range-bar" aria-label={t("tb.sessionBar")}>
           <div className="date-stepper">
             <button
@@ -1306,6 +1367,8 @@ export function Workspace({
               instrumentId={activeConfig.instrumentId}
               symbol={activeSymbol}
               replayOn={replayOn}
+              live={live[activeSymbol] ?? null}
+              liveConnected={liveConnected}
             />
           ) : null}
           {panel === "info" ? (

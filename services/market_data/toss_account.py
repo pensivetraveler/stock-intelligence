@@ -252,8 +252,12 @@ def sync_executions(
     store: JournalStore,
     instrument_for: Callable[[str], str | None],
     now: Callable[[], datetime],
+    since: str | None = None,
 ) -> dict[str, Any]:
-    """Store the executions of every closed, filled US order in every account, once."""
+    """Store the executions of every closed, filled US order in every account, once.
+
+    `since` (YYYY-MM-DD, KST order date) limits the read to recent orders.
+    """
     synced_at = _now_text(now)
     counts = {"orders_seen": 0, "stored_new": 0, "already_stored": 0}
     skipped = {"not_filled": 0, "not_us": 0, "unknown_instrument": 0}
@@ -265,6 +269,8 @@ def sync_executions(
         cursor: str | None = None
         for _page in range(MAX_ORDER_PAGES):
             params = {"status": "CLOSED", "limit": str(ORDER_PAGE)}
+            if since:
+                params["from"] = since
             if cursor:
                 params["cursor"] = cursor
             page = session.get("/api/v1/orders", params=params, account=seq)

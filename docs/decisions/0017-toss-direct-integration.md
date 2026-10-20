@@ -1,6 +1,6 @@
 # ADR 0017 — Toss data through one shared read-only session
 
-- **Status:** accepted. Stages 1–5 are implemented (stage 5: ADR 0018); stage 6 and full Korean-market support are planned.
+- **Status:** accepted. Stages 1–6 are implemented (stage 5: ADR 0018, stage 6: ADR 0019); and full Korean-market support are planned.
 - **Date:** 2026-10-20
 
 ## Context
@@ -61,8 +61,6 @@ On 2026-10-20 the user decided:
 - **Live check:** 10 of the 14 datasets were read live and validated. US rankings by trading amount gave 100 rows, Toss has exactly 300 sectors, and Samsung Electronics (005930) investor and short-selling trends came back with `nextUntil`. Indicator candles, program trades, credit trades and securities lending were tested only against documented examples.
 
 ## Planned stages
-
-6. Realtime WebSocket: trade ticks (stored apart from minute bars), the order book, and personal order events.
 
 - Korean stocks with full charts: a KRX calendar, KRW and Korean sessions.
 
