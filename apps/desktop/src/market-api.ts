@@ -1,5 +1,9 @@
 import type {
+  BrokerAccountSnapshot,
+  BrokerLedgerResponse,
   BrokerMarketCalendar,
+  BrokerSellableQuantity,
+  BrokerSyncResult,
   ExchangeRate,
   ImportBatch,
   ImportedLedgerResponse,
@@ -79,6 +83,16 @@ export interface MarketApi {
   recordManual(request: ManualExecutionRequest): Promise<ManualExecution>;
   recordScenario(request: ScenarioRequest): Promise<ScenarioDefinition>;
   importedLedger(): Promise<ImportedLedgerResponse>;
+  /** Executions reported by the broker API (one per order), kept as their own ledger. */
+  brokerLedger(): Promise<BrokerLedgerResponse>;
+  /** Holdings, buying power, commission rates and open orders of every Toss account. */
+  brokerAccount(): Promise<BrokerAccountSnapshot>;
+  sellableQuantity(
+    accountSeq: number,
+    symbol: string,
+  ): Promise<BrokerSellableQuantity>;
+  /** Store the executions of closed, filled orders in the broker ledger. */
+  syncBroker(): Promise<BrokerSyncResult>;
   previewImport(
     request: StatementImportRequest,
   ): Promise<ImportPreviewResponse>;
@@ -380,6 +394,37 @@ export function createMarketApi(
         "/v1/scenarios",
         "scenario_definition",
         request,
+      );
+    },
+    brokerLedger() {
+      return get<BrokerLedgerResponse>(
+        "/v1/trades/broker",
+        "broker_ledger_response",
+      );
+    },
+    brokerAccount() {
+      return get<BrokerAccountSnapshot>(
+        "/v1/brokers/toss/account",
+        "broker_account_snapshot",
+      );
+    },
+    sellableQuantity(accountSeq, symbol) {
+      const params = new URLSearchParams({
+        account_seq: String(accountSeq),
+        symbol,
+      });
+      return get<BrokerSellableQuantity>(
+        `/v1/brokers/toss/sellable?${params.toString()}`,
+        "broker_sellable_quantity",
+      );
+    },
+    syncBroker() {
+      // Paging through a long order history can take a while.
+      return callForKind<BrokerSyncResult>(
+        { ...target, timeoutMs: 120_000 },
+        "/v1/brokers/toss/sync",
+        "broker_sync_result",
+        { method: "POST" },
       );
     },
     importedLedger() {

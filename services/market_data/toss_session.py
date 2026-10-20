@@ -135,6 +135,11 @@ class TossSession:
         self._lock = threading.Lock()
         self.token = TokenCache(self._issue_token)
 
+    @property
+    def key_ref(self) -> str:
+        """A stable, non-secret reference to this key (a truncated hash of its client ID)."""
+        return hashlib.sha256(self._credentials.client_id.encode()).hexdigest()[:16]
+
     def get(
         self,
         template: str,

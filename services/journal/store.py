@@ -167,6 +167,57 @@ class JournalStore:
             ) from exc
         return batch, True
 
+    def record_broker_execution(self, document: dict[str, Any]) -> str:
+        """Store an order execution reported by a broker API, once.
+
+        Returns "new" when stored now, "same" when the identical report is already stored
+        and "conflict" when the stored report for that order differs (it is kept as is).
+        When it was synced does not count as a difference.
+        """
+        validate_document(document)
+        content = {key: value for key, value in document.items() if key != "synced_at_utc"}
+        digest = request_hash(content)
+        try:
+            with self._connect() as connection:
+                connection.execute(
+                    "INSERT INTO broker_order_executions (execution_id, broker_id, "
+                    "broker_account_ref, broker_order_id, instrument_id, executed_at_utc, "
+                    "synced_at_utc, document_sha256, document_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        document["execution_id"],
+                        document["broker_id"],
+                        document["broker_account_ref"],
+                        document["broker_order_id"],
+                        document["instrument_id"],
+                        document["executed_at_utc"],
+                        document["synced_at_utc"],
+                        digest,
+                        _canonical(document),
+                    ),
+                )
+            return "new"
+        except sqlite3.IntegrityError:
+            pass
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT document_sha256 FROM broker_order_executions WHERE broker_id = ? "
+                "AND broker_account_ref = ? AND broker_order_id = ?",
+                (
+                    document["broker_id"],
+                    document["broker_account_ref"],
+                    document["broker_order_id"],
+                ),
+            ).fetchone()
+        if row is None:
+            raise JournalConflictError("execution_id was already used for a different order")
+        return "same" if row["document_sha256"] == digest else "conflict"
+
+    def broker_executions(self, instrument_id: str | None = None) -> list[dict[str, Any]]:
+        return self._documents(
+            "broker_order_executions", "executed_at_utc, execution_id", instrument_id
+        )
+
     def batch_for_file(self, sha256: str) -> dict[str, Any] | None:
         with self._connect() as connection:
             row = connection.execute(
