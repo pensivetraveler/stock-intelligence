@@ -48,6 +48,7 @@ import {
   IndicatorsIcon,
   JournalIcon,
   KeyIcon,
+  QuoteIcon,
   LayoutIcon,
   LogScaleIcon,
   MagnetIcon,
@@ -69,6 +70,7 @@ import {
   saveAddedInstruments,
 } from "./added-instruments";
 import { ImportPanel } from "./ImportPanel";
+import { QuotePanel } from "./QuotePanel";
 import { JournalPanel } from "./JournalPanel";
 import { useSessionQuotes } from "./session-quotes";
 import { Watchlist } from "./Watchlist";
@@ -109,7 +111,7 @@ interface WorkspaceProps {
   keysPanel?: ReactNode;
 }
 
-type Panel = "watchlist" | "journal" | "keys";
+type Panel = "watchlist" | "quote" | "journal" | "keys";
 
 /** Per-chart view options that are not part of the saved layout. */
 interface ChartTools {
@@ -1280,6 +1282,14 @@ export function Workspace({
               }
             />
           ) : null}
+          {panel === "quote" ? (
+            <QuotePanel
+              api={api}
+              instrumentId={activeConfig.instrumentId}
+              symbol={activeSymbol}
+              replayOn={replayOn}
+            />
+          ) : null}
           {panel === "journal" ? (
             <>
               <JournalPanel
@@ -1302,6 +1312,7 @@ export function Workspace({
         {(
           [
             ["watchlist", WatchlistIcon],
+            ["quote", QuoteIcon],
             ["journal", JournalIcon],
             ...(keysPanel ? ([["keys", KeyIcon]] as const) : []),
           ] as const

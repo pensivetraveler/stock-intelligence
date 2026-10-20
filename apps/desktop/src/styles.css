@@ -1919,3 +1919,35 @@ body {
   background: var(--term-bg);
   color-scheme: dark;
 }
+
+.quote-panel h3 {
+  margin: 12px 0 4px;
+  font-size: 13px;
+}
+
+.quote-last strong {
+  font-size: 22px;
+}
+
+.quote-book,
+.quote-trades {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.quote-book td,
+.quote-trades td,
+.quote-book th,
+.quote-trades th {
+  padding: 2px 6px;
+  text-align: right;
+}
+
+.quote-book tr.ask td:first-child {
+  color: #2962ff;
+}
+
+.quote-book tr.bid td:first-child {
+  color: #f23645;
+}

@@ -25,7 +25,8 @@ export type StockIntelligenceWorkstationContractsV01 =
   | CredentialSummary
   | CredentialListResponse
   | SessionListResponse
-  | SymbolSearchResponse;
+  | SymbolSearchResponse
+  | MarketQuote;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -499,4 +500,47 @@ export interface SymbolSearchResponse {
     };
     name: string;
   }[];
+}
+/**
+ * A point-in-time quote read on demand from a broker: last price, order book, recent trades and daily price limits. Not stored; prices are exact decimal strings and times UTC.
+ */
+export interface MarketQuote {
+  kind: "market_quote";
+  schema_version: SchemaVersion;
+  instrument_id: Identifier;
+  symbol: string;
+  source_id: Identifier;
+  currency: "USD" | "KRW";
+  /**
+   * When this API read the quote.
+   */
+  observed_at_utc: string;
+  last: null | {
+    price: DecimalString;
+    at_utc: UtcTimestamp;
+  };
+  orderbook: null | {
+    at_utc: UtcTimestamp;
+    asks: {
+      price: DecimalString;
+      volume: NonNegativeDecimalString;
+    }[];
+    bids: {
+      price: DecimalString;
+      volume: NonNegativeDecimalString;
+    }[];
+  };
+  /**
+   * @maxItems 50
+   */
+  trades: {
+    price: DecimalString;
+    volume: NonNegativeDecimalString;
+    at_utc: UtcTimestamp;
+  }[];
+  price_limits: null | {
+    upper: DecimalString;
+    lower: DecimalString;
+    at_utc: UtcTimestamp;
+  };
 }

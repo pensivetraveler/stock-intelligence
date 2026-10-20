@@ -20,6 +20,7 @@ from typing import Any, Literal, cast
 import httpx
 
 from packages.contracts.validator import validate_document
+from services.market_data.broker_common import listed_symbol
 from services.market_data.calendar import NEW_YORK, CalendarError, UsEquityCalendar
 from services.market_data.daily import (
     DailySource,
@@ -61,7 +62,7 @@ ASSET_EXCHANGE_MICS = {
 # both are tried; only GET /v2/assets is ever called there (never orders or accounts).
 TRADING_URLS = ("https://api.alpaca.markets", "https://paper-api.alpaca.markets")
 ASSETS_PATH = "/v2/assets"
-LISTED_INSTRUMENT = re.compile(r"^us:([a-z][a-z0-9.]{0,9}):(xnas|xnys|arcx|xase|bats):2026$")
+
 VENUE_PATTERN = re.compile(r"^[A-Z]{4}$")
 PAGE_LIMIT = 10_000
 
@@ -205,8 +206,7 @@ class AlpacaMarketDataProvider:
         configured = self._symbols.get(instrument_id)
         if configured is not None:
             return configured
-        match = LISTED_INSTRUMENT.fullmatch(instrument_id)
-        return match.group(1).upper() if match else None
+        return listed_symbol(instrument_id)
 
     def list_assets(self) -> list[dict[str, str]]:
         """Active US-listed stocks and ETFs: symbol, company name and venue MIC."""
