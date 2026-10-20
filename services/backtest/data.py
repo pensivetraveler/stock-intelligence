@@ -10,21 +10,27 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
 from services.market_data.calendar import CalendarError
+from services.market_data.daily import aggregate_weekly
 from services.market_data.instruments import calendar_for
 from services.market_data.provider import BarsQuery, BarsResult, InvalidBarsQueryError
 
 MAX_INTRADAY_SESSIONS = 60
 MAX_DAILY_DAYS = 366 * 30
 MISSING_LIST_LIMIT = 50
+ASOF = re.compile(r"asof-(\d{4}-\d{2}-\d{2})")
 
 GetBars = Callable[[BarsQuery], BarsResult]
+#: Adjusted daily bars: (a "1d" query, "split_adjusted" | "fully_adjusted").
+GetAdjusted = Callable[[BarsQuery, str], BarsResult]
+ADJUSTMENTS = ("raw", "split_adjusted", "fully_adjusted")
 
 
 @dataclass(frozen=True)
@@ -46,6 +52,8 @@ class InstrumentInput:
     bars: list[EngineBar]
     pin: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    # The same warnings as codes, so a screen can word them in its own language.
+    warning_details: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _epoch(text: str) -> int:
@@ -69,6 +77,11 @@ def _sessions(instrument_id: str, start: date, end: date) -> list[Any]:
     except CalendarError as exc:
         raise InvalidBarsQueryError(str(exc)) from exc
     return windows
+
+
+def _bars(count: int, noun: str) -> str:
+    """'1 bar is', '3 bars are'."""
+    return f"{count} {noun} is" if count == 1 else f"{count} {noun}s are"
 
 
 def suspected_splits(bars: list[EngineBar]) -> list[str]:
@@ -98,7 +111,13 @@ def load_instrument(
     start: date,
     end: date,
     as_of_utc: datetime | None = None,
+    adjustment: str = "raw",
+    get_adjusted: GetAdjusted | None = None,
 ) -> InstrumentInput:
+    if adjustment not in ADJUSTMENTS:
+        raise InvalidBarsQueryError("adjustment must be raw, split_adjusted or fully_adjusted")
+    if adjustment != "raw" and timeframe not in ("1d", "1w"):
+        raise InvalidBarsQueryError("adjusted prices are available for daily and weekly runs")
     if end < start:
         raise InvalidBarsQueryError("end_date must not be before start_date")
     if (end - start).days > MAX_DAILY_DAYS:
@@ -120,9 +139,15 @@ def load_instrument(
     documents: list[dict[str, Any]] = []
     coverages: list[dict[str, Any]] = []
     for range_start, range_end in ranges:
-        result = get_bars(
-            BarsQuery(instrument_id, timeframe, range_start, range_end, as_of_utc=as_of_utc)
-        )
+        query = BarsQuery(instrument_id, timeframe, range_start, range_end, as_of_utc=as_of_utc)
+        if adjustment == "raw":
+            result = get_bars(query)
+        else:
+            if get_adjusted is None:
+                raise InvalidBarsQueryError("adjusted prices are not available here")
+            result = get_adjusted(replace(query, timeframe="1d"), adjustment)
+            if timeframe == "1w":
+                result = aggregate_weekly(query, result, calendar)
         documents.extend(result.bars)
         coverages.append(result.coverage)
 
@@ -164,24 +189,62 @@ def load_instrument(
         "missing_intervals": missing[:MISSING_LIST_LIMIT],
         "non_final_bar_count": non_final,
         "bars_sha256": digest,
+        "adjustment_requested": adjustment,
     }
     warnings: list[str] = []
+    details: list[dict[str, Any]] = []
+
+    def warn(
+        code: str, text: str, count: int | None = None, dates: list[str] | None = None
+    ) -> None:
+        warnings.append(f"{instrument_id}: {text}")
+        details.append(
+            {
+                "code": code,
+                "instrument_id": instrument_id,
+                "count": count,
+                "dates": dates or [],
+            }
+        )
+
     if missing:
-        warnings.append(f"{instrument_id}: {len(missing)} expected intervals have no bar")
+        warn(
+            "missing_intervals",
+            f"{_bars(len(missing), 'expected interval')} have no bar",
+            len(missing),
+        )
     if non_final:
-        warnings.append(f"{instrument_id}: {non_final} bars are not final and give no signals")
+        warn(
+            "non_final_bars", f"{_bars(non_final, 'bar')} not final and give no signals", non_final
+        )
     splits = suspected_splits(bars) if "raw" in adjustments else []
     pin["suspected_split_dates"] = splits
     if "raw" in adjustments:
-        warnings.append(
-            f"{instrument_id}: prices are not adjusted; a split or dividend in the range "
-            "shows up as a price jump"
+        warn(
+            "raw_prices",
+            "prices are not adjusted; a split or dividend in the range shows up as a price jump",
         )
     if splits:
-        warnings.append(
-            f"{instrument_id}: the price jumps by about a whole split ratio on "
-            f"{', '.join(splits[:5])}; results around those dates are likely wrong"
+        warn(
+            "suspected_splits",
+            f"the price jumps by about a whole split ratio on {', '.join(splits[:5])}; "
+            "results around those dates are likely wrong",
+            dates=splits[:5],
+        )
+    if adjustment != "raw":
+        fetched = sorted(
+            {
+                m.group(1)
+                for c in coverages
+                if (m := ASOF.search(str(c["dataset_revision"]))) is not None
+            }
+        )
+        warn(
+            "adjusted_prices",
+            f"prices are adjusted with the corporate actions known on {', '.join(fetched)}; "
+            "price levels before an action differ from what actually traded",
+            dates=fetched,
         )
     if not bars:
-        warnings.append(f"{instrument_id}: no bars in the range")
-    return InstrumentInput(instrument_id, str(calendar.zone), bars, pin, warnings)
+        warn("no_bars", "no bars in the range")
+    return InstrumentInput(instrument_id, str(calendar.zone), bars, pin, warnings, details)

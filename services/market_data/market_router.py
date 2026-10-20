@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from services.market_data.daily import DailyBarsProvider
+from services.market_data.daily import AdjustedDailyProvider, DailyBarsProvider
 from services.market_data.instruments import market_of
 from services.market_data.provider import (
     BarsQuery,
@@ -57,6 +57,15 @@ class MarketRouter:
         if not isinstance(provider, DailyBarsProvider):
             raise InvalidBarsQueryError("this data provider does not offer daily bars yet")
         return provider.get_daily_bars(query)
+
+    def get_adjusted_daily_bars(self, query: BarsQuery, adjustment: str) -> BarsResult:
+        provider = self._for(query)
+        if not isinstance(provider, AdjustedDailyProvider):
+            raise InvalidBarsQueryError(
+                f"adjusted prices are not available for {query.instrument_id} "
+                f"from {provider.source_id}; use raw prices"
+            )
+        return provider.get_adjusted_daily_bars(query, adjustment)
 
     def _for(self, query: BarsQuery) -> MarketDataProvider:
         if market_of(query.instrument_id) != "KR":

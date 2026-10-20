@@ -1,7 +1,7 @@
 {
   "kind": "backtest_strategy",
   "schema_version": "0.1",
-  "strategy_id": "strategy-5a0cada53ecd",
+  "strategy_id": "strategy-f669523355d6",
   "name": "SMA cross",
   "version": 1,
   "strategy_type": "rules",

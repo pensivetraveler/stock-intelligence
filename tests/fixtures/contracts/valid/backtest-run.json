@@ -1,10 +1,10 @@
 {
   "kind": "backtest_run",
   "schema_version": "0.1",
-  "run_id": "run-ce1f4640c898",
+  "run_id": "run-c4f483d97ed0",
   "status": "succeeded",
   "progress": 1.0,
-  "strategy_id": "strategy-5a0cada53ecd",
+  "strategy_id": "strategy-f669523355d6",
   "strategy_version": 1,
   "strategy_sha256": "13904d91f5cdf566b44eb528dff345184ce8305da4386fd3bdf23ecb4bd5c14d",
   "config": {

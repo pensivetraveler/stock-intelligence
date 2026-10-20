@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, TypeVar, cast
 
 from services.credentials.store import CredentialRecord, SecretStorageError
-from services.market_data.daily import DailyBarsProvider
+from services.market_data.daily import AdjustedDailyProvider, DailyBarsProvider
 from services.market_data.provider import (
     BarsQuery,
     BarsResult,
@@ -107,6 +107,15 @@ class PooledProvider:
         if not isinstance(self._listing, DailyBarsProvider):
             raise InvalidBarsQueryError(f"{self.provider} does not offer daily bars yet")
         return self._call(lambda adapter: cast(DailyBarsProvider, adapter).get_daily_bars(query))
+
+    def get_adjusted_daily_bars(self, query: BarsQuery, adjustment: str) -> BarsResult:
+        if not isinstance(self._listing, AdjustedDailyProvider):
+            raise InvalidBarsQueryError(f"{self.provider} does not offer adjusted daily bars")
+        return self._call(
+            lambda adapter: cast(AdjustedDailyProvider, adapter).get_adjusted_daily_bars(
+                query, adjustment
+            )
+        )
 
     def list_assets(self) -> list[dict[str, str]]:
         """The provider's listed-symbol directory, through the same keys and failover."""

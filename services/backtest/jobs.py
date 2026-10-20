@@ -17,7 +17,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from packages.contracts.validator import validate_document
-from services.backtest.data import GetBars, load_instrument
+from services.backtest.data import ADJUSTMENTS, GetAdjusted, GetBars, load_instrument
 from services.backtest.engine import (
     Backtest,
     Cancelled,
@@ -100,6 +100,11 @@ def validate_config(request: dict[str, Any]) -> dict[str, Any]:
         if moment.utcoffset() is None or moment.utcoffset().total_seconds() != 0:  # type: ignore[union-attr]
             raise RunConfigError("as_of_utc must be a UTC time")
         as_of = moment.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    adjustment = request.get("adjustment", "raw")
+    if adjustment not in ADJUSTMENTS:
+        raise RunConfigError("adjustment must be raw, split_adjusted or fully_adjusted")
+    if adjustment != "raw" and timeframe not in ("1d", "1w"):
+        raise RunConfigError("adjusted prices are available for daily and weekly runs")
     seed = request.get("seed", 0)
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise RunConfigError("seed must be a whole number")
@@ -120,6 +125,7 @@ def validate_config(request: dict[str, Any]) -> dict[str, Any]:
             request.get("slippage_bps", 0), "slippage_bps", Decimal(0), Decimal(1000)
         ),
         "fill_policy": "next_eligible_bar_open",
+        "adjustment": adjustment,
         "as_of_utc": as_of,
         "seed": seed,
     }
@@ -131,9 +137,11 @@ class BacktestRunner:
         store: BacktestStore,
         get_bars: Callable[[], GetBars],
         process: Callable[..., StrategyProcess] = StrategyProcess,
+        get_adjusted: Callable[[], GetAdjusted | None] = lambda: None,
     ) -> None:
         self.store = store
         self._get_bars = get_bars
+        self._get_adjusted = get_adjusted
         self._process = process
         self._wake = threading.Event()
         self._stop = threading.Event()
@@ -221,6 +229,9 @@ class BacktestRunner:
                     date.fromisoformat(config["start_date"]),
                     date.fromisoformat(config["end_date"]),
                     None if as_of is None else datetime.fromisoformat(as_of.replace("Z", "+00:00")),
+                    # Runs stored before adjusted prices existed used raw prices.
+                    config.get("adjustment", "raw"),
+                    self._get_adjusted(),
                 )
             )
         source: SignalSource
@@ -246,6 +257,9 @@ class BacktestRunner:
         self.store.set_progress(run_id, 0.1)
         results = engine.run()
         results["warnings"].append(SURVIVORSHIP)
+        results["warning_details"].append(
+            {"code": "survivorship", "instrument_id": None, "count": None, "dates": []}
+        )
         if isinstance(source, PythonSignals):
             results["logs"] = source.logs[-200:]
         validate_document(results)

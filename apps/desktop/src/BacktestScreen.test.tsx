@@ -116,6 +116,7 @@ describe("backtest screen", () => {
       timeframe: "1d",
       fee_rate: "0.0005",
       slippage_bps: "5",
+      adjustment: "split_adjusted",
     });
 
     // The queued run is polled until it finishes, then its results load.
@@ -196,5 +197,20 @@ describe("backtest screen", () => {
     renderScreen(fakeApi(), vi.fn(), onClose);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+  it("runs Korean stocks on unadjusted prices only", async () => {
+    const api = fakeApi();
+    renderScreen(api);
+    fireEvent.click(screen.getByLabelText("AAPL"));
+    fireEvent.click(screen.getByLabelText("005930"));
+    expect(screen.getByLabelText("Prices")).toBeDisabled();
+    expect(screen.getByLabelText("Prices")).toHaveValue("raw");
+    fireEvent.click(screen.getByRole("button", { name: "Save and run" }));
+    await waitFor(() => expect(api.submit).toHaveBeenCalled());
+    expect(vi.mocked(api.submit).mock.calls[0][2]).toMatchObject({
+      instrument_ids: ["kr:005930:xkrx:2026"],
+      currency: "KRW",
+      adjustment: "raw",
+    });
   });
 });

@@ -88,11 +88,26 @@ CONFIG = {
 }
 
 
+def adjusted_bars(query: BarsQuery, adjustment: str) -> BarsResult:
+    """Synthetic bars labelled as adjusted, with a dated revision like Alpaca's."""
+    raw = synthetic_bars(query)
+    return BarsResult(
+        tuple({**bar, "adjustment": adjustment} for bar in raw.bars),
+        {
+            **raw.coverage,
+            "adjustment": adjustment,
+            "dataset_revision": "synthetic-r1:1d:split:asof-2026-10-21",
+        },
+    )
+
+
 @pytest.fixture
 def setup(tmp_path: Path) -> Iterator[tuple[TestClient, BacktestRunner, JournalStore]]:
     gate: list[Callable[[BarsQuery], BarsResult]] = [synthetic_bars]
     runner = BacktestRunner(
-        BacktestStore(tmp_path / "backtests.sqlite3", lambda: NOW), lambda: gate[0]
+        BacktestStore(tmp_path / "backtests.sqlite3", lambda: NOW),
+        lambda: gate[0],
+        get_adjusted=lambda: adjusted_bars,
     )
     journal = JournalStore(tmp_path / "journal")
     app = create_app(journal_store=journal, backtest_runner=runner, clock=lambda: NOW)
@@ -153,6 +168,7 @@ def test_a_run_produces_validated_results_and_never_touches_the_journal(setup: A
     assert {pin["instrument_id"] for pin in results["inputs"]} == set(CONFIG["instrument_ids"])
     assert all(len(pin["bars_sha256"]) == 64 for pin in results["inputs"])
     assert any("survivorship" in warning for warning in results["warnings"])
+    assert [d["code"] for d in results["warning_details"]] == ["survivorship"]
     assert run["summary"]["final_equity"] == results["final_equity"]
     # Same inputs, same strategy: byte-identical results apart from the run ID.
     again = client.post(
@@ -263,3 +279,36 @@ def test_without_a_data_directory_nothing_is_stored(monkeypatch: pytest.MonkeyPa
     with TestClient(create_app()) as client:
         response = client.get("/v1/backtests/runs")
     assert response.status_code == 503
+
+
+def test_adjusted_prices_are_requested_pinned_and_flagged(setup: Any) -> None:
+    client, runner, _journal = setup
+    strategy = save(client, RULES)
+    for timeframe in ("1d",):  # weekly adjusted aggregation: tests/market_data/test_daily.py
+        run_id = client.post(
+            "/v1/backtests/runs",
+            json={
+                "strategy_id": strategy["strategy_id"],
+                "config": {**CONFIG, "timeframe": timeframe, "adjustment": "split_adjusted"},
+            },
+        ).json()["run_id"]
+        assert runner.wait_idle()
+        run = client.get(f"/v1/backtests/runs/{run_id}").json()
+        assert run["status"] == "succeeded", run["error"]
+        assert run["config"]["adjustment"] == "split_adjusted"
+        results = client.get(f"/v1/backtests/runs/{run_id}/results").json()
+        validate_document(results)
+        assert {pin["adjustment_requested"] for pin in results["inputs"]} == {"split_adjusted"}
+        assert {tuple(pin["adjustments"]) for pin in results["inputs"]} == {("split_adjusted",)}
+        adjusted = [d for d in results["warning_details"] if d["code"] == "adjusted_prices"]
+        assert [d["dates"] for d in adjusted] == [["2026-10-21"], ["2026-10-21"]]  # 2 symbols
+        assert not any(d["code"] == "raw_prices" for d in results["warning_details"])
+    intraday = client.post(
+        "/v1/backtests/runs",
+        json={
+            "strategy_id": strategy["strategy_id"],
+            "config": {**CONFIG, "timeframe": "5m", "adjustment": "fully_adjusted"},
+        },
+    )
+    assert intraday.status_code == 422
+    assert "daily and weekly" in intraday.json()["error"]["message"]

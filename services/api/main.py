@@ -351,7 +351,11 @@ class _LazyBacktests:
                 if configured:
                     store = BacktestStore(Path(configured) / "backtests.sqlite3", self._clock)
                     self._runner = BacktestRunner(
-                        store, lambda: MarketBarsService(self._provider()).get_bars
+                        store,
+                        lambda: MarketBarsService(self._provider()).get_bars,
+                        get_adjusted=lambda: getattr(
+                            self._provider(), "get_adjusted_daily_bars", None
+                        ),
                     )
             return self._runner
 
