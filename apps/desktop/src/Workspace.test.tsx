@@ -676,7 +676,7 @@ describe("terminal layout", () => {
     });
     fireEvent.click(magnet);
     expect(magnet).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: /Indicators/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Replay/ })).toBeDisabled();
   });
 
   it("closes and reopens side panels from the right rail", async () => {
@@ -813,5 +813,69 @@ describe("watchlist quotes", () => {
     const panel = screen.getByRole("complementary", { name: "Watchlist" });
     expect(within(panel).getByText("202.50")).toBeInTheDocument();
     expect(quote).toHaveBeenCalledTimes(instruments);
+  });
+});
+
+describe("indicators", () => {
+  it("adds an indicator to the active chart only, then hides and removes it", async () => {
+    const storage = splitStorage();
+    render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
+    await screen.findByTestId("chart-chart-2");
+
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    expect(within(dialog).getByText("Adds to SYNTH · 5m")).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByRole("textbox"), {
+      target: { value: "relative" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /Relative Strength Index/ }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Close indicators" }),
+    );
+
+    const first = screen.getByRole("region", { name: /Chart 1/ });
+    const second = screen.getByRole("region", { name: /Chart 2/ });
+    const legend = within(first).getByRole("list", {
+      name: "Indicators on this chart",
+    });
+    expect(legend).toHaveTextContent("RSI 14");
+    expect(
+      within(second).queryByRole("list", { name: "Indicators on this chart" }),
+    ).not.toBeInTheDocument();
+    expect(savedLayout(storage).charts[0].indicators).toEqual([
+      { key: "id-2", type: "rsi", params: { length: 14 } },
+    ]);
+    expect(savedLayout(storage).charts[1].indicators).toBeUndefined();
+
+    fireEvent.click(
+      within(legend).getByRole("button", { name: "RSI settings" }),
+    );
+    fireEvent.change(within(first).getByLabelText("Length"), {
+      target: { value: "7" },
+    });
+    expect(legend).toHaveTextContent("RSI 7");
+
+    fireEvent.click(within(legend).getByRole("button", { name: "Hide RSI" }));
+    expect(savedLayout(storage).charts[0].indicators[0].hidden).toBe(true);
+    fireEvent.click(within(legend).getByRole("button", { name: "Remove RSI" }));
+    expect(
+      within(first).queryByRole("list", { name: "Indicators on this chart" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("filters the catalog by category", async () => {
+    render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Volume" }));
+    expect(
+      within(dialog).getByRole("button", { name: /On Balance Volume/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: /Relative Strength Index/ }),
+    ).not.toBeInTheDocument();
   });
 });
