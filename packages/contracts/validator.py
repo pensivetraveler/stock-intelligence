@@ -169,6 +169,13 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
         if len(identifiers) != len(set(identifiers)):
             errors.append("instrument_id must be unique within the response")
 
+    if kind == "research_table":
+        width = len(document["columns"])
+        if len(set(document["columns"])) != width:
+            errors.append("research_table columns must be unique")
+        if any(len(row) != width for row in document["rows"]):
+            errors.append("every research_table row must have one cell per column")
+
     if kind == "symbol_search_response":
         identifiers = [
             item["listing"]["instrument"]["instrument_id"] for item in document["results"]

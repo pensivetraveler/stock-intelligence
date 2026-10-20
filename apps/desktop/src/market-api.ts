@@ -8,6 +8,7 @@ import type {
   ManualLedgerResponse,
   MarketBarsResponse,
   MarketQuote,
+  ResearchTable,
   MarketInstrumentsResponse,
   ScenarioDefinition,
   ScenarioLedgerResponse,
@@ -49,6 +50,12 @@ export interface SessionQuote {
 
 export interface MarketApi {
   instruments(): Promise<InstrumentListing[]>;
+  /** A broker research table (rankings, indicators, sectors, Korean trading trends). */
+  research(
+    dataset: string,
+    key: string | null,
+    params: Record<string, string>,
+  ): Promise<ResearchTable>;
   /** Broker reference data and active buying warnings for one stock. */
   stockInfo(instrumentId: string): Promise<StockInfo>;
   /** The broker's USD/KRW reference rate. */
@@ -297,6 +304,14 @@ export function createMarketApi(
         "market_instruments_response",
       );
       return response.instruments;
+    },
+    research(dataset, key, params) {
+      const query = new URLSearchParams(params);
+      if (key) query.set("key", key);
+      return get<ResearchTable>(
+        `/v1/research/${encodeURIComponent(dataset)}?${query.toString()}`,
+        "research_table",
+      );
     },
     stockInfo(instrumentId) {
       const params = new URLSearchParams({ instrument_id: instrumentId });

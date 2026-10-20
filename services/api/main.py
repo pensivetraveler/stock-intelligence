@@ -11,6 +11,7 @@ from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, Query, Request
+from fastapi import Path as PathParam
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -58,6 +59,7 @@ from services.market_data.toss_info import (
     stock_info,
 )
 from services.market_data.toss_quotes import market_quote
+from services.market_data.toss_research import research_table
 from services.market_data.toss_session import (
     DEFAULT_BASE_URL as DEFAULT_TOSS_URL,
 )
@@ -433,6 +435,18 @@ def create_app(
         local = UsEquityCalendar("XNAS")
         return toss_read(
             request, lambda session: market_calendar(session, market, day, local, clock)
+        )
+
+    @application.get("/v1/research/{dataset}", response_model=None)
+    def research_endpoint(
+        request: Request,
+        dataset: Annotated[str, PathParam(pattern=r"^[a-z_]{1,40}$")],
+        key: Annotated[str | None, Query(max_length=64)] = None,
+    ) -> Response:
+        """A Toss research table; any other query parameters are passed to Toss as given."""
+        params = {name: value for name, value in request.query_params.items() if name != "key"}
+        return toss_read(
+            request, lambda session: research_table(session, dataset, key, params, clock)
         )
 
     @application.get("/v1/market/quote", response_model=None)

@@ -64,6 +64,11 @@ const fixture = <T,>(name: string): T =>
 function fakeApi(
   options: { journalOff?: boolean; history?: boolean } = {},
 ): MarketApi & {
+  researchCalls: {
+    dataset: string;
+    key: string | null;
+    params: Record<string, string>;
+  }[];
   barsCalls: BarsRequest[];
   sessionsCalls: { endDate: string; count: number }[];
   manualRequests: ManualExecutionRequest[];
@@ -76,6 +81,11 @@ function fakeApi(
   const manualRequests: ManualExecutionRequest[] = [];
   const scenarioRequests: ScenarioRequest[] = [];
   const importRequests: { decisions: Record<string, string> }[] = [];
+  const researchCalls: {
+    dataset: string;
+    key: string | null;
+    params: Record<string, string>;
+  }[] = [];
   const manual: ManualExecution[] = [];
   const imported: ImportedExecution[] = [];
   const scenarios: ScenarioDefinition[] = [];
@@ -89,6 +99,23 @@ function fakeApi(
     manualRequests,
     scenarioRequests,
     importRequests,
+    researchCalls,
+    research: (dataset, key, params) => {
+      researchCalls.push({ dataset, key, params });
+      return Promise.resolve({
+        kind: "research_table",
+        schema_version: "0.1",
+        source_id: "toss-us",
+        dataset: dataset as "rankings",
+        key,
+        params,
+        observed_at_utc: "2026-10-20T12:30:00Z",
+        as_of_utc: "2026-10-20T12:27:42Z",
+        next_cursor: dataset === "rankings" ? null : "2026-10-16",
+        columns: ["rank", "symbol", "price.changeRate"],
+        rows: [["1", "SOXL", "-0.0566"]],
+      });
+    },
     instruments: () =>
       Promise.resolve(
         fixture<MarketInstrumentsResponse>("market-instruments-response.json")
@@ -835,6 +862,42 @@ describe("chart workspace", () => {
       within(panel).getByText(/USD\/KRW reference rate 1331.27/),
     ).toBeVisible();
     expect(within(panel).getByText("Charts use 16:00 – 20:00")).toBeVisible();
+  });
+
+  it("reads Toss research tables with their documented options", async () => {
+    const api = fakeApi();
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    const panel = await screen.findByRole("region", { name: "Research" });
+    expect(await within(panel).findByText("SOXL")).toBeVisible();
+    expect(api.researchCalls[0]).toEqual({
+      dataset: "rankings",
+      key: null,
+      params: {
+        type: "MARKET_TRADING_AMOUNT",
+        marketCountry: "US",
+        duration: "1d",
+      },
+    });
+
+    // Korean trading trends need a KRX code before anything is requested.
+    fireEvent.change(within(panel).getByLabelText("Table"), {
+      target: { value: "stock_short_selling" },
+    });
+    expect(within(panel).getByText(/Korean stocks only/)).toBeVisible();
+    const calls = api.researchCalls.length;
+    fireEvent.change(within(panel).getByLabelText("Korean stock code"), {
+      target: { value: "005930" },
+    });
+    await waitFor(() => expect(api.researchCalls.length).toBe(calls + 1));
+    expect(api.researchCalls.at(-1)?.key).toBe("005930");
+    fireEvent.click(
+      await within(panel).findByRole("button", { name: "Older rows" }),
+    );
+    await waitFor(() =>
+      expect(api.researchCalls.at(-1)?.params.until).toBe("2026-10-16"),
+    );
   });
 
   it("shows the latest bar in the legend", async () => {

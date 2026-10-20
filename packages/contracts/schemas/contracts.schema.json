@@ -89,6 +89,9 @@
     },
     {
       "$ref": "#/$defs/BrokerMarketCalendar"
+    },
+    {
+      "$ref": "#/$defs/ResearchTable"
     }
   ],
   "$defs": {
@@ -2596,6 +2599,129 @@
                   }
                 }
               }
+            }
+          }
+        }
+      }
+    },
+    "ResearchTable": {
+      "description": "A broker research table for reading (rankings, market indicators, sectors, Korean trading trends). Values are exact strings as the broker sent them, times are UTC, nested fields are dotted column names. Not an input to charts, indicators or backtests.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "source_id",
+        "dataset",
+        "key",
+        "params",
+        "observed_at_utc",
+        "as_of_utc",
+        "next_cursor",
+        "columns",
+        "rows"
+      ],
+      "properties": {
+        "kind": {
+          "const": "research_table"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "source_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "dataset": {
+          "enum": [
+            "rankings",
+            "market_indicator_prices",
+            "market_indicator_candles",
+            "market_indicator_investor_trading",
+            "sectors",
+            "sector_rankings",
+            "sector",
+            "sector_stocks",
+            "sector_etfs",
+            "stock_investor_trading",
+            "stock_program_trades",
+            "stock_short_selling",
+            "stock_credit_trades",
+            "stock_securities_lending"
+          ]
+        },
+        "key": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          ],
+          "description": "The symbol or sector ID the table is about, if any."
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 400
+          }
+        },
+        "observed_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "as_of_utc": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            }
+          ]
+        },
+        "next_cursor": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          ],
+          "description": "Value to pass as `until` or `before` for older rows."
+        },
+        "columns": {
+          "type": "array",
+          "maxItems": 80,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "rows": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "string",
+                  "maxLength": 400
+                }
+              ]
             }
           }
         }
