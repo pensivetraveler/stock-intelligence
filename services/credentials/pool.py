@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from services.credentials.store import CredentialRecord, SecretStorageError
 from services.market_data.daily import DailyBarsProvider
@@ -28,6 +28,7 @@ from services.market_data.provider import (
 )
 
 DEFAULT_COOLDOWN_SECONDS = 60.0
+T = TypeVar("T")
 
 
 @dataclass
@@ -107,7 +108,13 @@ class PooledProvider:
             raise InvalidBarsQueryError(f"{self.provider} does not offer daily bars yet")
         return self._call(lambda adapter: cast(DailyBarsProvider, adapter).get_daily_bars(query))
 
-    def _call(self, request: Callable[[MarketDataProvider], BarsResult]) -> BarsResult:
+    def list_assets(self) -> list[dict[str, str]]:
+        """The provider's listed-symbol directory, through the same keys and failover."""
+        if not hasattr(self._listing, "list_assets"):
+            raise InvalidBarsQueryError(f"{self.provider} offers no symbol directory")
+        return self._call(lambda adapter: cast(Any, adapter).list_assets())
+
+    def _call(self, request: Callable[[MarketDataProvider], T]) -> T:
         candidates = self._candidates()
         if not candidates:
             with self._lock:

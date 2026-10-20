@@ -63,6 +63,11 @@ import {
   WatchlistIcon,
   ZoomIcon,
 } from "./icons";
+import {
+  loadAddedInstruments,
+  mergeInstruments,
+  saveAddedInstruments,
+} from "./added-instruments";
 import { ImportPanel } from "./ImportPanel";
 import { JournalPanel } from "./JournalPanel";
 import { useSessionQuotes } from "./session-quotes";
@@ -71,6 +76,7 @@ import {
   MarketApiError,
   type InstrumentListing,
   type MarketApi,
+  type SymbolSearchResult,
 } from "./market-api";
 import {
   activeWorkspace,
@@ -228,6 +234,13 @@ export function Workspace({
   const [nameForm, setNameForm] = useState<NameForm>(null);
   const [activeChart, setActiveChart] = useState(0);
   const [search, setSearch] = useState<string | null>(null);
+  // Ticker search across all US-listed stocks, answered by the API's symbol directory.
+  const [remote, setRemote] = useState<{
+    query: string;
+    results: SymbolSearchResult[];
+    stale: boolean;
+    error: unknown;
+  } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [indicatorsOpen, setIndicatorsOpen] = useState(false);
   const [drawTool, setDrawTool] = useState<DrawingTool>("cursor");
@@ -325,7 +338,24 @@ export function Workspace({
         }),
     ),
   );
-  const [instruments, setInstruments] = useState<InstrumentListing[]>([]);
+  const [configuredInstruments, setInstruments] = useState<InstrumentListing[]>(
+    [],
+  );
+  const [added, setAdded] = useState<InstrumentListing[]>(() =>
+    loadAddedInstruments(storage),
+  );
+  const instruments = useMemo(
+    () => mergeInstruments(configuredInstruments, added),
+    [configuredInstruments, added],
+  );
+  const addedIds = useMemo(
+    () => new Set(added.map((item) => item.instrument.instrument_id)),
+    [added],
+  );
+  const changeAdded = (next: InstrumentListing[]) => {
+    setAdded(next);
+    saveAddedInstruments(storage, next);
+  };
   const [instrumentsError, setInstrumentsError] = useState<string | null>(null);
   const [instrumentsReady, setInstrumentsReady] = useState(false);
   const [ledgers, setLedgers] = useState<{
@@ -502,15 +532,54 @@ export function Workspace({
     return () => window.clearInterval(timer);
   }, [replay.playing, replay.speed, advanceReplay]);
   const activeSymbol = symbolOf(activeConfig.instrumentId);
+  const query = (search ?? "").trim();
   const matches = instruments.filter((item) =>
-    item.instrument.symbol
-      .toLowerCase()
-      .includes((search ?? "").trim().toLowerCase()),
+    item.instrument.symbol.toLowerCase().includes(query.toLowerCase()),
   );
+  const localIds = new Set(matches.map((m) => m.instrument.instrument_id));
+  const remoteMatches =
+    remote && remote.query === query && query
+      ? remote.results.filter(
+          (item) => !localIds.has(item.listing.instrument.instrument_id),
+        )
+      : [];
+  const searching = query !== "" && (remote === null || remote.query !== query);
   const chooseInstrument = (instrumentId: string) => {
     setSearch(null);
     updateActive({ instrumentId });
   };
+  const chooseListing = (listing: InstrumentListing) => {
+    const id = listing.instrument.instrument_id;
+    if (!instruments.some((item) => item.instrument.instrument_id === id)) {
+      changeAdded([...added, listing]);
+    }
+    chooseInstrument(id);
+  };
+  useEffect(() => {
+    if (!query) return;
+    let current = true;
+    // Wait for a pause in typing so each keystroke is not a request.
+    const timer = window.setTimeout(() => {
+      api
+        .searchSymbols(query, 20)
+        .then((response) => {
+          if (current)
+            setRemote({
+              query,
+              results: response.results,
+              stale: response.stale,
+              error: null,
+            });
+        })
+        .catch((error: unknown) => {
+          if (current) setRemote({ query, results: [], stale: false, error });
+        });
+    }, 250);
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [api, query]);
   const layoutMode: LayoutMode = layout.layoutMode ?? (legacySplit ? "2" : "1");
   const setLayoutMode = (mode: LayoutMode) => {
     setLayout((previous) => ({ ...previous, layoutMode: mode }));
@@ -568,8 +637,11 @@ export function Workspace({
                 onChange={(event) => setSearch(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Escape") setSearch(null);
-                  if (event.key === "Enter" && matches[0])
+                  if (event.key !== "Enter") return;
+                  if (matches[0])
                     chooseInstrument(matches[0].instrument.instrument_id);
+                  else if (remoteMatches[0])
+                    chooseListing(remoteMatches[0].listing);
                 }}
               />
               <ul>
@@ -588,8 +660,38 @@ export function Workspace({
                     </button>
                   </li>
                 ))}
-                {matches.length === 0 ? (
+                {remoteMatches.map((item) => (
+                  <li key={item.listing.instrument.instrument_id}>
+                    <button
+                      type="button"
+                      onClick={() => chooseListing(item.listing)}
+                    >
+                      <strong>{item.listing.instrument.symbol}</strong>
+                      <small>
+                        {item.name} · {item.listing.instrument.venue}
+                      </small>
+                    </button>
+                  </li>
+                ))}
+                {searching ? (
+                  <li className="symbol-empty">{t("chart.searching")}</li>
+                ) : remote?.error ? (
+                  <li className="symbol-empty">
+                    {remote.error instanceof MarketApiError &&
+                    remote.error.code === "symbol_search_unavailable"
+                      ? t("chart.searchOffline")
+                      : t("chart.searchFailed", {
+                          error:
+                            remote.error instanceof Error
+                              ? remote.error.message
+                              : t("common.requestFailed"),
+                        })}
+                  </li>
+                ) : matches.length === 0 && remoteMatches.length === 0 ? (
                   <li className="symbol-empty">{t("chart.noMatch")}</li>
+                ) : null}
+                {remote?.stale && remote.query === query ? (
+                  <li className="symbol-empty">{t("chart.searchStale")}</li>
                 ) : null}
               </ul>
             </div>
@@ -1157,6 +1259,14 @@ export function Workspace({
               sessionDate={activeConfig.sessionDate}
               activeInstrumentId={activeConfig.instrumentId}
               onPick={(instrumentId) => updateActive({ instrumentId })}
+              removable={addedIds}
+              onRemove={(instrumentId) =>
+                changeAdded(
+                  added.filter(
+                    (item) => item.instrument.instrument_id !== instrumentId,
+                  ),
+                )
+              }
               actions={
                 <button
                   type="button"
@@ -1274,6 +1384,14 @@ export function Workspace({
               sessionDate={activeConfig.sessionDate}
               activeInstrumentId={activeConfig.instrumentId}
               onPick={(instrumentId) => updateActive({ instrumentId })}
+              removable={addedIds}
+              onRemove={(instrumentId) =>
+                changeAdded(
+                  added.filter(
+                    (item) => item.instrument.instrument_id !== instrumentId,
+                  ),
+                )
+              }
               hideTitle
             />
           )}

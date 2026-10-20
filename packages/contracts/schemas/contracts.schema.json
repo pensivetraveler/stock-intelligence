@@ -74,6 +74,9 @@
     },
     {
       "$ref": "#/$defs/SessionListResponse"
+    },
+    {
+      "$ref": "#/$defs/SymbolSearchResponse"
     }
   ],
   "$defs": {
@@ -1910,6 +1913,86 @@
           "maxItems": 120,
           "items": {
             "$ref": "#/$defs/SessionWindow"
+          }
+        }
+      }
+    },
+    "SymbolSearchResponse": {
+      "description": "US-listed stocks matching a ticker or company-name query, from the provider's symbol directory. Any result can be charted with the active provider.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "query",
+        "source_id",
+        "fetched_at_utc",
+        "stale",
+        "results"
+      ],
+      "properties": {
+        "kind": {
+          "const": "symbol_search_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "query": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "source_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "fetched_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp",
+          "description": "When the directory was last fetched from the provider."
+        },
+        "stale": {
+          "type": "boolean",
+          "description": "The directory is older than a day and could not be refreshed; results may miss new listings."
+        },
+        "results": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["listing", "name"],
+            "properties": {
+              "listing": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "instrument",
+                  "source_id",
+                  "dataset_revision",
+                  "session_dates"
+                ],
+                "properties": {
+                  "instrument": {
+                    "$ref": "#/$defs/InstrumentRef"
+                  },
+                  "source_id": {
+                    "$ref": "#/$defs/Identifier"
+                  },
+                  "dataset_revision": {
+                    "$ref": "#/$defs/Identifier"
+                  },
+                  "session_dates": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "date"
+                    }
+                  }
+                }
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 200
+              }
+            }
           }
         }
       }

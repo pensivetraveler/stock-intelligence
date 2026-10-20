@@ -154,6 +154,13 @@ const en = {
     "Click a candle to record an actual execution or a hypothetical scenario.",
   "chart.searchSymbol": "Search symbol",
   "chart.noMatch": "No matching symbol",
+  "chart.searching": "Searching all US stocks…",
+  "chart.searchOffline":
+    "Searching configured symbols only: the data provider offers no symbol list.",
+  "chart.searchFailed": "Symbol search failed: {error}",
+  "chart.searchStale":
+    "The symbol list is out of date; new listings may be missing.",
+  "watch.remove": "Remove {symbol} from the watchlist",
   "chart.previousDay": "Previous day",
   "chart.nextDay": "Next day",
   "chart.tools": "Chart tools",
@@ -511,6 +518,13 @@ const ko: Record<MessageKey, string> = {
     "캔들을 클릭하면 실제 체결이나 가상 시나리오를 기록할 수 있습니다.",
   "chart.searchSymbol": "종목 검색",
   "chart.noMatch": "일치하는 종목이 없습니다",
+  "chart.searching": "미국 전체 종목을 검색하는 중…",
+  "chart.searchOffline":
+    "데이터 공급업체가 종목 목록을 제공하지 않아 설정된 종목에서만 찾습니다.",
+  "chart.searchFailed": "종목 검색에 실패했습니다: {error}",
+  "chart.searchStale":
+    "종목 목록이 오래되어 새로 상장된 종목이 빠졌을 수 있습니다.",
+  "watch.remove": "관심종목에서 {symbol} 빼기",
   "chart.previousDay": "전날",
   "chart.nextDay": "다음 날",
   "chart.tools": "차트 도구",

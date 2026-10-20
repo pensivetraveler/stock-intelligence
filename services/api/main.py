@@ -43,6 +43,13 @@ from services.market_data.storage import (
     LocalMarketDataStore,
     StorageError,
 )
+from services.market_data.symbol_directory import (
+    MAX_QUERY_LENGTH,
+    MAX_RESULTS,
+    SymbolDirectory,
+    SymbolDirectoryUnavailableError,
+    SymbolEntry,
+)
 
 APP_NAME = "stock-intelligence-workstation-api"
 APP_VERSION = "0.4.0-dev"
@@ -140,6 +147,31 @@ class _LazyProvider:
         return upstream.status() if isinstance(upstream, PooledProvider) else {}
 
 
+class _LazySymbols:
+    """The symbol directory of the running provider, when it offers one and data is kept."""
+
+    def __init__(self, directory: SymbolDirectory | None, provider: _LazyProvider) -> None:
+        self._directory = directory
+        self._provider = provider
+        self._lock = threading.Lock()
+
+    def get(self) -> SymbolDirectory | None:
+        with self._lock:
+            if self._directory is None:
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                upstream = self._provider.get()
+                list_assets = getattr(upstream, "list_assets", None)
+                if configured and list_assets is not None:
+                    self._directory = SymbolDirectory(
+                        Path(configured), upstream.source_id, list_assets
+                    )
+            return self._directory
+
+    def known(self) -> dict[str, SymbolEntry]:
+        directory = self.get()
+        return directory.known() if directory is not None else {}
+
+
 class _LazyJournal:
     """Open the journal store on first use; None when no data directory is configured."""
 
@@ -165,10 +197,12 @@ def create_app(
     *,
     journal_store: JournalStore | None = None,
     credential_store: CredentialStore | None = None,
+    symbol_directory: SymbolDirectory | None = None,
     clock: Callable[[], datetime] = _utc_now,
 ) -> FastAPI:
     credentials = _LazyCredentials(credential_store)
     provider = _LazyProvider(market_data_provider, credentials.get)
+    symbols = _LazySymbols(symbol_directory, provider)
     journal = _LazyJournal(journal_store)
 
     @asynccontextmanager
@@ -247,6 +281,39 @@ def create_app(
         validate_document(document)
         return JSONResponse(content=document)
 
+    @application.get("/v1/market/symbols", response_model=None)
+    def market_symbols(
+        request: Request,
+        q: Annotated[str, Query(max_length=MAX_QUERY_LENGTH)] = "",
+        limit: Annotated[int, Query(ge=1, le=MAX_RESULTS)] = 20,
+    ) -> Response:
+        """US-listed stocks whose ticker or company name matches `q`, tickers first."""
+        directory = symbols.get()
+        if directory is None:
+            return _error_response(
+                request,
+                404,
+                "symbol_search_unavailable",
+                "the current data provider offers no symbol list, or SIW_DATA_DIR is not set",
+            )
+        try:
+            found = directory.search(q, limit)
+        except SymbolDirectoryUnavailableError as exc:
+            return _error_response(request, 503, "symbol_directory_unavailable", str(exc))
+        document = {
+            "kind": "symbol_search_response",
+            "schema_version": "0.1",
+            "query": q,
+            "source_id": directory.source_id,
+            "fetched_at_utc": found.fetched_at_utc,
+            "stale": found.stale,
+            "results": [
+                {"listing": directory.listing(entry), "name": entry.name} for entry in found.entries
+            ],
+        }
+        validate_document(document)
+        return JSONResponse(content=document)
+
     @application.get("/v1/market/sessions", response_model=None)
     def market_sessions(
         request: Request,
@@ -297,9 +364,11 @@ def create_app(
     register_journal_routes(
         application,
         journal=journal.get,
-        known_instruments=lambda: {
-            item["instrument"]["instrument_id"] for item in provider.get().instruments()
-        },
+        # Configured instruments plus every listed stock the symbol directory knows.
+        known_instruments=lambda: (
+            {item["instrument"]["instrument_id"] for item in provider.get().instruments()}
+            | set(symbols.known())
+        ),
         now=clock,
         error_response=_error_response,
     )
@@ -315,8 +384,11 @@ def create_app(
         application,
         journal=journal.get,
         symbols=lambda: {
-            item["instrument"]["symbol"].upper(): item["instrument"]["instrument_id"]
-            for item in provider.get().instruments()
+            **{entry.symbol: instrument_id for instrument_id, entry in symbols.known().items()},
+            **{
+                item["instrument"]["symbol"].upper(): item["instrument"]["instrument_id"]
+                for item in provider.get().instruments()
+            },
         },
         now=clock,
         error_response=_error_response,

@@ -24,7 +24,8 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ImportedLedgerResponse
   | CredentialSummary
   | CredentialListResponse
-  | SessionListResponse;
+  | SessionListResponse
+  | SymbolSearchResponse;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -469,4 +470,33 @@ export interface SessionListResponse {
    * @maxItems 120
    */
   sessions: SessionWindow[];
+}
+/**
+ * US-listed stocks matching a ticker or company-name query, from the provider's symbol directory. Any result can be charted with the active provider.
+ */
+export interface SymbolSearchResponse {
+  kind: "symbol_search_response";
+  schema_version: SchemaVersion;
+  query: string;
+  source_id: Identifier;
+  /**
+   * When the directory was last fetched from the provider.
+   */
+  fetched_at_utc: string;
+  /**
+   * The directory is older than a day and could not be refreshed; results may miss new listings.
+   */
+  stale: boolean;
+  /**
+   * @maxItems 50
+   */
+  results: {
+    listing: {
+      instrument: InstrumentRef;
+      source_id: Identifier;
+      dataset_revision: Identifier;
+      session_dates: string[];
+    };
+    name: string;
+  }[];
 }

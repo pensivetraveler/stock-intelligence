@@ -169,6 +169,13 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
         if len(identifiers) != len(set(identifiers)):
             errors.append("instrument_id must be unique within the response")
 
+    if kind == "symbol_search_response":
+        identifiers = [
+            item["listing"]["instrument"]["instrument_id"] for item in document["results"]
+        ]
+        if len(identifiers) != len(set(identifiers)):
+            errors.append("instrument_id must be unique within the response")
+
     if kind == "backtest_run_config" and _utc(document["end_utc"]) <= _utc(document["start_utc"]):
         errors.append("backtest end_utc must be after start_utc")
 

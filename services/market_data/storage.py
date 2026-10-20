@@ -1050,6 +1050,13 @@ class CachedMarketDataProvider:
     def instruments(self) -> list[dict[str, Any]]:
         return self.upstream.instruments()
 
+    def list_assets(self) -> list[dict[str, str]]:
+        """The upstream's listed-symbol directory (not cached here; see SymbolDirectory)."""
+        list_assets = getattr(self.upstream, "list_assets", None)
+        if list_assets is None:
+            raise InvalidBarsQueryError("this data provider offers no symbol directory")
+        return cast(list[dict[str, str]], list_assets())
+
     def get_daily_bars(self, query: BarsQuery) -> BarsResult:
         """Daily bars from settled cached years, the rest from the upstream."""
         from services.market_data.daily import DailyBarsProvider, validate_daily_query

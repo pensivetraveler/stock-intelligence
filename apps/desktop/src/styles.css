@@ -887,6 +887,19 @@ button:disabled {
   font-weight: 700;
 }
 
+.watch-remove {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: #8b93a7;
+  cursor: pointer;
+}
+
+.watch-remove:hover {
+  color: #f23645;
+}
+
 .watchlist .workspace-note {
   margin-top: 8px;
   font-size: 12px;
