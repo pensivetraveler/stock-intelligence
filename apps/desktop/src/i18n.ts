@@ -281,8 +281,9 @@ const en = {
   "bt.adj.raw": "As traded (unadjusted)",
   "bt.adjNote":
     "Adjusted prices use the corporate actions known today, so price levels before a split or dividend differ from what traded; they are fetched fresh for each run.",
-  "bt.adjRawOnly":
-    "Only unadjusted prices are available for intraday or Korean runs.",
+  "bt.adjNoteKr":
+    "Korean adjusted prices from Toss cover splits, bonus issues and rights offerings but not cash dividends; they use the actions known today and are fetched fresh for each run.",
+  "bt.adjRawOnly": "Only unadjusted prices are available for intraday runs.",
   "bt.warn.adjusted_prices":
     "{symbol}: prices are adjusted with the corporate actions known on {dates}; levels before an action differ from what traded.",
   "bt.intradayNote":
@@ -1049,7 +1050,9 @@ const ko: Record<MessageKey, string> = {
   "bt.adj.raw": "실제 체결가(미수정)",
   "bt.adjNote":
     "수정주가는 오늘 기준으로 알려진 기업 이벤트를 반영합니다. 분할·배당 이전 가격 수준은 당시 실제 거래가와 다르며, 실행할 때마다 새로 받아옵니다.",
-  "bt.adjRawOnly": "분봉이나 국내 종목 실행은 미수정 가격만 쓸 수 있습니다.",
+  "bt.adjNoteKr":
+    "국내 종목 수정주가는 토스 기준으로 액면분할·무상증자·유상증자(권리락)를 반영하고 현금배당은 반영하지 않습니다. 오늘 기준으로 알려진 이벤트를 쓰며 실행할 때마다 새로 받아옵니다.",
+  "bt.adjRawOnly": "분봉 실행은 미수정 가격만 쓸 수 있습니다.",
   "bt.warn.adjusted_prices":
     "{symbol}: {dates} 기준 기업 이벤트로 수정한 가격입니다. 이벤트 이전 가격 수준은 당시 실제 거래가와 다릅니다.",
   "bt.intradayNote": "분봉 실행은 정규장만, 최대 60세션까지 읽습니다.",

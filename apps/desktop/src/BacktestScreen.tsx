@@ -203,11 +203,19 @@ export function BacktestScreen({
     chosen.map((id) => currencyOf(listing.get(id), id)),
   );
   const currency = currencies.size === 1 ? [...currencies][0] : null;
-  // Adjusted prices come from Alpaca daily bars: US daily and weekly runs only.
+  // Adjusted daily bars: Alpaca for US runs, Toss for Korean runs (splits and other
+  // capital changes only, no dividends). Daily and weekly runs only.
   const canAdjust =
-    currency === "USD" &&
+    currency !== null &&
     (config.timeframe === "1d" || config.timeframe === "1w");
-  const adjustment: Adjustment = canAdjust ? config.adjustment : "raw";
+  const adjustmentChoices = ADJUSTMENT_CHOICES.filter(
+    (choice) => currency !== "KRW" || choice !== "fully_adjusted",
+  );
+  const adjustment: Adjustment = !canAdjust
+    ? "raw"
+    : adjustmentChoices.includes(config.adjustment)
+      ? config.adjustment
+      : "split_adjusted";
   const strategyNames = new Map(
     strategies.map((item) => [item.strategy_id, item.name]),
   );
@@ -511,7 +519,7 @@ export function BacktestScreen({
                     })
                   }
                 >
-                  {ADJUSTMENT_CHOICES.map((choice) => (
+                  {adjustmentChoices.map((choice) => (
                     <option key={choice} value={choice}>
                       {t(`bt.adj.${choice}`)}
                     </option>
@@ -520,7 +528,11 @@ export function BacktestScreen({
               </label>
             </div>
             <p className="workspace-note">
-              {canAdjust ? t("bt.adjNote") : t("bt.adjRawOnly")}
+              {!canAdjust
+                ? t("bt.adjRawOnly")
+                : currency === "KRW"
+                  ? t("bt.adjNoteKr")
+                  : t("bt.adjNote")}
             </p>
             {config.timeframe !== "1d" && config.timeframe !== "1w" ? (
               <p className="workspace-note">{t("bt.intradayNote")}</p>
