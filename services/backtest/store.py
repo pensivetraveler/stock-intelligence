@@ -15,7 +15,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from services.backtest.strategy import canonical, fingerprint, validate_definition
+from services.backtest.strategy import (
+    CustomLookup,
+    canonical,
+    fingerprint,
+    validate_definition,
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS strategies (
@@ -91,10 +96,16 @@ class BacktestStore:
         }
 
     def save_strategy(
-        self, name: str, definition: object, strategy_id: str | None = None
+        self,
+        name: str,
+        definition: object,
+        strategy_id: str | None = None,
+        custom: CustomLookup | None = None,
     ) -> dict[str, Any]:
-        """A new strategy, or the next version of an existing one (unchanged: no new one)."""
-        clean = validate_definition(definition)
+        """A new strategy, or the next version of an existing one (unchanged: no new one).
+
+        `custom` resolves Python indicator operands (`py:<id>@<version>`)."""
+        clean = validate_definition(definition, custom)
         digest = fingerprint(clean)
         now = self._now()
         with self._lock:

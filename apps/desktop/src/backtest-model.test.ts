@@ -1,18 +1,35 @@
 import type {
   BacktestFill,
   BrokerOrderExecution,
+  CustomIndicator,
   ManualExecution,
 } from "@siw/contracts/types";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  BACKTEST_INDICATOR_IDS,
   compareFills,
   defaultRulesDraft,
+  indicatorLabel,
   indicatorOperand,
   percent,
+  ruleIndicatorIds,
   rulesDefinition,
   rulesDraftOf,
 } from "./backtest-model";
+import { registerCustom } from "./custom-indicators";
+
+const savedIndicator = JSON.parse(
+  readFileSync(
+    resolve(
+      import.meta.dirname,
+      "../../../tests/fixtures/contracts/valid/custom-indicator.json",
+    ),
+    "utf8",
+  ),
+) as CustomIndicator;
 
 describe("rule builder model", () => {
   it("writes the JSON the engine expects", () => {
@@ -61,6 +78,42 @@ describe("rule builder model", () => {
       },
     };
     expect(rulesDraftOf(nested)).toBeNull();
+  });
+
+  it("offers the latest saved Python indicators, pinned by version", () => {
+    const v1 = savedIndicator;
+    const v2 = {
+      ...v1,
+      version: 2,
+      versions: [1, 2],
+      type: v1.type.replace("@1", "@2"),
+    };
+    registerCustom([v1, v2]);
+    expect(ruleIndicatorIds()).toEqual([...BACKTEST_INDICATOR_IDS, v2.type]);
+    // A rule still pinned to version 1 keeps it in its own list.
+    expect(ruleIndicatorIds(v1.type)).toEqual([
+      ...BACKTEST_INDICATOR_IDS,
+      v2.type,
+      v1.type,
+    ]);
+    expect(indicatorLabel(v2.type, "en")).toBe("RSI band (Python v2)");
+    expect(indicatorLabel("sma", "en")).toBe("SMA");
+    const operand = indicatorOperand(v1.type);
+    expect(operand).toEqual({
+      kind: "indicator",
+      indicator: v1.type,
+      params: { length: 14, high: 70 },
+      output: "rsi",
+    });
+    const draft = defaultRulesDraft();
+    draft.entry[0].right = { ...operand, output: "over" } as typeof operand;
+    const definition = rulesDefinition(draft);
+    expect((definition.entry as { right: unknown }).right).toEqual({
+      indicator: v1.type,
+      params: { length: 14, high: 70 },
+      output: "over",
+    });
+    expect(rulesDefinition(rulesDraftOf(definition)!)).toEqual(definition);
   });
 
   it("formats ratios as percentages", () => {

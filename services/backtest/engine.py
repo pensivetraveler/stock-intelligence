@@ -12,16 +12,24 @@ results. Fills stay in the result document; nothing is written to any ledger.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+import hashlib
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import ROUND_DOWN, ROUND_HALF_EVEN, Decimal
 from typing import Any, Protocol
 
 from services.backtest.data import EngineBar, InstrumentInput
-from services.backtest.indicators import Bar
+from services.backtest.indicators import Bar, Series
 from services.backtest.sandbox import StrategyProcess
-from services.backtest.strategy import RuleEvaluator
+from services.backtest.strategy import (
+    CustomLookup,
+    RuleEvaluator,
+    StrategyError,
+    canonical,
+    parse_custom,
+)
+from services.custom_indicators import runner as custom_runner
 
 ENGINE_VERSION = "siw-backtest-1"
 FILL_MODEL = "next-open-slippage-v1"
@@ -114,15 +122,123 @@ def _indicator_bars(bars: Sequence[EngineBar]) -> list[Bar]:
     ]
 
 
-class RuleSignals:
-    def __init__(self, definition: dict[str, Any], inputs: Sequence[InstrumentInput]) -> None:
-        self.definition = definition
-        self.evaluators = {
-            item.instrument_id: RuleEvaluator(
-                definition, _indicator_bars([b for b in item.bars if b.final]), item.time_zone
-            )
-            for item in inputs
+def _operands(condition: dict[str, Any] | None) -> Iterator[dict[str, Any]]:
+    if condition is None:
+        return
+    for group in ("all", "any"):
+        if group in condition:
+            for item in condition[group]:
+                yield from _operands(item)
+            return
+    yield condition["left"]
+    yield condition["right"]
+
+
+def _custom_bars(bars: Sequence[EngineBar]) -> list[dict[str, Any]]:
+    return [
+        {
+            "time": bar.time,
+            "open": float(bar.open),
+            "high": float(bar.high),
+            "low": float(bar.low),
+            "close": float(bar.close),
+            "volume": float(bar.volume),
         }
+        for bar in bars
+    ]
+
+
+class RuleSignals:
+    """Rules over each instrument's final bars.
+
+    Python indicator operands (`py:<id>@<version>`, ADR 0023) are computed once per
+    instrument and setting, before the run, in the indicator sandbox: `update(ctx)` sees
+    one bar at a time, so each value depends only on that bar and earlier ones. The code
+    of every version used is pinned by SHA-256 in `custom_pins`.
+    """
+
+    def __init__(
+        self,
+        definition: dict[str, Any],
+        inputs: Sequence[InstrumentInput],
+        custom: CustomLookup | None = None,
+        process: Callable[..., StrategyProcess] = StrategyProcess,
+    ) -> None:
+        self.definition = definition
+        operands = [
+            operand
+            for rule in (definition["entry"], definition["exit"])
+            for operand in _operands(rule)
+            if "indicator" in operand and parse_custom(operand["indicator"]) is not None
+        ]
+        saved = {operand["indicator"]: self._resolve(operand, custom) for operand in operands}
+        self.custom_pins = [
+            {
+                "type": item["type"],
+                "indicator_id": item["indicator_id"],
+                "version": item["version"],
+                "name": item["name"],
+                "code_sha256": item["code_sha256"],
+            }
+            for _type, item in sorted(saved.items())
+        ]
+        self.evaluators: dict[str, RuleEvaluator] = {}
+        for item in inputs:
+            final = [b for b in item.bars if b.final]
+            self.evaluators[item.instrument_id] = RuleEvaluator(
+                definition,
+                _indicator_bars(final),
+                item.time_zone,
+                self._custom_series(operands, saved, final, item, process),
+            )
+
+    @staticmethod
+    def _resolve(operand: dict[str, Any], custom: CustomLookup | None) -> dict[str, Any]:
+        parsed = parse_custom(operand["indicator"])
+        assert parsed is not None
+        if custom is None:
+            raise StrategyError("Python indicators need the indicator store (set SIW_DATA_DIR)")
+        try:
+            item = custom(*parsed)
+        except LookupError as exc:
+            raise StrategyError(f"{operand['indicator']} is not a saved version") from exc
+        if hashlib.sha256(item["code"].encode()).hexdigest() != item["code_sha256"]:
+            raise StrategyError(f"{operand['indicator']} code does not match its SHA-256")
+        return item
+
+    @staticmethod
+    def _custom_series(
+        operands: list[dict[str, Any]],
+        saved: dict[str, dict[str, Any]],
+        final: Sequence[EngineBar],
+        item: InstrumentInput,
+        process: Callable[..., StrategyProcess],
+    ) -> dict[str, Series]:
+        series: dict[str, Series] = {}
+        computed: dict[str, dict[str, list[float | None]]] = {}
+        bars = _custom_bars(final)
+        for operand in operands:
+            run_key = canonical({"indicator": operand["indicator"], "params": operand["params"]})
+            if run_key not in computed:
+                indicator = saved[operand["indicator"]]
+                if not bars:
+                    computed[run_key] = {name: [] for name in indicator["outputs"]}
+                else:
+                    try:
+                        computed[run_key] = custom_runner.compute(
+                            indicator["code"],
+                            indicator,
+                            operand["params"],
+                            bars,
+                            item.time_zone,
+                            process,
+                        )
+                    except custom_runner.IndicatorError as exc:
+                        raise custom_runner.IndicatorError(
+                            f"{operand['indicator']} failed on {item.instrument_id}: {exc}"
+                        ) from exc
+            series[canonical(operand)] = computed[run_key][operand["output"]]
+        return series
 
     def signals(self, instrument_id: str, index: int, book: dict[str, Any]) -> list[dict[str, Any]]:
         evaluator = self.evaluators[instrument_id]

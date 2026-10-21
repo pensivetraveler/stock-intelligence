@@ -98,7 +98,7 @@ On 2026-10-21 the user chose:
 
 - **Where:** a "Backtest" button on the right rail opens a large window over the charts. Esc or ✕ closes it.
 - **Strategy editor:**
-  - Rules are edited in a form: entry and exit conditions combined with all/any; operands are the 10 engine indicators (with their parameters and outputs), a bar price or a value; plus stop/target, sizing and max positions.
+  - Rules are edited in a form: entry and exit conditions combined with all/any; operands are the 10 engine indicators (with their parameters and outputs), a saved Python indicator pinned by version (`py:<id>@<version>`, [ADR 0023](0023-python-custom-indicators.md)), a bar price or a value; plus stop/target, sizing and max positions.
   - A saved rule nested deeper than the form can show is displayed as JSON and run exactly as saved.
   - Python strategies are edited as code with JSON parameters, under a note that the code runs isolated and should be reviewed first.
   - The API, not the screen, decides whether a definition is valid; its message is shown.

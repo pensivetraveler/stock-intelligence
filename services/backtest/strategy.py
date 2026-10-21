@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from services.backtest.indicators import INDICATORS, Bar, Series, compute
+from services.custom_indicators.runner import IndicatorError, clean_params
 
 COMPARISONS = ("cross_above", "cross_below", "gt", "gte", "lt", "lte")
 PRICES = ("open", "high", "low", "close", "volume")
@@ -21,6 +23,10 @@ SIZING_MODES = ("percent_equity", "fixed_cash", "fixed_shares")
 MAX_CODE_BYTES = 100_000
 MAX_DEPTH = 6
 MAX_CONDITIONS = 40
+CUSTOM_TYPE = re.compile(r"^py:([A-Za-z0-9_-]{1,64})@([1-9][0-9]{0,8})$")
+
+# A saved Python indicator version (ADR 0023) by ID and version; raises LookupError.
+CustomLookup = Callable[[str, int], dict[str, Any]]
 
 
 class StrategyError(ValueError):
@@ -47,9 +53,44 @@ def _decimal(value: object, what: str, low: Decimal, high: Decimal) -> str:
     return format(number.normalize(), "f")
 
 
-def _operand(value: object) -> dict[str, Any]:
+def parse_custom(indicator: str) -> tuple[str, int] | None:
+    """`py:<id>@<version>` -> (id, version); None for a built-in indicator ID."""
+    match = CUSTOM_TYPE.fullmatch(indicator)
+    return None if match is None else (match.group(1), int(match.group(2)))
+
+
+def _custom_operand(value: dict[str, Any], custom: CustomLookup | None) -> dict[str, Any]:
+    indicator = str(value["indicator"])
+    parsed = parse_custom(indicator)
+    if parsed is None:
+        raise StrategyError(f"{indicator!r} must look like py:<indicator_id>@<version>")
+    if custom is None:
+        raise StrategyError("Python indicators need the indicator store (set SIW_DATA_DIR)")
+    try:
+        saved = custom(*parsed)
+    except LookupError as exc:
+        raise StrategyError(f"{indicator} is not a saved Python indicator version") from exc
+    params = value.get("params", {})
+    if not isinstance(params, dict):
+        raise StrategyError("indicator params must be an object")
+    output = value.get("output", saved["outputs"][0])
+    if output not in saved["outputs"]:
+        raise StrategyError(f"{indicator} has no output {output!r}")
+    extra = set(value) - {"indicator", "params", "output"}
+    if extra:
+        raise StrategyError(f"unexpected operand fields: {', '.join(sorted(extra))}")
+    try:
+        clean_params(saved, params)
+    except IndicatorError as exc:
+        raise StrategyError(f"{indicator}: {exc}") from exc
+    return {"indicator": indicator, "params": dict(params), "output": output}
+
+
+def _operand(value: object, custom: CustomLookup | None = None) -> dict[str, Any]:
     if not isinstance(value, dict) or len(value) == 0:
         raise StrategyError("an operand must be an indicator, a price or a value")
+    if "indicator" in value and str(value.get("indicator")).startswith("py:"):
+        return _custom_operand(value, custom)
     if "indicator" in value:
         indicator_id = value.get("indicator")
         spec = INDICATORS.get(str(indicator_id))
@@ -85,7 +126,9 @@ def _operand(value: object) -> dict[str, Any]:
     raise StrategyError("an operand must be an indicator, a price or a value")
 
 
-def _condition(value: object, depth: int, counter: list[int]) -> dict[str, Any]:
+def _condition(
+    value: object, depth: int, counter: list[int], custom: CustomLookup | None
+) -> dict[str, Any]:
     counter[0] += 1
     if counter[0] > MAX_CONDITIONS:
         raise StrategyError(f"a rule may hold at most {MAX_CONDITIONS} conditions")
@@ -98,10 +141,14 @@ def _condition(value: object, depth: int, counter: list[int]) -> dict[str, Any]:
             items = value[group]
             if set(value) != {group} or not isinstance(items, list) or not items:
                 raise StrategyError(f"{group!r} must be the only field and a non-empty list")
-            return {group: [_condition(item, depth + 1, counter) for item in items]}
+            return {group: [_condition(item, depth + 1, counter, custom) for item in items]}
     if set(value) != {"op", "left", "right"} or value["op"] not in COMPARISONS:
         raise StrategyError(f"a comparison needs op ({', '.join(COMPARISONS)}), left and right")
-    return {"op": value["op"], "left": _operand(value["left"]), "right": _operand(value["right"])}
+    return {
+        "op": value["op"],
+        "left": _operand(value["left"], custom),
+        "right": _operand(value["right"], custom),
+    }
 
 
 def _risk(definition: dict[str, Any], clean: dict[str, Any]) -> None:
@@ -116,8 +163,11 @@ def _risk(definition: dict[str, Any], clean: dict[str, Any]) -> None:
     clean["max_positions"] = limit
 
 
-def validate_definition(definition: object) -> dict[str, Any]:
-    """Return the normalized definition, or raise StrategyError."""
+def validate_definition(definition: object, custom: CustomLookup | None = None) -> dict[str, Any]:
+    """Return the normalized definition, or raise StrategyError.
+
+    `custom` resolves `py:<id>@<version>` operands; without it they are refused.
+    """
     if not isinstance(definition, dict):
         raise StrategyError("a strategy definition must be an object")
     kind = definition.get("type")
@@ -129,9 +179,9 @@ def validate_definition(definition: object) -> dict[str, Any]:
         if extra:
             raise StrategyError(f"unexpected fields: {', '.join(sorted(extra))}")
         counter = [0]
-        clean["entry"] = _condition(definition.get("entry"), 0, counter)
+        clean["entry"] = _condition(definition.get("entry"), 0, counter, custom)
         exit_rule = definition.get("exit")
-        clean["exit"] = None if exit_rule is None else _condition(exit_rule, 0, counter)
+        clean["exit"] = None if exit_rule is None else _condition(exit_rule, 0, counter, custom)
         sizing = definition.get("sizing", {"mode": "percent_equity", "value": 10})
         if not isinstance(sizing, dict) or sizing.get("mode") not in SIZING_MODES:
             raise StrategyError(f"sizing mode must be one of {', '.join(SIZING_MODES)}")
@@ -175,18 +225,24 @@ class RuleEvaluator:
 
     Indicator series are computed once over all bars; they are causal (checked by tests),
     so the value at index i depends only on bars 0..i. A missing value makes a condition
-    false.
+    false. Python indicator series (`py:` operands) are not computed here: the caller puts
+    them in `custom_series`, keyed by `canonical(operand)`.
     """
 
     definition: dict[str, Any]
     bars: Sequence[Bar]
     time_zone: str
+    custom_series: dict[str, Series] = field(default_factory=dict)
     _cache: dict[str, Series] = field(default_factory=dict)
 
     def _series(self, operand: dict[str, Any]) -> Series | None:
         if "indicator" not in operand:
             return None
         key = canonical(operand)
+        if key in self.custom_series:
+            return self.custom_series[key]
+        if parse_custom(operand["indicator"]) is not None:
+            raise StrategyError(f"{operand['indicator']} was not computed for this run")
         if key not in self._cache:
             outputs = compute(operand["indicator"], self.bars, operand["params"], self.time_zone)
             self._cache[key] = outputs[operand["output"]]

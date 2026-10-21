@@ -6,6 +6,8 @@ import type {
 } from "@siw/contracts/types";
 
 import type { StrategyDefinition } from "./backtest-api";
+import { isCustomType, latestCustom } from "./custom-indicators";
+import type { Language } from "./i18n";
 import { INDICATOR_BY_ID, type IndicatorDefinition } from "./indicators";
 
 /** Indicators the backtest engine computes, with the chart's own definitions. */
@@ -26,6 +28,28 @@ export function backtestIndicator(id: string): IndicatorDefinition {
   const definition = INDICATOR_BY_ID.get(id);
   if (!definition) throw new Error(`unknown indicator ${id}`);
   return definition;
+}
+
+/**
+ * Indicators a rule operand can use: the built-ins, then the latest version of each
+ * saved Python indicator (`py:<id>@<version>`, ADR 0023), plus `current` when a rule is
+ * pinned to an older version that is still known.
+ */
+export function ruleIndicatorIds(current?: string): string[] {
+  const ids: string[] = [
+    ...BACKTEST_INDICATOR_IDS,
+    ...latestCustom().map((item) => item.type),
+  ];
+  if (current && !ids.includes(current) && INDICATOR_BY_ID.has(current)) {
+    ids.push(current);
+  }
+  return ids;
+}
+
+/** Built-ins by their short name; Python indicators by name and version. */
+export function indicatorLabel(id: string, language: Language): string {
+  const definition = backtestIndicator(id);
+  return isCustomType(id) ? definition.name[language] : definition.short;
 }
 
 export const COMPARISONS = [
