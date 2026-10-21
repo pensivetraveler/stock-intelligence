@@ -10,6 +10,12 @@
  */
 
 import {
+  alignToChart,
+  isHigherTimeframe,
+  type HigherBars,
+  type HigherTimeframe,
+} from "./higher-timeframe";
+import {
   formulaDefinition,
   formulaLookback,
   MAX_FORMULA_LENGTH,
@@ -1150,6 +1156,8 @@ export interface IndicatorInstance {
   type: string;
   params: Record<string, number>;
   hidden?: boolean;
+  /** Computed on this larger timeframe instead of the chart's (built-ins, formulas). */
+  timeframe?: HigherTimeframe;
   /** Formula indicators (type "formula"): the expression, its name and pane. */
   formula?: string;
   label?: string;
@@ -1225,6 +1233,9 @@ export function parseIndicators(value: unknown): IndicatorInstance[] {
               ? record.label.trim().slice(0, 40)
               : "Formula",
           pane: record.pane === "price" ? "price" : "separate",
+          ...(isHigherTimeframe(record.timeframe)
+            ? { timeframe: record.timeframe }
+            : {}),
           ...(record.hidden === true ? { hidden: true } : {}),
         },
       ];
@@ -1272,6 +1283,11 @@ export function parseIndicators(value: unknown): IndicatorInstance[] {
         key: record.key,
         type: definition.id,
         params: cleanParams(definition, record.params),
+        // Python indicators are computed by the API on the chart's own bars only.
+        ...(isHigherTimeframe(record.timeframe) &&
+        !definition.id.startsWith("py:")
+          ? { timeframe: record.timeframe }
+          : {}),
         ...(record.hidden === true ? { hidden: true } : {}),
       },
     ];
@@ -1326,33 +1342,37 @@ export const MAX_WARMUP_BARS = 1_000;
  * settled from the first shown bar: three times the longest look-back (exponential
  * averages need about that long to forget their seed), capped at MAX_WARMUP_BARS.
  */
+/** How many earlier bars one indicator reads (its longest look-back). */
+export function instanceLookback(instance: IndicatorInstance): number {
+  if (instance.type === "formula") {
+    try {
+      return formulaLookback(parseFormula(instance.formula ?? ""));
+    } catch {
+      return 0; // an invalid formula draws nothing and needs no warm-up
+    }
+  }
+  const definition = INDICATOR_BY_ID.get(instance.type);
+  if (!definition) return 0;
+  let longest = 0;
+  let total = 0;
+  for (const item of definition.inputs) {
+    const value = instance.params[item.key];
+    if (item.lookback === false || item.step !== undefined) continue;
+    if (Number.isInteger(value)) {
+      longest = Math.max(longest, value);
+      total += value;
+    }
+  }
+  // Ichimoku's leading span B looks back its own length plus the displacement.
+  return definition.id === "ichimoku" ? Math.max(longest, total) : longest;
+}
+
 export function warmupBars(instances: IndicatorInstance[]): number {
   let longest = 0;
   for (const instance of instances) {
-    if (instance.type === "formula") {
-      try {
-        longest = Math.max(
-          longest,
-          formulaLookback(parseFormula(instance.formula ?? "")),
-        );
-      } catch {
-        // an invalid formula draws nothing and needs no warm-up
-      }
-      continue;
-    }
-    const definition = INDICATOR_BY_ID.get(instance.type);
-    if (!definition) continue;
-    let total = 0;
-    for (const item of definition.inputs) {
-      const value = instance.params[item.key];
-      if (item.lookback === false || item.step !== undefined) continue;
-      if (Number.isInteger(value)) {
-        longest = Math.max(longest, value);
-        total += value;
-      }
-    }
-    // Ichimoku's leading span B looks back its own length plus the displacement.
-    if (definition.id === "ichimoku") longest = Math.max(longest, total);
+    // Larger-timeframe indicators warm up on their own larger bars.
+    if (instance.timeframe) continue;
+    longest = Math.max(longest, instanceLookback(instance));
   }
   return Math.min(MAX_WARMUP_BARS, longest * 3);
 }
@@ -1366,11 +1386,33 @@ export function renderIndicators(
   instances: IndicatorInstance[],
   displayFrom = 0,
   context?: IndicatorContext,
+  /** Larger-timeframe bars by timeframe, and each chart bar's end (epoch seconds). */
+  higher?: {
+    bars: Partial<Record<HigherTimeframe, HigherBars>>;
+    ends: number[];
+  },
 ): RenderedIndicator[] {
   return instances.flatMap((instance) => {
     const definition = definitionFor(instance);
     if (!definition) return [];
-    const values = definition.compute(bars, instance.params, context);
+    let values: Record<string, Series>;
+    if (instance.timeframe) {
+      const source = higher?.bars[instance.timeframe];
+      values = source
+        ? alignToChart(
+            definition.compute(source.bars, instance.params, context),
+            source.availableAt,
+            higher!.ends,
+          )
+        : Object.fromEntries(
+            definition.outputs.map((output) => [
+              output.key,
+              bars.map(() => null),
+            ]),
+          );
+    } else {
+      values = definition.compute(bars, instance.params, context);
+    }
     const lines = definition.outputs.map((output) => {
       const kind = output.kind ?? "line";
       const signed = kind === "histogram" && output.key !== "volume";
