@@ -105,6 +105,9 @@ def validate_config(request: dict[str, Any]) -> dict[str, Any]:
         raise RunConfigError("adjustment must be raw, split_adjusted or fully_adjusted")
     if adjustment != "raw" and timeframe not in ("1d", "1w"):
         raise RunConfigError("adjusted prices are available for daily and weekly runs")
+    if adjustment == "fully_adjusted" and currency == "KRW":
+        # Toss's adjusted Korean candles leave cash dividends out (toss.py).
+        raise RunConfigError("Korean runs offer split_adjusted or raw prices")
     seed = request.get("seed", 0)
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise RunConfigError("seed must be a whole number")

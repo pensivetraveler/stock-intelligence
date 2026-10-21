@@ -217,6 +217,14 @@ def test_invalid_configs_are_refused(setup: Any) -> None:
         ({"end_date": "2025-01-01"}, "end_date"),
         ({"timeframe": "1y"}, "timeframe"),
         ({"slippage_bps": "-1"}, "slippage_bps"),
+        (
+            {
+                "instrument_ids": ["kr:005930:xkrx:2026"],
+                "currency": "KRW",
+                "adjustment": "fully_adjusted",
+            },
+            "split_adjusted or raw",
+        ),
     ]:
         response = client.post(
             "/v1/backtests/runs",

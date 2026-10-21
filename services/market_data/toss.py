@@ -13,6 +13,15 @@ chart, quotes and account views share one token. US daily candles (`interval=1d`
 stamped at midnight New York of their session date, written in Korean time (live check
 2026-10-20, AAPL: "2026-10-19T13:00:00+09:00" is the 10-19 session), so the session date
 is read in New York time.
+
+Korean adjusted daily candles (`adjusted=true`, live check 2026-10-21, ADR 0021) apply
+KRX-style capital-change adjustments only: splits (Samsung Electronics 50:1 on 2018-05-04,
+exactly 50; Kakao 5:1 on 2021-04-15, factor 4.98256), bonus issues and rights offerings
+(Korean Air 2017-01-24, 2020-06-05 and 2021-01-25), never cash dividends (KT&G, nine
+years of dividends, factor 1). Factors follow exchange base prices rather than the nominal
+ratio, and a few steps match no known action (Kakao 0.4% on its 2017-07-10 move to KOSPI).
+They are served as `split_adjusted`; `fully_adjusted` is refused. US Toss adjusted candles
+are unchecked and refused.
 """
 
 from __future__ import annotations
@@ -48,6 +57,7 @@ from services.market_data.calendar import (
     TradingSessionName,
 )
 from services.market_data.daily import (
+    ADJUSTED,
     DailySource,
     RawDay,
     build_daily_result,
@@ -178,8 +188,27 @@ class TossMarketDataProvider:
         raw = self._fetch(symbol, query) if query.start_utc < now else []
         return build_result(query, raw, self.identity, self._calendar, now)
 
-    def get_daily_bars(self, query: BarsQuery) -> BarsResult:
-        """Daily bars (Toss `1d`, unadjusted) for sessions opening in the range."""
+    def get_adjusted_daily_bars(self, query: BarsQuery, adjustment: str) -> BarsResult:
+        """Korean daily bars adjusted for splits and other capital changes (not dividends).
+
+        Never cached: the revision names the fetch date, since adjusted history changes
+        when Toss applies a new corporate action.
+        """
+        if adjustment not in ADJUSTED:
+            raise InvalidBarsQueryError("adjustment must be split_adjusted or fully_adjusted")
+        if self.config.market != "KR":
+            raise InvalidBarsQueryError(
+                "Toss's adjusted US candles are unchecked; use raw prices or Alpaca"
+            )
+        if adjustment != "split_adjusted":
+            raise InvalidBarsQueryError(
+                "Toss's adjusted Korean candles do not adjust for cash dividends; "
+                "use split_adjusted"
+            )
+        return self.get_daily_bars(query, adjustment)
+
+    def get_daily_bars(self, query: BarsQuery, adjustment: str = "raw") -> BarsResult:
+        """Daily bars (Toss `1d`, unadjusted unless asked) for sessions opening in the range."""
         now = self._now()
         validate_daily_query(query, "1d", now)
         symbol = self.symbol_for(query.instrument_id)
@@ -199,7 +228,7 @@ class TossMarketDataProvider:
             for _page in range(DAILY_PAGES):
                 if before is None:
                     break
-                result = self._candles(symbol, "1d", before)
+                result = self._candles(symbol, "1d", before, adjustment != "raw")
                 candles = list(result.get("candles") or [])
                 for candle in candles:
                     day = self._day(candle)
@@ -213,8 +242,10 @@ class TossMarketDataProvider:
         source = DailySource(
             source_id=self.source_id,
             feed_scope=self.identity.feed_scope,
-            dataset_revision=f"{self.identity.dataset_revision}:1d",
-            adjustment="raw",
+            dataset_revision=f"{self.identity.dataset_revision}:1d"
+            if adjustment == "raw"
+            else f"{self.source_id}-adjusted-r1:1d:split:asof-{now.date()}",
+            adjustment=adjustment,
             publication_delay_minutes=0,
             finality_minutes=self.config.finality_minutes,
             # Korean daily candles cover the whole KRX+NXT day; US ones the regular session.
@@ -240,7 +271,9 @@ class TossMarketDataProvider:
             before = str(next_before) if next_before else None
         return bars
 
-    def _candles(self, symbol: str, interval: str, before: str) -> dict[str, Any]:
+    def _candles(
+        self, symbol: str, interval: str, before: str, adjusted: bool = False
+    ) -> dict[str, Any]:
         result = self.session.get(
             CANDLES_PATH,
             params={
@@ -248,7 +281,7 @@ class TossMarketDataProvider:
                 "interval": interval,
                 "count": str(PAGE_SIZE),
                 "before": before,
-                "adjusted": "false",
+                "adjusted": "true" if adjusted else "false",
             },
         )
         if not isinstance(result, dict):

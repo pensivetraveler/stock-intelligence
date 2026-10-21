@@ -27,7 +27,7 @@ from services.market_data.instruments import (
     parse_instrument,
 )
 from services.market_data.market_router import MarketRouter
-from services.market_data.provider import BarsQuery, ProviderAuthError
+from services.market_data.provider import BarsQuery, InvalidBarsQueryError, ProviderAuthError
 from services.market_data.storage import CachedMarketDataProvider, LocalMarketDataStore
 from services.market_data.toss import TossConfig, TossMarketDataProvider
 
@@ -83,8 +83,17 @@ class Toss:
         if request.url.path == "/oauth2/token":
             return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
         params = parse_qs(request.url.query.decode())
-        assert params["symbol"] == ["005930"] and params["adjusted"] == ["false"]
-        if params["interval"] == ["1m"]:
+        assert params["symbol"] == ["005930"]
+        adjusted = params["adjusted"] == ["true"]
+        assert adjusted or params["adjusted"] == ["false"]
+        assert not adjusted or params["interval"] == ["1d"]
+        if adjusted:
+            # Prices before a 50:1 split, divided by 50.
+            candles = [
+                {**daily(day, close), "openPrice": "4420", "highPrice": "4480", "lowPrice": "4160"}
+                for day, close in (("2026-10-20", "4180"), ("2026-10-19", "4470"))
+            ]
+        elif params["interval"] == ["1m"]:
             candles = [
                 minute("08:03", "222000"),
                 minute("08:02", "221500"),
@@ -144,6 +153,53 @@ def test_toss_korean_daily_bars_are_dated_in_korea() -> None:
         for bar in result.bars
     ] == [("2026-10-19T23:00:00Z", "2026-10-20T11:00:00Z", "all_day", "209000")]
     # The 19th's day began at 23:00Z on the 18th, before the query, so it is not included.
+
+
+def test_toss_korean_adjusted_daily_bars_are_split_adjusted_and_dated() -> None:
+    toss = Toss()
+    provider = korean(toss)
+    query = BarsQuery(
+        SAMSUNG,
+        "1d",
+        datetime(2026, 10, 19, tzinfo=timezone.utc),
+        datetime(2026, 10, 21, tzinfo=timezone.utc),
+    )
+    result = provider.get_adjusted_daily_bars(query, "split_adjusted")
+    validate_document(result.to_document())
+    assert [bar["close"] for bar in result.bars] == ["4180"]
+    assert result.coverage["adjustment"] == "split_adjusted"
+    assert result.coverage["dataset_revision"] == "toss-kr-adjusted-r1:1d:split:asof-2026-10-20"
+    assert parse_qs(toss.requests[-1].url.query.decode())["adjusted"] == ["true"]
+    # Toss's Korean adjustment leaves cash dividends out (live check 2026-10-21).
+    with pytest.raises(InvalidBarsQueryError, match="cash dividends"):
+        provider.get_adjusted_daily_bars(query, "fully_adjusted")
+    with pytest.raises(InvalidBarsQueryError, match="split_adjusted"):
+        provider.get_adjusted_daily_bars(query, "raw")
+    # Toss's US adjusted candles are unchecked.
+    us = TossMarketDataProvider(
+        TossConfig(client_id="us-client", client_secret="test-secret-not-real"),
+        transport=httpx.MockTransport(Toss()),
+        now=lambda: NOW,
+    )
+    us_query = BarsQuery("us:aapl:xnas:2026", "1d", query.start_utc, query.end_utc)
+    with pytest.raises(InvalidBarsQueryError, match="unchecked"):
+        us.get_adjusted_daily_bars(us_query, "split_adjusted")
+
+
+def test_korean_adjusted_bars_are_routed_and_never_cached(tmp_path: Path) -> None:
+    us = FakeMarketDataProvider.from_path()
+    cached = CachedMarketDataProvider(korean(Toss()), LocalMarketDataStore(tmp_path))
+    router = MarketRouter(us, lambda: cached)
+    query = BarsQuery(
+        SAMSUNG,
+        "1d",
+        datetime(2026, 10, 19, tzinfo=timezone.utc),
+        datetime(2026, 10, 21, tzinfo=timezone.utc),
+    )
+    result = router.get_adjusted_daily_bars(query, "split_adjusted")
+    assert result.coverage["source_id"] == "toss-kr"
+    assert [bar["close"] for bar in result.bars] == ["4180"]
+    assert not list(tmp_path.rglob("*.parquet"))
 
 
 def test_cached_korean_bars_are_partitioned_by_korean_date(tmp_path: Path) -> None:

@@ -198,19 +198,22 @@ describe("backtest screen", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
-  it("runs Korean stocks on unadjusted prices only", async () => {
+  it("offers split-adjusted but not dividend-adjusted prices for Korean stocks", async () => {
     const api = fakeApi();
     renderScreen(api);
     fireEvent.click(screen.getByLabelText("AAPL"));
     fireEvent.click(screen.getByLabelText("005930"));
-    expect(screen.getByLabelText("Prices")).toBeDisabled();
-    expect(screen.getByLabelText("Prices")).toHaveValue("raw");
+    const prices = screen.getByLabelText("Prices");
+    expect(prices).toBeEnabled();
+    expect(prices).toHaveValue("split_adjusted");
+    const options = [...prices.querySelectorAll("option")].map((o) => o.value);
+    expect(options).toEqual(["split_adjusted", "raw"]);
     fireEvent.click(screen.getByRole("button", { name: "Save and run" }));
     await waitFor(() => expect(api.submit).toHaveBeenCalled());
     expect(vi.mocked(api.submit).mock.calls[0][2]).toMatchObject({
       instrument_ids: ["kr:005930:xkrx:2026"],
       currency: "KRW",
-      adjustment: "raw",
+      adjustment: "split_adjusted",
     });
   });
 });
