@@ -510,6 +510,21 @@ button:disabled {
   min-width: 180px;
 }
 
+/* The key manager opens as a large modal from the rail. */
+.modal.keys-modal {
+  position: relative;
+  width: min(1100px, 96vw);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 18px 22px;
+}
+
+.keys-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+}
+
 .keys-panel form[aria-label="Add key"] {
   margin: 12px 0;
 }

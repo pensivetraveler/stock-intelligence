@@ -776,6 +776,7 @@ const en = {
 
   // Keys
   "keys.title": "API keys",
+  "keys.close": "Close API keys",
   "keys.note":
     "Secrets are stored in this computer's keychain and never shown again. Keys of one provider are used in order; a key that hits the rate limit is skipped for about a minute. The running provider is {provider} (set with SIW_MARKET_DATA_PROVIDER).",
   "keys.addForm": "Add key",
@@ -1573,6 +1574,7 @@ const ko: Record<MessageKey, string> = {
   "importField.broker_execution_id": "증권사 체결 ID",
 
   "keys.title": "API 키 관리",
+  "keys.close": "API 키 관리 닫기",
   "keys.note":
     "secret은 이 컴퓨터의 키체인에 저장되며 다시 보여 주지 않습니다. 한 공급업체의 키는 순서대로 쓰고, 호출 한도에 걸린 키는 약 1분 동안 건너뜁니다. 실행 중인 공급업체: {provider}(SIW_MARKET_DATA_PROVIDER로 설정).",
   "keys.addForm": "키 추가",
