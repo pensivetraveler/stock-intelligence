@@ -54,6 +54,7 @@ interface PriceChartProps {
   barSeconds?: number;
   onDrawingCreate?: (drawing: Omit<Drawing, "id">) => void;
   onDrawingDelete?: (id: string) => void;
+  onDrawingUpdate?: (id: string, patch: Partial<Drawing>) => void;
   onToolDone?: () => void;
   /** False while clicks must reach the candles (e.g. picking a replay start). */
   drawingsSelectable?: boolean;
@@ -94,6 +95,7 @@ export function PriceChart({
   barSeconds = 60,
   onDrawingCreate,
   onDrawingDelete,
+  onDrawingUpdate,
   onToolDone,
   drawingsSelectable = true,
 }: PriceChartProps) {
@@ -453,6 +455,7 @@ export function PriceChart({
           selectable={drawingsSelectable}
           onCreate={(drawing) => onDrawingCreate?.(drawing)}
           onDelete={(id) => onDrawingDelete?.(id)}
+          onUpdate={(id, patch) => onDrawingUpdate?.(id, patch)}
           onToolDone={() => onToolDone?.()}
           onZoom={zoomTo}
         />

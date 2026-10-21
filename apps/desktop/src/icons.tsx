@@ -34,6 +34,11 @@ export const FibIcon = () => (
     <path d="M1.5 3h13M1.5 6.5h13M1.5 10h13M1.5 13.5h13M3 13.5L13 3" />
   </Icon>
 );
+export const FibExtensionIcon = () => (
+  <Icon>
+    <path d="M1.5 13.5L5 6.5l3 4.5M8.5 2.5h6M8.5 5.5h6M8.5 8.5h6M8.5 11.5h6" />
+  </Icon>
+);
 export const TextIcon = () => (
   <Icon>
     <path d="M3 3h10M8 3v10.5M6 13.5h4" />

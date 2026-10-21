@@ -805,6 +805,13 @@ export function ChartPanel({
                   (config.drawings ?? []).filter((item) => item.id !== id),
                 )
               }
+              onDrawingUpdate={(id, patch) =>
+                onDrawingsChange?.(
+                  (config.drawings ?? []).map((item) =>
+                    item.id === id ? { ...item, ...patch } : item,
+                  ),
+                )
+              }
               onToolDone={onToolDone}
               drawingsSelectable={!replayChoosing}
             />

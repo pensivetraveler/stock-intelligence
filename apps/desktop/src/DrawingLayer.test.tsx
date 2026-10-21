@@ -16,6 +16,7 @@ function setup(tool: DrawingTool, drawings: Drawing[] = [], selectable = true) {
   const handlers = {
     onCreate: vi.fn(),
     onDelete: vi.fn(),
+    onUpdate: vi.fn(),
     onToolDone: vi.fn(),
     onZoom: vi.fn(),
   };
@@ -131,5 +132,67 @@ describe("DrawingLayer", () => {
     expect(layer).toHaveClass("passive");
     click(10, 10);
     expect(onCreate).not.toHaveBeenCalled();
+  });
+  it("draws a trend-based Fibonacci extension from three clicks", () => {
+    const { click, onCreate, onToolDone } = setup("fibext");
+    click(20, 100);
+    click(80, 50);
+    expect(onCreate).not.toHaveBeenCalled();
+    click(120, 70);
+    expect(onCreate).toHaveBeenCalledWith({
+      kind: "fibext",
+      instrumentId: "us:aapl:xnas:2026",
+      points: [
+        { time: 20, price: 100 },
+        { time: 80, price: 150 },
+        { time: 120, price: 130 },
+      ],
+      fib: expect.objectContaining({ background: true, extendRight: false }),
+    });
+    expect(onToolDone).toHaveBeenCalled();
+  });
+
+  it("labels extension levels with their prices and edits a selected drawing's options", () => {
+    const drawing: Drawing = {
+      id: "f1",
+      kind: "fibext",
+      instrumentId: "us:aapl:xnas:2026",
+      points: [
+        { time: 20, price: 100 },
+        { time: 80, price: 150 },
+        { time: 120, price: 130 },
+      ],
+      fib: {
+        levels: [0, 1, 1.618],
+        extendLeft: false,
+        extendRight: false,
+        reverse: false,
+        showPrices: true,
+        background: true,
+      },
+    };
+    const { onUpdate, view } = setup("cursor", [drawing]);
+    expect(view.container.textContent).toContain("1.618 (210.90)");
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Trend-based Fibonacci extension" }),
+    );
+    const panel = screen.getByRole("dialog", {
+      name: "Fibonacci extension settings",
+    });
+    fireEvent.click(screen.getByLabelText("0.618"));
+    expect(onUpdate).toHaveBeenLastCalledWith("f1", {
+      fib: expect.objectContaining({ levels: [0, 0.618, 1, 1.618] }),
+    });
+    fireEvent.click(screen.getByLabelText("Extend lines right"));
+    expect(onUpdate).toHaveBeenLastCalledWith("f1", {
+      fib: expect.objectContaining({ extendRight: true }),
+    });
+    fireEvent.change(screen.getByLabelText("Custom levels"), {
+      target: { value: "1.13" },
+    });
+    expect(onUpdate).toHaveBeenLastCalledWith("f1", {
+      fib: expect.objectContaining({ levels: [0, 1, 1.13, 1.618] }),
+    });
+    expect(panel).toBeInTheDocument();
   });
 });
