@@ -54,6 +54,9 @@ class Evidence:
     dataset_revisions: set[str] = field(default_factory=set)
     source_refs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    agent_id: str = "chart_trade_review"
+    agent_version: str = "chart-trade-review-1"
+    indicator_versions: dict[str, str] = field(default_factory=lambda: dict(INDICATOR_VERSIONS))
 
 
 def _utc(moment: datetime) -> str:

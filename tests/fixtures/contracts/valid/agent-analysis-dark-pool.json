@@ -1,0 +1,136 @@
+{
+  "kind": "agent_analysis",
+  "schema_version": "0.1",
+  "analysis_id": "analysis-5a0d2c71e9b4",
+  "agent_id": "dark_pool_review",
+  "agent_version": "dark-pool-review-1",
+  "created_at_utc": "2026-10-21T12:00:00Z",
+  "target": {
+    "type": "dark_pool",
+    "instrument_id": "us:aapl:xnas:2026",
+    "weeks": 12
+  },
+  "cutoff_utc": "2026-06-15T18:00:00Z",
+  "facts": [
+    {
+      "code": "ats_week",
+      "subject": null,
+      "value": "2026-05-18",
+      "unit": "text",
+      "text": "Latest FINRA ATS week known at the cutoff starts 2026-05-18, first published 2026-06-08 (NMS Tier 1)",
+      "hindsight": false
+    },
+    {
+      "code": "ats_shares",
+      "subject": null,
+      "value": "2000000",
+      "unit": "count",
+      "text": "ATS volume that week: 2,000,000 shares",
+      "hindsight": false
+    },
+    {
+      "code": "ats_trades",
+      "subject": null,
+      "value": "4000",
+      "unit": "count",
+      "text": "ATS trades that week: 4,000",
+      "hindsight": false
+    },
+    {
+      "code": "otc_non_ats_shares",
+      "subject": null,
+      "value": "3000000",
+      "unit": "count",
+      "text": "Non-ATS OTC volume that week: 3,000,000 shares",
+      "hindsight": false
+    },
+    {
+      "code": "ats_share_of_off_exchange_pct",
+      "subject": null,
+      "value": "40.00",
+      "unit": "percent",
+      "text": "ATS was 40.00% of the week's off-exchange (OTC) volume",
+      "hindsight": false
+    },
+    {
+      "code": "ats_share_of_off_exchange_vs_mean",
+      "subject": null,
+      "value": "1.60",
+      "unit": "ratio",
+      "text": "The ATS share of off-exchange volume is 1.60x its mean over the previous 12 published weeks (at or above 100% of them)",
+      "hindsight": false
+    },
+    {
+      "code": "ats_history_weeks",
+      "subject": null,
+      "value": "12",
+      "unit": "count",
+      "text": "12 earlier published ATS weeks are used for comparison",
+      "hindsight": false
+    },
+    {
+      "code": "ats_shares_vs_mean",
+      "subject": null,
+      "value": "2.00",
+      "unit": "ratio",
+      "text": "ATS volume is 2.00x its mean over the previous 12 published weeks (at or above 100% of them)",
+      "hindsight": false
+    },
+    {
+      "code": "ats_avg_trade_size",
+      "subject": null,
+      "value": "500.0",
+      "unit": "count",
+      "text": "Average ATS trade size that week: 500.0 shares",
+      "hindsight": false
+    },
+    {
+      "code": "ats_avg_trade_size_vs_mean",
+      "subject": null,
+      "value": "2.00",
+      "unit": "ratio",
+      "text": "Average ATS trade size is 2.00x its mean over the previous 12 published weeks (at or above 100% of them)",
+      "hindsight": false
+    }
+  ],
+  "missing": ["ats_share_of_total_volume_pct"],
+  "uncertainty": [
+    "FINRA weekly OTC/ATS data is delayed aggregate volume. It shows neither direction (buy or sell), nor prices, nor intraday timing, and it is not live dark-pool prints.",
+    "The share of total volume needs consolidated daily volume; the local bars come from synthetic-daily, so it was not computed.",
+    "These FINRA weeks were first downloaded by this system after publication; their availability at the cutoff is reconstructed from FINRA's publication dates, not observed.",
+    "4 later weeks were not yet published at the cutoff and are excluded."
+  ],
+  "warnings": [],
+  "dataset_revisions": ["finra-otc-weekly@2026-10-21T12:00:00Z"],
+  "indicator_versions": {
+    "finra-otc-parser": "finra-1"
+  },
+  "source_refs": ["AAPL:ATS_W_SMBL:2026-05-18", "AAPL:OTC_W_SMBL:2026-05-18"],
+  "commentaries": [],
+  "evidence": {
+    "kind": "agent_evidence",
+    "schema_version": "0.1",
+    "analysis_id": "analysis-5a0d2c71e9b4",
+    "agent_version": "dark-pool-review-1",
+    "source_record_refs": [
+      "AAPL:ATS_W_SMBL:2026-05-18",
+      "AAPL:OTC_W_SMBL:2026-05-18"
+    ],
+    "dataset_revisions": ["finra-otc-weekly@2026-10-21T12:00:00Z"],
+    "cutoff_utc": "2026-06-15T18:00:00Z",
+    "observations": [
+      "Latest FINRA ATS week known at the cutoff starts 2026-05-18, first published 2026-06-08 (NMS Tier 1)",
+      "ATS volume that week: 2,000,000 shares",
+      "ATS trades that week: 4,000",
+      "Non-ATS OTC volume that week: 3,000,000 shares",
+      "ATS was 40.00% of the week's off-exchange (OTC) volume",
+      "The ATS share of off-exchange volume is 1.60x its mean over the previous 12 published weeks (at or above 100% of them)",
+      "12 earlier published ATS weeks are used for comparison",
+      "ATS volume is 2.00x its mean over the previous 12 published weeks (at or above 100% of them)",
+      "Average ATS trade size that week: 500.0 shares",
+      "Average ATS trade size is 2.00x its mean over the previous 12 published weeks (at or above 100% of them)"
+    ],
+    "inferences": [],
+    "uncertainty": "FINRA weekly OTC/ATS data is delayed aggregate volume. It shows neither direction (buy or sell), nor prices, nor intraday timing, and it is not live dark-pool prints. The share of total volume needs consolidated daily volume; the local bars come from synthetic-daily, so it was not computed. These FINRA weeks were first downloaded by this system after publication; their availability at the cutoff is reconstructed from FINRA's publication dates, not observed. 4 later weeks were not yet published at the cutoff and are excluded."
+  }
+}

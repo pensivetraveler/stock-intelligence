@@ -1438,7 +1438,36 @@ export function Workspace({
         />
       ) : null}
 
-      {panel && panel !== "backtest" ? (
+      {panel === "keys" && keysPanel ? (
+        <div
+          className="modal-backdrop"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) setPanel(null);
+          }}
+        >
+          <section
+            className="modal keys-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("panel.keys")}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setPanel(null);
+            }}
+          >
+            <button
+              type="button"
+              className="tb-button keys-modal-close"
+              aria-label={t("keys.close")}
+              onClick={() => setPanel(null)}
+            >
+              ✕
+            </button>
+            {keysPanel}
+          </section>
+        </div>
+      ) : null}
+
+      {panel && panel !== "backtest" && panel !== "keys" ? (
         <aside
           className={`side-panel side-panel-${panel}`}
           aria-label={t(`panel.${panel}`)}
@@ -1519,7 +1548,6 @@ export function Workspace({
               )}
             </>
           ) : null}
-          {panel === "keys" ? keysPanel : null}
           {panel === "review" && agentApi ? (
             <AgentPanel
               api={agentApi}

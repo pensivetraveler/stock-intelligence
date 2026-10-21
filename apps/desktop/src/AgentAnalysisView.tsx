@@ -73,10 +73,23 @@ export function AgentAnalysisView({
             symbol: symbolOf(target.instrument_id ?? ""),
             n: target.execution_count ?? 0,
           })
-        : t("agent.target.backtest", {
-            symbols: (target.instrument_ids ?? []).map(symbolOf).join(", "),
-            timeframe: target.timeframe ?? "",
-          });
+        : target.type === "filings" || target.type === "dark_pool"
+          ? t(
+              target.type === "filings"
+                ? "agent.target.filings"
+                : "agent.target.dark_pool",
+              {
+                symbol: symbolOf(target.instrument_id ?? ""),
+                time: stamp(
+                  analysis.cutoff_utc,
+                  zoneOf(target.instrument_id ?? ""),
+                ),
+              },
+            )
+          : t("agent.target.backtest", {
+              symbols: (target.instrument_ids ?? []).map(symbolOf).join(", "),
+              timeframe: target.timeframe ?? "",
+            });
 
   const ask = () => {
     setState({ busy: true });
@@ -103,7 +116,11 @@ export function AgentAnalysisView({
   return (
     <article className="agent-analysis" aria-label={title}>
       <h3>{title}</h3>
-      <p className="workspace-note">{t("agent.factsNote")}</p>
+      <p className="workspace-note">
+        {target.type === "filings" || target.type === "dark_pool"
+          ? t("agent.factsNotePublic")
+          : t("agent.factsNote")}
+      </p>
       <table className="bt-table agent-facts" aria-label={t("agent.facts")}>
         <tbody>
           {analysis.facts.map((fact, index) => (

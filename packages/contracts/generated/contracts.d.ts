@@ -571,7 +571,8 @@ export interface CredentialSummary {
   kind: "credential_summary";
   schema_version: SchemaVersion;
   credential_id: string;
-  provider: "alpaca" | "kis" | "toss" | "kiwoom" | "meritz" | "anthropic";
+  provider:
+    "alpaca" | "kis" | "toss" | "kiwoom" | "meritz" | "finra" | "anthropic";
   label: string;
   account_suffix: string | null;
   /**
@@ -598,7 +599,8 @@ export interface CredentialListResponse {
   schema_version: SchemaVersion;
   active_provider: "fake" | "alpaca" | "kis" | "toss" | "kiwoom" | "meritz";
   providers: {
-    provider: "alpaca" | "kis" | "toss" | "kiwoom" | "meritz" | "anthropic";
+    provider:
+      "alpaca" | "kis" | "toss" | "kiwoom" | "meritz" | "finra" | "anthropic";
     display_name: string;
     per_account: boolean;
     /**
@@ -1518,13 +1520,16 @@ export interface AgentAnalysis {
   agent_version: Identifier;
   created_at_utc: UtcTimestamp;
   target: {
-    type: "chart" | "trades" | "backtest";
+    type: "chart" | "trades" | "backtest" | "filings" | "dark_pool";
     instrument_id?: Identifier;
     timeframe?: string;
     execution_count?: number;
     run_id?: Identifier;
     strategy_version?: number;
     instrument_ids?: Identifier[];
+    window_days?: number;
+    after_days?: number;
+    weeks?: number;
   };
   cutoff_utc: UtcTimestamp;
   facts: {

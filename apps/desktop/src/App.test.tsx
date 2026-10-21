@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
@@ -97,7 +97,7 @@ describe("API connection state", () => {
     expect(oldCalls).toHaveLength(1);
   });
 
-  it("opens the keys panel from the right rail", async () => {
+  it("opens the keys manager from the right rail as a modal", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(healthResponse());
     render(<App fetcher={fetcher} retryMs={60_000} />);
     await screen.findByText("connected");
@@ -106,9 +106,21 @@ describe("API connection state", () => {
       screen.queryByRole("heading", { name: "API keys" }),
     ).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "API keys" }));
+    const dialog = await screen.findByRole("dialog", { name: "API keys" });
     expect(
-      await screen.findByRole("heading", { name: "API keys" }),
+      within(dialog).getByRole("heading", { name: "API keys" }),
     ).toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(
+      screen.queryByRole("dialog", { name: "API keys" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "API keys" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Close API keys" }),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "API keys" }),
+    ).not.toBeInTheDocument();
   });
 
   it("switches the interface to Korean and remembers the choice", async () => {

@@ -1806,7 +1806,15 @@
           "pattern": "^[a-f0-9]{32}$"
         },
         "provider": {
-          "enum": ["alpaca", "kis", "toss", "kiwoom", "meritz", "anthropic"]
+          "enum": [
+            "alpaca",
+            "kis",
+            "toss",
+            "kiwoom",
+            "meritz",
+            "finra",
+            "anthropic"
+          ]
         },
         "label": {
           "type": "string",
@@ -1934,6 +1942,7 @@
                   "toss",
                   "kiwoom",
                   "meritz",
+                  "finra",
                   "anthropic"
                 ]
               },
@@ -5121,7 +5130,7 @@
           "required": ["type"],
           "properties": {
             "type": {
-              "enum": ["chart", "trades", "backtest"]
+              "enum": ["chart", "trades", "backtest", "filings", "dark_pool"]
             },
             "instrument_id": {
               "$ref": "#/$defs/Identifier"
@@ -5145,6 +5154,21 @@
               "items": {
                 "$ref": "#/$defs/Identifier"
               }
+            },
+            "window_days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365
+            },
+            "after_days": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 30
+            },
+            "weeks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 104
             }
           }
         },

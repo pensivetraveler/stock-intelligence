@@ -15,10 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
-from services.agents.evidence import INDICATOR_VERSIONS, Evidence
-
-AGENT_ID = "chart_trade_review"
-AGENT_VERSION = "chart-trade-review-1"
+from services.agents.evidence import Evidence
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS analyses (
@@ -57,8 +54,8 @@ class AgentStore:
         facts = [fact.document() for fact in evidence.facts]
         document = {
             "analysis_id": analysis_id,
-            "agent_id": AGENT_ID,
-            "agent_version": AGENT_VERSION,
+            "agent_id": evidence.agent_id,
+            "agent_version": evidence.agent_version,
             "created_at_utc": _utc(self._clock()),
             "target": evidence.target,
             "cutoff_utc": evidence.cutoff_utc,
@@ -67,7 +64,7 @@ class AgentStore:
             "uncertainty": evidence.uncertainty,
             "warnings": evidence.warnings,
             "dataset_revisions": sorted(evidence.dataset_revisions),
-            "indicator_versions": INDICATOR_VERSIONS,
+            "indicator_versions": evidence.indicator_versions,
             "source_refs": evidence.source_refs,
         }
         with self._lock:

@@ -90,6 +90,8 @@ from services.market_data.toss_session import (
     session_for,
 )
 from services.market_data.toss_stream import Connect, RealtimeHub, default_connect
+from services.public_sources.finra import FinraCredential
+from services.public_sources.sources import PublicSources
 
 LOG = logging.getLogger("siw.api")
 APP_NAME = "stock-intelligence-workstation-api"
@@ -407,6 +409,45 @@ class _LazyIndicators:
             return self._store
 
 
+class _LazyPublicSources:
+    """Open the SEC/FINRA cache on first use (needs SIW_DATA_DIR; ADR 0024)."""
+
+    def __init__(
+        self,
+        sources: PublicSources | None,
+        clock: Callable[[], datetime],
+        credentials: Callable[[], CredentialStore | None],
+    ) -> None:
+        self._sources = sources
+        self._clock = clock
+        self._credentials = credentials
+        self._lock = threading.Lock()
+
+    def get(self) -> PublicSources | None:
+        with self._lock:
+            if self._sources is None:
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                if configured:
+                    self._sources = PublicSources(
+                        Path(configured) / "public_sources.sqlite3",
+                        self._clock,
+                        user_agent=lambda: os.getenv("SIW_SEC_USER_AGENT"),
+                        finra_credential=lambda: _finra_credential(self._credentials()),
+                    )
+            return self._sources
+
+
+def _finra_credential(credentials: CredentialStore | None) -> FinraCredential | None:
+    """The first enabled FINRA API credential on the Keys screen."""
+    if credentials is None:
+        return None
+    for record in credentials.list("finra"):
+        if record.enabled:
+            secrets = credentials.secrets(record)
+            return FinraCredential(secrets["client_id"], secrets["client_secret"])
+    return None
+
+
 def _claude_key(credentials: CredentialStore | None) -> str | None:
     """The first enabled Claude (Anthropic) key on the Keys screen."""
     if credentials is None:
@@ -436,6 +477,7 @@ def create_app(
     agent_store: AgentStore | None = None,
     agent_ask: Callable[..., dict[str, Any]] = ask_claude,
     indicator_store: CustomIndicatorStore | None = None,
+    public_sources: PublicSources | None = None,
     clock: Callable[[], datetime] = _utc_now,
 ) -> FastAPI:
     credentials = _LazyCredentials(credential_store)
@@ -485,6 +527,7 @@ def create_app(
     custom_indicators = _LazyIndicators(indicator_store, clock)
     backtests = _LazyBacktests(backtest_runner, provider.get, clock, custom_indicators.get)
     agents = _LazyAgents(agent_store, clock)
+    sources = _LazyPublicSources(public_sources, clock, credentials.get)
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI) -> AsyncIterator[None]:
@@ -964,6 +1007,7 @@ def create_app(
         backtests=backtests.get,
         api_key=lambda: _claude_key(credentials.get()),
         now=clock,
+        public_sources=sources.get,
         error_response=_error_response,
         ask=agent_ask,
     )
