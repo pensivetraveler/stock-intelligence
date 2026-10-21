@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Literal, cast
+from typing import Annotated, Any, Literal, cast
 from uuid import uuid4
 
 from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
@@ -22,6 +22,9 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response
 
 from packages.contracts.validator import validate_document
+from services.agents.commentary import ask_claude
+from services.agents.store import AgentStore
+from services.api.agent_routes import register_agent_routes
 from services.api.backtest_routes import register_backtest_routes
 from services.api.credential_routes import register_credential_routes
 from services.api.journal_routes import register_import_routes, register_journal_routes
@@ -363,6 +366,33 @@ class _LazyBacktests:
         return self._runner
 
 
+class _LazyAgents:
+    """Open the Agent analysis store on first use (needs SIW_DATA_DIR)."""
+
+    def __init__(self, store: AgentStore | None, clock: Callable[[], datetime]) -> None:
+        self._store = store
+        self._clock = clock
+        self._lock = threading.Lock()
+
+    def get(self) -> AgentStore | None:
+        with self._lock:
+            if self._store is None:
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                if configured:
+                    self._store = AgentStore(Path(configured) / "agents.sqlite3", self._clock)
+            return self._store
+
+
+def _claude_key(credentials: CredentialStore | None) -> str | None:
+    """The first enabled Claude (Anthropic) key on the Keys screen."""
+    if credentials is None:
+        return None
+    for record in credentials.list("anthropic"):
+        if record.enabled:
+            return credentials.secrets(record)["api_key"]
+    return None
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -379,6 +409,8 @@ def create_app(
     korean_directory: SymbolDirectory | None = None,
     realtime_connect: Connect | None = None,
     backtest_runner: BacktestRunner | None = None,
+    agent_store: AgentStore | None = None,
+    agent_ask: Callable[..., dict[str, Any]] = ask_claude,
     clock: Callable[[], datetime] = _utc_now,
 ) -> FastAPI:
     credentials = _LazyCredentials(credential_store)
@@ -426,6 +458,7 @@ def create_app(
     )
     journal = _LazyJournal(journal_store)
     backtests = _LazyBacktests(backtest_runner, provider.get, clock)
+    agents = _LazyAgents(agent_store, clock)
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI) -> AsyncIterator[None]:
@@ -894,6 +927,17 @@ def create_app(
     )
 
     register_backtest_routes(application, runner=backtests.get, error_response=_error_response)
+    register_agent_routes(
+        application,
+        store=agents.get,
+        get_bars=lambda: MarketBarsService(provider.get()).get_bars,
+        journal=journal.get,
+        backtests=backtests.get,
+        api_key=lambda: _claude_key(credentials.get()),
+        now=clock,
+        error_response=_error_response,
+        ask=agent_ask,
+    )
 
     # Provider and cache I/O are blocking; a sync endpoint runs in FastAPI's threadpool
     # instead of stalling the event loop.

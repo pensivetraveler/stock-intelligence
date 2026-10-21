@@ -2285,3 +2285,69 @@ body {
 .bt-runs tbody tr {
   cursor: pointer;
 }
+
+/* Review Agent (ADR 0022) */
+.agent-panel h3 {
+  margin: 12px 0 4px;
+  font-size: 13px;
+}
+
+.agent-analysis {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  border-top: 1px solid var(--term-line);
+  padding-top: 8px;
+}
+
+.agent-analysis h3,
+.agent-analysis h4 {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.agent-facts td:last-child {
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-facts td:first-child {
+  white-space: normal;
+}
+
+.agent-hindsight {
+  margin-left: 6px;
+  border: 1px solid #6b5420;
+  border-radius: 4px;
+  padding: 0 4px;
+  color: #f5c46b;
+  font-size: 10px;
+}
+
+.agent-executions,
+.agent-recent {
+  display: grid;
+  gap: 2px;
+  max-height: 200px;
+  overflow: auto;
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.agent-ask {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-commentary {
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--term-surface);
+}
+
+.agent-commentary ul {
+  margin: 2px 0 6px;
+  padding-left: 18px;
+}

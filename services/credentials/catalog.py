@@ -80,6 +80,13 @@ CATALOG: dict[str, ProviderKeySpec] = {
             ),
             per_account=True,
         ),
+        # Not a market-data source: the review Agent's commentary (ADR 0022).
+        ProviderKeySpec(
+            "anthropic",
+            "Claude (Anthropic)",
+            (SecretField("api_key", "API key", "ANTHROPIC_API_KEY"),),
+            per_account=False,
+        ),
     )
 }
 

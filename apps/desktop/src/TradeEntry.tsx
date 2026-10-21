@@ -20,6 +20,8 @@ interface TradeEntryProps {
   newId?: () => string;
   onRecorded: () => void;
   onClose: () => void;
+  /** Ask the review Agent about the chart as it stood at this candle's end. */
+  onAskAgent?: () => void;
 }
 
 function message(t: Translate, error: unknown): string {
@@ -43,6 +45,7 @@ export function TradeEntry({
   newId = () => crypto.randomUUID(),
   onRecorded,
   onClose,
+  onAskAgent,
 }: TradeEntryProps) {
   const { t } = useI18n();
   const [mode, setMode] = useState<Mode>("manual");
@@ -146,6 +149,11 @@ export function TradeEntry({
           >
             {t("trade.hypoTab")}
           </button>
+          {onAskAgent ? (
+            <button type="button" className="secondary" onClick={onAskAgent}>
+              {t("agent.askAtCandle")}
+            </button>
+          ) : null}
         </div>
         <p className="trade-context">
           {t("trade.context", {

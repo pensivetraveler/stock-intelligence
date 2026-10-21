@@ -87,6 +87,12 @@ interface ChartPanelProps {
     scenarios: ScenarioDefinition[];
   };
   onJournalChange: () => void;
+  /** Ask the review Agent about this chart up to a candle's end. */
+  onAskAgent?: (request: {
+    instrumentId: string;
+    timeframe: string;
+    cutoffUtc: string;
+  }) => void;
   /** Fills of the backtest run the user chose to show on the charts. */
   backtestFills?: BacktestFill[];
   /** The chart that the toolbars and the watchlist act on. */
@@ -147,6 +153,7 @@ export function ChartPanel({
   sync,
   journal,
   onJournalChange,
+  onAskAgent,
   backtestFills,
   active = false,
   onActivate,
@@ -772,6 +779,18 @@ export function ChartPanel({
             sessionDate={sessionDate}
             onRecorded={onJournalChange}
             onClose={() => setSelected(null)}
+            onAskAgent={
+              onAskAgent
+                ? () => {
+                    onAskAgent({
+                      instrumentId,
+                      timeframe: config.timeframe,
+                      cutoffUtc: selected.interval_end_utc,
+                    });
+                    setSelected(null);
+                  }
+                : undefined
+            }
           />
         </div>
       ) : null}

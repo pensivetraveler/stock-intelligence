@@ -5,8 +5,11 @@ import type {
   ImportedExecution,
   ManualExecution,
 } from "@siw/contracts/types";
-import { useMemo } from "react";
+import type { AgentAnalysis } from "@siw/contracts/types";
+import { useMemo, useState } from "react";
 
+import type { AgentApi } from "./agent-api";
+import { AgentAnalysisView } from "./AgentAnalysisView";
 import { BacktestChart } from "./BacktestChart";
 import { compareFills, percent } from "./backtest-model";
 import { exchangeTime } from "./chart-data";
@@ -45,6 +48,7 @@ export interface RealFills {
 export function BacktestResultsView({
   run,
   results,
+  agentApi,
   symbolOf,
   real,
   shown,
@@ -52,12 +56,19 @@ export function BacktestResultsView({
 }: {
   run: BacktestRun;
   results: BacktestResults;
+  agentApi?: AgentApi;
   symbolOf: (instrumentId: string) => string;
   real: RealFills;
   shown: boolean;
   onToggleShown: () => void;
 }) {
   const { t } = useI18n();
+  const [critique, setCritique] = useState<
+    | { state: "idle" }
+    | { state: "busy" }
+    | { state: "done"; analysis: AgentAnalysis }
+    | { state: "failed"; error: string }
+  >({ state: "idle" });
   const metrics = results.metrics;
   const definitions = results.metric_definitions;
   const currency = results.currency;
@@ -139,6 +150,30 @@ export function BacktestResultsView({
         <button type="button" className="tb-button" onClick={onToggleShown}>
           {shown ? t("bt.hideOnChart") : t("bt.showOnChart")}
         </button>
+        {agentApi ? (
+          <button
+            type="button"
+            className="tb-button"
+            disabled={critique.state === "busy"}
+            onClick={() => {
+              setCritique({ state: "busy" });
+              agentApi
+                .reviewBacktest(run.run_id)
+                .then((analysis) => setCritique({ state: "done", analysis }))
+                .catch((error: unknown) =>
+                  setCritique({
+                    state: "failed",
+                    error:
+                      error instanceof Error
+                        ? error.message
+                        : t("common.requestFailed"),
+                  }),
+                );
+            }}
+          >
+            {t("agent.critique")}
+          </button>
+        ) : null}
         <span className="workspace-note">
           {t("bt.engineNote", {
             engine: results.engine_version,
@@ -146,6 +181,20 @@ export function BacktestResultsView({
           })}
         </span>
       </div>
+
+      {critique.state === "failed" ? (
+        <p className="bt-problem" role="alert">
+          {critique.error}
+        </p>
+      ) : null}
+      {critique.state === "done" && agentApi ? (
+        <AgentAnalysisView
+          api={agentApi}
+          analysis={critique.analysis}
+          onUpdated={(analysis) => setCritique({ state: "done", analysis })}
+          symbolOf={symbolOf}
+        />
+      ) : null}
 
       {warnings.length > 0 ? (
         <ul className="bt-warnings" aria-label={t("bt.warnings")}>

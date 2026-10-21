@@ -130,6 +130,12 @@ export const BacktestIcon = () => (
     <path d="M1.5 14.5h13M2.5 12l3-4 3 2 5-6.5M10.5 3.5h3v3" />
   </Icon>
 );
+export const AgentIcon = () => (
+  <Icon>
+    <path d="M2.5 3.5h11v7h-6l-3 3v-3h-2z" />
+    <path d="M5.5 7h.01M8 7h.01M10.5 7h.01" />
+  </Icon>
+);
 export const KeyIcon = () => (
   <Icon>
     <circle cx="5" cy="11" r="3" />

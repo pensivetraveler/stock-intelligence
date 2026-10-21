@@ -49,6 +49,7 @@ import {
   GridLayoutIcon,
   HorizontalLinesIcon,
   IndicatorsIcon,
+  AgentIcon,
   BacktestIcon,
   JournalIcon,
   KeyIcon,
@@ -82,6 +83,8 @@ import { QuotePanel } from "./QuotePanel";
 import { applyLive, type LiveSymbol, type RealtimeSocket } from "./realtime";
 import { AccountPanel } from "./AccountPanel";
 import { ResearchPanel } from "./ResearchPanel";
+import { AgentPanel } from "./AgentPanel";
+import type { AgentApi, ChartReviewRequest } from "./agent-api";
 import { BacktestScreen } from "./BacktestScreen";
 import type { BacktestApi } from "./backtest-api";
 import { StockInfoPanel } from "./StockInfoPanel";
@@ -125,6 +128,8 @@ interface WorkspaceProps {
   keysPanel?: ReactNode;
   /** The backtest screen's client; without one the screen is not offered. */
   backtestApi?: BacktestApi;
+  /** The review Agent's client; without one it is not offered. */
+  agentApi?: AgentApi;
 }
 
 type Panel =
@@ -135,7 +140,8 @@ type Panel =
   | "account"
   | "journal"
   | "keys"
-  | "backtest";
+  | "backtest"
+  | "review";
 
 /** Per-chart view options that are not part of the saved layout. */
 interface ChartTools {
@@ -256,6 +262,7 @@ export function Workspace({
   newId = randomId,
   keysPanel,
   backtestApi,
+  agentApi,
 }: WorkspaceProps) {
   const { t } = useI18n();
   const [library, setLibrary] = useState<WorkspaceLibrary>(() =>
@@ -488,6 +495,14 @@ export function Workspace({
     runId: string;
     fills: BacktestFill[];
   } | null>(null);
+  const [agentRequest, setAgentRequest] = useState<ChartReviewRequest | null>(
+    null,
+  );
+  const askAgent = useCallback((request: ChartReviewRequest) => {
+    setAgentRequest(request);
+    setPanel("review");
+  }, []);
+  const clearAgentRequest = useCallback(() => setAgentRequest(null), []);
   const realFills = useMemo(
     () => ({
       manual: ledgers.manual?.executions ?? [],
@@ -1157,6 +1172,7 @@ export function Workspace({
               sync={sync}
               journal={journal}
               backtestFills={backtestShown?.fills}
+              onAskAgent={agentApi ? askAgent : undefined}
               onJournalChange={refreshJournal}
               magnet={tools[index].magnet}
               logScale={tools[index].logScale}
@@ -1385,6 +1401,7 @@ export function Workspace({
           instruments={instruments}
           activeInstrumentId={activeConfig.instrumentId}
           real={realFills}
+          agentApi={agentApi}
           shownRunId={backtestShown?.runId ?? null}
           onShowFills={setBacktestShown}
           onClose={() => setPanel(null)}
@@ -1466,6 +1483,26 @@ export function Workspace({
             </>
           ) : null}
           {panel === "keys" ? keysPanel : null}
+          {panel === "review" && agentApi ? (
+            <AgentPanel
+              api={agentApi}
+              instrumentId={activeConfig.instrumentId}
+              timeframe={activeConfig.timeframe}
+              cutoffUtc={() =>
+                new Date(
+                  replay.phase === "running" && replay.time !== null
+                    ? replay.time * 1000
+                    : Date.now(),
+                )
+                  .toISOString()
+                  .replace(/\.\d{3}Z$/, "Z")
+              }
+              real={realFills}
+              request={agentRequest}
+              onRequestHandled={clearAgentRequest}
+              symbolOf={symbolOf}
+            />
+          ) : null}
         </aside>
       ) : null}
 
@@ -1479,6 +1516,7 @@ export function Workspace({
             ["account", AccountIcon],
             ["journal", JournalIcon],
             ...(backtestApi ? ([["backtest", BacktestIcon]] as const) : []),
+            ...(agentApi ? ([["review", AgentIcon]] as const) : []),
             ...(keysPanel ? ([["keys", KeyIcon]] as const) : []),
           ] as const
         ).map(([id, RailIcon]) => (

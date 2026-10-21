@@ -32,6 +32,7 @@ import {
   type MarketApi,
   type ScenarioRequest,
 } from "./market-api";
+import type { AgentApi } from "./agent-api";
 import type { BacktestApi } from "./backtest-api";
 import { Workspace } from "./Workspace";
 import { LIBRARY_STORAGE_KEY } from "./workspace-library";
@@ -1813,5 +1814,48 @@ describe("daily and weekly charts", () => {
       within(chip).getByRole("button", { name: "Hide fills from charts" }),
     );
     await waitFor(() => expect(screen.queryByText(/BT buy/)).toBeNull());
+  });
+  it("asks the review Agent about a clicked candle up to its end", async () => {
+    const reviewChart = vi.fn<AgentApi["reviewChart"]>(() =>
+      Promise.resolve(
+        JSON.parse(
+          readFileSync(resolve(fixtures, "agent-analysis.json"), "utf8"),
+        ),
+      ),
+    );
+    const agentApi = {
+      reviewChart,
+      reviewTrades: vi.fn(),
+      reviewBacktest: vi.fn(),
+      analyses: () => Promise.resolve([]),
+      payload: vi.fn(),
+      askClaude: vi.fn(),
+    } as unknown as AgentApi;
+    render(
+      <Workspace
+        api={fakeApi()}
+        storage={memoryStorage()}
+        agentApi={agentApi}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "click first candle of chart-1",
+      }),
+    );
+    const form = screen.getByRole("form", { name: "Trade entry" });
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Ask the Agent" }),
+    );
+    await waitFor(() => expect(reviewChart).toHaveBeenCalledTimes(1));
+    expect(reviewChart.mock.calls[0][0]).toMatchObject({
+      instrumentId: "us:synth:xnas:2026",
+      timeframe: "5m",
+      cutoffUtc: "2026-10-09T13:35:00Z", // the 5m candle's end, nothing later
+    });
+    expect(screen.queryByRole("form", { name: "Trade entry" })).toBeNull();
+    expect(
+      await screen.findByRole("region", { name: "Review Agent" }),
+    ).toBeInTheDocument();
   });
 });

@@ -103,13 +103,11 @@ describe("API connection state", () => {
     await screen.findByText("connected");
 
     expect(
-      screen.queryByRole("heading", { name: "Market data keys" }),
+      screen.queryByRole("heading", { name: "API keys" }),
     ).not.toBeInTheDocument();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Market data keys" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "API keys" }));
     expect(
-      await screen.findByRole("heading", { name: "Market data keys" }),
+      await screen.findByRole("heading", { name: "API keys" }),
     ).toBeInTheDocument();
   });
 
@@ -129,7 +127,7 @@ describe("API connection state", () => {
       target: { value: "ko" },
     });
     expect(
-      await screen.findByRole("button", { name: "시세 키 관리" }),
+      await screen.findByRole("button", { name: "API 키 관리" }),
     ).toBeInTheDocument();
     expect(screen.getByText("연결됨")).toBeInTheDocument();
     expect(screen.getByText("API 사용 가능")).toBeInTheDocument();

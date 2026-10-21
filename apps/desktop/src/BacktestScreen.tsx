@@ -19,6 +19,7 @@ import {
   rulesDraftOf,
   type RulesDraft,
 } from "./backtest-model";
+import type { AgentApi } from "./agent-api";
 import { BacktestResultsView, type RealFills } from "./BacktestResultsView";
 import { translateDynamic, useI18n } from "./i18n";
 import type { InstrumentListing } from "./market-api";
@@ -89,6 +90,7 @@ function editorOf(strategy: BacktestStrategy): Editor {
  */
 export function BacktestScreen({
   api,
+  agentApi,
   instruments,
   activeInstrumentId,
   real,
@@ -97,6 +99,8 @@ export function BacktestScreen({
   onClose,
 }: {
   api: BacktestApi;
+  /** When given, a finished run can be critiqued by the review Agent. */
+  agentApi?: AgentApi;
   instruments: InstrumentListing[];
   activeInstrumentId: string;
   real: RealFills;
@@ -632,6 +636,7 @@ export function BacktestScreen({
                   <BacktestResultsView
                     run={selectedRun}
                     results={results.results}
+                    agentApi={agentApi}
                     symbolOf={symbolOf}
                     real={real}
                     shown={shownRunId === selectedRun.run_id}
