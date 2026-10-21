@@ -151,3 +151,27 @@ def test_settings_and_bars_are_checked(client: TestClient) -> None:
         "/v1/indicators/custom/nope/compute", json={"version": 1, "bars": BARS[:2]}
     )
     assert missing.status_code == 404
+
+
+def test_preview_runs_unsaved_code_and_stores_nothing(client: TestClient) -> None:
+    response = client.post(
+        "/v1/indicators/custom/preview",
+        json={"code": RSI_BAND, "params": {"length": 5, "other": 1}, "bars": BARS[:40]},
+    )
+    assert response.status_code == 200, response.text
+    preview = response.json()
+    validate_document(preview)
+    assert preview["name"] == "RSI band"
+    expected = compute("rsi", [Bar(**bar) for bar in BARS[:40]], {"length": 5})["value"]
+    assert preview["outputs"]["rsi"] == pytest.approx(expected, abs=1e-12, nan_ok=True)
+    assert client.get("/v1/indicators/custom").json()["indicators"] == []
+    broken = client.post(
+        "/v1/indicators/custom/preview",
+        json={
+            "code": "NAME = 'x'\nOUTPUTS = ['v']\ndef update(ctx):\n    return {'v': 1 / 0}\n",
+            "bars": BARS[:5],
+        },
+    )
+    assert broken.status_code == 422
+    assert "ZeroDivisionError" in broken.json()["error"]["message"]
+    assert "(line 4)" in broken.json()["error"]["message"]

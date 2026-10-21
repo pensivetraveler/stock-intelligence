@@ -1,8 +1,25 @@
-import type { CustomIndicator } from "@siw/contracts/types";
+import type {
+  CustomIndicator,
+  CustomIndicatorPreview,
+} from "@siw/contracts/types";
 import { useState } from "react";
 
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { useI18n } from "./i18n";
+import type { OhlcvBar } from "./indicators";
+
+/** The bars of the active chart, for a preview before saving. */
+export interface PreviewSource {
+  label: string;
+  bars: OhlcvBar[];
+  timeZone: string;
+}
+
+/** "...: division by zero (line 7)" -> 7, so the editor can show that line. */
+function failingLine(message: string): number | null {
+  const match = /\(line (\d+)\)\s*$/.exec(message);
+  return match ? Number(match[1]) : null;
+}
 
 export const INDICATOR_TEMPLATE = `# A Python indicator (ADR 0023). update(ctx) runs once per bar, oldest first,
 # and sees only that bar and earlier ones (reading a later bar is an error).
@@ -31,8 +48,10 @@ export function CustomIndicatorEditor({
   initial,
   onSaved,
   onClose,
+  previewSource,
 }: {
   api: CustomIndicatorApi;
+  previewSource?: () => PreviewSource | null;
   /** The version being revised; a save makes the next version. */
   initial: CustomIndicator | null;
   onSaved: (saved: CustomIndicator, addToChart: boolean) => void;
@@ -44,6 +63,35 @@ export function CustomIndicatorEditor({
     busy: false,
     error: null,
   });
+
+  const [preview, setPreview] = useState<
+    | { state: "idle" }
+    | { state: "busy" }
+    | { state: "done"; result: CustomIndicatorPreview; source: string }
+  >({ state: "idle" });
+  const errorLine = state.error ? failingLine(state.error) : null;
+  const runPreview = () => {
+    const source = previewSource?.();
+    if (!source || source.bars.length === 0) {
+      setState({ busy: false, error: t("pyind.noBars") });
+      return;
+    }
+    setPreview({ state: "busy" });
+    setState({ busy: false, error: null });
+    api
+      .preview(code, {}, source.bars, source.timeZone)
+      .then((result) =>
+        setPreview({ state: "done", result, source: source.label }),
+      )
+      .catch((error: unknown) => {
+        setPreview({ state: "idle" });
+        setState({
+          busy: false,
+          error:
+            error instanceof Error ? error.message : t("common.requestFailed"),
+        });
+      });
+  };
 
   const save = (addToChart: boolean) => {
     setState({ busy: true, error: null });
@@ -105,11 +153,68 @@ export function CustomIndicatorEditor({
           onChange={(event) => setCode(event.target.value)}
         />
         {state.error ? (
-          <p className="bt-problem" role="alert">
-            {state.error}
-          </p>
+          <div className="bt-problem" role="alert">
+            <p>{state.error}</p>
+            {errorLine !== null &&
+            code.split("\n")[errorLine - 1] !== undefined ? (
+              <pre className="pyind-error-line">
+                {t("pyind.line", { n: errorLine })}{" "}
+                {code.split("\n")[errorLine - 1]}
+              </pre>
+            ) : null}
+          </div>
+        ) : null}
+        {preview.state === "done" ? (
+          <div className="pyind-preview" aria-label={t("pyind.preview")}>
+            <p className="workspace-note">
+              {t("pyind.previewOf", {
+                name: preview.result.name,
+                source: preview.source,
+                n: preview.result.times.length,
+              })}
+            </p>
+            <table className="bt-table">
+              <thead>
+                <tr>
+                  <th>{t("pyind.output")}</th>
+                  <th>{t("pyind.values")}</th>
+                  <th>{t("pyind.lastValues")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(preview.result.outputs).map(
+                  ([name, values]) => (
+                    <tr key={name}>
+                      <td>{name}</td>
+                      <td>{values.filter((value) => value !== null).length}</td>
+                      <td>
+                        {values
+                          .slice(-5)
+                          .map((value) =>
+                            value === null ? "—" : Number(value.toFixed(4)),
+                          )
+                          .join(", ")}
+                      </td>
+                    </tr>
+                  ),
+                )}
+              </tbody>
+            </table>
+          </div>
         ) : null}
         <p className="bt-actions">
+          {previewSource ? (
+            <button
+              type="button"
+              className="tb-button"
+              disabled={state.busy || preview.state === "busy"}
+              onClick={runPreview}
+            >
+              {preview.state === "busy"
+                ? t("pyind.checking")
+                : t("pyind.previewButton")}
+            </button>
+          ) : null}
           <button
             type="button"
             className="tb-button"

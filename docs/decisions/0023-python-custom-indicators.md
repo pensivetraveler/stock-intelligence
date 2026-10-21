@@ -80,6 +80,12 @@ def update(ctx):
 - **Failures:** an indicator error fails the run with the indicator type, the instrument and the reason. Nothing is retried, and the run has no results.
 - **Screen:** the rule form's indicator list offers the latest version of each saved Python indicator (a rule pinned to an older version keeps it). Results list the pinned Python indicators with their hash.
 
+## Editor follow-up (2026-10-21)
+
+- **Preview:** `POST /v1/indicators/custom/preview` runs unsaved code in the same sandbox on the bars the active chart computes indicators on (warm-up included, and in replay only bars up to the replay time). It returns the description and the values (contract `custom_indicator_preview`). Nothing is stored.
+- **Failing line:** sandbox errors end with `(line N)`, and the editor shows that line of the code under the message.
+- **Newer versions:** when a chart holds an older version of an indicator, its legend offers "↑vN". Switching keeps the settings whose names still exist and takes the new defaults for the rest. Nothing changes until the user clicks.
+
 ## Alternatives considered
 
 - **Running Python in the browser (Pyodide):** no server round trip, but a 10 MB+ runtime, and the sandbox and versioning policies would differ from strategies.

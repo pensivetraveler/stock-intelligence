@@ -36,7 +36,7 @@ import {
   stepForward,
   type ReplayState,
 } from "./replay";
-import { defaultParams } from "./indicators";
+import { defaultParams, type OhlcvBar } from "./indicators";
 import { useI18n, type MessageKey, type Translate } from "./i18n";
 import {
   AppMark,
@@ -507,6 +507,15 @@ export function Workspace({
   // Python indicators: every saved version is registered so pinned ones still draw.
   const [customVersion, setCustomVersion] = useState(0);
   const [formulaOpen, setFormulaOpen] = useState(false);
+  // The bars each chart computes indicators on, for Python indicator previews.
+  const chartBars = useRef<OhlcvBar[][]>([]);
+  const onChartBars = useMemo(
+    () =>
+      Array.from({ length: CHART_SLOTS }, (_, index) => (items: OhlcvBar[]) => {
+        chartBars.current[index] = items;
+      }),
+    [],
+  );
   const [customEditor, setCustomEditor] = useState<{
     initial: CustomIndicator | null;
   } | null>(null);
@@ -1205,6 +1214,7 @@ export function Workspace({
               onAskAgent={agentApi ? askAgent : undefined}
               customApi={customApi}
               customVersion={customVersion}
+              onBars={onChartBars[index]}
               onJournalChange={refreshJournal}
               magnet={tools[index].magnet}
               logScale={tools[index].logScale}
@@ -1649,6 +1659,11 @@ export function Workspace({
       {customEditor && customApi ? (
         <CustomIndicatorEditor
           api={customApi}
+          previewSource={() => ({
+            label: `${activeSymbol} · ${activeConfig.timeframe}`,
+            bars: chartBars.current[activeChart] ?? [],
+            timeZone: zoneOf(activeConfig.instrumentId).timeZone,
+          })}
           initial={customEditor.initial}
           onClose={() => setCustomEditor(null)}
           onSaved={(saved, addToChart) => {

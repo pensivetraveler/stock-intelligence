@@ -175,3 +175,23 @@ def compute(
         return _run(worker, meta, settings, rows)
     finally:
         worker.close()
+
+
+def preview(
+    code: str,
+    params: object,
+    bars: object,
+    time_zone: str,
+    process: Process = StrategyProcess,
+) -> tuple[dict[str, Any], dict[str, list[float | None]]]:
+    """Unsaved code on the user's bars: its description and values, nothing stored."""
+    rows = clean_bars(bars)
+    worker = _start(code, time_zone, process)
+    try:
+        meta = validate_meta(worker.init_reply.get("meta"))
+        given = params if isinstance(params, dict) else {}
+        known = {item["key"] for item in meta["inputs"]}
+        settings = clean_params(meta, {k: v for k, v in given.items() if k in known})
+        return meta, _run(worker, meta, settings, rows)
+    finally:
+        worker.close()

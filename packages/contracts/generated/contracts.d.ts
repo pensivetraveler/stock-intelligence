@@ -48,7 +48,8 @@ export type StockIntelligenceWorkstationContractsV01 =
   | CustomIndicator
   | CustomIndicatorListResponse
   | CustomIndicatorResult
-  | TradeReconciliationResponse;
+  | TradeReconciliationResponse
+  | CustomIndicatorPreview;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -1848,4 +1849,179 @@ export interface ReconciliationLink {
    * Counterpart average price against the broker average price, in basis points.
    */
   price_difference_bps: string;
+}
+export interface CustomIndicatorPreview {
+  kind: "custom_indicator_preview";
+  schema_version: SchemaVersion;
+  name: string;
+  /**
+   * @maxItems 8
+   */
+  inputs:
+    | []
+    | [
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ];
+  pane: "price" | "separate";
+  times: number[];
+  outputs: {
+    [k: string]: (number | null)[];
+  };
 }
