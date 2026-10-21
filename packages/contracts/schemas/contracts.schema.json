@@ -143,6 +143,9 @@
     },
     {
       "$ref": "#/$defs/CustomIndicatorResult"
+    },
+    {
+      "$ref": "#/$defs/TradeReconciliationResponse"
     }
   ],
   "$defs": {
@@ -5478,6 +5481,241 @@
                 }
               ]
             }
+          }
+        }
+      }
+    },
+    "ReconciliationLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A pairing with a record of another ledger. Differences compare the counterpart group (summed quantity, quantity-weighted average price) with the broker order.",
+      "required": [
+        "ledger",
+        "execution_id",
+        "relation",
+        "quantity_difference",
+        "price_difference_bps"
+      ],
+      "properties": {
+        "ledger": {
+          "enum": ["broker_api", "manual_actual", "statement_imported"]
+        },
+        "execution_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "relation": {
+          "enum": ["matched", "conflicting"]
+        },
+        "quantity_difference": {
+          "$ref": "#/$defs/DecimalString",
+          "description": "Counterpart quantity minus broker quantity."
+        },
+        "price_difference_bps": {
+          "$ref": "#/$defs/DecimalString",
+          "description": "Counterpart average price against the broker average price, in basis points."
+        }
+      }
+    },
+    "ReconciliationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One record of an actual-fill ledger as the reconciliation classified it. The ledger record itself is unchanged.",
+      "required": [
+        "ledger",
+        "execution_id",
+        "instrument_id",
+        "side",
+        "quantity",
+        "price",
+        "currency",
+        "time_utc",
+        "time_basis",
+        "status",
+        "counterparts",
+        "reasons"
+      ],
+      "properties": {
+        "ledger": {
+          "enum": ["broker_api", "manual_actual", "statement_imported"]
+        },
+        "execution_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "instrument_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "side": {
+          "$ref": "#/$defs/Side"
+        },
+        "quantity": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "price": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "currency": {
+          "enum": ["USD", "KRW"]
+        },
+        "time_utc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Execution time; for a broker order, its reported last fill (or the order time when none was reported). Null when a manual record's time is unknown."
+        },
+        "time_basis": {
+          "enum": [
+            "exact",
+            "minute",
+            "approximate",
+            "unknown",
+            "reported_last_fill"
+          ]
+        },
+        "status": {
+          "enum": [
+            "matched",
+            "conflicting",
+            "broker_only",
+            "manual_only",
+            "imported_only"
+          ]
+        },
+        "counterparts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReconciliationLink"
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "order_id_link",
+              "aggregated_fills",
+              "time_unknown",
+              "time_approximate",
+              "broker_time_unknown",
+              "quantity_differs",
+              "price_differs",
+              "ambiguous_candidates",
+              "no_broker_counterpart",
+              "no_manual_counterpart",
+              "no_imported_counterpart"
+            ]
+          }
+        }
+      }
+    },
+    "TradeReconciliationResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A computed, read-only comparison of the broker API ledger with the manual and statement-import ledgers. Nothing is merged, rewritten or stored.",
+      "required": [
+        "kind",
+        "schema_version",
+        "view",
+        "instrument_id",
+        "since_utc",
+        "parameters",
+        "summary",
+        "records"
+      ],
+      "properties": {
+        "kind": {
+          "const": "trade_reconciliation_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "view": {
+          "const": "computed",
+          "description": "Derived on request from the ledgers; never stored."
+        },
+        "instrument_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "since_utc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Filters the records shown; earlier records still count as counterparts."
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "price_tolerance_bps",
+            "time_tolerance_seconds",
+            "approximate_window_seconds"
+          ],
+          "properties": {
+            "price_tolerance_bps": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "time_tolerance_seconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "approximate_window_seconds": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "matched",
+            "conflicting",
+            "broker_only",
+            "manual_only",
+            "imported_only"
+          ],
+          "properties": {
+            "matched": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "conflicting": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "broker_only": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "manual_only": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "imported_only": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReconciliationRecord"
           }
         }
       }

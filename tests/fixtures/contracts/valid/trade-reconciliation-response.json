@@ -1,0 +1,151 @@
+{
+  "kind": "trade_reconciliation_response",
+  "schema_version": "0.1",
+  "view": "computed",
+  "instrument_id": null,
+  "since_utc": null,
+  "parameters": {
+    "price_tolerance_bps": "10",
+    "time_tolerance_seconds": 120,
+    "approximate_window_seconds": 10800
+  },
+  "summary": {
+    "matched": 2,
+    "conflicting": 2,
+    "broker_only": 1,
+    "manual_only": 1,
+    "imported_only": 0
+  },
+  "records": [
+    {
+      "ledger": "manual_actual",
+      "execution_id": "man-0001",
+      "instrument_id": "us:aapl:xnas:2026",
+      "side": "buy",
+      "quantity": "10",
+      "price": "250.50",
+      "currency": "USD",
+      "time_utc": "2026-10-09T14:00:00Z",
+      "time_basis": "minute",
+      "status": "conflicting",
+      "counterparts": [
+        {
+          "ledger": "broker_api",
+          "execution_id": "brk-o1",
+          "relation": "conflicting",
+          "quantity_difference": "0",
+          "price_difference_bps": "20"
+        }
+      ],
+      "reasons": ["price_differs"]
+    },
+    {
+      "ledger": "statement_imported",
+      "execution_id": "imp-0001",
+      "instrument_id": "us:aapl:xnas:2026",
+      "side": "buy",
+      "quantity": "4",
+      "price": "250.00",
+      "currency": "USD",
+      "time_utc": "2026-10-09T14:00:00Z",
+      "time_basis": "exact",
+      "status": "matched",
+      "counterparts": [
+        {
+          "ledger": "broker_api",
+          "execution_id": "brk-o1",
+          "relation": "matched",
+          "quantity_difference": "0",
+          "price_difference_bps": "0"
+        }
+      ],
+      "reasons": ["aggregated_fills"]
+    },
+    {
+      "ledger": "broker_api",
+      "execution_id": "brk-o1",
+      "instrument_id": "us:aapl:xnas:2026",
+      "side": "buy",
+      "quantity": "10",
+      "price": "250.00",
+      "currency": "USD",
+      "time_utc": "2026-10-09T14:05:00Z",
+      "time_basis": "reported_last_fill",
+      "status": "conflicting",
+      "counterparts": [
+        {
+          "ledger": "manual_actual",
+          "execution_id": "man-0001",
+          "relation": "conflicting",
+          "quantity_difference": "0",
+          "price_difference_bps": "20"
+        },
+        {
+          "ledger": "statement_imported",
+          "execution_id": "imp-0001",
+          "relation": "matched",
+          "quantity_difference": "0",
+          "price_difference_bps": "0"
+        },
+        {
+          "ledger": "statement_imported",
+          "execution_id": "imp-0002",
+          "relation": "matched",
+          "quantity_difference": "0",
+          "price_difference_bps": "0"
+        }
+      ],
+      "reasons": ["price_differs", "aggregated_fills"]
+    },
+    {
+      "ledger": "statement_imported",
+      "execution_id": "imp-0002",
+      "instrument_id": "us:aapl:xnas:2026",
+      "side": "buy",
+      "quantity": "6",
+      "price": "250.00",
+      "currency": "USD",
+      "time_utc": "2026-10-09T14:05:00Z",
+      "time_basis": "exact",
+      "status": "matched",
+      "counterparts": [
+        {
+          "ledger": "broker_api",
+          "execution_id": "brk-o1",
+          "relation": "matched",
+          "quantity_difference": "0",
+          "price_difference_bps": "0"
+        }
+      ],
+      "reasons": ["aggregated_fills"]
+    },
+    {
+      "ledger": "broker_api",
+      "execution_id": "brk-o2",
+      "instrument_id": "us:aapl:xnas:2026",
+      "side": "sell",
+      "quantity": "10",
+      "price": "252.00",
+      "currency": "USD",
+      "time_utc": "2026-10-09T18:00:00Z",
+      "time_basis": "reported_last_fill",
+      "status": "broker_only",
+      "counterparts": [],
+      "reasons": ["no_manual_counterpart", "no_imported_counterpart"]
+    },
+    {
+      "ledger": "manual_actual",
+      "execution_id": "man-0002",
+      "instrument_id": "us:aapl:xnas:2026",
+      "side": "buy",
+      "quantity": "3",
+      "price": "250.00",
+      "currency": "USD",
+      "time_utc": null,
+      "time_basis": "unknown",
+      "status": "manual_only",
+      "counterparts": [],
+      "reasons": ["no_broker_counterpart"]
+    }
+  ]
+}

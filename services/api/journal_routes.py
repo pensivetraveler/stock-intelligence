@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import date, datetime, time, timezone
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, Query, Request
@@ -33,6 +34,7 @@ from services.journal.ledger import (
     manual_positions,
     scenario_pnl,
 )
+from services.journal.reconcile import Parameters, reconcile
 from services.journal.store import JournalConflictError, JournalStore, request_hash
 from services.market_data.instruments import calendar_for, market_of
 
@@ -186,6 +188,44 @@ def register_journal_routes(
             "ledger": "manual_actual",
             "executions": executions,
             "positions": manual_positions(executions),
+        }
+        validate_document(document)
+        return JSONResponse(content=document)
+
+    @application.get("/v1/trades/reconciliation", response_model=None)
+    def reconciliation(
+        request: Request,
+        instrument_id: Annotated[str | None, Query(max_length=200)] = None,
+        since: Annotated[
+            str | None, Query(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+        ] = None,
+        price_tolerance_bps: Annotated[
+            str | None, Query(pattern=r"^(0|[1-9][0-9]{0,3})(\.[0-9]{1,2})?$")
+        ] = None,
+    ) -> Response:
+        """Compare the broker API ledger with manual and imported executions; read-only."""
+        store = journal()
+        if store is None:
+            return unavailable(request)
+        parameters = (
+            Parameters()
+            if price_tolerance_bps is None
+            else Parameters(price_tolerance_bps=Decimal(price_tolerance_bps))
+        )
+        result = reconcile(
+            store.broker_executions(instrument_id),
+            store.manual_executions(instrument_id),
+            store.imported_executions(instrument_id),
+            since=None if since is None else datetime.fromisoformat(since.replace("Z", "+00:00")),
+            parameters=parameters,
+        )
+        document = {
+            "kind": "trade_reconciliation_response",
+            "schema_version": "0.1",
+            "view": "computed",
+            "instrument_id": instrument_id,
+            "since_utc": since,
+            **result,
         }
         validate_document(document)
         return JSONResponse(content=document)

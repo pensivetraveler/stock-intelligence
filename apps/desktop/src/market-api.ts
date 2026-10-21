@@ -21,6 +21,7 @@ import type {
   SessionWindow,
   StockInfo,
   SymbolSearchResponse,
+  TradeReconciliationResponse,
 } from "@siw/contracts/types";
 
 import { zoneOf } from "./market-zone";
@@ -93,6 +94,8 @@ export interface MarketApi {
   recordManual(request: ManualExecutionRequest): Promise<ManualExecution>;
   recordScenario(request: ScenarioRequest): Promise<ScenarioDefinition>;
   importedLedger(): Promise<ImportedLedgerResponse>;
+  /** A computed comparison of the broker ledger with manual and imported executions. */
+  reconciliation(): Promise<TradeReconciliationResponse>;
   /** Executions reported by the broker API (one per order), kept as their own ledger. */
   brokerLedger(): Promise<BrokerLedgerResponse>;
   /** Holdings, buying power, commission rates and open orders of every Toss account. */
@@ -451,6 +454,12 @@ export function createMarketApi(
       return get<ImportedLedgerResponse>(
         "/v1/trades/imported",
         "imported_ledger_response",
+      );
+    },
+    reconciliation() {
+      return get<TradeReconciliationResponse>(
+        "/v1/trades/reconciliation",
+        "trade_reconciliation_response",
       );
     },
     previewImport(request) {
