@@ -2,6 +2,7 @@ import type {
   BacktestResults,
   BacktestRun,
   BacktestStrategy,
+  CustomIndicator,
 } from "@siw/contracts/types";
 import {
   fireEvent,
@@ -16,6 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { BacktestApi } from "./backtest-api";
 import { BacktestScreen } from "./BacktestScreen";
+import { registerCustom } from "./custom-indicators";
 import type { InstrumentListing } from "./market-api";
 
 // The canvas chart library needs browser APIs jsdom lacks; the curve is checked by points.
@@ -138,6 +140,7 @@ describe("backtest screen", () => {
       name: "Compared with your real fills",
     });
     expect(within(compare).getAllByRole("row")).toHaveLength(3);
+    expect(screen.getByText("Pinned Python indicators")).toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Show fills on charts" }),
@@ -145,6 +148,26 @@ describe("backtest screen", () => {
     expect(onShowFills).toHaveBeenCalledWith({
       runId: finished.run_id,
       fills: results.fills,
+    });
+  });
+
+  it("offers saved Python indicators as rule operands", async () => {
+    const saved = fixture<CustomIndicator>("custom-indicator.json");
+    registerCustom([saved]);
+    const api = fakeApi();
+    renderScreen(api);
+    const [picker] = screen.getAllByLabelText("Condition 1 right indicator");
+    expect(
+      within(picker).getByRole("option", { name: "RSI band (Python v1)" }),
+    ).toBeInTheDocument();
+    fireEvent.change(picker, { target: { value: saved.type } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and run" }));
+    await waitFor(() => expect(api.saveStrategy).toHaveBeenCalled());
+    const [, definition] = vi.mocked(api.saveStrategy).mock.calls[0];
+    expect((definition.entry as { right: unknown }).right).toEqual({
+      indicator: saved.type,
+      params: { length: 14, high: 70 },
+      output: "rsi",
     });
   });
 

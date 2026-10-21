@@ -1483,6 +1483,18 @@ export interface BacktestResults {
    * @maxItems 200
    */
   logs: string[];
+  /**
+   * Python indicator versions used by rules operands (ADR 0023), each pinned by its code SHA-256.
+   *
+   * @maxItems 80
+   */
+  custom_indicators?: {
+    type: string;
+    indicator_id: Identifier;
+    version: number;
+    name: string;
+    code_sha256: string;
+  }[];
   warning_details?: {
     code:
       | "missing_intervals"

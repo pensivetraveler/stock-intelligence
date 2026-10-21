@@ -71,6 +71,15 @@ def update(ctx):
 - **Charts:** a custom indicator is drawn like a built-in one, with the same legend, settings, hide and remove. Its values come from the API; a failure is shown on the chart, never drawn as zeros.
 - **Warm-up:** integer settings count as look-backs, as for built-ins.
 
+### In backtest rules (2026-10-21)
+
+- **Operand:** a rules operand may be `{"indicator": "py:<indicator_id>@<version>", "params": {...}, "output": "<name>"}`. Omitted settings use that version's defaults; `output` defaults to the first output.
+- **Validation on save:** the version must exist in `indicators.sqlite3`, settings must be ones it declares (finite numbers) and the output one it lists. Without the indicator store such operands are refused.
+- **Computation:** before the run, each instrument's final bars go through `runner.compute`, once per indicator version and settings, in the same sandbox: `update(ctx)` sees one bar at a time, so a signal at bar _i_ depends only on bars up to _i_. Up to 5,000 final bars per instrument (the indicator limit); more fails the run with that reason.
+- **Pinning:** the strategy definition names the exact version, and its fingerprint covers it. Results add `custom_indicators`: the type, ID, version, name and code SHA-256 of every version used. The code's hash is checked against the stored one before the run.
+- **Failures:** an indicator error fails the run with the indicator type, the instrument and the reason. Nothing is retried, and the run has no results.
+- **Screen:** the rule form's indicator list offers the latest version of each saved Python indicator (a rule pinned to an older version keeps it). Results list the pinned Python indicators with their hash.
+
 ## Alternatives considered
 
 - **Running Python in the browser (Pyodide):** no server round trip, but a 10 MB+ runtime, and the sandbox and versioning policies would differ from strategies.
@@ -78,5 +87,6 @@ def update(ctx):
 
 ## Revisit when
 
-- Custom indicators should be usable inside backtest rules (pin `py:id@version` in strategies).
+- Backtests need more than 5,000 final bars per instrument with a Python indicator: compute in chunks with carried state, or raise the limit for backtests.
+- Python strategies should call saved Python indicators (`ctx.indicator("py:...")`), not only rules.
 - Indicators written by others or by an Agent are to be run: approval flow and a stronger sandbox.

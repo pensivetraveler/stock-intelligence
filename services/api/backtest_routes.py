@@ -81,7 +81,7 @@ def register_backtest_routes(
         if jobs is None:
             return unavailable(request)
         try:
-            saved = jobs.store.save_strategy(body.name.strip(), body.definition, body.strategy_id)
+            saved = jobs.save_strategy(body.name.strip(), body.definition, body.strategy_id)
         except StrategyError as exc:
             return error_response(request, 422, "invalid_strategy", str(exc))
         except BacktestNotFoundError:
