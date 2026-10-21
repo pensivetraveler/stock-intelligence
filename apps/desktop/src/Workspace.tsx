@@ -90,6 +90,7 @@ import { BacktestScreen } from "./BacktestScreen";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { latestCustom, registerCustom } from "./custom-indicators";
 import { CustomIndicatorEditor } from "./CustomIndicatorEditor";
+import { FormulaDialog } from "./FormulaEditor";
 import type { BacktestApi } from "./backtest-api";
 import { StockInfoPanel } from "./StockInfoPanel";
 import { JournalPanel } from "./JournalPanel";
@@ -505,6 +506,7 @@ export function Workspace({
   } | null>(null);
   // Python indicators: every saved version is registered so pinned ones still draw.
   const [customVersion, setCustomVersion] = useState(0);
+  const [formulaOpen, setFormulaOpen] = useState(false);
   const [customEditor, setCustomEditor] = useState<{
     initial: CustomIndicator | null;
   } | null>(null);
@@ -1623,6 +1625,24 @@ export function Workspace({
           onClose={() => setIndicatorsOpen(false)}
           custom={customApi ? latestCustom() : undefined}
           onEditCustom={(initial) => setCustomEditor({ initial })}
+          onNewFormula={() => setFormulaOpen(true)}
+        />
+      ) : null}
+
+      {formulaOpen ? (
+        <FormulaDialog
+          target={`${activeSymbol} · ${activeConfig.timeframe}`}
+          onClose={() => setFormulaOpen(false)}
+          onAdd={(value) => {
+            setFormulaOpen(false);
+            setIndicatorsOpen(false);
+            updateActive({
+              indicators: [
+                ...(activeConfig.indicators ?? []),
+                { key: newId(), type: "formula", params: {}, ...value },
+              ],
+            });
+          }}
         />
       ) : null}
 

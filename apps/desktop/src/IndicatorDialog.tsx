@@ -19,14 +19,17 @@ interface IndicatorDialogProps {
   custom?: CustomIndicator[];
   /** Open the Python editor: a new indicator (null) or the next version of one. */
   onEditCustom?: (item: CustomIndicator | null) => void;
+  /** Open the formula editor for a new formula indicator. */
+  onNewFormula?: () => void;
 }
 
-const CATEGORIES: (IndicatorCategory | "all")[] = [
+const CATEGORIES: (IndicatorCategory | "all" | "formula")[] = [
   "all",
   "trend",
   "momentum",
   "volatility",
   "volume",
+  "formula",
   "custom",
 ];
 
@@ -37,10 +40,13 @@ export function IndicatorDialog({
   onClose,
   custom,
   onEditCustom,
+  onNewFormula,
 }: IndicatorDialogProps) {
   const { t, language } = useI18n();
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<IndicatorCategory | "all">("all");
+  const [category, setCategory] = useState<
+    IndicatorCategory | "all" | "formula"
+  >("all");
   const needle = query.trim().toLowerCase();
   const customDefinitions = (custom ?? []).flatMap((item) => {
     const definition = INDICATOR_BY_ID.get(item.type);
@@ -98,21 +104,31 @@ export function IndicatorDialog({
             className="indicator-categories"
             aria-label={t("ind.categories")}
           >
-            {CATEGORIES.filter((item) => item !== "custom" || custom).map(
-              (item) => (
-                <button
-                  key={item}
-                  type="button"
-                  className="tb-button"
-                  aria-pressed={category === item}
-                  onClick={() => setCategory(item)}
-                >
-                  {t(`ind.cat.${item}`)}
-                </button>
-              ),
-            )}
+            {CATEGORIES.filter(
+              (item) =>
+                (item !== "custom" || custom) &&
+                (item !== "formula" || onNewFormula),
+            ).map((item) => (
+              <button
+                key={item}
+                type="button"
+                className="tb-button"
+                aria-pressed={category === item}
+                onClick={() => setCategory(item)}
+              >
+                {t(`ind.cat.${item}`)}
+              </button>
+            ))}
           </nav>
           <ul className="indicator-list">
+            {onNewFormula && category === "formula" ? (
+              <li>
+                <button type="button" onClick={onNewFormula}>
+                  <span>{t("formula.newButton")}</span>
+                  <small>{t("formula.newHint")}</small>
+                </button>
+              </li>
+            ) : null}
             {custom && onEditCustom && category === "custom" ? (
               <li>
                 <button type="button" onClick={() => onEditCustom(null)}>

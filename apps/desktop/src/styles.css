@@ -2419,3 +2419,38 @@ body {
   margin: 2px 8px;
   font-size: 12px;
 }
+
+/* Formula indicators */
+.formula-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.formula-fields label {
+  display: grid;
+  gap: 3px;
+  color: var(--term-muted);
+  font-size: 12px;
+}
+
+.formula-fields input,
+.formula-fields select,
+.formula-text {
+  border: 1px solid var(--term-line);
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: var(--term-text);
+  background: var(--term-bg);
+  color-scheme: dark;
+}
+
+.formula-text {
+  min-height: 72px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.indicator-settings.formula-settings {
+  width: min(420px, 80vw);
+}
