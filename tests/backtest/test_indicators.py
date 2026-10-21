@@ -51,3 +51,16 @@ def test_rejects_unknown_indicators_and_parameters() -> None:
         compute("sma", BARS, {"window": 3})
     with pytest.raises(ValueError, match="whole number"):
         compute("sma", BARS, {"length": 2.5})
+
+
+def test_ichimoku_offers_no_look_ahead_output() -> None:
+    # The chart's lagging span is a later close drawn in the past: never a backtest input.
+    assert "lagging" not in INDICATORS["ichimoku"].outputs
+    assert set(compute("ichimoku", BARS)) == {"conversion", "base", "spanA", "spanB"}
+
+
+def test_fractional_settings_are_range_checked() -> None:
+    with pytest.raises(ValueError, match="between"):
+        compute("psar", BARS, {"maximum": 5})
+    with pytest.raises(ValueError, match="between"):
+        compute("supertrend", BARS, {"factor": 0})
