@@ -29,6 +29,7 @@ from services.backtest.engine import (
 from services.backtest.sandbox import SandboxError, StrategyProcess
 from services.backtest.store import BacktestStore
 from services.backtest.strategy import StrategyError
+from services.custom_indicators.store import CustomIndicatorStore
 from services.market_data.instruments import market_of
 from services.market_data.provider import MarketDataError
 
@@ -105,6 +106,9 @@ def validate_config(request: dict[str, Any]) -> dict[str, Any]:
         raise RunConfigError("adjustment must be raw, split_adjusted or fully_adjusted")
     if adjustment != "raw" and timeframe not in ("1d", "1w"):
         raise RunConfigError("adjusted prices are available for daily and weekly runs")
+    if adjustment == "fully_adjusted" and currency == "KRW":
+        # Toss's adjusted Korean candles leave cash dividends out (toss.py).
+        raise RunConfigError("Korean runs offer split_adjusted or raw prices")
     seed = request.get("seed", 0)
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise RunConfigError("seed must be a whole number")
@@ -138,8 +142,10 @@ class BacktestRunner:
         get_bars: Callable[[], GetBars],
         process: Callable[..., StrategyProcess] = StrategyProcess,
         get_adjusted: Callable[[], GetAdjusted | None] = lambda: None,
+        indicators: Callable[[], CustomIndicatorStore | None] = lambda: None,
     ) -> None:
         self.store = store
+        self._indicators = indicators
         self._get_bars = get_bars
         self._get_adjusted = get_adjusted
         self._process = process
@@ -150,6 +156,18 @@ class BacktestRunner:
         self.store.fail_interrupted()
         self._thread = threading.Thread(target=self._loop, name="backtest-runner", daemon=True)
         self._thread.start()
+
+    def custom_indicator(self, indicator_id: str, version: int) -> dict[str, Any]:
+        """A saved Python indicator version (ADR 0023), for `py:` rule operands."""
+        indicators = self._indicators()
+        if indicators is None:
+            raise LookupError("the indicator store is not configured (set SIW_DATA_DIR)")
+        return indicators.indicator(indicator_id, version)
+
+    def save_strategy(
+        self, name: str, definition: object, strategy_id: str | None = None
+    ) -> dict[str, Any]:
+        return self.store.save_strategy(name, definition, strategy_id, self.custom_indicator)
 
     def submit(
         self, strategy_id: str, version: int | None, request: dict[str, Any]
@@ -236,7 +254,7 @@ class BacktestRunner:
             )
         source: SignalSource
         if definition["type"] == "rules":
-            source = RuleSignals(definition, inputs)
+            source = RuleSignals(definition, inputs, self.custom_indicator, self._process)
         else:
             source = PythonSignals(definition, inputs, self._process)
         engine = Backtest(
@@ -262,5 +280,7 @@ class BacktestRunner:
         )
         if isinstance(source, PythonSignals):
             results["logs"] = source.logs[-200:]
+        if isinstance(source, RuleSignals) and source.custom_pins:
+            results["custom_indicators"] = source.custom_pins
         validate_document(results)
         return results

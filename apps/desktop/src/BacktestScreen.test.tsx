@@ -2,6 +2,7 @@ import type {
   BacktestResults,
   BacktestRun,
   BacktestStrategy,
+  CustomIndicator,
 } from "@siw/contracts/types";
 import {
   fireEvent,
@@ -16,6 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { BacktestApi } from "./backtest-api";
 import { BacktestScreen } from "./BacktestScreen";
+import { registerCustom } from "./custom-indicators";
 import type { InstrumentListing } from "./market-api";
 
 // The canvas chart library needs browser APIs jsdom lacks; the curve is checked by points.
@@ -138,6 +140,7 @@ describe("backtest screen", () => {
       name: "Compared with your real fills",
     });
     expect(within(compare).getAllByRole("row")).toHaveLength(3);
+    expect(screen.getByText("Pinned Python indicators")).toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Show fills on charts" }),
@@ -145,6 +148,26 @@ describe("backtest screen", () => {
     expect(onShowFills).toHaveBeenCalledWith({
       runId: finished.run_id,
       fills: results.fills,
+    });
+  });
+
+  it("offers saved Python indicators as rule operands", async () => {
+    const saved = fixture<CustomIndicator>("custom-indicator.json");
+    registerCustom([saved]);
+    const api = fakeApi();
+    renderScreen(api);
+    const [picker] = screen.getAllByLabelText("Condition 1 right indicator");
+    expect(
+      within(picker).getByRole("option", { name: "RSI band (Python v1)" }),
+    ).toBeInTheDocument();
+    fireEvent.change(picker, { target: { value: saved.type } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and run" }));
+    await waitFor(() => expect(api.saveStrategy).toHaveBeenCalled());
+    const [, definition] = vi.mocked(api.saveStrategy).mock.calls[0];
+    expect((definition.entry as { right: unknown }).right).toEqual({
+      indicator: saved.type,
+      params: { length: 14, high: 70 },
+      output: "rsi",
     });
   });
 
@@ -198,19 +221,22 @@ describe("backtest screen", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
-  it("runs Korean stocks on unadjusted prices only", async () => {
+  it("offers split-adjusted but not dividend-adjusted prices for Korean stocks", async () => {
     const api = fakeApi();
     renderScreen(api);
     fireEvent.click(screen.getByLabelText("AAPL"));
     fireEvent.click(screen.getByLabelText("005930"));
-    expect(screen.getByLabelText("Prices")).toBeDisabled();
-    expect(screen.getByLabelText("Prices")).toHaveValue("raw");
+    const prices = screen.getByLabelText("Prices");
+    expect(prices).toBeEnabled();
+    expect(prices).toHaveValue("split_adjusted");
+    const options = [...prices.querySelectorAll("option")].map((o) => o.value);
+    expect(options).toEqual(["split_adjusted", "raw"]);
     fireEvent.click(screen.getByRole("button", { name: "Save and run" }));
     await waitFor(() => expect(api.submit).toHaveBeenCalled());
     expect(vi.mocked(api.submit).mock.calls[0][2]).toMatchObject({
       instrument_ids: ["kr:005930:xkrx:2026"],
       currency: "KRW",
-      adjustment: "raw",
+      adjustment: "split_adjusted",
     });
   });
 });

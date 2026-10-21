@@ -14,6 +14,7 @@ import type {
   MarketInstrumentsResponse,
   ScenarioDefinition,
   SessionWindow,
+  TradeReconciliationResponse,
 } from "@siw/contracts/types";
 import {
   act,
@@ -399,6 +400,14 @@ function fakeApi(
             executions: broker,
             positions: [],
           }),
+    reconciliation: () =>
+      options.journalOff
+        ? off()
+        : Promise.resolve(
+            fixture<TradeReconciliationResponse>(
+              "trade-reconciliation-response.json",
+            ),
+          ),
     brokerAccount: () =>
       Promise.resolve({
         kind: "broker_account_snapshot",
@@ -786,6 +795,13 @@ describe("chart workspace", () => {
     expect(within(actual).getByText("250.20")).toBeInTheDocument();
     expect(
       within(actual).getByText("No hypothetical scenarios yet."),
+    ).toBeInTheDocument();
+    // The reconciliation view sits under the ledgers in the same panel.
+    const reconciliation = await screen.findByRole("region", {
+      name: /^Reconciliation/,
+    });
+    expect(
+      await within(reconciliation).findByText("2 matched"),
     ).toBeInTheDocument();
   });
 

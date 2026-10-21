@@ -38,3 +38,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0022-chart-trade-review-agent.md`: 차트·매매 복기 Agent(Phase 5) — 로컬 근거(사후 정보 표시, 시점 이후 차단) + 요청 시 Claude 해설(근거만 전송, 투자 조언 아님), 차트 시점·실제 체결·백테스트 복기, 조회 전용
 - `0023-python-custom-indicators.md`: Python 사용자 지표(Phase 4) — update(ctx)를 봉마다 호출해 구조적으로 미래 차단, 전략 샌드박스 재사용, 버전 고정(py:id@버전), 차트 통합
 - `0024-filings-and-dark-pool-agents.md`: 공시·다크풀 근거 Agent(Phase 6) — SEC EDGAR(Submissions·CompanyFacts, User-Agent 명시, 초당 5회 이하)와 FINRA 주간 ATS/비ATS 집계(지연·방향 없음 표시), 게시 시각과 최초 관측 시각 분리, 시점 이후 차단, 조회 전용
+- `0025-broker-reconciliation.md`: 증권사 API 원장과 수동·거래내역서 체결의 대사(조회 전용 계산 보기, 원장 불변) — 시각 정밀도별 창, bp 가격 허용 오차, 1:1·여러 체결 합산·주문번호 연결, 일치·불일치·한쪽에만 분류와 사유

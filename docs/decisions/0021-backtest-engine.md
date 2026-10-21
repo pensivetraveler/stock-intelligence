@@ -98,7 +98,7 @@ On 2026-10-21 the user chose:
 
 - **Where:** a "Backtest" button on the right rail opens a large window over the charts. Esc or ✕ closes it.
 - **Strategy editor:**
-  - Rules are edited in a form: entry and exit conditions combined with all/any; operands are the 10 engine indicators (with their parameters and outputs), a bar price or a value; plus stop/target, sizing and max positions.
+  - Rules are edited in a form: entry and exit conditions combined with all/any; operands are the 10 engine indicators (with their parameters and outputs), a saved Python indicator pinned by version (`py:<id>@<version>`, [ADR 0023](0023-python-custom-indicators.md)), a bar price or a value; plus stop/target, sizing and max positions.
   - A saved rule nested deeper than the form can show is displayed as JSON and run exactly as saved.
   - Python strategies are edited as code with JSON parameters, under a note that the code runs isolated and should be reviewed first.
   - The API, not the screen, decides whether a definition is valid; its message is shown.
@@ -117,13 +117,24 @@ On 2026-10-21 the user chose:
 ## Follow-up (2026-10-21): adjusted prices and localized warnings
 
 - **Adjusted prices:** a run's `adjustment` is `raw`, `split_adjusted` or `fully_adjusted` (splits and dividends). The API's default stays `raw`; the screen defaults to split-adjusted where it is available.
-  - **Source:** adjusted bars come from Alpaca daily bars (`adjustment=split|all`). They are offered for US daily and weekly runs only; weekly bars are aggregated from the adjusted daily bars. Intraday and Korean (Toss) runs stay raw until Toss's adjusted candles are checked.
+  - **Source:** US adjusted bars come from Alpaca daily bars (`adjustment=split|all`); Korean ones from Toss (see below). They are offered for daily and weekly runs only; weekly bars are aggregated from the adjusted daily bars. Intraday runs stay raw.
   - **Never cached:** adjusted history changes whenever a new corporate action is applied. Adjusted bars therefore bypass the daily cache, and their revision names the fetch date (`…:1d:split:asof-YYYY-MM-DD`). A run pins that revision and `adjustment_requested`.
   - **Look-ahead in price levels:** adjusted prices use actions known on the fetch date, so the price level before an action differs from what traded. Returns are right, but a rule on an absolute price level (for example, close > 100) sees levels that were not visible at the time. Every adjusted run carries an `adjusted_prices` warning saying so.
   - **Live check (2026-10-21):** NVDA daily bars, 2024-01-02 to 2026-10-16.
     - Raw: buy-and-hold −56.5%, and a false −86.6% stop at the 10:1 split.
     - Split-adjusted: buy-and-hold +334.9%, worst trade −13.9%.
     - Fully adjusted: +336.1%.
+- **Korean adjusted prices (Toss, live check 2026-10-21):** Toss's `adjusted=true` Korean daily candles were compared with `adjusted=false` over 2017-01 to 2026-10, read-only through the user's key. The volume factor (adjusted ÷ raw) shows where an adjustment applies; only counts and ratios were printed.
+  - Samsung Electronics (005930), 50:1 split on 2018-05-04: factor exactly 50 before the split and 1 after. No step at any of its quarterly dividends, including the 2020 special dividend.
+  - KT&G (033780), about 4–6% in cash dividends a year: factor 1 throughout. **Cash dividends are not adjusted.**
+  - Korean Air (003490), rights offerings: steps on 2017-01-24, 2020-06-05 and 2021-01-25 (×0.940, ×0.836, ×0.775). **Rights offerings are adjusted.**
+  - EcoproBM (247540), bonus issue on 2022-06-27: step ×0.2507, not the nominal 0.25. Two further steps (2022-05-09 ×0.985 and 2026-09-03 ×0.984) were not matched to an action here.
+  - Kakao (035720), 5:1 split on 2021-04-15: factor 4.98256, not 5. A ×1.004 step on 2017-07-10, the day it moved from KOSDAQ to KOSPI, matches no economic event.
+  - Adjusted prices are whole won; the day being traded can differ between two fetches.
+  - **Reading:** this is the KRX-style 수정주가: splits, bonus issues and rights offerings, with factors taken from the exchange's base prices rather than the nominal ratio, and no cash dividends.
+  - **Decision:** Korean runs may use `split_adjusted`, served from Toss `adjusted=true` daily candles. They use the same rules as Alpaca: never cached, revision `toss-kr-adjusted-r1:1d:split:asof-YYYY-MM-DD`, and the `adjusted_prices` warning. `fully_adjusted` is refused for KRW runs (API validation, adapter, screen), since dividends are left out. Toss's US adjusted candles were not checked and are refused.
+  - **Label caveat:** `split_adjusted` here also covers bonus issues and rights offerings. Factors can differ from the nominal ratio by about 0.5%, and rare unexplained steps remain. The screen says what the Korean adjustment covers.
+  - **Through the backtest loader (2018 Samsung, daily):** raw prices give a first-to-last close ratio of 0.0152 and a suspected split on 2018-05-03. Split-adjusted prices give 0.7585, with no suspected split and only the `adjusted_prices` warning. Weekly results match.
 - **Localized warnings:** results also carry `warning_details` (`code`, `instrument_id`, `count`, `dates`). The screen words them in its own language; results stored before this have only the English `warnings` text.
 
 ## Alternatives considered

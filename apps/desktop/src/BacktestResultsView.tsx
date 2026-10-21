@@ -374,6 +374,32 @@ export function BacktestResultsView({
         </table>
       </details>
 
+      {results.custom_indicators?.length ? (
+        <details>
+          <summary>{t("bt.customPins")}</summary>
+          <table className="bt-table">
+            <thead>
+              <tr>
+                <th>{t("bt.col.indicator")}</th>
+                <th>{t("bt.col.version")}</th>
+                <th>SHA-256</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.custom_indicators.map((pin) => (
+                <tr key={pin.type}>
+                  <td title={pin.type}>{pin.name}</td>
+                  <td>{pin.version}</td>
+                  <td title={pin.code_sha256}>
+                    {pin.code_sha256.slice(0, 12)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      ) : null}
+
       {results.logs.length > 0 ? (
         <details>
           <summary>{t("bt.logs", { n: results.logs.length })}</summary>
