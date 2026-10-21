@@ -36,6 +36,7 @@ import { FormulaFields } from "./FormulaEditor";
 import {
   customIndicator,
   hasResult,
+  latestCustom,
   isCustomType,
   signature,
   storeResult,
@@ -106,6 +107,8 @@ interface ChartPanelProps {
   customApi?: CustomIndicatorApi;
   /** Bumped when the list of Python indicator versions changes. */
   customVersion?: number;
+  /** Told the bars indicators are computed on (warm-up included), e.g. for previews. */
+  onBars?: (bars: OhlcvBar[]) => void;
   /** Fills of the backtest run the user chose to show on the charts. */
   backtestFills?: BacktestFill[];
   /** The chart that the toolbars and the watchlist act on. */
@@ -169,6 +172,7 @@ export function ChartPanel({
   onAskAgent,
   customApi,
   customVersion = 0,
+  onBars,
   backtestFills,
   active = false,
   onActivate,
@@ -538,6 +542,7 @@ export function ChartPanel({
     ];
   }, [bars, warmup]);
   const warmupCount = ohlcv.length - (bars?.length ?? 0);
+  useEffect(() => onBars?.(ohlcv), [ohlcv, onBars]);
   // Python indicators: computed by the API for exactly these bars and settings.
   const [customTick, setCustomTick] = useState(0);
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({});
@@ -744,6 +749,49 @@ export function ChartPanel({
                               ⚙
                             </button>
                           ) : null}
+                          {(() => {
+                            const current = customIndicator(item.instance.type);
+                            const latest = current
+                              ? latestCustom().find(
+                                  (entry) =>
+                                    entry.indicator_id === current.indicator_id,
+                                )
+                              : undefined;
+                            if (
+                              !current ||
+                              !latest ||
+                              latest.version <= current.version
+                            )
+                              return null;
+                            return (
+                              <button
+                                type="button"
+                                aria-label={t("pyind.upgrade", {
+                                  name: item.definition.short,
+                                  version: latest.version,
+                                })}
+                                title={t("pyind.upgrade", {
+                                  name: item.definition.short,
+                                  version: latest.version,
+                                })}
+                                onClick={() =>
+                                  changeIndicator(item.key, (instance) => ({
+                                    ...instance,
+                                    type: latest.type,
+                                    params: Object.fromEntries(
+                                      latest.inputs.map((input) => [
+                                        input.key,
+                                        instance.params[input.key] ??
+                                          input.default,
+                                      ]),
+                                    ),
+                                  }))
+                                }
+                              >
+                                ↑v{latest.version}
+                              </button>
+                            );
+                          })()}
                           <button
                             type="button"
                             aria-label={t(

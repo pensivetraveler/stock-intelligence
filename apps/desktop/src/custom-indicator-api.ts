@@ -1,6 +1,7 @@
 import type {
   CustomIndicator,
   CustomIndicatorListResponse,
+  CustomIndicatorPreview,
   CustomIndicatorResult,
 } from "@siw/contracts/types";
 
@@ -13,6 +14,13 @@ export interface CustomIndicatorApi {
   list(): Promise<CustomIndicator[]>;
   /** Checks the code in the sandbox, then saves it (with an ID: its next version). */
   save(code: string, indicatorId?: string): Promise<CustomIndicator>;
+  /** Runs unsaved code on these bars in the sandbox; nothing is stored. */
+  preview(
+    code: string,
+    params: Record<string, number>,
+    bars: OhlcvBar[],
+    timeZone: string,
+  ): Promise<CustomIndicatorPreview>;
   compute(
     indicatorId: string,
     version: number,
@@ -21,6 +29,16 @@ export interface CustomIndicatorApi {
     timeZone: string,
   ): Promise<CustomIndicatorResult>;
 }
+
+const plain = (bars: OhlcvBar[]) =>
+  bars.map(({ time, open, high, low, close, volume }) => ({
+    time,
+    open,
+    high,
+    low,
+    close,
+    volume,
+  }));
 
 export function createCustomIndicatorApi(
   baseUrl: string,
@@ -47,6 +65,14 @@ export function createCustomIndicatorApi(
         },
       );
     },
+    preview(code, params, bars, timeZone) {
+      return callForKind<CustomIndicatorPreview>(
+        target,
+        "/v1/indicators/custom/preview",
+        "custom_indicator_preview",
+        { body: { code, params, time_zone: timeZone, bars: plain(bars) } },
+      );
+    },
     compute(indicatorId, version, params, bars, timeZone) {
       return callForKind<CustomIndicatorResult>(
         target,
@@ -57,14 +83,7 @@ export function createCustomIndicatorApi(
             version,
             params,
             time_zone: timeZone,
-            bars: bars.map(({ time, open, high, low, close, volume }) => ({
-              time,
-              open,
-              high,
-              low,
-              close,
-              volume,
-            })),
+            bars: plain(bars),
           },
         },
       );

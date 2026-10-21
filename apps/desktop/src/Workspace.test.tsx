@@ -1394,6 +1394,111 @@ describe("watchlist quotes", () => {
 });
 
 describe("indicators", () => {
+  it("previews unsaved Python code on the active chart and shows the failing line", async () => {
+    const preview = vi
+      .fn<CustomIndicatorApi["preview"]>()
+      .mockResolvedValueOnce({
+        kind: "custom_indicator_preview",
+        schema_version: "0.1",
+        name: "Close vs SMA (%)",
+        inputs: [{ key: "length", default: 20 }],
+        pane: "separate",
+        times: [1, 2, 3],
+        outputs: { value: [null, 1.5, -0.25] },
+      })
+      .mockRejectedValueOnce(
+        new Error("ZeroDivisionError: division by zero (line 16)"),
+      );
+    const customApi: CustomIndicatorApi = {
+      list: () => Promise.resolve([]),
+      save: vi.fn(),
+      preview,
+      compute: vi.fn(),
+    };
+    render(
+      <Workspace
+        api={fakeApi()}
+        storage={memoryStorage()}
+        customApi={customApi}
+      />,
+    );
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Python" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /New Python indicator/ }),
+    );
+    const editor = screen.getByRole("dialog", { name: "Python indicator" });
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Preview on this chart" }),
+    );
+    expect(
+      await within(editor).findByText(/nothing saved/),
+    ).toBeInTheDocument();
+    expect(preview.mock.calls[0][2].length).toBeGreaterThan(0);
+    expect(within(editor).getByText("—, 1.5, -0.25")).toBeInTheDocument();
+    expect(customApi.save).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Preview on this chart" }),
+    );
+    const alert = await within(editor).findByRole("alert");
+    expect(alert).toHaveTextContent("Line 16:");
+    expect(alert).toHaveTextContent("average = ctx.indicator");
+  });
+
+  it("moves a chart's Python indicator to its newer version from the legend", async () => {
+    const v1 = fixture<CustomIndicator>("custom-indicator.json");
+    const v2: CustomIndicator = {
+      ...v1,
+      version: 2,
+      versions: [1, 2],
+      type: `py:${v1.indicator_id}@2`,
+      inputs: [
+        ...v1.inputs,
+        { key: "low", default: 30 },
+      ] as CustomIndicator["inputs"],
+    };
+    const customApi: CustomIndicatorApi = {
+      list: () => Promise.resolve([v1, v2]),
+      save: vi.fn(),
+      preview: vi.fn(),
+      compute: () => Promise.reject(new Error("not needed")),
+    };
+    const storage = memoryStorage();
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        ...DEFAULT_WORKSPACE,
+        charts: DEFAULT_WORKSPACE.charts.map((chart, index) =>
+          index === 0
+            ? {
+                ...chart,
+                indicators: [
+                  {
+                    key: "py1",
+                    type: v1.type,
+                    params: { length: 9, high: 70 },
+                  },
+                ],
+              }
+            : chart,
+        ),
+      }),
+    );
+    render(
+      <Workspace api={fakeApi()} storage={storage} customApi={customApi} />,
+    );
+    const upgrade = await screen.findByRole("button", {
+      name: /Use RSI band v2/,
+    });
+    fireEvent.click(upgrade);
+    expect(savedLayout(storage).charts[0].indicators[0]).toMatchObject({
+      type: v2.type,
+      params: { length: 9, high: 70, low: 30 },
+    });
+  });
+
   it("adds a formula indicator, refuses bad formulas and edits it from the legend", async () => {
     const storage = memoryStorage();
     render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
@@ -1456,6 +1561,7 @@ describe("indicators", () => {
     const customApi: CustomIndicatorApi = {
       list: () => Promise.resolve([]),
       save: vi.fn(() => Promise.resolve(saved)),
+      preview: vi.fn(),
       compute: (_id, version, params, bars) => {
         computed.push({ version, bars: bars.length, params });
         return Promise.resolve({
@@ -1507,6 +1613,7 @@ describe("indicators", () => {
     const customApi: CustomIndicatorApi = {
       list: () => Promise.resolve([saved]),
       save: vi.fn(),
+      preview: vi.fn(),
       compute: () =>
         Promise.reject(
           new Error("IndexError: only bars up to the current one"),

@@ -21,6 +21,13 @@ class SaveRequest(BaseModel):
     indicator_id: str | None = Field(default=None, max_length=200)
 
 
+class PreviewRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=runner.MAX_CODE_BYTES)
+    params: dict[str, Any] = {}
+    bars: list[dict[str, Any]] = Field(min_length=1, max_length=runner.MAX_BARS)
+    time_zone: str = Field(default="America/New_York", pattern=r"^[A-Za-z_]+/[A-Za-z_]+$")
+
+
 class ComputeRequest(BaseModel):
     version: int = Field(ge=1)
     params: dict[str, Any] = {}
@@ -76,6 +83,25 @@ def register_indicator_routes(
         except IndicatorNotFoundError:
             return error_response(request, 404, "indicator_not_found", "No such indicator")
         return respond(saved, 201)
+
+    @application.post("/v1/indicators/custom/preview", response_model=None)
+    def preview(request: Request, body: PreviewRequest) -> Response:
+        """Runs unsaved code on the given bars in the sandbox; nothing is stored."""
+        try:
+            meta, outputs = runner.preview(
+                body.code, body.params, body.bars, body.time_zone, sandbox
+            )
+        except runner.IndicatorError as exc:
+            return error_response(request, 422, "indicator_failed", str(exc))
+        return respond(
+            {
+                "kind": "custom_indicator_preview",
+                "schema_version": "0.1",
+                **meta,
+                "times": [int(bar["time"]) for bar in body.bars],
+                "outputs": outputs,
+            }
+        )
 
     @application.post("/v1/indicators/custom/{indicator_id}/compute", response_model=None)
     def compute(request: Request, indicator_id: str, body: ComputeRequest) -> Response:

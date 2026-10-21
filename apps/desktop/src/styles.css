@@ -2454,3 +2454,18 @@ body {
 .indicator-settings.formula-settings {
   width: min(420px, 80vw);
 }
+
+.pyind-error-line {
+  margin: 4px 0 0;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(242, 54, 69, 0.12);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.pyind-preview {
+  display: grid;
+  gap: 4px;
+}

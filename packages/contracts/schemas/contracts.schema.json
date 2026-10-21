@@ -146,6 +146,9 @@
     },
     {
       "$ref": "#/$defs/TradeReconciliationResponse"
+    },
+    {
+      "$ref": "#/$defs/CustomIndicatorPreview"
     }
   ],
   "$defs": {
@@ -5740,6 +5743,75 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/ReconciliationRecord"
+          }
+        }
+      }
+    },
+    "CustomIndicatorPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "name",
+        "inputs",
+        "outputs",
+        "pane",
+        "times"
+      ],
+      "properties": {
+        "kind": {
+          "const": "custom_indicator_preview"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "inputs": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "default"],
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^[a-z_][a-z0-9_]{0,30}$"
+              },
+              "default": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "pane": {
+          "enum": ["price", "separate"]
+        },
+        "times": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
           }
         }
       }
