@@ -5,6 +5,7 @@ import { checkApiHealth, type ApiConnectionState } from "./api-health";
 import { createAgentApi } from "./agent-api";
 import { createBacktestApi } from "./backtest-api";
 import { createCredentialApi } from "./credential-api";
+import { createCustomIndicatorApi } from "./custom-indicator-api";
 import { AppMark } from "./icons";
 import { LANGUAGES, useI18n, type Language, type MessageKey } from "./i18n";
 import { I18nProvider } from "./I18nProvider";
@@ -64,6 +65,10 @@ function AppContent({
   );
   const agentApi = useMemo(
     () => createAgentApi(apiBaseUrl, fetcher),
+    [apiBaseUrl, fetcher],
+  );
+  const customApi = useMemo(
+    () => createCustomIndicatorApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
   );
   const connected = lastSuccess !== null;
@@ -127,6 +132,7 @@ function AppContent({
             keysPanel={<KeysPanel api={credentialApi} />}
             backtestApi={backtestApi}
             agentApi={agentApi}
+            customApi={customApi}
           />
         ) : (
           <div className="connect-screen">

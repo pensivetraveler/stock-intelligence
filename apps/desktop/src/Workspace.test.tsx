@@ -1,4 +1,6 @@
 import type {
+  CustomIndicator,
+  CustomIndicatorResult,
   BacktestResults,
   BacktestRun,
   ImportBatch,
@@ -34,6 +36,7 @@ import {
 } from "./market-api";
 import type { AgentApi } from "./agent-api";
 import type { BacktestApi } from "./backtest-api";
+import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { Workspace } from "./Workspace";
 import { LIBRARY_STORAGE_KEY } from "./workspace-library";
 import { DEFAULT_WORKSPACE, WORKSPACE_STORAGE_KEY } from "./workspace-state";
@@ -1375,6 +1378,99 @@ describe("watchlist quotes", () => {
 });
 
 describe("indicators", () => {
+  it("writes a Python indicator, adds it and draws the API's values", async () => {
+    const saved = fixture<CustomIndicator>("custom-indicator.json");
+    const computed: { version: number; bars: number; params: object }[] = [];
+    const customApi: CustomIndicatorApi = {
+      list: () => Promise.resolve([]),
+      save: vi.fn(() => Promise.resolve(saved)),
+      compute: (_id, version, params, bars) => {
+        computed.push({ version, bars: bars.length, params });
+        return Promise.resolve({
+          ...fixture<CustomIndicatorResult>("custom-indicator-result.json"),
+          times: bars.map((bar) => bar.time),
+          outputs: {
+            rsi: bars.map(() => 55),
+            over: bars.map(() => 0),
+          },
+        });
+      },
+    };
+    render(
+      <Workspace
+        api={fakeApi()}
+        storage={memoryStorage()}
+        newId={sequence()}
+        customApi={customApi}
+      />,
+    );
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Python" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /New Python indicator/ }),
+    );
+    const editor = screen.getByRole("dialog", { name: "Python indicator" });
+    expect(
+      (within(editor).getByLabelText("Indicator code") as HTMLTextAreaElement)
+        .value,
+    ).toContain("def update(ctx)");
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Save and add to chart" }),
+    );
+    await waitFor(() => expect(computed).toHaveLength(1));
+    expect(computed[0]).toMatchObject({
+      version: 1,
+      params: { length: 14, high: 70 },
+    });
+    const legend = await screen.findByRole("list", {
+      name: "Indicators on this chart",
+    });
+    expect(legend).toHaveTextContent("RSI band");
+  });
+
+  it("shows a failing Python indicator on the chart instead of drawing it", async () => {
+    const saved = fixture<CustomIndicator>("custom-indicator.json");
+    const customApi: CustomIndicatorApi = {
+      list: () => Promise.resolve([saved]),
+      save: vi.fn(),
+      compute: () =>
+        Promise.reject(
+          new Error("IndexError: only bars up to the current one"),
+        ),
+    };
+    const storage = memoryStorage();
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        ...DEFAULT_WORKSPACE,
+        charts: DEFAULT_WORKSPACE.charts.map((chart, index) =>
+          index === 0
+            ? {
+                ...chart,
+                indicators: [
+                  {
+                    key: "py1",
+                    type: saved.type,
+                    params: { length: 14, high: 71 },
+                  },
+                ],
+              }
+            : chart,
+        ),
+      }),
+    );
+    render(
+      <Workspace api={fakeApi()} storage={storage} customApi={customApi} />,
+    );
+    expect(
+      await screen.findByText(
+        /RSI band: IndexError: only bars up to the current one/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("adds an indicator to the active chart only, then hides and removes it", async () => {
     const storage = splitStorage();
     render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);

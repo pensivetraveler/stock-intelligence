@@ -27,11 +27,13 @@ from services.agents.store import AgentStore
 from services.api.agent_routes import register_agent_routes
 from services.api.backtest_routes import register_backtest_routes
 from services.api.credential_routes import register_credential_routes
+from services.api.indicator_routes import register_indicator_routes
 from services.api.journal_routes import register_import_routes, register_journal_routes
 from services.backtest.jobs import BacktestRunner
 from services.backtest.store import BacktestStore
 from services.credentials.pool import PooledProvider
 from services.credentials.store import CredentialStore, KeyringSecretBackend, SecretStorageError
+from services.custom_indicators.store import CustomIndicatorStore
 from services.journal.ledger import manual_positions
 from services.journal.store import JournalStore
 from services.market_data.aggregation import AggregationError
@@ -383,6 +385,25 @@ class _LazyAgents:
             return self._store
 
 
+class _LazyIndicators:
+    """Open the custom indicator store on first use (needs SIW_DATA_DIR)."""
+
+    def __init__(self, store: CustomIndicatorStore | None, clock: Callable[[], datetime]) -> None:
+        self._store = store
+        self._clock = clock
+        self._lock = threading.Lock()
+
+    def get(self) -> CustomIndicatorStore | None:
+        with self._lock:
+            if self._store is None:
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                if configured:
+                    self._store = CustomIndicatorStore(
+                        Path(configured) / "indicators.sqlite3", self._clock
+                    )
+            return self._store
+
+
 def _claude_key(credentials: CredentialStore | None) -> str | None:
     """The first enabled Claude (Anthropic) key on the Keys screen."""
     if credentials is None:
@@ -411,6 +432,7 @@ def create_app(
     backtest_runner: BacktestRunner | None = None,
     agent_store: AgentStore | None = None,
     agent_ask: Callable[..., dict[str, Any]] = ask_claude,
+    indicator_store: CustomIndicatorStore | None = None,
     clock: Callable[[], datetime] = _utc_now,
 ) -> FastAPI:
     credentials = _LazyCredentials(credential_store)
@@ -459,6 +481,7 @@ def create_app(
     journal = _LazyJournal(journal_store)
     backtests = _LazyBacktests(backtest_runner, provider.get, clock)
     agents = _LazyAgents(agent_store, clock)
+    custom_indicators = _LazyIndicators(indicator_store, clock)
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI) -> AsyncIterator[None]:
@@ -927,6 +950,9 @@ def create_app(
     )
 
     register_backtest_routes(application, runner=backtests.get, error_response=_error_response)
+    register_indicator_routes(
+        application, store=custom_indicators.get, error_response=_error_response
+    )
     register_agent_routes(
         application,
         store=agents.get,

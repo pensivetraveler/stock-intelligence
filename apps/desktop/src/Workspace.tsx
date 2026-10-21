@@ -1,5 +1,6 @@
 import type {
   BacktestFill,
+  CustomIndicator,
   BrokerLedgerResponse,
   ImportedLedgerResponse,
   ManualLedgerResponse,
@@ -86,6 +87,9 @@ import { ResearchPanel } from "./ResearchPanel";
 import { AgentPanel } from "./AgentPanel";
 import type { AgentApi, ChartReviewRequest } from "./agent-api";
 import { BacktestScreen } from "./BacktestScreen";
+import type { CustomIndicatorApi } from "./custom-indicator-api";
+import { latestCustom, registerCustom } from "./custom-indicators";
+import { CustomIndicatorEditor } from "./CustomIndicatorEditor";
 import type { BacktestApi } from "./backtest-api";
 import { StockInfoPanel } from "./StockInfoPanel";
 import { JournalPanel } from "./JournalPanel";
@@ -130,6 +134,8 @@ interface WorkspaceProps {
   backtestApi?: BacktestApi;
   /** The review Agent's client; without one it is not offered. */
   agentApi?: AgentApi;
+  /** Python indicators' client (ADR 0023); without one they are not offered. */
+  customApi?: CustomIndicatorApi;
 }
 
 type Panel =
@@ -263,6 +269,7 @@ export function Workspace({
   keysPanel,
   backtestApi,
   agentApi,
+  customApi,
 }: WorkspaceProps) {
   const { t } = useI18n();
   const [library, setLibrary] = useState<WorkspaceLibrary>(() =>
@@ -495,6 +502,26 @@ export function Workspace({
     runId: string;
     fills: BacktestFill[];
   } | null>(null);
+  // Python indicators: every saved version is registered so pinned ones still draw.
+  const [customVersion, setCustomVersion] = useState(0);
+  const [customEditor, setCustomEditor] = useState<{
+    initial: CustomIndicator | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!customApi) return;
+    let current = true;
+    customApi
+      .list()
+      .then((items) => {
+        if (!current) return;
+        registerCustom(items);
+        setCustomVersion((version) => version + 1);
+      })
+      .catch(() => undefined); // without SIW_DATA_DIR there are simply none
+    return () => {
+      current = false;
+    };
+  }, [customApi]);
   const [agentRequest, setAgentRequest] = useState<ChartReviewRequest | null>(
     null,
   );
@@ -1173,6 +1200,8 @@ export function Workspace({
               journal={journal}
               backtestFills={backtestShown?.fills}
               onAskAgent={agentApi ? askAgent : undefined}
+              customApi={customApi}
+              customVersion={customVersion}
               onJournalChange={refreshJournal}
               magnet={tools[index].magnet}
               logScale={tools[index].logScale}
@@ -1556,6 +1585,36 @@ export function Workspace({
             })
           }
           onClose={() => setIndicatorsOpen(false)}
+          custom={customApi ? latestCustom() : undefined}
+          onEditCustom={(initial) => setCustomEditor({ initial })}
+        />
+      ) : null}
+
+      {customEditor && customApi ? (
+        <CustomIndicatorEditor
+          api={customApi}
+          initial={customEditor.initial}
+          onClose={() => setCustomEditor(null)}
+          onSaved={(saved, addToChart) => {
+            registerCustom([saved]);
+            setCustomVersion((version) => version + 1);
+            setCustomEditor(null);
+            if (addToChart) {
+              setIndicatorsOpen(false);
+              updateActive({
+                indicators: [
+                  ...(activeConfig.indicators ?? []),
+                  {
+                    key: newId(),
+                    type: saved.type,
+                    params: Object.fromEntries(
+                      saved.inputs.map((input) => [input.key, input.default]),
+                    ),
+                  },
+                ],
+              });
+            }
+          }}
         />
       ) : null}
 

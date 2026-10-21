@@ -134,6 +134,15 @@
     },
     {
       "$ref": "#/$defs/AgentAnalysisListResponse"
+    },
+    {
+      "$ref": "#/$defs/CustomIndicator"
+    },
+    {
+      "$ref": "#/$defs/CustomIndicatorListResponse"
+    },
+    {
+      "$ref": "#/$defs/CustomIndicatorResult"
     }
   ],
   "$defs": {
@@ -5271,6 +5280,166 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/AgentAnalysis"
+          }
+        }
+      }
+    },
+    "CustomIndicator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "indicator_id",
+        "version",
+        "versions",
+        "type",
+        "name",
+        "inputs",
+        "outputs",
+        "pane",
+        "code",
+        "code_sha256",
+        "created_at_utc"
+      ],
+      "properties": {
+        "kind": {
+          "const": "custom_indicator"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "indicator_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^py:[A-Za-z0-9_-]+@[1-9][0-9]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "inputs": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "default"],
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^[a-z_][a-z0-9_]{0,30}$"
+              },
+              "default": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 6,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_][a-z0-9_]{0,30}$"
+          }
+        },
+        "pane": {
+          "enum": ["price", "separate"]
+        },
+        "code": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "code_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "created_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      }
+    },
+    "CustomIndicatorListResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "indicators"],
+      "properties": {
+        "kind": {
+          "const": "custom_indicator_list_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "indicators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CustomIndicator"
+          }
+        }
+      }
+    },
+    "CustomIndicatorResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "type",
+        "code_sha256",
+        "times",
+        "outputs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "custom_indicator_result"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^py:[A-Za-z0-9_-]+@[1-9][0-9]*$"
+        },
+        "code_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "times": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
           }
         }
       }

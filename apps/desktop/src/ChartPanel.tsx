@@ -31,6 +31,14 @@ import {
 } from "./indicators";
 import { useI18n, type Translate } from "./i18n";
 import type { ChartSyncGroup } from "./chart-sync";
+import type { CustomIndicatorApi } from "./custom-indicator-api";
+import {
+  customIndicator,
+  hasResult,
+  isCustomType,
+  signature,
+  storeResult,
+} from "./custom-indicators";
 import { backtestMarkers, journalMarkers } from "./journal-markers";
 import {
   MarketApiError,
@@ -93,6 +101,10 @@ interface ChartPanelProps {
     timeframe: string;
     cutoffUtc: string;
   }) => void;
+  /** Computes Python indicators (ADR 0023); without it they are not drawn. */
+  customApi?: CustomIndicatorApi;
+  /** Bumped when the list of Python indicator versions changes. */
+  customVersion?: number;
   /** Fills of the backtest run the user chose to show on the charts. */
   backtestFills?: BacktestFill[];
   /** The chart that the toolbars and the watchlist act on. */
@@ -154,6 +166,8 @@ export function ChartPanel({
   journal,
   onJournalChange,
   onAskAgent,
+  customApi,
+  customVersion = 0,
   backtestFills,
   active = false,
   onActivate,
@@ -523,6 +537,47 @@ export function ChartPanel({
     ];
   }, [bars, warmup]);
   const warmupCount = ohlcv.length - (bars?.length ?? 0);
+  // Python indicators: computed by the API for exactly these bars and settings.
+  const [customTick, setCustomTick] = useState(0);
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({});
+  const customPending = useRef(new Set<string>());
+  useEffect(() => {
+    if (!customApi || ohlcv.length === 0) return;
+    for (const instance of indicatorList) {
+      if (!isCustomType(instance.type)) continue;
+      const item = customIndicator(instance.type);
+      if (!item) continue;
+      const key = signature(instance.type, instance.params, ohlcv);
+      if (hasResult(key) || customPending.current.has(key)) continue;
+      customPending.current.add(key);
+      customApi
+        .compute(
+          item.indicator_id,
+          item.version,
+          instance.params,
+          ohlcv,
+          zoneOf(instrumentId).timeZone,
+        )
+        .then((result) => {
+          storeResult(key, result.outputs as Record<string, (number | null)[]>);
+          setCustomErrors((errors) => {
+            const rest = { ...errors };
+            delete rest[instance.key];
+            return rest;
+          });
+          setCustomTick((tick) => tick + 1);
+        })
+        .catch((error: unknown) =>
+          setCustomErrors((errors) => ({
+            ...errors,
+            [instance.key]: `${item.name}: ${error instanceof Error ? error.message : String(error)}`,
+          })),
+        )
+        .finally(() => customPending.current.delete(key));
+    }
+    // The list is replaced (never mutated) whenever settings change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customApi, ohlcv, config.indicators, customVersion, instrumentId]);
   const rendered = useMemo(
     () =>
       renderIndicators(ohlcv, indicatorList, warmupCount, {
@@ -530,7 +585,14 @@ export function ChartPanel({
       }),
     // The list is replaced (never mutated) whenever settings change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ohlcv, config.indicators, warmupCount, instrumentId],
+    [
+      ohlcv,
+      config.indicators,
+      warmupCount,
+      instrumentId,
+      customTick,
+      customVersion,
+    ],
   );
   const changeIndicator = (
     key: string,
@@ -795,6 +857,11 @@ export function ChartPanel({
         </div>
       ) : null}
 
+      {Object.values(customErrors).map((message) => (
+        <p key={message} className="bt-problem chart-custom-error" role="alert">
+          {message}
+        </p>
+      ))}
       {summary && load.status === "ready" ? (
         <details className="chart-info">
           <summary>
