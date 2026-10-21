@@ -18,6 +18,7 @@ import {
   ruleIndicatorIds,
   rulesDefinition,
   rulesDraftOf,
+  backtestOutputs,
 } from "./backtest-model";
 import { registerCustom } from "./custom-indicators";
 
@@ -185,5 +186,22 @@ describe("comparison with real fills", () => {
       averageBuy: 100,
       averageSell: null,
     });
+  });
+});
+
+describe("indicators offered to backtests", () => {
+  it("include every chart indicator but never a look-ahead output", () => {
+    expect(BACKTEST_INDICATOR_IDS).toHaveLength(34);
+    expect(backtestOutputs("ichimoku").map((output) => output.key)).toEqual([
+      "conversion",
+      "base",
+      "spanA",
+      "spanB",
+    ]);
+    expect(backtestOutputs("dmi").map((output) => output.key)).toEqual([
+      "adx",
+      "plus",
+      "minus",
+    ]);
   });
 });

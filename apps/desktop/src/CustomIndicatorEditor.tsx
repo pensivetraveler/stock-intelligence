@@ -9,7 +9,7 @@ export const INDICATOR_TEMPLATE = `# A Python indicator (ADR 0023). update(ctx) 
 #   ctx.bar (open/high/low/close/volume/time), ctx.history (bars so far),
 #   ctx.index, ctx.params (INPUTS as set on the chart), ctx.state (a dict kept
 #   between bars), ctx.indicator(id, output=None, **params): a built-in value
-#   at this bar (sma, ema, wma, rsi, macd, bb, atr, stoch, vwap, obv).
+#   at this bar: any of the chart's 34 built-ins (sma, rsi, macd, kc, dmi, ...).
 # Return {"output": number or None, ...}. No network, files or subprocesses.
 
 NAME = "Close vs SMA (%)"

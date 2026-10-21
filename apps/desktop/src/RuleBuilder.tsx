@@ -1,5 +1,6 @@
 import {
   backtestIndicator,
+  backtestOutputs,
   COMPARISONS,
   conditionKey,
   indicatorLabel,
@@ -78,7 +79,7 @@ function OperandEditor({
               }
             />
           ))}
-          {backtestIndicator(operand.indicator).outputs.length > 1 ? (
+          {backtestOutputs(operand.indicator).length > 1 ? (
             <select
               aria-label={t("bt.output", { side: label })}
               value={operand.output}
@@ -86,7 +87,7 @@ function OperandEditor({
                 onChange({ ...operand, output: event.target.value })
               }
             >
-              {backtestIndicator(operand.indicator).outputs.map((output) => (
+              {backtestOutputs(operand.indicator).map((output) => (
                 <option key={output.key} value={output.key}>
                   {output.label}
                 </option>

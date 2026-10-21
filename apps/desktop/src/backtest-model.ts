@@ -8,21 +8,28 @@ import type {
 import type { StrategyDefinition } from "./backtest-api";
 import { isCustomType, latestCustom } from "./custom-indicators";
 import type { Language } from "./i18n";
-import { INDICATOR_BY_ID, type IndicatorDefinition } from "./indicators";
+import {
+  INDICATOR_BY_ID,
+  INDICATORS,
+  type IndicatorDefinition,
+} from "./indicators";
 
-/** Indicators the backtest engine computes, with the chart's own definitions. */
-export const BACKTEST_INDICATOR_IDS = [
-  "sma",
-  "ema",
-  "wma",
-  "rsi",
-  "macd",
-  "bb",
-  "atr",
-  "stoch",
-  "vwap",
-  "obv",
-] as const;
+/**
+ * Indicators the backtest engine computes: every built-in chart indicator, ported to
+ * Python with a shared parity fixture (ADR 0021).
+ */
+export const BACKTEST_INDICATOR_IDS = INDICATORS.map((item) => item.id);
+
+/** Chart outputs a backtest must not read: they draw later values in the past. */
+const LOOKAHEAD_OUTPUTS: Record<string, string[]> = { ichimoku: ["lagging"] };
+
+/** The outputs a rule may compare, without look-ahead ones. */
+export function backtestOutputs(id: string) {
+  const hidden = LOOKAHEAD_OUTPUTS[id] ?? [];
+  return backtestIndicator(id).outputs.filter(
+    (output) => !hidden.includes(output.key),
+  );
+}
 
 export function backtestIndicator(id: string): IndicatorDefinition {
   const definition = INDICATOR_BY_ID.get(id);

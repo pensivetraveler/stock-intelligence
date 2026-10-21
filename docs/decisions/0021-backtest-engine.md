@@ -42,7 +42,7 @@ On 2026-10-21 the user chose:
 
 ### Indicators
 
-- **Python indicators** (`services/backtest/indicators.py`): SMA, EMA, WMA, RSI, MACD, Bollinger, ATR, stochastic, VWAP and OBV. They are causal: the value at bar _i_ depends only on bars up to _i_, and a test checks that appending future bars never changes earlier values.
+- **Python indicators** (`services/backtest/indicators.py`): all 34 chart built-ins (since 2026-10-21; first SMA, EMA, WMA, RSI, MACD, Bollinger, ATR, stochastic, VWAP and OBV). They are causal: the value at bar _i_ depends only on bars up to _i_, and a test checks every indicator by appending future bars and showing that earlier values never change. Ichimoku's lagging span (a later close drawn in the past) is the one chart output not offered to backtests.
 - **Parity with the chart:** a shared fixture (`tests/fixtures/indicators/parity.json`) holds bars and expected outputs. The Python and TypeScript implementations must both reproduce it, so the backtest and the chart agree.
 - **Warm-up:** values during warm-up are `null`. A condition that reads a `null` is false.
 
