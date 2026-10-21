@@ -47,7 +47,8 @@ export type StockIntelligenceWorkstationContractsV01 =
   | AgentAnalysisListResponse
   | CustomIndicator
   | CustomIndicatorListResponse
-  | CustomIndicatorResult;
+  | CustomIndicatorResult
+  | TradeReconciliationResponse;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -1763,4 +1764,83 @@ export interface CustomIndicatorResult {
   outputs: {
     [k: string]: (number | null)[];
   };
+}
+/**
+ * A computed, read-only comparison of the broker API ledger with the manual and statement-import ledgers. Nothing is merged, rewritten or stored.
+ */
+export interface TradeReconciliationResponse {
+  kind: "trade_reconciliation_response";
+  schema_version: SchemaVersion;
+  /**
+   * Derived on request from the ledgers; never stored.
+   */
+  view: "computed";
+  instrument_id: Identifier | null;
+  /**
+   * Filters the records shown; earlier records still count as counterparts.
+   */
+  since_utc: UtcTimestamp | null;
+  parameters: {
+    price_tolerance_bps: NonNegativeDecimalString;
+    time_tolerance_seconds: number;
+    approximate_window_seconds: number;
+  };
+  summary: {
+    matched: number;
+    conflicting: number;
+    broker_only: number;
+    manual_only: number;
+    imported_only: number;
+  };
+  records: ReconciliationRecord[];
+}
+/**
+ * One record of an actual-fill ledger as the reconciliation classified it. The ledger record itself is unchanged.
+ */
+export interface ReconciliationRecord {
+  ledger: "broker_api" | "manual_actual" | "statement_imported";
+  execution_id: Identifier;
+  instrument_id: Identifier;
+  side: Side;
+  quantity: NonNegativeDecimalString;
+  price: NonNegativeDecimalString;
+  currency: "USD" | "KRW";
+  /**
+   * Execution time; for a broker order, its reported last fill (or the order time when none was reported). Null when a manual record's time is unknown.
+   */
+  time_utc: UtcTimestamp | null;
+  time_basis:
+    "exact" | "minute" | "approximate" | "unknown" | "reported_last_fill";
+  status:
+    "matched" | "conflicting" | "broker_only" | "manual_only" | "imported_only";
+  counterparts: ReconciliationLink[];
+  reasons: (
+    | "order_id_link"
+    | "aggregated_fills"
+    | "time_unknown"
+    | "time_approximate"
+    | "broker_time_unknown"
+    | "quantity_differs"
+    | "price_differs"
+    | "ambiguous_candidates"
+    | "no_broker_counterpart"
+    | "no_manual_counterpart"
+    | "no_imported_counterpart"
+  )[];
+}
+/**
+ * A pairing with a record of another ledger. Differences compare the counterpart group (summed quantity, quantity-weighted average price) with the broker order.
+ */
+export interface ReconciliationLink {
+  ledger: "broker_api" | "manual_actual" | "statement_imported";
+  execution_id: Identifier;
+  relation: "matched" | "conflicting";
+  /**
+   * Counterpart quantity minus broker quantity.
+   */
+  quantity_difference: string;
+  /**
+   * Counterpart average price against the broker average price, in basis points.
+   */
+  price_difference_bps: string;
 }

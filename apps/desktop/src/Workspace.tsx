@@ -93,6 +93,7 @@ import { CustomIndicatorEditor } from "./CustomIndicatorEditor";
 import type { BacktestApi } from "./backtest-api";
 import { StockInfoPanel } from "./StockInfoPanel";
 import { JournalPanel } from "./JournalPanel";
+import { ReconciliationView } from "./ReconciliationView";
 import { useSessionQuotes } from "./session-quotes";
 import { Watchlist } from "./Watchlist";
 import {
@@ -1507,7 +1508,14 @@ export function Workspace({
                 symbolOf={symbolOf}
               />
               {journalError ? null : (
-                <ImportPanel api={api} onImported={refreshJournal} />
+                <>
+                  <ReconciliationView
+                    api={api}
+                    revision={ledgers}
+                    symbolOf={symbolOf}
+                  />
+                  <ImportPanel api={api} onImported={refreshJournal} />
+                </>
               )}
             </>
           ) : null}
