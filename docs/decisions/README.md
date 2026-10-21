@@ -35,3 +35,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0019-toss-realtime-relay-and-tick-store.md`: 토스 실시간 중계(API 단일 연결, Origin 검사, 재연결·PING), 체결 시 원장 자동 동기화, 유실 표시 틱 저장소(봉과 분리)
 - `0020-korean-market-foundation.md`: 국내 주식 기반(K1) — XKRX 캘린더·NXT 확장 시간, kr: 종목 ID, KRW, 시장별 라우팅(국내=토스), 하루 전체 일봉(all_day)
 - `0021-backtest-engine.md`: 백테스트 엔진(B1) — 규칙·Python 전략(격리 프로세스), 차트와 같은 인과적 지표, 다종목 포트폴리오, 다음 봉 시가 체결·수수료·슬리피지, 입력 고정, 대기열 실행
+- `0022-chart-trade-review-agent.md`: 차트·매매 복기 Agent(Phase 5) — 로컬 근거(사후 정보 표시, 시점 이후 차단) + 요청 시 Claude 해설(근거만 전송, 투자 조언 아님), 차트 시점·실제 체결·백테스트 복기, 조회 전용

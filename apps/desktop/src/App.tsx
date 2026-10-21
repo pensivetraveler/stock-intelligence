@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { version as APP_VERSION } from "../package.json";
 import { checkApiHealth, type ApiConnectionState } from "./api-health";
+import { createAgentApi } from "./agent-api";
 import { createBacktestApi } from "./backtest-api";
 import { createCredentialApi } from "./credential-api";
 import { AppMark } from "./icons";
@@ -59,6 +60,10 @@ function AppContent({
   );
   const backtestApi = useMemo(
     () => createBacktestApi(apiBaseUrl, fetcher),
+    [apiBaseUrl, fetcher],
+  );
+  const agentApi = useMemo(
+    () => createAgentApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
   );
   const connected = lastSuccess !== null;
@@ -121,6 +126,7 @@ function AppContent({
             api={api}
             keysPanel={<KeysPanel api={credentialApi} />}
             backtestApi={backtestApi}
+            agentApi={agentApi}
           />
         ) : (
           <div className="connect-screen">

@@ -128,6 +128,12 @@
     },
     {
       "$ref": "#/$defs/BacktestResults"
+    },
+    {
+      "$ref": "#/$defs/AgentAnalysis"
+    },
+    {
+      "$ref": "#/$defs/AgentAnalysisListResponse"
     }
   ],
   "$defs": {
@@ -1788,7 +1794,7 @@
           "pattern": "^[a-f0-9]{32}$"
         },
         "provider": {
-          "enum": ["alpaca", "kis", "toss", "kiwoom", "meritz"]
+          "enum": ["alpaca", "kis", "toss", "kiwoom", "meritz", "anthropic"]
         },
         "label": {
           "type": "string",
@@ -1910,7 +1916,14 @@
             "required": ["provider", "display_name", "per_account", "fields"],
             "properties": {
               "provider": {
-                "enum": ["alpaca", "kis", "toss", "kiwoom", "meritz"]
+                "enum": [
+                  "alpaca",
+                  "kis",
+                  "toss",
+                  "kiwoom",
+                  "meritz",
+                  "anthropic"
+                ]
               },
               "display_name": {
                 "type": "string",
@@ -5007,6 +5020,257 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "AgentAnalysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "analysis_id",
+        "agent_id",
+        "agent_version",
+        "created_at_utc",
+        "target",
+        "cutoff_utc",
+        "facts",
+        "missing",
+        "uncertainty",
+        "warnings",
+        "dataset_revisions",
+        "indicator_versions",
+        "source_refs",
+        "commentaries",
+        "evidence"
+      ],
+      "properties": {
+        "kind": {
+          "const": "agent_analysis"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "analysis_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "agent_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "agent_version": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "created_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "enum": ["chart", "trades", "backtest"]
+            },
+            "instrument_id": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "timeframe": {
+              "type": "string"
+            },
+            "execution_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "run_id": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "strategy_version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "instrument_ids": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Identifier"
+              }
+            }
+          }
+        },
+        "cutoff_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "subject",
+              "value",
+              "unit",
+              "text",
+              "hindsight"
+            ],
+            "properties": {
+              "code": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "subject": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "value": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "unit": {
+                "enum": [
+                  "price",
+                  "percent",
+                  "ratio",
+                  "count",
+                  "days",
+                  "currency",
+                  "text"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "hindsight": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "uncertainty": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4000
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4000
+          }
+        },
+        "dataset_revisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "indicator_versions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "commentaries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "model",
+              "language",
+              "created_at_utc",
+              "summary",
+              "inferences",
+              "hypotheses",
+              "questions",
+              "uncertainty"
+            ],
+            "properties": {
+              "model": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "language": {
+                "enum": ["en", "ko"]
+              },
+              "created_at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "summary": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "inferences": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              },
+              "hypotheses": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              },
+              "questions": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              },
+              "uncertainty": {
+                "type": "string",
+                "maxLength": 2000
+              }
+            }
+          }
+        },
+        "evidence": {
+          "$ref": "#/$defs/AgentEvidence"
+        }
+      }
+    },
+    "AgentAnalysisListResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "analyses"],
+      "properties": {
+        "kind": {
+          "const": "agent_analysis_list_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "analyses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AgentAnalysis"
           }
         }
       }

@@ -42,7 +42,9 @@ export type StockIntelligenceWorkstationContractsV01 =
   | BacktestStrategyListResponse
   | BacktestRun
   | BacktestRunListResponse
-  | BacktestResults;
+  | BacktestResults
+  | AgentAnalysis
+  | AgentAnalysisListResponse;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -565,7 +567,7 @@ export interface CredentialSummary {
   kind: "credential_summary";
   schema_version: SchemaVersion;
   credential_id: string;
-  provider: "alpaca" | "kis" | "toss" | "kiwoom" | "meritz";
+  provider: "alpaca" | "kis" | "toss" | "kiwoom" | "meritz" | "anthropic";
   label: string;
   account_suffix: string | null;
   /**
@@ -592,7 +594,7 @@ export interface CredentialListResponse {
   schema_version: SchemaVersion;
   active_provider: "fake" | "alpaca" | "kis" | "toss" | "kiwoom" | "meritz";
   providers: {
-    provider: "alpaca" | "kis" | "toss" | "kiwoom" | "meritz";
+    provider: "alpaca" | "kis" | "toss" | "kiwoom" | "meritz" | "anthropic";
     display_name: string;
     per_account: boolean;
     /**
@@ -1491,4 +1493,55 @@ export interface BacktestResults {
     count: number | null;
     dates: string[];
   }[];
+}
+export interface AgentAnalysis {
+  kind: "agent_analysis";
+  schema_version: SchemaVersion;
+  analysis_id: Identifier;
+  agent_id: Identifier;
+  agent_version: Identifier;
+  created_at_utc: UtcTimestamp;
+  target: {
+    type: "chart" | "trades" | "backtest";
+    instrument_id?: Identifier;
+    timeframe?: string;
+    execution_count?: number;
+    run_id?: Identifier;
+    strategy_version?: number;
+    instrument_ids?: Identifier[];
+  };
+  cutoff_utc: UtcTimestamp;
+  facts: {
+    code: Identifier;
+    subject: string | null;
+    value: string;
+    unit:
+      "price" | "percent" | "ratio" | "count" | "days" | "currency" | "text";
+    text: string;
+    hindsight: boolean;
+  }[];
+  missing: string[];
+  uncertainty: string[];
+  warnings: string[];
+  dataset_revisions: Identifier[];
+  indicator_versions: {
+    [k: string]: string;
+  };
+  source_refs: Identifier[];
+  commentaries: {
+    model: Identifier;
+    language: "en" | "ko";
+    created_at_utc: UtcTimestamp;
+    summary: string;
+    inferences: string[];
+    hypotheses: string[];
+    questions: string[];
+    uncertainty: string;
+  }[];
+  evidence: AgentEvidence;
+}
+export interface AgentAnalysisListResponse {
+  kind: "agent_analysis_list_response";
+  schema_version: SchemaVersion;
+  analyses: AgentAnalysis[];
 }

@@ -1,0 +1,70 @@
+{
+  "kind": "agent_analysis",
+  "schema_version": "0.1",
+  "analysis_id": "analysis-18e1cb43f5a3",
+  "agent_id": "chart_trade_review",
+  "agent_version": "chart-trade-review-1",
+  "created_at_utc": "2026-10-21T12:00:00Z",
+  "target": {
+    "type": "chart",
+    "instrument_id": "us:aapl:xnas:2026",
+    "timeframe": "1d"
+  },
+  "cutoff_utc": "2026-06-15T18:00:00Z",
+  "facts": [
+    {
+      "code": "bars_used",
+      "subject": null,
+      "value": "289",
+      "unit": "feet",
+      "text": "289 1d bars up to the cutoff",
+      "hindsight": false
+    }
+  ],
+  "missing": [],
+  "uncertainty": [],
+  "warnings": [],
+  "dataset_revisions": ["synthetic-r1"],
+  "indicator_versions": {
+    "sma": "1",
+    "rsi": "1",
+    "atr": "1",
+    "vwap": "1"
+  },
+  "source_refs": [],
+  "commentaries": [
+    {
+      "model": "claude-sonnet-5-5",
+      "language": "en",
+      "created_at_utc": "2026-10-21T12:00:00Z",
+      "summary": "Price sits above both averages with RSI near the middle.",
+      "inferences": ["The trend over 20 bars is up."],
+      "hypotheses": ["Momentum may be fading as the SMA 20 slope flattens."],
+      "questions": ["What was the plan for this entry?"],
+      "uncertainty": "Daily bars only."
+    }
+  ],
+  "evidence": {
+    "kind": "agent_evidence",
+    "schema_version": "0.1",
+    "analysis_id": "analysis-18e1cb43f5a3",
+    "agent_version": "chart-trade-review-1",
+    "source_record_refs": [],
+    "dataset_revisions": ["synthetic-r1"],
+    "cutoff_utc": "2026-06-15T18:00:00Z",
+    "observations": [
+      "289 1d bars up to the cutoff",
+      "Last close 108.601",
+      "Change from the previous bar +1.43%",
+      "Close sits at 94% of the last 20 bars' range (0 = low, 1 = high)",
+      "Close is +11.20% from its 20-bar simple average",
+      "Close is +8.65% from its 50-bar simple average",
+      "SMA 20 moved -1.09% in 5 bars",
+      "RSI 14 is 70.0",
+      "ATR 14 is 2.77% of the price",
+      "Volume is 1.00x its 20-bar average"
+    ],
+    "inferences": ["The trend over 20 bars is up."],
+    "uncertainty": "Facts only; no interpretation has been requested."
+  }
+}
