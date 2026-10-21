@@ -7,14 +7,20 @@ import {
 } from "react";
 
 import {
+  defaultFibSettings,
   durationText,
+  fibExtensionLevels,
   fibLevels,
+  fibSettingsOf,
   measure,
   POINTS_NEEDED,
   type Anchor,
   type Drawing,
   type DrawingTool,
+  type FibLevel,
+  type FibSettings,
 } from "./drawings";
+import { FibSettingsPanel } from "./FibSettingsPanel";
 import { useI18n } from "./i18n";
 
 /** Converts between chart values and pixels inside the layer. */
@@ -41,6 +47,8 @@ interface DrawingLayerProps {
   selectable?: boolean;
   onCreate: (drawing: Omit<Drawing, "id">) => void;
   onDelete: (id: string) => void;
+  /** Change a saved drawing (e.g. its Fibonacci options). */
+  onUpdate?: (id: string, patch: Partial<Drawing>) => void;
   onToolDone: () => void;
   onZoom: (fromTime: number, toTime: number) => void;
 }
@@ -64,6 +72,7 @@ const COLORS = {
   trend: "#5b8def",
   hline: "#f0b44c",
   fib: "#8e9bb3",
+  fibext: "#8e9bb3",
   text: "#e8edf4",
   selected: "#ffffff",
 };
@@ -86,6 +95,7 @@ export function DrawingLayer({
   selectable = true,
   onCreate,
   onDelete,
+  onUpdate,
   onToolDone,
   onZoom,
 }: DrawingLayerProps) {
@@ -144,6 +154,9 @@ export function DrawingLayer({
     } else if (tool === "zoom") {
       const [from, to] = [points[0].time, points[1].time].sort((a, b) => a - b);
       if (to > from) onZoom(from, to);
+    } else if (tool === "fib" || tool === "fibext") {
+      // New Fibonacci drawings start with TradingView's default options.
+      onCreate({ kind: tool, instrumentId, points, fib: defaultFibSettings() });
     } else {
       onCreate({ kind: tool, instrumentId, points });
     }
@@ -154,7 +167,7 @@ export function DrawingLayer({
   const y = (price: number) => projection.toY(price);
 
   const shape = (
-    drawing: Pick<Drawing, "kind" | "points" | "text">,
+    drawing: Pick<Drawing, "kind" | "points" | "text" | "fib">,
     key: string,
     isSelected: boolean,
   ): ReactNode => {
@@ -190,36 +203,96 @@ export function DrawingLayer({
     if (drawing.kind === "trend") {
       return <line key={key} x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} />;
     }
-    // Fibonacci retracement
-    const left = Math.min(x1, x2);
+    return fibShape(drawing, key, isSelected, a, b, x1, y1, x2, y2);
+  };
+
+  /** Levels, bands and labels of a retracement or a trend-based extension. */
+  const fibShape = (
+    drawing: Pick<Drawing, "kind" | "points" | "fib">,
+    key: string,
+    isSelected: boolean,
+    a: Anchor,
+    b: Anchor,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+  ): ReactNode => {
+    const settings = fibSettingsOf(drawing);
+    const c = drawing.points[2];
+    const x3 = c ? x(c.time) : null;
+    const y3 = c ? y(c.price) : null;
+    let levels: FibLevel[];
+    let left: number;
+    let right: number;
+    if (drawing.kind === "fibext") {
+      if (!c || x3 === null || y3 === null) return null;
+      levels = fibExtensionLevels(a, b, c, settings);
+      // Drawn from c forward over the width of the a-to-b move, as in TradingView.
+      left = x3;
+      right = x3 + Math.max(60, Math.abs(x2 - x1));
+    } else {
+      levels = fibLevels(a, b, settings);
+      left = Math.min(x1, x2);
+      right = Math.max(x1, x2);
+    }
+    if (settings.extendLeft) left = 0;
+    if (settings.extendRight) right = width;
+    const placed = levels.flatMap((level) => {
+      const ly = y(level.price);
+      return ly === null ? [] : [{ ...level, y: ly }];
+    });
+    const guide = isSelected ? COLORS.selected : COLORS[drawing.kind];
     return (
-      <g key={key}>
+      <g key={key} className="fib-drawing">
+        {settings.background
+          ? placed
+              .slice(1)
+              .map((level, i) => (
+                <rect
+                  key={`band-${level.ratio}`}
+                  x={left}
+                  y={Math.min(level.y, placed[i].y)}
+                  width={Math.max(0, right - left)}
+                  height={Math.abs(level.y - placed[i].y)}
+                  fill={fibColor(level.ratio)}
+                  fillOpacity={0.08}
+                />
+              ))
+          : null}
         <line
           x1={x1}
           y1={y1}
           x2={x2}
           y2={y2}
-          stroke={color}
+          stroke={guide}
           strokeDasharray="4 4"
         />
-        {fibLevels(a, b).map((level) => {
-          const ly = y(level.price);
-          if (ly === null) return null;
-          return (
-            <g key={level.ratio}>
-              <line
-                x1={left}
-                x2={width}
-                y1={ly}
-                y2={ly}
-                stroke={isSelected ? COLORS.selected : fibColor(level.ratio)}
-              />
-              <text x={left + 4} y={ly - 3} fill={fibColor(level.ratio)}>
-                {level.ratio} ({formatPrice(level.price)})
-              </text>
-            </g>
-          );
-        })}
+        {x3 !== null && y3 !== null ? (
+          <line
+            x1={x2}
+            y1={y2}
+            x2={x3}
+            y2={y3}
+            stroke={guide}
+            strokeDasharray="4 4"
+          />
+        ) : null}
+        {placed.map((level) => (
+          <g key={level.ratio}>
+            <line
+              x1={left}
+              x2={right}
+              y1={level.y}
+              y2={level.y}
+              stroke={isSelected ? COLORS.selected : fibColor(level.ratio)}
+            />
+            <text x={left + 4} y={level.y - 3} fill={fibColor(level.ratio)}>
+              {formatRatio(level.ratio)}
+              {settings.showPrices ? ` (${formatPrice(level.price)})` : ""}
+            </text>
+          </g>
+        ))}
       </g>
     );
   };
@@ -261,13 +334,26 @@ export function DrawingLayer({
     const x2 = b ? x(b.time) : null;
     const y2 = b ? y(b.price) : null;
     if (x2 === null || y2 === null) return null;
+    const c = drawing.points[2];
+    const x3 = c ? x(c.time) : null;
+    const y3 = c ? y(c.price) : null;
+    if (x3 !== null && y3 !== null) {
+      return (
+        <polyline
+          key={drawing.id}
+          {...common}
+          points={`${x1},${y1} ${x2},${y2} ${x3},${y3}`}
+          fill="none"
+        />
+      );
+    }
     return (
       <line key={drawing.id} {...common} x1={x1} y1={y1} x2={x2} y2={y2} />
     );
   };
 
   const preview =
-    tool !== "cursor" && draft.length > 0 && hover ? [draft[0], hover] : null;
+    tool !== "cursor" && draft.length > 0 && hover ? [...draft, hover] : null;
   const selectedDrawing = drawings.find((item) => item.id === selected);
   const selectedPoint = selectedDrawing?.points[0];
   const deleteX = selectedPoint ? x(selectedPoint.time) : null;
@@ -296,7 +382,16 @@ export function DrawingLayer({
         ))}
 
         {preview && (tool === "trend" || tool === "fib")
-          ? shape({ kind: tool, points: preview }, "preview", false)
+          ? shape({ kind: tool, points: preview.slice(-2) }, "preview", false)
+          : null}
+        {preview && tool === "fibext"
+          ? shape(
+              preview.length === 3
+                ? { kind: "fibext", points: preview, fib: defaultFibSettings() }
+                : { kind: "trend", points: preview },
+              "preview",
+              false,
+            )
           : null}
         {preview && (tool === "measure" || tool === "zoom")
           ? box(preview, tool)
@@ -317,6 +412,21 @@ export function DrawingLayer({
         >
           ✕
         </button>
+      ) : null}
+      {selectedDrawing &&
+      (selectedDrawing.kind === "fib" || selectedDrawing.kind === "fibext") &&
+      onUpdate &&
+      deleteX !== null &&
+      deleteY !== null ? (
+        <FibSettingsPanel
+          left={Math.min(deleteX + 34, Math.max(0, width - 250))}
+          top={Math.max(0, Math.min(deleteY - 26, height - 340))}
+          maxHeight={height - 8}
+          kind={selectedDrawing.kind}
+          settings={fibSettingsOf(selectedDrawing)}
+          onChange={(fib: FibSettings) => onUpdate(selectedDrawing.id, { fib })}
+          onClose={() => setSelected(null)}
+        />
       ) : null}
 
       {textAt ? (
@@ -385,11 +495,28 @@ export function DrawingLayer({
   }
 }
 
+const formatRatio = (ratio: number) => String(Number(ratio.toFixed(3)));
+
+/** Colours per level, close to TradingView's palette. */
 function fibColor(ratio: number): string {
-  if (ratio === 0 || ratio === 1) return "#8e9bb3";
-  if (ratio === 0.5) return "#4fb38b";
-  if (ratio === 0.618) return "#f0b44c";
-  return "#6f8ccf";
+  const palette: Record<string, string> = {
+    "0": "#8e9bb3",
+    "0.236": "#e5566b",
+    "0.382": "#f39c3d",
+    "0.5": "#4fb38b",
+    "0.618": "#2bb5a5",
+    "0.65": "#2bb5a5",
+    "0.786": "#4f8ff7",
+    "1": "#8e9bb3",
+    "1.272": "#a777e8",
+    "1.414": "#a777e8",
+    "1.618": "#4f8ff7",
+    "2": "#e5566b",
+    "2.618": "#e5566b",
+    "3.618": "#a777e8",
+    "4.236": "#e6c547",
+  };
+  return palette[formatRatio(ratio)] ?? "#6f8ccf";
 }
 
 function TextInput({

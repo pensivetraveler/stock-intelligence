@@ -4,7 +4,7 @@
  * instrument; measure and zoom are temporary and never saved.
  */
 
-export type DrawingKind = "trend" | "hline" | "fib" | "text";
+export type DrawingKind = "trend" | "hline" | "fib" | "fibext" | "text";
 export type DrawingTool = "cursor" | DrawingKind | "measure" | "zoom";
 
 export interface Anchor {
@@ -19,33 +19,145 @@ export interface Drawing {
   instrumentId: string;
   points: Anchor[];
   text?: string;
+  /** Fibonacci retracement and extension options (TradingView-style). */
+  fib?: FibSettings;
 }
 
 /** How many clicks each tool needs. */
-export const POINTS_NEEDED: Record<Exclude<DrawingTool, "cursor">, 1 | 2> = {
+export const POINTS_NEEDED: Record<
+  Exclude<DrawingTool, "cursor">,
+  1 | 2 | 3
+> = {
   trend: 2,
   hline: 1,
   fib: 2,
+  fibext: 3,
   text: 1,
   measure: 2,
   zoom: 2,
 };
 
-/** Standard Fibonacci retracement ratios. */
-export const FIB_RATIOS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+export interface FibSettings {
+  /** Ratios drawn, e.g. 0.618; values outside 0..1 extend beyond the move. */
+  levels: number[];
+  extendLeft: boolean;
+  extendRight: boolean;
+  /** Swap the move's ends: ratio 0 at the start instead of the end. */
+  reverse: boolean;
+  showPrices: boolean;
+  /** Shade the bands between neighbouring levels. */
+  background: boolean;
+}
+
+/** The ratios offered as switches, as in TradingView's Fibonacci tools. */
+export const FIB_LEVEL_CHOICES = [
+  0, 0.236, 0.382, 0.5, 0.618, 0.65, 0.786, 1, 1.272, 1.414, 1.618, 2, 2.618,
+  3.618, 4.236,
+];
+/** Shown by default, as in TradingView. */
+export const DEFAULT_FIB_LEVELS = [
+  0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.618, 2.618, 3.618, 4.236,
+];
+/** What retracements looked like before these options existed (kept for them). */
+export const LEGACY_FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+export const MAX_FIB_LEVELS = 24;
+
+export function defaultFibSettings(): FibSettings {
+  return {
+    levels: [...DEFAULT_FIB_LEVELS],
+    extendLeft: false,
+    extendRight: false,
+    reverse: false,
+    showPrices: true,
+    background: true,
+  };
+}
+
+/** A drawing's Fibonacci options; retracements saved before options existed keep
+ * their look (seven levels, drawn to the right edge, no shading). */
+export function fibSettingsOf(
+  drawing: Pick<Drawing, "kind" | "fib">,
+): FibSettings {
+  if (drawing.fib) return drawing.fib;
+  return drawing.kind === "fib"
+    ? {
+        ...defaultFibSettings(),
+        levels: [...LEGACY_FIB_LEVELS],
+        extendRight: true,
+        background: false,
+      }
+    : defaultFibSettings();
+}
+
+const sortedRatios = (levels: number[]) =>
+  [...new Set(levels)].sort((x, y) => x - y);
+
+export interface FibLevel {
+  ratio: number;
+  price: number;
+}
 
 /**
- * Retracement levels between a move's start (a) and end (b): ratio 0 sits at the end
- * of the move and 1 at its start, so the levels measure how far price gives back.
+ * Retracement levels of a move from a to b: ratio 0 sits at the end of the move and 1
+ * at its start, so the levels measure how far price gives back; ratios above 1 reach
+ * beyond the start. `reverse` swaps the ends.
  */
 export function fibLevels(
   a: Anchor,
   b: Anchor,
-): { ratio: number; price: number }[] {
-  return FIB_RATIOS.map((ratio) => ({
+  settings: FibSettings = fibSettingsOf({ kind: "fib" }),
+): FibLevel[] {
+  const [start, end] = settings.reverse ? [b, a] : [a, b];
+  return sortedRatios(settings.levels).map((ratio) => ({
     ratio,
-    price: b.price + (a.price - b.price) * ratio,
+    price: end.price + (start.price - end.price) * ratio,
   }));
+}
+
+/**
+ * Trend-based extension: the move from a to b projected from c, so ratio 1 is c plus
+ * the whole a-to-b move and 1.618 is c plus 1.618 times it. `reverse` projects the
+ * move the other way.
+ */
+export function fibExtensionLevels(
+  a: Anchor,
+  b: Anchor,
+  c: Anchor,
+  settings: FibSettings = defaultFibSettings(),
+): FibLevel[] {
+  const move = (b.price - a.price) * (settings.reverse ? -1 : 1);
+  return sortedRatios(settings.levels).map((ratio) => ({
+    ratio,
+    price: c.price + move * ratio,
+  }));
+}
+
+/** Saved options with anything malformed replaced by defaults. */
+export function parseFibSettings(value: unknown): FibSettings | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const record = value as Record<string, unknown>;
+  const defaults = defaultFibSettings();
+  const levels = Array.isArray(record.levels)
+    ? sortedRatios(
+        record.levels.filter(
+          (level): level is number =>
+            typeof level === "number" &&
+            Number.isFinite(level) &&
+            level >= -10 &&
+            level <= 10,
+        ),
+      ).slice(0, MAX_FIB_LEVELS)
+    : defaults.levels;
+  const flag = (key: keyof FibSettings, fallback: boolean) =>
+    typeof record[key] === "boolean" ? (record[key] as boolean) : fallback;
+  return {
+    levels,
+    extendLeft: flag("extendLeft", defaults.extendLeft),
+    extendRight: flag("extendRight", defaults.extendRight),
+    reverse: flag("reverse", defaults.reverse),
+    showPrices: flag("showPrices", defaults.showPrices),
+    background: flag("background", defaults.background),
+  };
 }
 
 export interface Measurement {
@@ -98,7 +210,7 @@ export function durationText(seconds: number): string {
   return sign + parts.join(" ");
 }
 
-const KINDS: DrawingKind[] = ["trend", "hline", "fib", "text"];
+const KINDS: DrawingKind[] = ["trend", "hline", "fib", "fibext", "text"];
 const MAX_TEXT = 200;
 
 /** Saved drawings with anything malformed dropped. */
@@ -130,6 +242,10 @@ export function parseDrawings(value: unknown): Drawing[] {
         ? record.text.slice(0, MAX_TEXT)
         : undefined;
     if (kind === "text" && !text) return [];
+    const fib =
+      kind === "fib" || kind === "fibext"
+        ? parseFibSettings(record.fib)
+        : undefined;
     return [
       {
         id: record.id,
@@ -137,6 +253,7 @@ export function parseDrawings(value: unknown): Drawing[] {
         instrumentId: record.instrumentId,
         points: points.map(({ time, price }) => ({ time, price })),
         ...(text ? { text } : {}),
+        ...(fib ? { fib } : {}),
       },
     ];
   });
