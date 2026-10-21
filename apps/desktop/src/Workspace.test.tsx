@@ -1394,6 +1394,62 @@ describe("watchlist quotes", () => {
 });
 
 describe("indicators", () => {
+  it("adds a formula indicator, refuses bad formulas and edits it from the legend", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Formula" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /New formula indicator/ }),
+    );
+    const editor = screen.getByRole("dialog", { name: "Formula indicator" });
+    const formula = within(editor).getByLabelText("Formula");
+    fireEvent.change(formula, { target: { value: "sma(close, " } });
+    expect(within(editor).getByRole("alert")).toHaveTextContent("character");
+    expect(
+      within(editor).getByRole("button", { name: "Add to chart" }),
+    ).toBeDisabled();
+    fireEvent.change(formula, { target: { value: "close - sma(close, 3)" } });
+    fireEvent.change(within(editor).getByLabelText("Name"), {
+      target: { value: "Gap" },
+    });
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Add to chart" }),
+    );
+
+    const legend = await screen.findByRole("list", {
+      name: "Indicators on this chart",
+    });
+    expect(legend).toHaveTextContent("Gap");
+    expect(savedLayout(storage).charts[0].indicators).toEqual([
+      {
+        key: expect.any(String),
+        type: "formula",
+        params: {},
+        label: "Gap",
+        formula: "close - sma(close, 3)",
+        pane: "separate",
+      },
+    ]);
+    fireEvent.click(
+      within(legend).getByRole("button", { name: "Gap settings" }),
+    );
+    const settings = screen.getByRole("dialog", { name: "Gap settings" });
+    fireEvent.change(within(settings).getByLabelText("Name"), {
+      target: { value: "Gap 5" },
+    });
+    fireEvent.change(within(settings).getByLabelText("Formula"), {
+      target: { value: "close - sma(close, 5)" },
+    });
+    fireEvent.click(within(settings).getByRole("button", { name: "Done" }));
+    expect(legend).toHaveTextContent("Gap 5");
+    expect(savedLayout(storage).charts[0].indicators[0].formula).toBe(
+      "close - sma(close, 5)",
+    );
+  });
+
   it("writes a Python indicator, adds it and draws the API's values", async () => {
     const saved = fixture<CustomIndicator>("custom-indicator.json");
     const computed: { version: number; bars: number; params: object }[] = [];

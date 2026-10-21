@@ -32,6 +32,7 @@ import {
 import { useI18n, type Translate } from "./i18n";
 import type { ChartSyncGroup } from "./chart-sync";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
+import { FormulaFields } from "./FormulaEditor";
 import {
   customIndicator,
   hasResult,
@@ -727,7 +728,8 @@ export function ChartPanel({
                           </b>
                         ))}
                         <span className="indicator-actions">
-                          {item.definition.inputs.length > 0 ? (
+                          {item.definition.inputs.length > 0 ||
+                          item.instance.type === "formula" ? (
                             <button
                               type="button"
                               aria-label={t("ind.settings", {
@@ -771,7 +773,35 @@ export function ChartPanel({
                             ✕
                           </button>
                         </span>
-                        {editing === item.key ? (
+                        {editing === item.key &&
+                        item.instance.type === "formula" ? (
+                          <div
+                            className="popover indicator-settings formula-settings"
+                            role="dialog"
+                            aria-label={t("ind.settings", {
+                              name: item.definition.short,
+                            })}
+                          >
+                            <FormulaFields
+                              initial={{
+                                label: item.instance.label ?? "",
+                                formula: item.instance.formula ?? "",
+                                pane: item.instance.pane ?? "separate",
+                              }}
+                              submitLabel={t("ind.done")}
+                              onCancel={() => setEditing(null)}
+                              onSubmit={(value) => {
+                                changeIndicator(item.key, (current) => ({
+                                  ...current,
+                                  ...value,
+                                }));
+                                setEditing(null);
+                              }}
+                            />
+                          </div>
+                        ) : null}
+                        {editing === item.key &&
+                        item.instance.type !== "formula" ? (
                           <div
                             className="popover indicator-settings"
                             role="dialog"

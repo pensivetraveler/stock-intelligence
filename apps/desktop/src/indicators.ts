@@ -9,6 +9,13 @@
  * Numbers are JS floats: indicators are for display and analysis, not for accounting.
  */
 
+import {
+  formulaDefinition,
+  formulaLookback,
+  MAX_FORMULA_LENGTH,
+  parseFormula,
+} from "./formula";
+
 export interface OhlcvBar {
   time: number;
   open: number;
@@ -159,7 +166,7 @@ const ratio = (a: Series, b: Series, scale = 1) =>
 const times = (a: Series, k: number): Series =>
   a.map((x) => (x === null ? null : x * k));
 
-function trueRange(bars: OhlcvBar[]): Series {
+export function trueRange(bars: OhlcvBar[]): Series {
   return bars.map((bar, i) =>
     i === 0
       ? bar.high - bar.low
@@ -171,7 +178,7 @@ function trueRange(bars: OhlcvBar[]): Series {
   );
 }
 
-function change(values: Series, length = 1): Series {
+export function change(values: Series, length = 1): Series {
   return values.map((value, i) => {
     const before = values[i - length];
     return i < length ||
@@ -189,7 +196,7 @@ const hl2 = (bars: OhlcvBar[]): Series =>
 const hlc3 = (bars: OhlcvBar[]): Series =>
   bars.map((bar) => (bar.high + bar.low + bar.close) / 3);
 
-function shift(values: Series, by: number): Series {
+export function shift(values: Series, by: number): Series {
   // Positive `by` moves values later in time (plotted `by` bars after their bar).
   return values.map((_, i) => {
     const source = i - by;
@@ -1100,7 +1107,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   },
 ];
 
-function rsi(source: Series, length: number): Series {
+export function rsi(source: Series, length: number): Series {
   const delta = change(source);
   const gains = delta.map((value) =>
     value === null ? null : Math.max(value, 0),
@@ -1143,6 +1150,24 @@ export interface IndicatorInstance {
   type: string;
   params: Record<string, number>;
   hidden?: boolean;
+  /** Formula indicators (type "formula"): the expression, its name and pane. */
+  formula?: string;
+  label?: string;
+  pane?: "price" | "separate";
+}
+
+/** The definition behind an instance: built-in, Python, or the instance's formula. */
+export function definitionFor(
+  instance: IndicatorInstance,
+): IndicatorDefinition | undefined {
+  if (instance.type === "formula") {
+    return formulaDefinition(
+      instance.formula ?? "",
+      instance.label ?? "Formula",
+      instance.pane ?? "separate",
+    );
+  }
+  return INDICATOR_BY_ID.get(instance.type);
 }
 
 export function defaultParams(
@@ -1182,6 +1207,28 @@ export function parseIndicators(value: unknown): IndicatorInstance[] {
   return value.flatMap((item): IndicatorInstance[] => {
     if (typeof item !== "object" || item === null) return [];
     const record = item as Record<string, unknown>;
+    if (
+      record.type === "formula" &&
+      typeof record.formula === "string" &&
+      record.formula.length <= MAX_FORMULA_LENGTH &&
+      typeof record.key === "string" &&
+      record.key.length > 0
+    ) {
+      return [
+        {
+          key: record.key,
+          type: "formula",
+          params: {},
+          formula: record.formula,
+          label:
+            typeof record.label === "string" && record.label.trim()
+              ? record.label.trim().slice(0, 40)
+              : "Formula",
+          pane: record.pane === "price" ? "price" : "separate",
+          ...(record.hidden === true ? { hidden: true } : {}),
+        },
+      ];
+    }
     if (
       typeof record.type === "string" &&
       record.type.startsWith("py:") &&
@@ -1259,6 +1306,7 @@ export interface RenderedLine {
 
 export interface RenderedIndicator {
   key: string;
+  instance: IndicatorInstance;
   definition: IndicatorDefinition;
   params: Record<string, number>;
   hidden: boolean;
@@ -1281,6 +1329,17 @@ export const MAX_WARMUP_BARS = 1_000;
 export function warmupBars(instances: IndicatorInstance[]): number {
   let longest = 0;
   for (const instance of instances) {
+    if (instance.type === "formula") {
+      try {
+        longest = Math.max(
+          longest,
+          formulaLookback(parseFormula(instance.formula ?? "")),
+        );
+      } catch {
+        // an invalid formula draws nothing and needs no warm-up
+      }
+      continue;
+    }
     const definition = INDICATOR_BY_ID.get(instance.type);
     if (!definition) continue;
     let total = 0;
@@ -1309,7 +1368,7 @@ export function renderIndicators(
   context?: IndicatorContext,
 ): RenderedIndicator[] {
   return instances.flatMap((instance) => {
-    const definition = INDICATOR_BY_ID.get(instance.type);
+    const definition = definitionFor(instance);
     if (!definition) return [];
     const values = definition.compute(bars, instance.params, context);
     const lines = definition.outputs.map((output) => {
@@ -1337,6 +1396,7 @@ export function renderIndicators(
     return [
       {
         key: instance.key,
+        instance,
         definition,
         params: instance.params,
         hidden: instance.hidden === true,
