@@ -4982,6 +4982,44 @@
             "maxLength": 4000
           }
         },
+        "custom_indicators": {
+          "description": "Python indicator versions used by rules operands (ADR 0023), each pinned by its code SHA-256.",
+          "type": "array",
+          "maxItems": 80,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "indicator_id",
+              "version",
+              "name",
+              "code_sha256"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "pattern": "^py:[A-Za-z0-9_-]+@[1-9][0-9]*$"
+              },
+              "indicator_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "code_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
         "warning_details": {
           "type": "array",
           "items": {

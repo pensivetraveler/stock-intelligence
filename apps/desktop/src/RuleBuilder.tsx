@@ -1,10 +1,11 @@
 import {
-  BACKTEST_INDICATOR_IDS,
   backtestIndicator,
   COMPARISONS,
   conditionKey,
+  indicatorLabel,
   indicatorOperand,
   PRICES,
+  ruleIndicatorIds,
   SIZING_MODES,
   type ConditionDraft,
   type OperandDraft,
@@ -49,9 +50,9 @@ function OperandEditor({
             value={operand.indicator}
             onChange={(event) => onChange(indicatorOperand(event.target.value))}
           >
-            {BACKTEST_INDICATOR_IDS.map((id) => (
+            {ruleIndicatorIds(operand.indicator).map((id) => (
               <option key={id} value={id}>
-                {backtestIndicator(id).short}
+                {indicatorLabel(id, language)}
               </option>
             ))}
           </select>

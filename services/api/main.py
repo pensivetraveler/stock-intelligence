@@ -343,9 +343,11 @@ class _LazyBacktests:
         runner: BacktestRunner | None,
         provider: Callable[[], MarketDataProvider],
         clock: Callable[[], datetime],
+        indicators: Callable[[], CustomIndicatorStore | None] = lambda: None,
     ) -> None:
         self._runner = runner
         self._provider = provider
+        self._indicators = indicators
         self._clock = clock
         self._lock = threading.Lock()
 
@@ -361,6 +363,7 @@ class _LazyBacktests:
                         get_adjusted=lambda: getattr(
                             self._provider(), "get_adjusted_daily_bars", None
                         ),
+                        indicators=self._indicators,
                     )
             return self._runner
 
@@ -479,9 +482,9 @@ def create_app(
         now=clock,
     )
     journal = _LazyJournal(journal_store)
-    backtests = _LazyBacktests(backtest_runner, provider.get, clock)
-    agents = _LazyAgents(agent_store, clock)
     custom_indicators = _LazyIndicators(indicator_store, clock)
+    backtests = _LazyBacktests(backtest_runner, provider.get, clock, custom_indicators.get)
+    agents = _LazyAgents(agent_store, clock)
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI) -> AsyncIterator[None]:

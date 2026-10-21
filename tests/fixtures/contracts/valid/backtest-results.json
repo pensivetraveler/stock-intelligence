@@ -144,5 +144,14 @@
       "dates": []
     }
   ],
-  "logs": []
+  "logs": [],
+  "custom_indicators": [
+    {
+      "type": "py:ind-0123456789ab@2",
+      "indicator_id": "ind-0123456789ab",
+      "version": 2,
+      "name": "RSI band",
+      "code_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
 }
