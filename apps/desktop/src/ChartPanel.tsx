@@ -23,6 +23,7 @@ import {
 } from "./timeframes";
 import {
   cleanParams,
+  instanceLookback,
   paramsText,
   renderIndicators,
   warmupBars,
@@ -33,6 +34,14 @@ import { useI18n, type Translate } from "./i18n";
 import type { ChartSyncGroup } from "./chart-sync";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { FormulaFields } from "./FormulaEditor";
+import {
+  higherBarsOf,
+  higherChoices,
+  higherRange,
+  isHigherTimeframe,
+  type HigherBars,
+  type HigherTimeframe,
+} from "./higher-timeframe";
 import {
   customIndicator,
   hasResult,
@@ -543,6 +552,94 @@ export function ChartPanel({
   }, [bars, warmup]);
   const warmupCount = ohlcv.length - (bars?.length ?? 0);
   useEffect(() => onBars?.(ohlcv), [ohlcv, onBars]);
+  // Each chart bar's end, for placing larger-timeframe values without look-ahead.
+  const ohlcvEnds = useMemo<number[]>(() => {
+    const shown = bars ?? [];
+    const firstShown = shown[0]
+      ? Date.parse(shown[0].interval_start_utc)
+      : Number.POSITIVE_INFINITY;
+    return [
+      ...warmup.filter(
+        (bar) => Date.parse(bar.interval_start_utc) < firstShown,
+      ),
+      ...shown,
+    ].map((bar) => Math.floor(Date.parse(bar.interval_end_utc) / 1000));
+  }, [bars, warmup]);
+  // Larger-timeframe bars (daily, weekly) for indicators set to a larger timeframe:
+  // one request per timeframe, kept by request so a finished one is never dropped.
+  const higherRequests = useMemo(() => {
+    const wanted = new Map<HigherTimeframe, number>();
+    for (const instance of indicatorList) {
+      if (!instance.timeframe) continue;
+      wanted.set(
+        instance.timeframe,
+        Math.max(
+          wanted.get(instance.timeframe) ?? 0,
+          instanceLookback(instance),
+        ),
+      );
+    }
+    if (ohlcv.length === 0) return [];
+    return [...wanted].map(([timeframe, lookback]) => {
+      const range = higherRange(
+        ohlcv[0].time,
+        ohlcvEnds[ohlcvEnds.length - 1],
+        lookback,
+        timeframe,
+      );
+      // A new request when the instrument, the start or the last day changes.
+      return {
+        timeframe,
+        range,
+        key: `${instrumentId}|${timeframe}|${range.startUtc}|${range.endUtc.slice(0, 10)}`,
+      };
+    });
+    // The list is replaced (never mutated) whenever settings change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instrumentId, ohlcv, ohlcvEnds, config.indicators]);
+  const [higherCache, setHigherCache] = useState<Record<string, HigherBars>>(
+    {},
+  );
+  const [higherErrors, setHigherErrors] = useState<Record<string, string>>({});
+  const higherPending = useRef(new Set<string>());
+  useEffect(() => {
+    for (const { timeframe, range, key } of higherRequests) {
+      if (higherCache[key] || higherPending.current.has(key)) continue;
+      higherPending.current.add(key);
+      api
+        .bars({ instrumentId: key.split("|")[0], timeframe, ...range })
+        .then((response) => {
+          setHigherCache((cache) => ({
+            ...cache,
+            [key]: higherBarsOf(response.bars),
+          }));
+          setHigherErrors((errors) => {
+            const rest = { ...errors };
+            delete rest[timeframe];
+            return rest;
+          });
+        })
+        .catch((error: unknown) =>
+          setHigherErrors((errors) => ({
+            ...errors,
+            [timeframe]: t("ind.higherFailed", {
+              timeframe: timeframe.toUpperCase(),
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          })),
+        )
+        .finally(() => higherPending.current.delete(key));
+    }
+  }, [api, higherRequests, higherCache, t]);
+  const higher = useMemo(
+    () =>
+      Object.fromEntries(
+        higherRequests.flatMap(({ timeframe, key }) =>
+          higherCache[key] ? [[timeframe, higherCache[key]]] : [],
+        ),
+      ) as Partial<Record<HigherTimeframe, HigherBars>>,
+    [higherRequests, higherCache],
+  );
   // Python indicators: computed by the API for exactly these bars and settings.
   const [customTick, setCustomTick] = useState(0);
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({});
@@ -586,9 +683,13 @@ export function ChartPanel({
   }, [customApi, ohlcv, config.indicators, customVersion, instrumentId]);
   const rendered = useMemo(
     () =>
-      renderIndicators(ohlcv, indicatorList, warmupCount, {
-        timeZone: zoneOf(instrumentId).timeZone,
-      }),
+      renderIndicators(
+        ohlcv,
+        indicatorList,
+        warmupCount,
+        { timeZone: zoneOf(instrumentId).timeZone },
+        { bars: higher, ends: ohlcvEnds },
+      ),
     // The list is replaced (never mutated) whenever settings change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -598,8 +699,39 @@ export function ChartPanel({
       instrumentId,
       customTick,
       customVersion,
+      higher,
+      ohlcvEnds,
     ],
   );
+  // Chart's own timeframe or a larger one; Python indicators stay on the chart's bars.
+  const timeframeField = (instance: IndicatorInstance) =>
+    isCustomType(instance.type) ||
+    higherChoices(config.timeframe).length === 0 ? null : (
+      <label>
+        {t("ind.timeframe")}
+        <select
+          value={instance.timeframe ?? ""}
+          onChange={(event) => {
+            const value = event.target.value;
+            changeIndicator(instance.key, (current) => {
+              const next = { ...current };
+              if (isHigherTimeframe(value)) next.timeframe = value;
+              else delete next.timeframe;
+              return next;
+            });
+          }}
+        >
+          <option value="">
+            {t("ind.timeframeChart", { timeframe: config.timeframe })}
+          </option>
+          {higherChoices(config.timeframe).map((choice) => (
+            <option key={choice} value={choice}>
+              {choice.toUpperCase()}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
   const changeIndicator = (
     key: string,
     update: (item: IndicatorInstance) => IndicatorInstance | null,
@@ -720,6 +852,9 @@ export function ChartPanel({
                           {item.definition.inputs.length > 0
                             ? ` ${paramsText(item.definition, item.params)}`
                             : ""}
+                          {item.instance.timeframe
+                            ? ` · ${item.instance.timeframe.toUpperCase()}`
+                            : ""}
                         </span>
                         {item.lines.map((line) => (
                           <b key={line.id} style={{ color: line.color }}>
@@ -734,7 +869,9 @@ export function ChartPanel({
                         ))}
                         <span className="indicator-actions">
                           {item.definition.inputs.length > 0 ||
-                          item.instance.type === "formula" ? (
+                          item.instance.type === "formula" ||
+                          (higherChoices(config.timeframe).length > 0 &&
+                            !isCustomType(item.instance.type)) ? (
                             <button
                               type="button"
                               aria-label={t("ind.settings", {
@@ -830,6 +967,7 @@ export function ChartPanel({
                               name: item.definition.short,
                             })}
                           >
+                            {timeframeField(item.instance)}
                             <FormulaFields
                               initial={{
                                 label: item.instance.label ?? "",
@@ -880,6 +1018,7 @@ export function ChartPanel({
                                 />
                               </label>
                             ))}
+                            {timeframeField(item.instance)}
                             <button
                               type="button"
                               className="tb-button"
@@ -935,6 +1074,11 @@ export function ChartPanel({
         </div>
       ) : null}
 
+      {Object.values(higherErrors).map((message) => (
+        <p key={message} className="bt-problem chart-custom-error" role="alert">
+          {message}
+        </p>
+      ))}
       {Object.values(customErrors).map((message) => (
         <p key={message} className="bt-problem chart-custom-error" role="alert">
           {message}

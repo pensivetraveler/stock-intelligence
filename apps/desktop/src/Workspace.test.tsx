@@ -1394,6 +1394,70 @@ describe("watchlist quotes", () => {
 });
 
 describe("indicators", () => {
+  it("computes an indicator on daily bars when set to a larger timeframe", async () => {
+    const api = fakeApi();
+    const intraday = api.bars;
+    // Two final daily bars published before the chart's day: SMA(2) of 10 and 12.
+    api.bars = (request) =>
+      request.timeframe !== "1d"
+        ? intraday(request)
+        : intraday(request).then((response) => ({
+            ...response,
+            bars: [
+              ["2026-10-07", "10"],
+              ["2026-10-08", "12"],
+            ].map(([day, close]) => ({
+              ...response.bars[0],
+              timeframe: "1d",
+              interval_start_utc: `${day}T13:30:00Z`,
+              interval_end_utc: `${day}T20:00:00Z`,
+              available_at_utc: `${day}T20:15:00Z`,
+              open: close,
+              high: close,
+              low: close,
+              close,
+              is_final: true,
+            })),
+          }));
+    const storage = memoryStorage();
+    render(<Workspace api={api} storage={storage} newId={sequence()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    fireEvent.change(within(dialog).getByRole("textbox"), {
+      target: { value: "simple" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /Moving Average Simple/ }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Close indicators" }),
+    );
+    const legend = screen.getByRole("list", {
+      name: "Indicators on this chart",
+    });
+    fireEvent.click(
+      within(legend).getByRole("button", { name: "SMA settings" }),
+    );
+    const settings = screen.getByRole("dialog", { name: "SMA settings" });
+    fireEvent.change(within(settings).getByLabelText("Timeframe"), {
+      target: { value: "1d" },
+    });
+    await waitFor(() =>
+      expect(api.barsCalls.some((call) => call.timeframe === "1d")).toBe(true),
+    );
+    expect(legend).toHaveTextContent("SMA 9 · 1D");
+    // The value is drawn once the daily bars arrive (not left empty).
+    fireEvent.change(within(settings).getByRole("spinbutton"), {
+      target: { value: "2" },
+    });
+    await waitFor(() => expect(legend).toHaveTextContent("SMA 2 · 1D11"));
+    expect(savedLayout(storage).charts[0].indicators[0]).toMatchObject({
+      type: "sma",
+      timeframe: "1d",
+    });
+  });
+
   it("previews unsaved Python code on the active chart and shows the failing line", async () => {
     const preview = vi
       .fn<CustomIndicatorApi["preview"]>()

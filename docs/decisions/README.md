@@ -40,3 +40,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0024-filings-and-dark-pool-agents.md`: 공시·다크풀 근거 Agent(Phase 6) — SEC EDGAR(Submissions·CompanyFacts, User-Agent 명시, 초당 5회 이하)와 FINRA 주간 ATS/비ATS 집계(지연·방향 없음 표시), 게시 시각과 최초 관측 시각 분리, 시점 이후 차단, 조회 전용
 - `0025-broker-reconciliation.md`: 증권사 API 원장과 수동·거래내역서 체결의 대사(조회 전용 계산 보기, 원장 불변) — 시각 정밀도별 창, bp 가격 허용 오차, 1:1·여러 체결 합산·주문번호 연결, 일치·불일치·한쪽에만 분류와 사유
 - `0026-formula-indicators.md`: 수식 지표(Phase 4) — 허용 목록 함수·사칙연산의 안전한 수식, eval 없는 파서, 상수 길이·과거만 참조, 차트별 저장, 입력 중 검증
+- `0027-higher-timeframe-indicators.md`: 큰 시간대 지표 — 분봉 차트에 일봉·주봉 지표, 확정·공개된 큰 봉만 각 차트 봉 종료 시점 기준으로 반영(미래 차단), 요청별 캐시
