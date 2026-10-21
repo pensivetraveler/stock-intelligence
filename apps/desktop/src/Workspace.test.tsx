@@ -1923,6 +1923,8 @@ describe("daily and weekly charts", () => {
       reviewChart,
       reviewTrades: vi.fn(),
       reviewBacktest: vi.fn(),
+      reviewFilings: vi.fn(),
+      reviewDarkPool: vi.fn(),
       analyses: () => Promise.resolve([]),
       payload: vi.fn(),
       askClaude: vi.fn(),

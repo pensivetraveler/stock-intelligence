@@ -24,6 +24,15 @@ const analysis = JSON.parse(
   ),
 ) as AgentAnalysis;
 const fresh: AgentAnalysis = { ...analysis, commentaries: [] };
+const darkPool = JSON.parse(
+  readFileSync(
+    resolve(
+      import.meta.dirname,
+      "../../../tests/fixtures/contracts/valid/agent-analysis-dark-pool.json",
+    ),
+    "utf8",
+  ),
+) as AgentAnalysis;
 const AAPL = "us:aapl:xnas:2026";
 
 function fakeApi(overrides: Partial<AgentApi> = {}): AgentApi {
@@ -44,6 +53,8 @@ function fakeApi(overrides: Partial<AgentApi> = {}): AgentApi {
       ],
     })) as AgentApi["reviewTrades"],
     reviewBacktest: vi.fn(async () => fresh),
+    reviewFilings: vi.fn(async () => fresh),
+    reviewDarkPool: vi.fn(async () => darkPool),
     analyses: vi.fn(async () => []),
     payload: vi.fn(async () => ({ facts: ["sent"] })),
     askClaude: vi.fn(async () => analysis),
@@ -146,5 +157,62 @@ describe("review Agent panel", () => {
       await screen.findByRole("button", { name: "Ask Claude for commentary" }),
     );
     expect(await screen.findByRole("alert")).toHaveTextContent("Keys screen");
+  });
+
+  it("reviews FINRA weekly ATS volume at the chart's time and says what it is not", async () => {
+    const api = fakeApi();
+    renderPanel(api);
+    expect(
+      screen.getByText(/No direction, prices or intraday/),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Review weekly ATS volume" }),
+    );
+    await waitFor(() =>
+      expect(api.reviewDarkPool).toHaveBeenCalledWith({
+        instrumentId: AAPL,
+        cutoffUtc: "2026-10-21T12:00:00Z",
+      }),
+    );
+    const facts = await screen.findByRole("table", { name: "Facts" });
+    expect(
+      within(facts).getByText("ATS share of off-exchange volume"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/official SEC or FINRA data/)).toBeInTheDocument();
+  });
+
+  it("asks for filings with hindsight only when ticked", async () => {
+    const api = fakeApi();
+    renderPanel(api);
+    fireEvent.click(screen.getByRole("button", { name: "Review filings" }));
+    await waitFor(() =>
+      expect(api.reviewFilings).toHaveBeenLastCalledWith({
+        instrumentId: AAPL,
+        cutoffUtc: "2026-10-21T12:00:00Z",
+        afterDays: 0,
+      }),
+    );
+    fireEvent.click(screen.getByLabelText(/7 days after/));
+    fireEvent.click(screen.getByRole("button", { name: "Review filings" }));
+    await waitFor(() =>
+      expect(api.reviewFilings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ afterDays: 7 }),
+      ),
+    );
+  });
+
+  it("explains a missing FINRA credential", async () => {
+    const api = fakeApi({
+      reviewDarkPool: vi.fn(async () => {
+        throw new MarketApiError("missing", "finra_credential_missing");
+      }),
+    });
+    renderPanel(api);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Review weekly ATS volume" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "FINRA API credential",
+    );
   });
 });

@@ -6,6 +6,7 @@ import { AgentAnalysisView } from "./AgentAnalysisView";
 import type { RealFills } from "./BacktestResultsView";
 import { exchangeTime } from "./chart-data";
 import { useI18n } from "./i18n";
+import { MarketApiError } from "./market-api";
 import { zoneOf } from "./market-zone";
 
 interface Row extends ExecutionRef {
@@ -17,7 +18,8 @@ interface Row extends ExecutionRef {
 
 /**
  * The review Agent (ADR 0022): the active chart now (or at the replay time), chosen real
- * executions, or a candle asked about from the chart. Read-only: it records nothing.
+ * executions, or a candle asked about from the chart; plus SEC filings and FINRA weekly
+ * ATS volume known at that time (ADR 0024). Read-only: it records nothing.
  */
 export function AgentPanel({
   api,
@@ -46,11 +48,20 @@ export function AgentPanel({
   const [chosen, setChosen] = useState<string[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [withHindsight, setWithHindsight] = useState(false);
+  // SEC EDGAR and FINRA cover US listings only.
+  const usListing = !instrumentId.startsWith("kr:");
 
   const fail = useCallback(
     (error: unknown) =>
       setProblem(
-        error instanceof Error ? error.message : t("common.requestFailed"),
+        error instanceof MarketApiError &&
+          (error.code === "sec_user_agent_missing" ||
+            error.code === "finra_credential_missing")
+          ? t(`agent.error.${error.code}`)
+          : error instanceof Error
+            ? error.message
+            : t("common.requestFailed"),
       ),
     [t],
   );
@@ -193,6 +204,47 @@ export function AgentPanel({
           </button>
         </>
       )}
+
+      <h3>{t("agent.filings", { symbol: symbolOf(instrumentId) })}</h3>
+      <p className="workspace-note">{t("agent.filingsNote")}</p>
+      <label className="bt-inline">
+        <input
+          type="checkbox"
+          checked={withHindsight}
+          onChange={(event) => setWithHindsight(event.target.checked)}
+        />
+        {t("agent.filingsAfter")}
+      </label>
+      <button
+        type="button"
+        className="tb-button"
+        disabled={busy || !usListing}
+        onClick={() =>
+          run(
+            api.reviewFilings({
+              instrumentId,
+              cutoffUtc: cutoffUtc(),
+              afterDays: withHindsight ? 7 : 0,
+            }),
+          )
+        }
+      >
+        {t("agent.reviewFilings")}
+      </button>
+
+      <h3>{t("agent.darkPool", { symbol: symbolOf(instrumentId) })}</h3>
+      <p className="workspace-note">{t("agent.darkPoolNote")}</p>
+      <button
+        type="button"
+        className="tb-button"
+        disabled={busy || !usListing}
+        onClick={() =>
+          run(api.reviewDarkPool({ instrumentId, cutoffUtc: cutoffUtc() }))
+        }
+      >
+        {t("agent.reviewDarkPool")}
+      </button>
+      {usListing ? null : <p className="workspace-note">{t("agent.usOnly")}</p>}
 
       {busy ? <p className="workspace-note">{t("agent.working")}</p> : null}
       {current ? (

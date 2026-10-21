@@ -1,4 +1,4 @@
-"""Chart and trade review Agent (ADR 0022). Read-only: writes nothing to any ledger."""
+"""Review, filings and dark pool Agents (ADR 0022, 0024). Read-only: writes no ledger."""
 
 from __future__ import annotations
 
@@ -13,12 +13,14 @@ from pydantic import BaseModel, Field
 
 from packages.contracts.validator import validate_document
 from services.agents.commentary import DEFAULT_MODEL, CommentaryError, ask_claude, payload_for
+from services.agents.dark_pool import dark_pool_review
 from services.agents.evidence import (
     backtest_review,
     chart_point,
     execution_of,
     trade_review,
 )
+from services.agents.filings import UnsupportedTargetError, filings_review
 from services.agents.store import AgentStore, AnalysisNotFoundError
 from services.api.journal_routes import ErrorResponse
 from services.backtest.data import GetBars
@@ -26,6 +28,8 @@ from services.backtest.jobs import BacktestRunner
 from services.backtest.store import BacktestNotFoundError
 from services.journal.store import JournalStore
 from services.market_data.provider import MarketDataError
+from services.public_sources.http import SourceConfigError, SourceError
+from services.public_sources.sources import PublicSources
 
 Ledger = Literal["manual", "imported", "broker"]
 
@@ -50,6 +54,19 @@ class BacktestReviewRequest(BaseModel):
     run_id: str = Field(min_length=1, max_length=200)
 
 
+class FilingsReviewRequest(BaseModel):
+    instrument_id: str = Field(min_length=1, max_length=200)
+    cutoff_utc: datetime
+    window_days: int = Field(default=30, ge=1, le=365)
+    after_days: int = Field(default=0, ge=0, le=30)
+
+
+class DarkPoolReviewRequest(BaseModel):
+    instrument_id: str = Field(min_length=1, max_length=200)
+    cutoff_utc: datetime
+    weeks: int = Field(default=26, ge=4, le=104)
+
+
 class CommentaryRequest(BaseModel):
     language: Literal["en", "ko"] = "en"
 
@@ -63,6 +80,7 @@ def register_agent_routes(
     backtests: Callable[[], BacktestRunner | None],
     api_key: Callable[[], str | None],
     now: Callable[[], datetime],
+    public_sources: Callable[[], PublicSources | None] = lambda: None,
     error_response: ErrorResponse,
     ask: Callable[..., dict[str, Any]] = ask_claude,
 ) -> None:
@@ -134,6 +152,63 @@ def register_agent_routes(
                 request, 409, "backtest_results_unavailable", f"The run is {run['status']}"
             )
         return respond(agents.save(backtest_review(run, results)), 201)
+
+    def from_public_source(request: Request, build: Callable[[], Any]) -> Response:
+        try:
+            evidence = build()
+        except UnsupportedTargetError as exc:
+            return error_response(request, 422, "agent_target_unsupported", str(exc))
+        except SourceConfigError as exc:
+            return error_response(request, 409, exc.code, str(exc))
+        except SourceError as exc:
+            return error_response(request, 502, "public_source_unavailable", str(exc))
+        except MarketDataError as exc:
+            return error_response(request, 422, "agent_data_unavailable", str(exc))
+        agents = store()
+        assert agents is not None
+        return respond(agents.save(evidence), 201)
+
+    def cutoff_problem(request: Request, cutoff: datetime) -> JSONResponse | None:
+        if cutoff.tzinfo is None:
+            return error_response(
+                request, 422, "agent_cutoff_invalid", "cutoff_utc must carry a time zone"
+            )
+        return None
+
+    @application.post("/v1/agents/review/filings", response_model=None)
+    def review_filings(request: Request, body: FilingsReviewRequest) -> Response:
+        agents, sources = store(), public_sources()
+        if agents is None or sources is None:
+            return unavailable(request)
+        problem = cutoff_problem(request, body.cutoff_utc)
+        if problem is not None:
+            return problem
+        return from_public_source(
+            request,
+            lambda: filings_review(
+                sources.sec(),
+                body.instrument_id,
+                body.cutoff_utc,
+                body.window_days,
+                body.after_days,
+                now(),
+            ),
+        )
+
+    @application.post("/v1/agents/review/dark-pool", response_model=None)
+    def review_dark_pool(request: Request, body: DarkPoolReviewRequest) -> Response:
+        agents, sources = store(), public_sources()
+        if agents is None or sources is None:
+            return unavailable(request)
+        problem = cutoff_problem(request, body.cutoff_utc)
+        if problem is not None:
+            return problem
+        return from_public_source(
+            request,
+            lambda: dark_pool_review(
+                sources.finra(), get_bars(), body.instrument_id, body.cutoff_utc, body.weeks
+            ),
+        )
 
     @application.get("/v1/agents/analyses", response_model=None)
     def list_analyses(request: Request, limit: int = Query(default=30, ge=1, le=200)) -> Response:

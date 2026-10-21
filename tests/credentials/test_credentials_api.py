@@ -64,6 +64,7 @@ def test_register_list_and_never_echo_secrets(client: TestClient) -> None:
         "toss",
         "kiwoom",
         "meritz",
+        "finra",  # the dark pool Agent's FINRA API credential
         "anthropic",  # the review Agent's commentary key, not a market-data source
     ]
     for response in (created, listing):

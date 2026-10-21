@@ -897,6 +897,25 @@
   - 확인 중 고친 것: 같은 코드를 다시 저장할 때 저장소 잠금이 교착되던 문제, 에포크 시각이 값 한도에 걸리던 문제.
 - **남은 범위:** 백테스트 규칙에서 Python 지표 사용(`py:id@버전` 고정), Agent·타인 작성 코드의 승인 흐름, 더 강한 격리.
 
+## Phase 6A: 공시·다크풀 근거 Agent — 2026-10-21
+
+- **사용자 결정:** SEC EDGAR(티커 맵·Submissions·CompanyFacts)와 FINRA 주간 ATS 집계를 공식 무료 출처로 승인했다. FINRA는 무료 Public 자격 증명을 키 화면에 등록해 쓴다. 뉴스 크롤링·유료 피드·스크래핑은 쓰지 않는다. 결정 기록은 [ADR 0024](decisions/0024-filings-and-dark-pool-agents.md)에 있다.
+- **변경:**
+  - **수집기(`services/public_sources`):** `SIW_DATA_DIR/public_sources.sqlite3`에 레코드별 리비전을 쌓는다. 게시 시각과 최초 관측 시각을 따로 두고, 바뀐 레코드는 덮어쓰지 않고 새 리비전으로 저장한다. `source_record` 계약으로 내보낼 수 있다.
+    - SEC: `SIW_SEC_USER_AGENT`가 없으면 아무것도 보내지 않는다. 초당 5회 이하, 6시간 캐시, 실패 시 캐시 사용과 그 사실 표시.
+    - FINRA: 키 화면의 새 `finra` 키(Client ID·Secret, 키체인). 토큰은 메모리에만 둔다.
+  - **공시 Agent(`filings_review`):** 기준 시각 이전에 EDGAR가 접수한 공시만 쓴다(접수 시각, 초 단위). 기간 내 공시와 8-K 항목명, 양식별 수, 최근 10-Q·10-K, XBRL 분기 매출·희석 EPS와 전년 동기 대비. 기준 이후 공시는 요청할 때만 사후 정보로 표시한다.
+  - **다크풀 Agent(`dark_pool_review`):** 기준일 **전날까지** 게시된 FINRA 주만 쓴다(게시일만 있어 같은 날은 가정하지 않음). ATS 거래량·건수, 장외 거래량 중 ATS 비중, 과거 평균 대비·백분위, 평균 거래 규모. 전체 거래량 대비 비중은 통합 피드(`alpaca-sip`) 봉일 때만 계산한다. "지연된 주간 집계이며 방향·가격·장중 시각이 없다"는 문장을 항상 붙인다.
+  - **저장·API:** 기존 `agents.sqlite3`·`agent_analysis` 계약을 쓴다(대상 `filings`·`dark_pool` 추가). `POST /v1/agents/review/filings`, `POST /v1/agents/review/dark-pool`. 설정 누락은 409(`sec_user_agent_missing`, `finra_credential_missing`), 출처 장애는 502, 국내 종목은 422.
+  - **화면:** 복기 Agent 패널에 공시·다크풀 절(영어·한국어), 사후 공시 포함 선택, 설정 누락 안내.
+- **검증:**
+  - `./scripts/verify.sh` 통과: Python 465개(신규 15: EDGAR 접수 시각 보정, 기준 시각 차단·사후 표시·XBRL 시점·User-Agent 없으면 미전송·캐시 재사용과 장애 시 캐시·리비전·호출 간격·FINRA 게시일 차단·통합 피드 조건·자격 증명 없으면 미전송·API 저장·오류 코드), 계약 67개, 데스크톱 156개(신규 3).
+  - 테스트는 모두 mock HTTP이며 네트워크를 쓰지 않는다.
+  - **SEC 실연결(2026-10-21, 사용자 승인, 개수만 출력):** AAPL 기준 요청 3건(티커 맵·Submissions·CompanyFacts), 공시 1,001건 저장, 사실 44개(최근 90일 공시 33건, 10-Q·10-K, 매출·EPS와 전년 대비), 누락 0. User-Agent는 환경 변수로만 전달했다.
+    - 발견·수정: Submissions JSON의 `acceptanceDateTime`은 `Z` 표기지만 공시 헤더(동부시간)보다 동부 오프셋만큼(여름 4시간·겨울 5시간) 늦다. 헤더 4건으로 확인하고 파서가 오프셋을 뺀다. 보정 후 1,001건 모두 EDGAR 운영시간(06–22시 ET) 안이다.
+  - **FINRA 실연결:** 미실행(사용자 FINRA 자격 증명 등록 대기).
+- **남은 위험:** EDGAR가 접수 시각 표기를 고치면 보정이 틀어진다(테스트에 실제 쌍 고정, 운영시간 밖 비율로 감지 가능). FINRA 게시 시각은 날짜만 있어 보수적으로 하루 늦게 본다. 뉴스·News Cycle Agent와 국내 공시(DART)는 범위 밖이다.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:

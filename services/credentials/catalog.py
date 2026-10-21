@@ -80,6 +80,16 @@ CATALOG: dict[str, ProviderKeySpec] = {
             ),
             per_account=True,
         ),
+        # Not a market-data source: FINRA weekly ATS data for the dark pool Agent (ADR 0024).
+        ProviderKeySpec(
+            "finra",
+            "FINRA API",
+            (
+                SecretField("client_id", "Client ID", "SIW_FINRA_CLIENT_ID"),
+                SecretField("client_secret", "Client secret", "SIW_FINRA_CLIENT_SECRET"),
+            ),
+            per_account=False,
+        ),
         # Not a market-data source: the review Agent's commentary (ADR 0022).
         ProviderKeySpec(
             "anthropic",
