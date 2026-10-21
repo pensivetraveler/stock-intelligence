@@ -44,7 +44,10 @@ export type StockIntelligenceWorkstationContractsV01 =
   | BacktestRunListResponse
   | BacktestResults
   | AgentAnalysis
-  | AgentAnalysisListResponse;
+  | AgentAnalysisListResponse
+  | CustomIndicator
+  | CustomIndicatorListResponse
+  | CustomIndicatorResult;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -1544,4 +1547,208 @@ export interface AgentAnalysisListResponse {
   kind: "agent_analysis_list_response";
   schema_version: SchemaVersion;
   analyses: AgentAnalysis[];
+}
+export interface CustomIndicator {
+  kind: "custom_indicator";
+  schema_version: SchemaVersion;
+  indicator_id: Identifier;
+  version: number;
+  versions: number[];
+  type: string;
+  name: string;
+  /**
+   * @maxItems 8
+   */
+  inputs:
+    | []
+    | [
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ]
+    | [
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+        {
+          key: string;
+          default: number;
+        },
+      ];
+  /**
+   * @minItems 1
+   * @maxItems 6
+   */
+  outputs:
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string];
+  pane: "price" | "separate";
+  code: string;
+  code_sha256: string;
+  created_at_utc: UtcTimestamp;
+}
+export interface CustomIndicatorListResponse {
+  kind: "custom_indicator_list_response";
+  schema_version: SchemaVersion;
+  indicators: CustomIndicator[];
+}
+export interface CustomIndicatorResult {
+  kind: "custom_indicator_result";
+  schema_version: SchemaVersion;
+  type: string;
+  code_sha256: string;
+  times: number[];
+  outputs: {
+    [k: string]: (number | null)[];
+  };
 }

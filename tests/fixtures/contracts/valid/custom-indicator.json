@@ -1,0 +1,24 @@
+{
+  "kind": "custom_indicator",
+  "schema_version": "0.1",
+  "indicator_id": "ind-03d2c198fac6",
+  "version": 1,
+  "versions": [1],
+  "type": "py:ind-03d2c198fac6@1",
+  "name": "RSI band",
+  "inputs": [
+    {
+      "key": "length",
+      "default": 14.0
+    },
+    {
+      "key": "high",
+      "default": 70.0
+    }
+  ],
+  "outputs": ["rsi", "over"],
+  "pane": "separate",
+  "code": "\nNAME = \"RSI band\"\nINPUTS = {\"length\": 14, \"high\": 70}\nOUTPUTS = [\"rsi\", \"over\"]\nPANE = \"separate\"\n\ndef update(ctx):\n    rsi = ctx.indicator(\"rsi\", length=int(ctx.params[\"length\"]))\n    if rsi is None:\n        return None\n    ctx.state[\"count\"] = ctx.state.get(\"count\", 0) + 1\n    return {\"rsi\": rsi, \"over\": 1 if rsi > ctx.params[\"high\"] else 0}\n",
+  "code_sha256": "e71e4d9c36bd4add5410036bdef74107c1f50aa5d49a184d47188bb186a3def2",
+  "created_at_utc": "2026-10-21T00:00:00Z"
+}

@@ -221,7 +221,8 @@ function exchangeDate(time: number, timeZone: string): string {
 // Catalog
 // ---------------------------------------------------------------------------------
 
-export type IndicatorCategory = "trend" | "momentum" | "volatility" | "volume";
+export type IndicatorCategory =
+  "trend" | "momentum" | "volatility" | "volume" | "custom";
 
 export interface IndicatorInput {
   key: string;
@@ -1181,6 +1182,33 @@ export function parseIndicators(value: unknown): IndicatorInstance[] {
   return value.flatMap((item): IndicatorInstance[] => {
     if (typeof item !== "object" || item === null) return [];
     const record = item as Record<string, unknown>;
+    if (
+      typeof record.type === "string" &&
+      record.type.startsWith("py:") &&
+      !INDICATOR_BY_ID.has(record.type) &&
+      typeof record.key === "string" &&
+      record.key.length > 0
+    ) {
+      // A Python indicator whose definition loads from the API later: keep it as saved.
+      const params = Object.fromEntries(
+        Object.entries(
+          typeof record.params === "object" && record.params !== null
+            ? (record.params as Record<string, unknown>)
+            : {},
+        ).filter(
+          (entry): entry is [string, number] =>
+            typeof entry[1] === "number" && Number.isFinite(entry[1]),
+        ),
+      );
+      return [
+        {
+          key: record.key,
+          type: record.type,
+          params,
+          ...(record.hidden === true ? { hidden: true } : {}),
+        },
+      ];
+    }
     const definition =
       typeof record.type === "string"
         ? INDICATOR_BY_ID.get(record.type)

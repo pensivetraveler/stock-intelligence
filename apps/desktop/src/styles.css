@@ -2351,3 +2351,31 @@ body {
   margin: 2px 0 6px;
   padding-left: 18px;
 }
+
+/* Python indicators (ADR 0023) */
+.modal.custom-indicator-editor {
+  width: min(860px, 94vw);
+}
+
+.custom-indicator-editor .bt-code {
+  height: 360px;
+  border: 1px solid var(--term-line);
+  border-radius: 4px;
+  color: var(--term-text);
+  background: var(--term-bg);
+}
+
+.indicator-list li.indicator-custom {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.indicator-list li.indicator-custom > button:first-child {
+  flex: 1;
+}
+
+.chart-custom-error {
+  margin: 2px 8px;
+  font-size: 12px;
+}

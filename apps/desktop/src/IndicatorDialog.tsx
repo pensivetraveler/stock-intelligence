@@ -1,7 +1,10 @@
 import { useState } from "react";
 
+import type { CustomIndicator } from "@siw/contracts/types";
+
 import { useI18n } from "./i18n";
 import {
+  INDICATOR_BY_ID,
   INDICATORS,
   type IndicatorCategory,
   type IndicatorDefinition,
@@ -12,6 +15,10 @@ interface IndicatorDialogProps {
   target: string;
   onAdd: (definition: IndicatorDefinition) => void;
   onClose: () => void;
+  /** The latest version of each Python indicator (ADR 0023), when they are offered. */
+  custom?: CustomIndicator[];
+  /** Open the Python editor: a new indicator (null) or the next version of one. */
+  onEditCustom?: (item: CustomIndicator | null) => void;
 }
 
 const CATEGORIES: (IndicatorCategory | "all")[] = [
@@ -20,6 +27,7 @@ const CATEGORIES: (IndicatorCategory | "all")[] = [
   "momentum",
   "volatility",
   "volume",
+  "custom",
 ];
 
 /** Searchable list of the built-in indicators; picking one adds it to the active chart. */
@@ -27,12 +35,21 @@ export function IndicatorDialog({
   target,
   onAdd,
   onClose,
+  custom,
+  onEditCustom,
 }: IndicatorDialogProps) {
   const { t, language } = useI18n();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<IndicatorCategory | "all">("all");
   const needle = query.trim().toLowerCase();
-  const shown = INDICATORS.filter(
+  const customDefinitions = (custom ?? []).flatMap((item) => {
+    const definition = INDICATOR_BY_ID.get(item.type);
+    return definition ? [{ item, definition }] : [];
+  });
+  const shown = [
+    ...INDICATORS,
+    ...customDefinitions.map((c) => c.definition),
+  ].filter(
     (item) =>
       (category === "all" || item.category === category) &&
       (needle === "" ||
@@ -81,30 +98,56 @@ export function IndicatorDialog({
             className="indicator-categories"
             aria-label={t("ind.categories")}
           >
-            {CATEGORIES.map((item) => (
-              <button
-                key={item}
-                type="button"
-                className="tb-button"
-                aria-pressed={category === item}
-                onClick={() => setCategory(item)}
-              >
-                {t(`ind.cat.${item}`)}
-              </button>
-            ))}
+            {CATEGORIES.filter((item) => item !== "custom" || custom).map(
+              (item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className="tb-button"
+                  aria-pressed={category === item}
+                  onClick={() => setCategory(item)}
+                >
+                  {t(`ind.cat.${item}`)}
+                </button>
+              ),
+            )}
           </nav>
           <ul className="indicator-list">
-            {shown.map((item) => (
-              <li key={item.id}>
-                <button type="button" onClick={() => onAdd(item)}>
-                  <span>{item.name[language]}</span>
-                  <small>
-                    {item.short} ·{" "}
-                    {t(item.pane === "price" ? "ind.onPrice" : "ind.ownPane")}
-                  </small>
+            {custom && onEditCustom && category === "custom" ? (
+              <li>
+                <button type="button" onClick={() => onEditCustom(null)}>
+                  <span>{t("pyind.newButton")}</span>
+                  <small>{t("pyind.newHint")}</small>
                 </button>
               </li>
-            ))}
+            ) : null}
+            {shown.map((item) => {
+              const own = customDefinitions.find((c) => c.definition === item);
+              return (
+                <li
+                  key={item.id}
+                  className={own ? "indicator-custom" : undefined}
+                >
+                  <button type="button" onClick={() => onAdd(item)}>
+                    <span>{item.name[language]}</span>
+                    <small>
+                      {item.short} ·{" "}
+                      {t(item.pane === "price" ? "ind.onPrice" : "ind.ownPane")}
+                    </small>
+                  </button>
+                  {own && onEditCustom ? (
+                    <button
+                      type="button"
+                      className="tb-button"
+                      aria-label={t("pyind.edit", { name: own.item.name })}
+                      onClick={() => onEditCustom(own.item)}
+                    >
+                      ✎
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
             {shown.length === 0 ? (
               <li className="symbol-empty">{t("ind.none")}</li>
             ) : null}

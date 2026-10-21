@@ -148,6 +148,99 @@ class Context:
 _TIME_ZONE = "America/New_York"
 
 
+class HistoryView:
+    """The bars up to the current one; anything later is out of range."""
+
+    def __init__(self, bars: list[Any], end: int) -> None:
+        self._bars = bars
+        self._end = end  # index of the current bar
+
+    def __len__(self) -> int:
+        return self._end + 1
+
+    def __iter__(self) -> Any:
+        return iter(self._bars[: self._end + 1])
+
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, slice):
+            return self._bars[: self._end + 1][key]
+        index = key + self._end + 1 if key < 0 else key
+        if not 0 <= index <= self._end:
+            raise IndexError("only bars up to the current one can be read")
+        return self._bars[index]
+
+
+class IndicatorContext:
+    """What `update(ctx)` sees for one bar of a custom indicator (ADR 0023)."""
+
+    def __init__(
+        self,
+        bars: list[Any],
+        index: int,
+        params: dict[str, Any],
+        state: dict[str, Any],
+        series: dict[Any, Any],
+    ) -> None:
+        self.index = index
+        self.bar = bars[index]
+        self.history = HistoryView(bars, index)
+        self.params = params
+        self.state = state
+        self._bars = bars
+        self._series = series
+
+    @property
+    def closes(self) -> list[float]:
+        return [bar.close for bar in self.history]
+
+    def indicator(self, indicator_id: str, output: str | None = None, **params: float) -> Any:
+        """A built-in indicator's value at this bar (None during its warm-up).
+
+        Each series is computed once over the bars sent; the built-ins are causal, so the
+        value at this bar depends only on this bar and earlier ones.
+        """
+        from services.backtest.indicators import INDICATORS, compute
+
+        spec = INDICATORS.get(indicator_id)
+        if spec is None:
+            raise ValueError(f"unknown indicator {indicator_id!r}")
+        key = (indicator_id, tuple(sorted(params.items())))
+        if key not in self._series:
+            self._series[key] = compute(indicator_id, self._bars, params, _TIME_ZONE)
+        return self._series[key][output or spec.outputs[0]][self.index]
+
+
+def run_indicator(namespace: dict[str, Any], message: dict[str, Any]) -> dict[str, Any]:
+    bars = [Bar(item) for item in message["bars"]]
+    outputs: list[str] = list(message["outputs"])
+    params = message.get("params") or {}
+    update = namespace["update"]
+    values: dict[str, list[float | None]] = {name: [] for name in outputs}
+    state: dict[str, Any] = {}
+    series: dict[Any, Any] = {}
+    for index in range(len(bars)):
+        result = update(IndicatorContext(bars, index, params, state, series))
+        if result is None:
+            result = {}
+        elif isinstance(result, (int, float)) and len(outputs) == 1:
+            result = {outputs[0]: result}
+        if not isinstance(result, dict):
+            raise TypeError("update(ctx) must return a dict of output values or None")
+        unknown = set(result) - set(outputs)
+        if unknown:
+            raise ValueError(f"update(ctx) returned undeclared outputs: {sorted(unknown)}")
+        for name in outputs:
+            value = result.get(name)
+            if value is not None:
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    raise TypeError(f"{name} must be a number or None at bar {index}")
+                value = float(value)
+                if value != value or value in (float("inf"), float("-inf")):
+                    raise ValueError(f"{name} is not a finite number at bar {index}")
+            values[name].append(value)
+    return {"outputs": values}
+
+
 def main() -> None:
     global _TIME_ZONE
     root, cpu_seconds = sys.argv[1], int(sys.argv[2])
@@ -167,14 +260,32 @@ def main() -> None:
         message = json.loads(line)
         captured = io.StringIO()
         sys.stdout = captured
+        result: dict[str, Any]
         try:
-            if message["type"] == "init":
+            if message["type"] == "indicator_init":
+                _TIME_ZONE = message.get("time_zone") or _TIME_ZONE
+                exec(compile(message["code"], "<strategy>", "exec"), namespace)
+                if not callable(namespace.get("update")):
+                    raise ValueError("the indicator must define update(ctx)")
+                meta = {
+                    key: namespace.get(name)
+                    for key, name in (
+                        ("name", "NAME"),
+                        ("inputs", "INPUTS"),
+                        ("outputs", "OUTPUTS"),
+                        ("pane", "PANE"),
+                    )
+                }
+                result = {"ok": True, "meta": json.loads(json.dumps(meta, default=str))}
+            elif message["type"] == "indicator_run":
+                result = run_indicator(namespace, message)
+            elif message["type"] == "init":
                 params = message.get("params") or {}
                 _TIME_ZONE = message.get("time_zone") or _TIME_ZONE
                 exec(compile(message["code"], "<strategy>", "exec"), namespace)
                 if not callable(namespace.get("on_bar")):
                     raise ValueError("the strategy must define on_bar(ctx)")
-                result: dict[str, Any] = {"ok": True}
+                result = {"ok": True}
             else:
                 bars = history.setdefault(message["instrument_id"], [])
                 bars.append(Bar(message["bar"]))

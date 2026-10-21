@@ -35,7 +35,10 @@ class StrategyProcess:
         time_zone: str,
         cpu_seconds: int = 120,
         call_timeout: float = 10.0,
+        init: dict[str, Any] | None = None,
     ) -> None:
+        """Starts the worker and sends a strategy's code, or `init` for another kind of
+        code (a custom indicator: ADR 0023); its reply is kept as `init_reply`."""
         self._workdir = tempfile.mkdtemp(prefix="siw-strategy-")
         self._timeout = call_timeout
         self.logs: list[str] = []
@@ -53,7 +56,9 @@ class StrategyProcess:
         self._selector = selectors.DefaultSelector()
         assert self._process.stdout is not None
         self._selector.register(self._process.stdout, selectors.EVENT_READ)
-        self.call({"type": "init", "code": code, "params": params, "time_zone": time_zone})
+        self.init_reply = self.call(
+            init or {"type": "init", "code": code, "params": params, "time_zone": time_zone}
+        )
 
     def call(self, message: dict[str, Any]) -> dict[str, Any]:
         process = self._process
