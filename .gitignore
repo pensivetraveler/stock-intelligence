@@ -20,7 +20,8 @@ node_modules/
 .pnpm-store/
 dist/
 build/
-src-tauri/target/
+**/src-tauri/target/
+**/src-tauri/gen/
 coverage/
 *.log
 
