@@ -26,5 +26,5 @@ The user asked for indicators from a larger timeframe on a chart, such as a dail
 
 ## Revisit when
 
-- Larger intraday timeframes on smaller ones are needed (e.g. 60m on 5m). That requires session-aligned buckets and a finality rule per bucket.
+- Larger intraday timeframes on smaller ones are needed (e.g. 60m on 5m): done in ADR 0034.
 - Backtests should use larger-timeframe indicators. The same final-and-published rule would apply in services/backtest.

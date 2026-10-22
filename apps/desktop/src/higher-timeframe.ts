@@ -8,17 +8,55 @@ import type { OhlcvBar, Series } from "./indicators";
  * bar's value only once that bar had been published by the chart bar's end, so the
  * line steps forward when a day (or week) closes and never shows a value early.
  */
-export const HIGHER_TIMEFRAMES = ["1d", "1w"] as const;
+/** Larger intraday timeframes: session buckets, like the chart's own (ADR 0034). */
+export const INTRADAY_HIGHER = ["15m", "30m", "60m", "120m", "240m"] as const;
+export const HIGHER_TIMEFRAMES = [...INTRADAY_HIGHER, "1d", "1w"] as const;
 export type HigherTimeframe = (typeof HIGHER_TIMEFRAMES)[number];
+export type IntradayHigher = (typeof INTRADAY_HIGHER)[number];
+
+/** Minutes of an intraday timeframe such as "5m"; null for daily and weekly. */
+export function minutesOf(timeframe: string): number | null {
+  const match = /^(\d+)m$/.exec(timeframe);
+  return match ? Number(match[1]) : null;
+}
 
 export function higherChoices(chartTimeframe: string): HigherTimeframe[] {
   if (chartTimeframe === "1w") return [];
   if (chartTimeframe === "1d") return ["1w"];
-  return ["1d", "1w"];
+  const chart = minutesOf(chartTimeframe) ?? 1;
+  return [
+    ...INTRADAY_HIGHER.filter((choice) => (minutesOf(choice) ?? 0) > chart),
+    "1d",
+    "1w",
+  ];
 }
 
 export const isHigherTimeframe = (value: unknown): value is HigherTimeframe =>
-  value === "1d" || value === "1w";
+  (HIGHER_TIMEFRAMES as readonly unknown[]).includes(value);
+
+export const isIntradayHigher = (
+  value: HigherTimeframe,
+): value is IntradayHigher => minutesOf(value) !== null;
+
+/**
+ * Sessions of larger intraday bars to fetch: the chart's own sessions plus enough
+ * earlier ones to warm up the longest look-back (three times it, as for daily bars).
+ */
+export function intradaySessions(
+  timeframe: IntradayHigher,
+  lookback: number,
+  shownSessions: number,
+  extended: boolean,
+): number {
+  const perSession = Math.ceil(
+    (extended ? 960 : 390) / (minutesOf(timeframe) ?? 60),
+  );
+  // The session list API returns at most 120 sessions.
+  return Math.min(
+    120,
+    shownSessions + Math.ceil((lookback * 3 + 5) / perSession) + 1,
+  );
+}
 
 export interface HigherBars {
   bars: OhlcvBar[];

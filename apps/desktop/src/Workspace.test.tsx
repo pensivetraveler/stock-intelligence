@@ -1516,6 +1516,52 @@ describe("indicators", () => {
     });
   });
 
+  it("fetches larger intraday bars session by session for a 60m indicator", async () => {
+    const api = fakeApi({ history: true });
+    render(
+      <Workspace api={api} storage={memoryStorage()} newId={sequence()} />,
+    );
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    fireEvent.change(within(dialog).getByRole("textbox"), {
+      target: { value: "simple" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /Moving Average Simple/ }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Close indicators" }),
+    );
+    const legend = screen.getByRole("list", {
+      name: "Indicators on this chart",
+    });
+    fireEvent.click(
+      within(legend).getByRole("button", { name: "SMA settings" }),
+    );
+    const settings = screen.getByRole("dialog", { name: "SMA settings" });
+    const timeframe = within(settings).getByLabelText("Timeframe");
+    // A 5m chart offers 15m to 240m as well as daily and weekly.
+    expect(
+      within(timeframe)
+        .getAllByRole("option")
+        .map((option) => option.getAttribute("value")),
+    ).toEqual(["", "15m", "30m", "60m", "120m", "240m", "1d", "1w"]);
+    fireEvent.change(timeframe, { target: { value: "60m" } });
+    await waitFor(() =>
+      expect(
+        api.barsCalls.filter((call) => call.timeframe === "60m").length,
+      ).toBeGreaterThan(1),
+    );
+    // One request per session: none spans more than a day.
+    for (const call of api.barsCalls.filter((c) => c.timeframe === "60m")) {
+      expect(
+        Date.parse(call.endUtc) - Date.parse(call.startUtc),
+      ).toBeLessThanOrEqual(86_400_000);
+    }
+    expect(legend).toHaveTextContent("SMA 9 · 60M");
+  });
+
   it("previews unsaved Python code on the active chart and shows the failing line", async () => {
     const preview = vi
       .fn<CustomIndicatorApi["preview"]>()
