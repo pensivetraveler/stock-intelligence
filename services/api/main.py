@@ -40,6 +40,12 @@ from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
 from services.market_data.calendar import CalendarError, UsEquityCalendar
 from services.market_data.instruments import market_of, parse_instrument
+from services.market_data.kiwoom_account import NEW_YORK as KIWOOM_NEW_YORK
+from services.market_data.kiwoom_account import (
+    KiwoomAccountCredentials,
+    KiwoomAccountSession,
+)
+from services.market_data.kiwoom_account import sync_executions as kiwoom_sync
 from services.market_data.market_router import MarketRouter
 from services.market_data.provider import (
     BarsQuery,
@@ -281,6 +287,19 @@ def _toss_credentials(credentials: CredentialStore | None) -> TossCredentials | 
     return None
 
 
+def _kiwoom_session(credentials: CredentialStore | None) -> KiwoomAccountSession | None:
+    """A read-only account session of the first enabled real-account Kiwoom key."""
+    if credentials is None:
+        return None
+    for record in credentials.list("kiwoom"):
+        if record.enabled and record.environment == "real":
+            secrets = credentials.secrets(record)
+            return KiwoomAccountSession(
+                KiwoomAccountCredentials(secrets["app_key"], secrets["secret_key"], "real")
+            )
+    return None
+
+
 def _toss_session(credentials: CredentialStore | None) -> TossSession | None:
     """The shared session of that key (one token per key for the whole process)."""
     found = _toss_credentials(credentials)
@@ -475,6 +494,7 @@ def create_app(
     credential_store: CredentialStore | None = None,
     symbol_directory: SymbolDirectory | None = None,
     toss_session: Callable[[], TossSession | None] | None = None,
+    kiwoom_session: Callable[[], KiwoomAccountSession | None] | None = None,
     tick_store: TickStore | None = None,
     korean_provider: MarketDataProvider | None = None,
     korean_directory: SymbolDirectory | None = None,
@@ -490,6 +510,7 @@ def create_app(
     korean = _LazyKoreanProvider(korean_provider, credentials.get)
     provider = _LazyProvider(market_data_provider, credentials.get, korean.get)
     toss = toss_session or (lambda: _toss_session(credentials.get()))
+    kiwoom = kiwoom_session or (lambda: _kiwoom_session(credentials.get()))
     symbols = _LazySymbols(symbol_directory, provider, toss, korean_directory)
     ticks_holder: list[TickStore | None] = [tick_store]
 
@@ -657,8 +678,16 @@ def create_app(
 
     def toss_read(request: Request, read: Callable[[TossSession], dict[str, object]]) -> Response:
         """Run one on-demand Toss read and map its failures to the API's error envelope."""
+        return broker_read(request, toss, "Toss", read)
+
+    def broker_read(
+        request: Request,
+        open_session: Callable[[], Any],
+        broker: str,
+        read: Callable[[Any], dict[str, object]],
+    ) -> Response:
         try:
-            session = toss()
+            session = open_session()
         except SecretStorageError as exc:
             return _error_response(request, 502, "provider_auth_failed", str(exc))
         if session is None:
@@ -666,7 +695,7 @@ def create_app(
                 request,
                 404,
                 "quote_source_unavailable",
-                "register an enabled real-account Toss key on the Keys screen for live data",
+                f"register an enabled real-account {broker} key on the Keys screen for live data",
             )
         try:
             document = read(session)
@@ -846,6 +875,32 @@ def create_app(
             )
         return toss_read(
             request, lambda session: sync_executions(session, store, instrument_for, clock)
+        )
+
+    @application.post("/v1/brokers/kiwoom/sync", response_model=None)
+    def kiwoom_sync_endpoint(
+        request: Request,
+        since: Annotated[date | None, Query()] = None,
+        until: Annotated[date | None, Query()] = None,
+    ) -> Response:
+        """Store the Kiwoom account's filled US orders from `since` (default: a year ago)
+        to `until` (default: today); at most 400 days per call."""
+        store = journal.get()
+        if store is None:
+            return _error_response(
+                request,
+                503,
+                "journal_storage_unconfigured",
+                "set SIW_DATA_DIR to keep the broker ledger",
+            )
+        start = since or (
+            (until or clock().astimezone(KIWOOM_NEW_YORK).date()) - timedelta(days=365)
+        )
+        return broker_read(
+            request,
+            kiwoom,
+            "Kiwoom",
+            lambda session: kiwoom_sync(session, store, instrument_for, clock, start, until),
         )
 
     @application.get("/v1/trades/broker", response_model=None)

@@ -464,6 +464,10 @@ export interface LedgerPosition {
   realized_pnl: DecimalString;
   fees: NonNegativeDecimalString;
   unordered_execution_ids: Identifier[];
+  /**
+   * Executions without reported fees: realized P&L and fees leave their fees out. Absent when every fee is known.
+   */
+  fees_unreported_execution_ids?: Identifier[];
 }
 export interface ScenarioLedgerResponse {
   kind: "scenario_ledger_response";
@@ -922,18 +926,27 @@ export interface BrokerOrderExecution {
   side: Side;
   quantity: NonNegativeDecimalString;
   price: NonNegativeDecimalString;
-  fees: NonNegativeDecimalString;
-  commission: NonNegativeDecimalString;
-  tax: NonNegativeDecimalString;
+  /**
+   * null when the broker's order history does not report it (Kiwoom); never assumed zero.
+   */
+  fees: null | NonNegativeDecimalString;
+  /**
+   * null when the broker's order history does not report it (Kiwoom); never assumed zero.
+   */
+  commission: null | NonNegativeDecimalString;
+  /**
+   * null when the broker's order history does not report it (Kiwoom); never assumed zero.
+   */
+  tax: null | NonNegativeDecimalString;
   /**
    * USD for US listings, KRW for Korean (kr:) listings.
    */
   currency: "USD" | "KRW";
   executed_at_utc: null | UtcTimestamp;
   /**
-   * The broker's filledAt for the order: when its last fill happened, as reported. Not a per-fill time.
+   * reported_last_fill: the broker's filledAt for the order, when its last fill happened (Toss). reported_fill_time: the one fill time the broker reports for the order, without saying whether it is the first or the last fill (Kiwoom cntr_time). Neither is a per-fill time.
    */
-  time_meaning: "reported_last_fill";
+  time_meaning: "reported_last_fill" | "reported_fill_time";
   /**
    * One record per order: total filled quantity at the average fill price. The broker reports no individual fills.
    */
@@ -942,7 +955,7 @@ export interface BrokerOrderExecution {
   order_status: string;
   ordered_at_utc: UtcTimestamp;
   settlement_date: null | string;
-  broker_id: "toss";
+  broker_id: "toss" | "kiwoom";
   broker_account_ref: Identifier;
   broker_order_id: string;
   verification_status: "broker_api_reported";
@@ -961,7 +974,7 @@ export interface BrokerLedgerResponse {
 export interface BrokerSyncResult {
   kind: "broker_sync_result";
   schema_version: SchemaVersion;
-  broker_id: "toss";
+  broker_id: "toss" | "kiwoom";
   synced_at_utc: UtcTimestamp;
   accounts: number;
   orders_seen: number;
@@ -971,6 +984,10 @@ export interface BrokerSyncResult {
     not_filled: number;
     unsupported_currency: number;
     unknown_instrument: number;
+    /**
+     * Kiwoom: orders whose reported time could not be placed on the order date's US session (04:00-20:00 New York), for example daytime-session orders. Not stored.
+     */
+    time_unresolved?: number;
   };
   /**
    * Broker order IDs whose reported execution changed after it was stored; the stored record is kept.

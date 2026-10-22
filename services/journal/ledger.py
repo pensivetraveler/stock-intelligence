@@ -67,7 +67,8 @@ def manual_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     Executions with an unknown time cannot be ordered against the others, so they
     are listed in `unordered_execution_ids` and left out of the calculation rather
-    than placed at a guessed time.
+    than placed at a guessed time. Executions whose broker reported no fees (Kiwoom)
+    count without a fee and are listed in `fees_unreported_execution_ids`.
     """
     by_instrument: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
     for execution in executions:
@@ -85,10 +86,13 @@ def manual_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         lots: list[_Lot] = []
         realized = ZERO
         fees = ZERO
+        fees_unreported: list[str] = []
         for item in timed:
             price = Decimal(cast(str, item["price"]))
             remaining = Decimal(cast(str, item["quantity"])) * (1 if item["side"] == "buy" else -1)
-            fee = Decimal(cast(str, item["fees"]))
+            if item["fees"] is None:
+                fees_unreported.append(cast(str, item["execution_id"]))
+            fee = ZERO if item["fees"] is None else Decimal(cast(str, item["fees"]))
             fees += fee
             realized -= fee
             while remaining != 0 and lots and (lots[0].quantity > 0) != (remaining > 0):
@@ -109,16 +113,17 @@ def manual_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
             if open_size
             else None
         )
-        positions.append(
-            {
-                "instrument_id": instrument_id,
-                "open_quantity": _text(open_quantity),
-                "average_cost": None if average_cost is None else _text(average_cost),
-                "realized_pnl": _text(realized),
-                "fees": _text(fees),
-                "unordered_execution_ids": unordered,
-            }
-        )
+        position: dict[str, Any] = {
+            "instrument_id": instrument_id,
+            "open_quantity": _text(open_quantity),
+            "average_cost": None if average_cost is None else _text(average_cost),
+            "realized_pnl": _text(realized),
+            "fees": _text(fees),
+            "unordered_execution_ids": unordered,
+        }
+        if fees_unreported:
+            position["fees_unreported_execution_ids"] = sorted(fees_unreported)
+        positions.append(position)
     return positions
 
 
