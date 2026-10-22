@@ -162,9 +162,7 @@ def test_sync_stores_each_filled_order_once_without_inventing_fees(tmp_path: Pat
 
     (position,) = manual_positions(executions)
     assert position["open_quantity"] == "50"
-    assert position["fees_unreported_execution_ids"] == sorted(
-        e["execution_id"] for e in executions
-    )
+    assert position["fees_unreported_count"] == len(executions)
 
 
 def test_only_the_read_only_account_queries_can_be_sent() -> None:

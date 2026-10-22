@@ -769,9 +769,12 @@ const en = {
   "journal.noManual":
     "No actual executions recorded. Click a candle to add one.",
   "journal.noImported": "No statements imported.",
-  "journal.brokerTitle": "Broker API executions (Toss)",
+  "journal.brokerTitle": "Broker API executions (Toss, Kiwoom)",
   "journal.brokerNote":
-    "One row per order: total filled quantity at the average fill price, time of the last fill as Toss reports it.",
+    "One row per order: total filled quantity at the average fill price, at the fill time the broker reports (Toss: the last fill; Kiwoom: one fill time per order). Each account is its own position book.",
+  "journal.positionFeesUnreported":
+    "{symbol}: realized {pnl} {currency} before fees ({n} orders without reported fees) · open {open}",
+  "journal.closedPositions": "Closed positions ({n})",
   "journal.noBroker":
     "No broker executions synced. Use the Account panel to sync.",
   "journal.avgPrice": "Avg price",
@@ -779,6 +782,8 @@ const en = {
   "journal.fees": "Fees",
   "journal.accountToss": "Toss account {n}",
   "journal.accountKiwoom": "Kiwoom",
+  "journal.newestOnly":
+    "Showing the newest {shown} of {total}; positions and counts cover all of them.",
   "journal.noScenarios": "No hypothetical scenarios yet.",
   "journal.row": "{broker} · row {row}",
   "journal.keptAfterReview": " · kept after duplicate review",
@@ -1676,9 +1681,12 @@ const ko: Record<MessageKey, string> = {
   "journal.unknownTime": "모름",
   "journal.noManual": "기록된 실제 체결이 없습니다. 캔들을 클릭해 추가하세요.",
   "journal.noImported": "가져온 거래내역이 없습니다.",
-  "journal.brokerTitle": "증권사 API 체결(토스)",
+  "journal.brokerTitle": "증권사 API 체결(토스·키움)",
   "journal.brokerNote":
-    "주문 1건당 1행: 총 체결 수량과 평균 체결가, 시각은 토스가 알려준 마지막 체결 시각입니다.",
+    "주문 1건당 1행: 총 체결 수량과 평균 체결가이며, 시각은 증권사가 알려준 체결 시각입니다(토스는 마지막 체결, 키움은 주문당 체결 시각 1개). 포지션은 계좌별로 따로 계산합니다.",
+  "journal.positionFeesUnreported":
+    "{symbol}: 수수료 차감 전 실현 손익 {pnl} {currency}(수수료 미제공 주문 {n}건) · 보유 {open}",
+  "journal.closedPositions": "청산된 종목 {n}개",
   "journal.noBroker":
     "동기화된 증권사 체결이 없습니다. 계좌 패널에서 동기화하세요.",
   "journal.avgPrice": "평균가",
@@ -1686,6 +1694,8 @@ const ko: Record<MessageKey, string> = {
   "journal.fees": "수수료",
   "journal.accountToss": "토스 계좌 {n}",
   "journal.accountKiwoom": "키움",
+  "journal.newestOnly":
+    "전체 {total}건 중 최근 {shown}건만 보여 줍니다. 포지션과 건수는 전체 기준입니다.",
   "journal.noScenarios": "가상 시나리오가 아직 없습니다.",
   "journal.row": "{broker} · {row}행",
   "journal.keptAfterReview": " · 중복 검토 후 유지",

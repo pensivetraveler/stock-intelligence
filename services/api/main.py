@@ -939,7 +939,10 @@ def create_app(
     def broker_ledger(
         request: Request,
         instrument_id: Annotated[str | None, Query(max_length=200)] = None,
+        limit: Annotated[int | None, Query(ge=1, le=5000)] = None,
     ) -> Response:
+        """The broker API ledger. With `limit`, only the newest executions are listed;
+        positions and `execution_count` always cover all of them."""
         store = journal.get()
         if store is None:
             return _error_response(
@@ -953,7 +956,8 @@ def create_app(
             "kind": "broker_ledger_response",
             "schema_version": "0.1",
             "ledger": "broker_api",
-            "executions": executions,
+            "executions": executions if limit is None else executions[-limit:],
+            "execution_count": len(executions),
             "positions": account_positions(executions),
         }
         validate_document(document)

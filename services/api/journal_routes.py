@@ -202,6 +202,7 @@ def register_journal_routes(
         price_tolerance_bps: Annotated[
             str | None, Query(pattern=r"^(0|[1-9][0-9]{0,3})(\.[0-9]{1,2})?$")
         ] = None,
+        limit: Annotated[int | None, Query(ge=1, le=5000)] = None,
     ) -> Response:
         """Compare the broker API ledger with manual and imported executions; read-only."""
         store = journal()
@@ -219,6 +220,15 @@ def register_journal_routes(
             since=None if since is None else datetime.fromisoformat(since.replace("Z", "+00:00")),
             parameters=parameters,
         )
+        records = result["records"]
+        if limit is not None and len(records) > limit:
+            # The newest records; the summary still counts every one of them.
+            newest = sorted(
+                range(len(records)),
+                key=lambda i: (records[i]["time_utc"] or "", i),
+                reverse=True,
+            )[:limit]
+            records = [records[i] for i in sorted(newest)]
         document = {
             "kind": "trade_reconciliation_response",
             "schema_version": "0.1",
@@ -226,6 +236,8 @@ def register_journal_routes(
             "instrument_id": instrument_id,
             "since_utc": since,
             **result,
+            "records": records,
+            "record_count": len(result["records"]),
         }
         validate_document(document)
         return JSONResponse(content=document)

@@ -169,6 +169,25 @@ class MinuteBarAggregator:
                     "source bar calendar version does not match aggregator calendar"
                 )
 
+    @staticmethod
+    def _available_at(ordered: list[dict[str, Any]], bucket_end: datetime, complete: bool) -> str:
+        """When the bar could be known: its latest source bar's availability. A complete
+        bucket is also never known before it ends plus the source's publication delay, even
+        when its last minutes had no trades; a partial one is the view of what had arrived."""
+        # Compare instants, not text: "...:00.5Z" sorts before "...:00Z" as a string.
+        latest = max(ordered, key=lambda bar: _parse_utc(cast(str, bar["available_at_utc"])))
+        if not complete:
+            return cast(str, latest["available_at_utc"])
+        available = _parse_utc(cast(str, latest["available_at_utc"]))
+        # The source's publication delay, read from its newest minute.
+        last = ordered[-1]
+        delay = _parse_utc(cast(str, last["available_at_utc"])) - _parse_utc(
+            cast(str, last["interval_end_utc"])
+        )
+        floor = bucket_end + max(delay, timedelta(0))
+        # Keep the source's own text (it may carry fractions of a second) when it is later.
+        return cast(str, latest["available_at_utc"]) if available >= floor else _format_utc(floor)
+
     def _aggregate_bucket(
         self,
         bars: list[dict[str, Any]],
@@ -227,10 +246,7 @@ class MinuteBarAggregator:
             "source_id": first["source_id"],
             "source_feed_scope": first["source_feed_scope"],
             "dataset_revision": self.derived_revision(source_revision, timeframe),
-            # Compare instants, not text: "...:00.5Z" sorts before "...:00Z" as a string.
-            "available_at_utc": max(
-                ordered, key=lambda bar: _parse_utc(cast(str, bar["available_at_utc"]))
-            )["available_at_utc"],
+            "available_at_utc": self._available_at(ordered, bucket_end, quality == "complete"),
         }
         validate_document(result)
         return result

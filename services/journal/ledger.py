@@ -68,7 +68,7 @@ def manual_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     Executions with an unknown time cannot be ordered against the others, so they
     are listed in `unordered_execution_ids` and left out of the calculation rather
     than placed at a guessed time. Executions whose broker reported no fees (Kiwoom)
-    count without a fee and are listed in `fees_unreported_execution_ids`.
+    count without a fee and are counted in `fees_unreported_count`.
     """
     by_instrument: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
     for execution in executions:
@@ -86,12 +86,12 @@ def manual_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         lots: list[_Lot] = []
         realized = ZERO
         fees = ZERO
-        fees_unreported: list[str] = []
+        fees_unreported = 0
         for item in timed:
             price = Decimal(cast(str, item["price"]))
             remaining = Decimal(cast(str, item["quantity"])) * (1 if item["side"] == "buy" else -1)
             if item["fees"] is None:
-                fees_unreported.append(cast(str, item["execution_id"]))
+                fees_unreported += 1
             fee = ZERO if item["fees"] is None else Decimal(cast(str, item["fees"]))
             fees += fee
             realized -= fee
@@ -122,7 +122,7 @@ def manual_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "unordered_execution_ids": unordered,
         }
         if fees_unreported:
-            position["fees_unreported_execution_ids"] = sorted(fees_unreported)
+            position["fees_unreported_count"] = fees_unreported
         positions.append(position)
     return positions
 

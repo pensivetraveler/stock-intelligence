@@ -6,7 +6,7 @@ import type {
   ManualExecution,
 } from "@siw/contracts/types";
 import type { AgentAnalysis } from "@siw/contracts/types";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { AgentApi } from "./agent-api";
 import { AgentAnalysisView } from "./AgentAnalysisView";
@@ -53,6 +53,7 @@ export function BacktestResultsView({
   real,
   shown,
   onToggleShown,
+  onNeedReal,
 }: {
   run: BacktestRun;
   results: BacktestResults;
@@ -61,8 +62,13 @@ export function BacktestResultsView({
   real: RealFills;
   shown: boolean;
   onToggleShown: () => void;
+  /** Asks for the real fills of these instruments, read per instrument. */
+  onNeedReal?: (instrumentIds: string[]) => void;
 }) {
   const { t } = useI18n();
+  useEffect(() => {
+    onNeedReal?.(run.config.instrument_ids);
+  }, [onNeedReal, run.config.instrument_ids]);
   const [critique, setCritique] = useState<
     | { state: "idle" }
     | { state: "busy" }

@@ -466,13 +466,13 @@ export interface LedgerPosition {
   fees: NonNegativeDecimalString;
   unordered_execution_ids: Identifier[];
   /**
-   * Executions without reported fees: realized P&L and fees leave their fees out. Absent when every fee is known.
-   */
-  fees_unreported_execution_ids?: Identifier[];
-  /**
    * Broker ledger only: the broker account this FIFO book belongs to. Accounts are never netted against each other.
    */
   account_ref?: string;
+  /**
+   * Executions without reported fees (Kiwoom): realized P&L and fees leave their fees out. Absent when every fee is known.
+   */
+  fees_unreported_count?: number;
 }
 export interface ScenarioLedgerResponse {
   kind: "scenario_ledger_response";
@@ -972,6 +972,10 @@ export interface BrokerLedgerResponse {
   ledger: "broker_api";
   executions: BrokerOrderExecution[];
   positions: LedgerPosition[];
+  /**
+   * All executions in the ledger (or for the instrument); `executions` may list only the newest of them.
+   */
+  execution_count?: number;
 }
 /**
  * What one on-demand sync of closed broker orders stored.
@@ -1830,6 +1834,10 @@ export interface TradeReconciliationResponse {
     imported_only: number;
   };
   records: ReconciliationRecord[];
+  /**
+   * All records; `records` may list only the newest of them, while `summary` always counts all.
+   */
+  record_count?: number;
 }
 /**
  * One record of an actual-fill ledger as the reconciliation classified it. The ledger record itself is unchanged.

@@ -109,3 +109,25 @@ def test_reconciliation_needs_journal_storage(monkeypatch: pytest.MonkeyPatch) -
         response = test_client.get("/v1/trades/reconciliation")
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "journal_storage_unconfigured"
+
+
+def test_limits_list_the_newest_and_still_count_everything(
+    client: TestClient, store: JournalStore
+) -> None:
+    for minute in range(5):
+        store.record_broker_execution(
+            broker(f"o{minute}", executed_at_utc=f"2026-10-09T14:0{minute}:30Z")
+        )
+    recon = client.get("/v1/trades/reconciliation", params={"limit": 2}).json()
+    validate_document(recon)
+    assert [r["execution_id"] for r in recon["records"]] == ["brk-o3", "brk-o4"]
+    assert recon["record_count"] == 5
+    assert recon["summary"]["broker_only"] == 5
+
+    ledger = client.get("/v1/trades/broker", params={"limit": 2}).json()
+    validate_document(ledger)
+    assert [e["execution_id"] for e in ledger["executions"]] == ["brk-o3", "brk-o4"]
+    assert ledger["execution_count"] == 5
+    # Positions always cover the whole ledger: five buys of 10.
+    assert ledger["positions"][0]["open_quantity"] == "50"
+    assert client.get("/v1/trades/broker", params={"limit": 0}).status_code == 422

@@ -1,6 +1,7 @@
 import type {
   BrokerLedgerResponse,
   ImportedLedgerResponse,
+  LedgerPosition,
   ManualLedgerResponse,
   ScenarioLedgerResponse,
 } from "@siw/contracts/types";
@@ -24,6 +25,13 @@ interface JournalPanelProps {
  * broker-API executions (all actual fills, possibly of the same trades) and hypothetical
  * scenarios.
  */
+/** An average cost for display: at most four decimals (the API keeps the exact value). */
+function shortPrice(value: string): string {
+  const [whole, fraction = ""] = value.split(".");
+  const kept = fraction.slice(0, 4).replace(/0+$/, "");
+  return kept ? `${whole}.${kept}` : whole;
+}
+
 /** A broker account as the user knows it, without any account number. */
 function accountLabel(ref: string, t: Translate): string {
   if (ref.startsWith("toss-")) {
@@ -42,6 +50,29 @@ export function JournalPanel({
   symbolOf,
 }: JournalPanelProps) {
   const { t } = useI18n();
+  const brokerPosition = (position: LedgerPosition) => (
+    <li key={`${position.account_ref ?? ""}|${position.instrument_id}`}>
+      {position.account_ref
+        ? `[${accountLabel(position.account_ref, t)}] `
+        : ""}
+      {position.fees_unreported_count
+        ? t("journal.positionFeesUnreported", {
+            symbol: symbolOf(position.instrument_id),
+            currency: zoneOf(position.instrument_id).currency,
+            pnl: position.realized_pnl,
+            n: position.fees_unreported_count,
+            open: position.open_quantity,
+          })
+        : t("journal.position", {
+            symbol: symbolOf(position.instrument_id),
+            currency: zoneOf(position.instrument_id).currency,
+            pnl: position.realized_pnl,
+            fees: position.fees,
+            open: position.open_quantity,
+          })}
+      {position.average_cost ? ` @ ${shortPrice(position.average_cost)}` : ""}
+    </li>
+  );
   if (error) {
     return (
       <section className="journal" aria-label={t("journal.label")}>
@@ -189,26 +220,38 @@ export function JournalPanel({
           {t("journal.brokerTitle")}
         </h2>
         <p className="workspace-note">{t("journal.brokerNote")}</p>
+        {broker &&
+        broker.execution_count !== undefined &&
+        broker.execution_count > broker.executions.length ? (
+          <p className="workspace-note">
+            {t("journal.newestOnly", {
+              shown: broker.executions.length,
+              total: broker.execution_count,
+            })}
+          </p>
+        ) : null}
         {broker && broker.positions.length > 0 ? (
-          <ul className="ledger-summary">
-            {broker.positions.map((position) => (
-              <li
-                key={`${position.account_ref ?? ""}|${position.instrument_id}`}
-              >
-                {position.account_ref
-                  ? `[${accountLabel(position.account_ref, t)}] `
-                  : ""}
-                {t("journal.position", {
-                  symbol: symbolOf(position.instrument_id),
-                  currency: zoneOf(position.instrument_id).currency,
-                  pnl: position.realized_pnl,
-                  fees: position.fees,
-                  open: position.open_quantity,
+          <>
+            <ul className="ledger-summary">
+              {broker.positions
+                .filter((position) => Number(position.open_quantity) !== 0)
+                .map(brokerPosition)}
+            </ul>
+            <details>
+              <summary>
+                {t("journal.closedPositions", {
+                  n: broker.positions.filter(
+                    (position) => Number(position.open_quantity) === 0,
+                  ).length,
                 })}
-                {position.average_cost ? ` @ ${position.average_cost}` : ""}
-              </li>
-            ))}
-          </ul>
+              </summary>
+              <ul className="ledger-summary">
+                {broker.positions
+                  .filter((position) => Number(position.open_quantity) === 0)
+                  .map(brokerPosition)}
+              </ul>
+            </details>
+          </>
         ) : null}
         <table>
           <thead>
