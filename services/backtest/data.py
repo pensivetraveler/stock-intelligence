@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -20,6 +21,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
+from services.market_data.aggregation import timeframe_minutes
 from services.market_data.calendar import CalendarError
 from services.market_data.daily import aggregate_weekly
 from services.market_data.instruments import calendar_for
@@ -27,7 +29,17 @@ from services.market_data.provider import BarsQuery, BarsResult, InvalidBarsQuer
 
 MAX_INTRADAY_SESSIONS = 60
 MAX_BAR_COUNT = 5_000  # also the Python indicator limit (ADR 0023)
-MAX_COUNT_SESSIONS = 1_000  # bar-count mode: sessions read at most (5,000 60m bars ~ 715)
+MAX_COUNT_SESSIONS = 3_000  # bar-count mode: never more sessions than this (about 12 years)
+
+
+def count_session_limit(timeframe: str, bar_count: int) -> int:
+    """Sessions a bar-count run may read: enough for `bar_count` bars of this timeframe
+    in regular sessions (390 minutes; early closes and gaps get 25% room), capped."""
+    minutes = timeframe_minutes(timeframe) or (1 if timeframe == "1m" else 390)
+    per_session = math.ceil(390 / minutes)
+    return min(MAX_COUNT_SESSIONS, math.ceil(bar_count / per_session * 1.25) + 10)
+
+
 MAX_DAILY_DAYS = 366 * 30
 MISSING_LIST_LIMIT = 50
 ASOF = re.compile(r"asof-(\d{4}-\d{2}-\d{2})")
@@ -151,7 +163,7 @@ def load_instrument(
     for index, (range_start, range_end) in enumerate(ranges):
         if bar_count is not None and len(documents) >= bar_count:
             break
-        if bar_count is not None and index >= MAX_COUNT_SESSIONS:
+        if bar_count is not None and index >= count_session_limit(timeframe, bar_count):
             break
         query = BarsQuery(instrument_id, timeframe, range_start, range_end, as_of_utc=as_of_utc)
         if adjustment == "raw":

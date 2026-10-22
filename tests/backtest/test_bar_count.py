@@ -118,3 +118,12 @@ def test_a_daily_run_from_a_past_start_date(setup: Any) -> None:  # noqa: F811
         )
         assert refused.status_code == 422
         assert "bar_count" in refused.json()["error"]["message"]
+
+
+def test_the_session_limit_follows_the_timeframe() -> None:
+    from services.backtest.data import MAX_COUNT_SESSIONS, count_session_limit
+
+    # Room for 5,000 bars: 13 1m sessions, about 715 hourly ones, capped for 240m.
+    assert count_session_limit("1m", 5000) == 27
+    assert count_session_limit("60m", 5000) == 903
+    assert count_session_limit("240m", 5000) == MAX_COUNT_SESSIONS
