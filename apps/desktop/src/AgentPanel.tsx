@@ -5,6 +5,7 @@ import type { AgentApi, ChartReviewRequest, ExecutionRef } from "./agent-api";
 import { AgentAnalysisView } from "./AgentAnalysisView";
 import type { RealFills } from "./BacktestResultsView";
 import { exchangeTime } from "./chart-data";
+import { accountLabel } from "./account-label";
 import { useI18n } from "./i18n";
 import { MarketApiError } from "./market-api";
 import { zoneOf } from "./market-zone";
@@ -14,6 +15,8 @@ interface Row extends ExecutionRef {
   quantity: string;
   price: string;
   time: string | null;
+  /** The broker account of a broker-API fill; each account is matched on its own. */
+  account: string | null;
 }
 
 /**
@@ -104,6 +107,7 @@ export function AgentPanel({
         quantity: string;
         price: string;
         executed_at_utc?: string | null;
+        broker_account_ref?: string;
       }[],
     ) =>
       items
@@ -115,6 +119,7 @@ export function AgentPanel({
           quantity: item.quantity,
           price: item.price,
           time: item.executed_at_utc ?? null,
+          account: item.broker_account_ref ?? null,
         }));
     return [
       ...of("broker", real.broker),
@@ -175,8 +180,10 @@ export function AgentPanel({
                       )
                     }
                   />
-                  {t(`agent.ledger.${row.ledger}`)} · {row.side} {row.quantity}{" "}
-                  @ {row.price} ·{" "}
+                  {t(`agent.ledger.${row.ledger}`)}
+                  {row.account
+                    ? ` [${accountLabel(row.account, t)}]`
+                    : ""} · {row.side} {row.quantity} @ {row.price} ·{" "}
                   {row.time ? exchangeTime(row.time, zone) : t("agent.noTime")}
                 </label>
               </li>

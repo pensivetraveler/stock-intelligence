@@ -8,7 +8,8 @@ import type {
 
 import { exchangeTime } from "./chart-data";
 import { zoneOf } from "./market-zone";
-import { useI18n, type Translate } from "./i18n";
+import { accountLabel } from "./account-label";
+import { useI18n } from "./i18n";
 import { MARKER_COLORS } from "./journal-markers";
 
 interface JournalPanelProps {
@@ -30,15 +31,6 @@ function shortPrice(value: string): string {
   const [whole, fraction = ""] = value.split(".");
   const kept = fraction.slice(0, 4).replace(/0+$/, "");
   return kept ? `${whole}.${kept}` : whole;
-}
-
-/** A broker account as the user knows it, without any account number. */
-function accountLabel(ref: string, t: Translate): string {
-  if (ref.startsWith("toss-")) {
-    return t("journal.accountToss", { n: ref.split("-").at(-1) ?? "?" });
-  }
-  if (ref.startsWith("kiwoom-")) return t("journal.accountKiwoom");
-  return ref;
 }
 
 export function JournalPanel({

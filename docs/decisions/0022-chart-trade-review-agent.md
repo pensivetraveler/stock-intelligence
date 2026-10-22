@@ -36,6 +36,8 @@ On 2026-10-21 the user chose:
   - **Facts:** last close and change, position in the 20-bar range, SMA 20/50 and slope, RSI 14, ATR as a percentage of price, volume against its 20-bar average, VWAP distance for intraday bars, and the number of bars used. Facts that need more bars than are available are left out and said so.
 - **Real trades:** chosen executions of one instrument from the manual, imported and broker API ledgers.
   - **Trade facts:** quantities, average prices and FIFO realized P&L, fees, the holding period and any quantity still open.
+  - **One FIFO book per account (2026-10-22):** as in the broker ledger (`account_positions`), each broker account is matched on its own, so a sell in one account never closes a buy made in another. Imported fills form one book per statement label and manual records one book. With more than one book, the evidence adds the account count and each account's realized P&L, named "account 1", "account 2" by first fill. The account refs stay local in `source_refs` (`account:broker:<ref>`) and are never sent to Claude.
+  - **Fees:** a fill's `fees` is its total; a broker's `commission` and `tax` are its parts and are not added again. A broker fill without reported fees (Kiwoom) counts without fees, and the uncertainty says so. Kiwoom US settlement-line fees are not included.
   - **Each fill:** where it sat in that session's daily range (0 = low, 1 = high).
   - **At entry:** RSI and the SMA position, computed from daily bars of the sessions before the entry (cutoff: the entry session's open).
   - **Hindsight (flagged):** the most favourable and most adverse excursion from the average entry while held, and the close 1 and 5 sessions after the last exit.

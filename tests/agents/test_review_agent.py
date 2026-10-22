@@ -48,6 +48,40 @@ def manual(execution_id: str, side: str, price: str, when: str) -> dict[str, Any
     }
 
 
+def broker(
+    order_id: str, side: str, price: str, when: str, account: str, fees: str | None = "0.50"
+) -> dict[str, Any]:
+    document = {
+        "kind": "broker_order_execution",
+        "schema_version": "0.1",
+        "execution_id": f"brk-{order_id}",
+        "instrument_id": AAPL,
+        "symbol": "AAPL",
+        "side": side,
+        "quantity": "10",
+        "price": price,
+        # `fees` is the total of `commission` and `tax`, never added to them.
+        "fees": fees,
+        "commission": fees,
+        "tax": None if fees is None else "0",
+        "currency": "USD",
+        "executed_at_utc": when,
+        "time_meaning": "reported_last_fill",
+        "granularity": "order_aggregate",
+        "order_type": "LIMIT",
+        "order_status": "FILLED",
+        "ordered_at_utc": when,
+        "settlement_date": "2026-03-20",
+        "broker_id": account.split("-")[0],
+        "broker_account_ref": account,
+        "broker_order_id": order_id,
+        "verification_status": "broker_api_reported",
+        "synced_at_utc": "2026-10-10T00:00:00Z",
+    }
+    validate_document(document)
+    return document
+
+
 class Asked:
     def __init__(self) -> None:
         self.calls: list[tuple[dict[str, Any], str, str]] = []
@@ -180,6 +214,51 @@ def test_trade_review_matches_fifo_and_flags_hindsight(setup: Any) -> None:
         json={"instrument_id": AAPL, "executions": [{"ledger": "broker", "execution_id": "x"}]},
     )
     assert missing.status_code == 404
+
+
+def test_trade_review_matches_each_account_on_its_own(setup: Any) -> None:
+    client, journal, _runner, asked = setup
+    for document in (
+        broker("1", "buy", "100", "2026-03-02T15:00:00Z", "toss-abc-1"),
+        broker("2", "buy", "90", "2026-03-03T15:00:00Z", "kiwoom-us", fees=None),
+        broker("3", "sell", "120", "2026-03-10T15:00:00Z", "kiwoom-us", fees=None),
+        broker("4", "sell", "130", "2026-03-11T15:00:00Z", "kiwoom-us", fees=None),
+    ):
+        assert journal.record_broker_execution(document) == "new"
+    response = client.post(
+        "/v1/agents/review/trades",
+        json={
+            "instrument_id": AAPL,
+            "executions": [
+                {"ledger": "broker", "execution_id": f"brk-{n}"} for n in ("4", "3", "2", "1")
+            ],
+        },
+    )
+    assert response.status_code == 201, response.text
+    analysis = response.json()
+    validate_document(analysis)
+    facts = {f["code"]: f for f in analysis["facts"]}
+    # One FIFO across accounts would close the Toss buy at 100 with the Kiwoom sell at 120
+    # and leave nothing open. Per account: Kiwoom buy 90 -> sell 120 is +300, the second
+    # Kiwoom sell has no buy in that account, and the Toss buy stays open.
+    assert facts["realized_pnl"]["value"] == "299.50"  # less the Toss fee 0.50 only
+    assert "each of 2 accounts" in facts["realized_pnl"]["text"]
+    assert facts["open_quantity"]["value"] == "10"
+    assert facts["unmatched_sell"]["value"] == "10"
+    assert facts["account_count"]["value"] == "2"
+    per_account = [f for f in analysis["facts"] if f["code"] == "account_realized_pnl"]
+    assert [(f["subject"], f["value"]) for f in per_account] == [
+        ("account 1", "-0.50"),
+        ("account 2", "300.00"),
+    ]
+    assert any("no fees for 3" in note for note in analysis["uncertainty"])
+    assert "account:broker:toss-abc-1" in analysis["source_refs"]
+    assert "account:broker:kiwoom-us" in analysis["source_refs"]
+    # Account refs stay local: the payload for Claude names accounts by number only.
+    payload = client.get(f"/v1/agents/analyses/{analysis['analysis_id']}/payload").json()
+    assert "toss-abc-1" not in json.dumps(payload)
+    assert "kiwoom-us" not in json.dumps(payload)
+    assert asked.calls == []
 
 
 def test_backtest_review_uses_the_pinned_results(setup: Any) -> None:
