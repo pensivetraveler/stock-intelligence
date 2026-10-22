@@ -127,6 +127,9 @@ export function BacktestScreen({
       new Date(Date.UTC(today.getUTCFullYear() - 2, today.getUTCMonth(), 1)),
     ),
     endDate: isoDate(today),
+    // "count": the first barCount bars from startDate, searched up to today.
+    rangeMode: "dates" as "dates" | "count",
+    barCount: "5000",
     capital: activeInstrumentId.startsWith("kr:") ? "10000000" : "100000",
     feeRate: "0.0005",
     feePerOrder: "0",
@@ -249,11 +252,20 @@ export function BacktestScreen({
       loadStrategies();
       if (run) {
         if (!currency) throw new Error(t("bt.mixedCurrency"));
+        const barCount = Number(config.barCount);
+        if (
+          config.rangeMode === "count" &&
+          !(Number.isInteger(barCount) && barCount >= 1 && barCount <= 5000)
+        ) {
+          throw new Error(t("bt.barCountInvalid"));
+        }
         const request: RunConfigRequest = {
           instrument_ids: chosen,
           timeframe: config.timeframe,
           start_date: config.startDate,
-          end_date: config.endDate,
+          end_date:
+            config.rangeMode === "count" ? isoDate(today) : config.endDate,
+          ...(config.rangeMode === "count" ? { bar_count: barCount } : {}),
           initial_capital: config.capital.trim(),
           currency: currency as RunConfigRequest["currency"],
           fee_rate: config.feeRate.trim() || "0",
@@ -458,15 +470,46 @@ export function BacktestScreen({
                 />
               </label>
               <label>
-                {t("bt.end")}
-                <input
-                  type="date"
-                  value={config.endDate}
+                {t("bt.rangeMode")}
+                <select
+                  value={config.rangeMode}
                   onChange={(event) =>
-                    setConfig({ ...config, endDate: event.target.value })
+                    setConfig({
+                      ...config,
+                      rangeMode: event.target.value as "dates" | "count",
+                    })
                   }
-                />
+                >
+                  <option value="dates">{t("bt.rangeDates")}</option>
+                  <option value="count">{t("bt.rangeCount")}</option>
+                </select>
               </label>
+              {config.rangeMode === "count" ? (
+                <label>
+                  {t("bt.barCount")}
+                  <input
+                    type="number"
+                    min={1}
+                    max={5000}
+                    step={1}
+                    value={config.barCount}
+                    onChange={(event) =>
+                      setConfig({ ...config, barCount: event.target.value })
+                    }
+                  />
+                </label>
+              ) : (
+                <label>
+                  {t("bt.end")}
+                  <input
+                    type="date"
+                    value={config.endDate}
+                    onChange={(event) =>
+                      setConfig({ ...config, endDate: event.target.value })
+                    }
+                  />
+                </label>
+              )}
               <label>
                 {t("bt.capital", { currency: currency ?? "—" })}
                 <input

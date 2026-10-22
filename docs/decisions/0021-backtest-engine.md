@@ -137,6 +137,17 @@ On 2026-10-21 the user chose:
   - **Through the backtest loader (2018 Samsung, daily):** raw prices give a first-to-last close ratio of 0.0152 and a suspected split on 2018-05-03. Split-adjusted prices give 0.7585, with no suspected split and only the `adjusted_prices` warning. Weekly results match.
 - **Localized warnings:** results also carry `warning_details` (`code`, `instrument_id`, `count`, `dates`). The screen words them in its own language; results stored before this have only the English `warnings` text.
 
+## Follow-up (2026-10-22): start date plus a number of bars
+
+The user asked for runs on 5,000 bars from a chosen point, in any past window rather than only up to today.
+
+- **Config:** `bar_count` (1 to 5,000, optional). With it, the run takes the first `bar_count` bars from `start_date`. `end_date` only bounds the search; the screen sends today.
+- **Reading:** intraday runs read sessions forward from the start date and stop once they have enough bars, at most 1,000 sessions. The 60-session limit applies only to date-range runs. Daily and weekly runs read the range once and keep the first `bar_count` bars.
+- **Pinning:** each input records `bar_count_requested`. `requested_end_utc`, the expected and missing intervals, and the bars' SHA-256 cover only the bars used.
+- **Shortfall:** when fewer bars exist than asked, the run still goes ahead with the warning `fewer_bars`.
+- **Limit:** 5,000 is also the Python indicator limit (ADR 0023), so a rule with a Python indicator never exceeds it in this mode.
+- **Screen:** "Range" picks "Start to end date" or "Start + number of bars".
+
 ## Alternatives considered
 
 - **Run the engine in the browser and reuse the TypeScript indicators:** this avoids porting indicators, but gives no isolated Python execution, no queued and cancellable server jobs and no Decimal accounting.

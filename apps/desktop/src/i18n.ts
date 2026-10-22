@@ -356,6 +356,11 @@ const en = {
   "bt.timeframe": "Timeframe",
   "bt.start": "Start date",
   "bt.end": "End date",
+  "bt.rangeMode": "Range",
+  "bt.rangeDates": "Start to end date",
+  "bt.rangeCount": "Start + number of bars",
+  "bt.barCount": "Bars (up to 5,000)",
+  "bt.barCountInvalid": "Enter a whole number of bars from 1 to 5,000.",
   "bt.capital": "Initial capital ({currency})",
   "bt.feeRate": "Fee rate (0.0005 = 0.05%)",
   "bt.feePerOrder": "Fee per order",
@@ -445,6 +450,8 @@ const en = {
   "bt.warn.suspected_splits":
     "{symbol}: the price jumps by about a whole split ratio on {dates}; results around those dates are likely wrong.",
   "bt.warn.no_bars": "{symbol}: no bars in the range.",
+  "bt.warn.fewer_bars":
+    "{symbol}: only {count} of the requested bars exist from the start date up to today.",
   "bt.warn.survivorship":
     "The universe is today's list: stocks delisted before today are missing, which can flatter results (survivorship bias).",
   "bt.perSymbol": "By instrument",
@@ -1256,6 +1263,11 @@ const ko: Record<MessageKey, string> = {
   "bt.timeframe": "타임프레임",
   "bt.start": "시작일",
   "bt.end": "종료일",
+  "bt.rangeMode": "기간 방식",
+  "bt.rangeDates": "시작일~종료일",
+  "bt.rangeCount": "시작일부터 봉 개수",
+  "bt.barCount": "봉 개수(최대 5,000)",
+  "bt.barCountInvalid": "봉 개수는 1~5,000 사이의 정수로 입력하세요.",
   "bt.capital": "초기 자본({currency})",
   "bt.feeRate": "수수료율(0.0005 = 0.05%)",
   "bt.feePerOrder": "주문당 수수료",
@@ -1343,6 +1355,8 @@ const ko: Record<MessageKey, string> = {
   "bt.warn.suspected_splits":
     "{symbol}: {dates}에 분할 비율과 비슷한 가격 급변이 있어 그 전후 결과가 틀릴 가능성이 큽니다.",
   "bt.warn.no_bars": "{symbol}: 기간 안에 봉이 없습니다.",
+  "bt.warn.fewer_bars":
+    "{symbol}: 시작일부터 오늘까지 요청한 봉 중 {count}개만 있습니다.",
   "bt.warn.survivorship":
     "종목 목록은 오늘 기준입니다. 이전에 상장폐지된 종목이 빠져 결과가 좋게 나올 수 있습니다(생존 편향).",
   "bt.perSymbol": "종목별",

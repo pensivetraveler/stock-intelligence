@@ -4376,6 +4376,12 @@
             },
             "adjustment": {
               "enum": ["raw", "split_adjusted", "fully_adjusted"]
+            },
+            "bar_count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000,
+              "description": "Bar-count mode: the first N bars from start_date, read forward up to end_date (any past window, not only up to today). Absent: every bar from start_date to end_date."
             }
           }
         },
@@ -5014,6 +5020,12 @@
               },
               "adjustment_requested": {
                 "enum": ["raw", "split_adjusted", "fully_adjusted"]
+              },
+              "bar_count_requested": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5000,
+                "description": "Bar-count mode: the number of bars asked for; bar_count is how many were found."
               }
             }
           }
@@ -5086,7 +5098,8 @@
                   "suspected_splits",
                   "no_bars",
                   "survivorship",
-                  "adjusted_prices"
+                  "adjusted_prices",
+                  "fewer_bars"
                 ]
               },
               "instrument_id": {
