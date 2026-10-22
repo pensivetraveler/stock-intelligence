@@ -286,6 +286,12 @@ def main() -> None:
                 if not callable(namespace.get("on_bar")):
                     raise ValueError("the strategy must define on_bar(ctx)")
                 result = {"ok": True}
+            elif message["type"] == "history":
+                # Earlier bars for warm-up (a run that starts later, ADR 0032): added to
+                # ctx.history without calling on_bar, so no order can come from them.
+                bars = history.setdefault(message["instrument_id"], [])
+                bars.extend(Bar(item) for item in message["bars"])
+                result = {"ok": True}
             else:
                 bars = history.setdefault(message["instrument_id"], [])
                 bars.append(Bar(message["bar"]))

@@ -460,11 +460,14 @@ export function tunablePaths(definition: unknown): TunablePath[] {
     }
     for (const [key, value] of Object.entries(record)) {
       if (key === "type" || key === "op" || key === "mode") continue;
+      // A Python strategy's own settings: /params/<name> (ADR 0032).
+      const pythonSetting = path === "/params" && isNumber(value);
       if (
-        isNumber(value) &&
-        ["value", "stop_loss_pct", "take_profit_pct", "offset_pct"].includes(
-          key,
-        )
+        pythonSetting ||
+        (isNumber(value) &&
+          ["value", "stop_loss_pct", "take_profit_pct", "offset_pct"].includes(
+            key,
+          ))
       ) {
         found.push({
           path: `${path}/${key}`,
@@ -487,6 +490,8 @@ export interface WalkForwardDraft {
   objective:
     "net_return" | "return_over_drawdown" | "profit_factor" | "win_rate";
   grid: { path: string; values: string }[];
+  /** In-sample stretches start at the first bar and grow (instead of rolling). */
+  anchored?: boolean;
 }
 
 export const DEFAULT_WALK_FORWARD: WalkForwardDraft = {
@@ -522,5 +527,6 @@ export function walkForwardSpec(
     out_of_sample_bars: Number(draft.outOfSampleBars),
     objective: draft.objective,
     grid,
+    anchored: draft.anchored ?? false,
   };
 }

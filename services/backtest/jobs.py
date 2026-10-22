@@ -290,7 +290,11 @@ class BacktestRunner:
                 config["walk_forward"],
                 inputs,
                 engine_config,
-                lambda chosen: RuleSignals(chosen, inputs, self.custom_indicator, self._process),
+                lambda chosen: (
+                    RuleSignals(chosen, inputs, self.custom_indicator, self._process)
+                    if chosen["type"] == "rules"
+                    else PythonSignals(chosen, inputs, self._process)
+                ),
                 custom=self.custom_indicator,
                 cancelled=lambda: self._cancelled(run_id),
                 progress=lambda fraction: self.store.set_progress(run_id, 0.1 + 0.9 * fraction),

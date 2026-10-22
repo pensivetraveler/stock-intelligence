@@ -28,6 +28,7 @@ OBJECTIVES = ("net_return", "return_over_drawdown", "profit_factor", "win_rate")
 MAX_PARAMETERS = 3
 MAX_VALUES = 20
 MAX_BACKTESTS = 400  # windows x combinations
+MAX_PYTHON_BACKTESTS = 100  # each Python run starts its own sandbox process
 MAX_WINDOWS = 50
 
 
@@ -39,7 +40,7 @@ def clean_spec(value: object) -> dict[str, Any]:
     """Validated walk-forward settings (shape only; paths are checked against the strategy)."""
     if not isinstance(value, dict):
         raise WalkForwardError("walk_forward must be an object")
-    extra = set(value) - {"in_sample_bars", "out_of_sample_bars", "objective", "grid"}
+    extra = set(value) - {"in_sample_bars", "out_of_sample_bars", "objective", "grid", "anchored"}
     if extra:
         raise WalkForwardError(f"walk_forward has unexpected fields: {', '.join(sorted(extra))}")
     sizes = {}
@@ -74,7 +75,10 @@ def clean_spec(value: object) -> dict[str, Any]:
         clean_grid.append({"path": path, "values": list(values)})
     if len({item["path"] for item in clean_grid}) != len(clean_grid):
         raise WalkForwardError("each grid path may appear once")
-    return {**sizes, "objective": objective, "grid": clean_grid}
+    anchored = value.get("anchored", False)
+    if not isinstance(anchored, bool):
+        raise WalkForwardError("walk_forward anchored must be true or false")
+    return {**sizes, "objective": objective, "grid": clean_grid, "anchored": anchored}
 
 
 def _set(definition: dict[str, Any], path: str, value: float) -> None:
@@ -87,6 +91,8 @@ def _set(definition: dict[str, Any], path: str, value: float) -> None:
         current = node[int(last)]
     elif isinstance(node, dict) and last in node:
         current = node[last]
+    elif isinstance(node, dict) and parts[:-1] == ["params"]:
+        current = 0  # a Python strategy's setting left to its code's default
     else:
         raise KeyError(path)
     if isinstance(current, bool) or not isinstance(current, (int, float, str)):
@@ -101,9 +107,11 @@ def variants(
     definition: dict[str, Any], spec: dict[str, Any], custom: Any = None
 ) -> list[tuple[dict[str, float], dict[str, Any]]]:
     """Every grid combination as (assignment, validated definition), in grid order."""
-    if definition["type"] != "rules":
-        raise WalkForwardError("walk-forward runs take rules strategies for now")
     paths = [item["path"] for item in spec["grid"]]
+    if definition["type"] == "python" and not all(
+        path.startswith("/params/") and path.count("/") == 2 for path in paths
+    ):
+        raise WalkForwardError("a Python strategy's grid varies its params: /params/<name>")
     found = []
     for values in itertools.product(*(item["values"] for item in spec["grid"])):
         candidate = copy.deepcopy(definition)
@@ -125,13 +133,15 @@ def windows(times: Sequence[int], spec: dict[str, Any]) -> list[tuple[int, int, 
     the last window may be shorter. Ends are exclusive except the run's final bar time."""
     size_in, size_out = spec["in_sample_bars"], spec["out_of_sample_bars"]
     found = []
-    start = 0
-    while start + size_in < len(times):
-        split = start + size_in
+    split = size_in
+    while split < len(times):
+        # Rolling: the in-sample stretch keeps its length. Anchored: it always starts at
+        # the first bar and grows by one out-of-sample stretch per window.
+        start = 0 if spec.get("anchored") else split - size_in
         stop = min(split + size_out, len(times))
         end = times[stop] if stop < len(times) else times[-1] + 1
         found.append((times[start], times[split], end, times[stop - 1]))
-        start += size_out
+        split += size_out
         if len(found) > MAX_WINDOWS:
             raise WalkForwardError(
                 f"more than {MAX_WINDOWS} windows: use larger out_of_sample_bars"
@@ -196,13 +206,21 @@ class WalkForward:
         combos = variants(self.definition, self.spec, self.custom)
         times = sorted({bar.time for item in self.inputs for bar in item.bars})
         cuts = windows(times, self.spec)
-        if len(cuts) * len(combos) > MAX_BACKTESTS:
+        python = self.definition["type"] == "python"
+        limit = MAX_PYTHON_BACKTESTS if python else MAX_BACKTESTS
+        if len(cuts) * len(combos) > limit:
             raise WalkForwardError(
-                f"{len(cuts)} windows x {len(combos)} combinations exceed {MAX_BACKTESTS} backtests"
+                f"{len(cuts)} windows x {len(combos)} combinations exceed {limit} backtests"
             )
-        # One signal source per combination: rules sources keep no state between runs,
-        # so their indicator series are computed once and reused in every window.
-        sources = [self.make_source(definition) for _assignment, definition in combos]
+        # Rules sources keep no state between runs, so one per combination is reused in
+        # every window (indicators computed once). A Python strategy keeps state in its
+        # process, so every run gets a fresh one that sees only history before its start.
+        cached = [] if python else [self.make_source(d) for _a, d in combos]
+
+        def source(k: int) -> SignalSource:
+            return self.make_source(combos[k][1]) if python else cached[k]
+
+        sources = cached
         chosen = []
         done, total = 0, len(cuts) * len(combos) + 1
         for number, (in_start, out_start, out_end, _last) in enumerate(cuts):
@@ -213,7 +231,7 @@ class WalkForward:
                     definition,
                     self.inputs,
                     self.config,
-                    sources[k],
+                    source(k),
                     cancelled=self.cancelled,
                     trade_window=(in_start, out_start),
                 ).run()
@@ -225,7 +243,7 @@ class WalkForward:
             assert best is not None
             chosen.append((number, best, in_start, out_start, out_end))
         schedule = [
-            (out_start, out_end, sources[k]) for _n, (_v, k), _i, out_start, out_end in chosen
+            (out_start, out_end, source(k)) for _n, (_v, k), _i, out_start, out_end in chosen
         ]
         final = Backtest(
             self.run_id,
@@ -238,6 +256,7 @@ class WalkForward:
         ).run()
         final["walk_forward"] = {
             "objective": self.spec["objective"],
+            "anchored": bool(self.spec.get("anchored")),
             "in_sample_bars": self.spec["in_sample_bars"],
             "out_of_sample_bars": self.spec["out_of_sample_bars"],
             "combinations": len(combos),

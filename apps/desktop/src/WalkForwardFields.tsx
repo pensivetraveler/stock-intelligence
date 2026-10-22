@@ -63,6 +63,16 @@ export function WalkForwardFields({
               />
             </label>
             <label>
+              <input
+                type="checkbox"
+                checked={draft.anchored ?? false}
+                onChange={(event) =>
+                  onChange({ ...draft, anchored: event.target.checked })
+                }
+              />{" "}
+              {t("bt.wf.anchored")}
+            </label>
+            <label>
               {t("bt.wf.objective")}
               <select
                 value={draft.objective}
