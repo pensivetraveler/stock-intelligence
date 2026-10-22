@@ -10,7 +10,12 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { zoneOf } from "./market-zone";
-import { isUncertain, summarize, toSeries } from "./chart-data";
+import {
+  isUncertain,
+  summarize,
+  toDayMarketCandles,
+  toSeries,
+} from "./chart-data";
 import type { Drawing, DrawingTool } from "./drawings";
 import { barEnd, barsAsOf } from "./replay";
 import {
@@ -74,11 +79,18 @@ const WARMUP_SESSIONS = 10;
 /** Earlier sessions requested at the same time while history loads. */
 const HISTORY_REQUESTS = 4;
 
-function previousDay(date: string): string {
+function shiftDays(date: string, days: number): string {
   const value = new Date(`${date}T00:00:00Z`);
-  value.setUTCDate(value.getUTCDate() - 1);
+  value.setUTCDate(value.getUTCDate() + days);
   return value.toISOString().slice(0, 10);
 }
+
+function previousDay(date: string): string {
+  return shiftDays(date, -1);
+}
+
+/** The day-market endpoint covers at most this many trading days per request. */
+const DAY_MARKET_DATES = 14;
 
 function toOhlcv(bars: PriceBar[]): OhlcvBar[] {
   return bars.map((bar) => ({
@@ -489,6 +501,59 @@ export function ChartPanel({
     return source ? barsAsOf(source, replayTime) : null;
   }, [allBars, historyBars, replayTime, asOf]);
   const series = useMemo(() => (bars ? toSeries(bars) : null), [bars]);
+
+  // The US day market (ADR 0030): its own request and series, never mixed into `bars`,
+  // so indicators, markers and candle clicks keep using the main bars only.
+  const dayMarketWanted =
+    sessionScope === "overnight" &&
+    !isDailyTimeframe(timeframe) &&
+    instrumentId.startsWith("us:");
+  const [dayMarket, setDayMarket] = useState<{
+    bars: PriceBar[];
+    error: unknown;
+  } | null>(null);
+  useEffect(() => {
+    let current = true;
+    setDayMarket(null);
+    if (!dayMarketWanted || unavailable || !instrumentsReady || !history.done) {
+      return;
+    }
+    const oldest = shiftDays(sessionDate, 1 - DAY_MARKET_DATES);
+    api
+      .overnightBars({
+        instrumentId,
+        timeframe,
+        fromDate: earliestDate > oldest ? earliestDate : oldest,
+        toDate: sessionDate,
+      })
+      .then((response) => {
+        if (current) setDayMarket({ bars: response.bars, error: null });
+      })
+      .catch((error: unknown) => {
+        if (current) setDayMarket({ bars: [], error });
+      });
+    return () => {
+      current = false;
+    };
+  }, [
+    api,
+    dayMarketWanted,
+    instrumentId,
+    timeframe,
+    sessionDate,
+    earliestDate,
+    history.done,
+    unavailable,
+    instrumentsReady,
+  ]);
+  const dayMarketCandles = useMemo(() => {
+    if (!dayMarket) return [];
+    const shown =
+      replayTime === null
+        ? dayMarket.bars
+        : barsAsOf(dayMarket.bars, replayTime);
+    return toDayMarketCandles(shown);
+  }, [dayMarket, replayTime]);
   // In replay the summary describes the as-of answer; the whole-day one is hidden.
   const summary =
     load.status !== "ready"
@@ -778,6 +843,7 @@ export function ChartPanel({
               chartId={chartId}
               candles={series.candles}
               volume={series.volume}
+              dayMarket={dayMarketCandles}
               sync={sync}
               markers={markers}
               onCandleClick={selectCandle}
@@ -1091,6 +1157,21 @@ export function ChartPanel({
           {message}
         </p>
       ))}
+      {dayMarketWanted && dayMarket ? (
+        <p
+          className={dayMarket.error ? "chart-error" : "workspace-note"}
+          role={dayMarket.error ? "alert" : "status"}
+        >
+          {dayMarket.error
+            ? t("chart.dayMarketFailed", {
+                error:
+                  dayMarket.error instanceof Error
+                    ? dayMarket.error.message
+                    : String(dayMarket.error),
+              })
+            : t("chart.dayMarketNote", { n: dayMarketCandles.length })}
+        </p>
+      ) : null}
       {summary && load.status === "ready" ? (
         <details className="chart-info">
           <summary>

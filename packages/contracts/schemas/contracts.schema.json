@@ -287,8 +287,16 @@
           "enum": ["shares", "provider_units"]
         },
         "session": {
-          "enum": ["pre", "regular", "post", "all_day", "closed", "unknown"],
-          "description": "all_day: a daily or weekly bar spanning the whole trading day, extended sessions included (Toss Korean daily candles, 08:00-20:00 KST)."
+          "enum": [
+            "pre",
+            "regular",
+            "post",
+            "overnight",
+            "all_day",
+            "closed",
+            "unknown"
+          ],
+          "description": "overnight: the US day market (Blue Ocean ATS, 20:00-04:00 New York time before the trading day it belongs to), served apart from the other sessions (ADR 0030)."
         },
         "is_final": {
           "type": "boolean"

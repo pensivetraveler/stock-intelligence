@@ -342,6 +342,7 @@ function fakeApi(
           : session,
       );
     },
+    overnightBars: () => Promise.reject(new Error("no day market here")),
     bars: (request) => {
       barsCalls.push(request);
       const response = fixture<MarketBarsResponse>(
@@ -652,6 +653,43 @@ describe("chart workspace", () => {
       /fake-market-data/,
     );
     expect(within(first).getByText(/early close/)).toBeInTheDocument();
+  });
+
+  it("draws the US day market as its own series, from its own request", async () => {
+    const api = fakeApi();
+    const response = fixture<MarketBarsResponse>(
+      "market-bars-response-aggregated.json",
+    );
+    const overnight = vi.fn(async () => ({
+      ...response,
+      bars: response.bars.map((bar) => ({
+        ...bar,
+        session: "overnight" as const,
+      })),
+    }));
+    api.overnightBars = overnight;
+    render(<Workspace api={api} storage={splitStorage()} />);
+    await screen.findByTestId("chart-chart-2");
+    const before = api.barsCalls.length;
+    fireEvent.click(screen.getByRole("button", { name: "+ Day market" }));
+
+    const chart = screen.getByRole("region", { name: /Chart 1/ });
+    expect(
+      await within(chart).findByText(
+        /Day market \(Blue Ocean via Alpaca BOATS\): 1 bars/,
+      ),
+    ).toBeInTheDocument();
+    expect(overnight).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instrumentId: "us:synth:xnas:2026",
+        timeframe: "5m",
+        toDate: "2026-10-09",
+      }),
+    );
+    // The main bars are still the extended-hours ones, requested as before.
+    expect(
+      api.barsCalls.slice(before).every((call) => call.timeframe === "5m"),
+    ).toBe(true);
   });
 
   it("changes one chart without touching the other and saves the layout", async () => {

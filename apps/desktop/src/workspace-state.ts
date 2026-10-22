@@ -5,7 +5,8 @@ import { parseIndicators, type IndicatorInstance } from "./indicators";
 import type { Timeframe } from "./market-api";
 import { isTimeframe } from "./timeframes";
 
-export type SessionScope = "regular" | "extended";
+/** "overnight": extended hours plus the US day market drawn as its own series (ADR 0030). */
+export type SessionScope = "regular" | "extended" | "overnight";
 
 /** One chart's own settings. Charts never share or propagate these implicitly. */
 export interface ChartConfig {
@@ -79,7 +80,9 @@ function parseChart(value: unknown): ChartConfig | null {
     !isTimeframe(chart.timeframe) ||
     typeof chart.sessionDate !== "string" ||
     !SESSION_DATE.test(chart.sessionDate) ||
-    (chart.sessionScope !== "regular" && chart.sessionScope !== "extended")
+    (chart.sessionScope !== "regular" &&
+      chart.sessionScope !== "extended" &&
+      chart.sessionScope !== "overnight")
   ) {
     return null;
   }
@@ -161,10 +164,10 @@ export function sessionRange(
   window: SessionWindow,
   scope: SessionScope,
 ): { startUtc: string; endUtc: string } | null {
-  const start =
-    scope === "extended" ? window.pre_open_utc : window.regular_open_utc;
-  const end =
-    scope === "extended" ? window.post_close_utc : window.regular_close_utc;
+  // The day market comes from its own endpoint; the main bars are the extended ones.
+  const extended = scope !== "regular";
+  const start = extended ? window.pre_open_utc : window.regular_open_utc;
+  const end = extended ? window.post_close_utc : window.regular_close_utc;
   return window.is_trading_day && start && end
     ? { startUtc: start, endUtc: end }
     : null;

@@ -1,6 +1,8 @@
 """Alpaca Market Data API v2 adapter (prototype, read-only).
 
-Only `GET /v2/stocks/bars` is called; no trading endpoint is ever used. Credentials
+Only `GET /v2/stocks/bars` is called; no trading endpoint is ever used. Day-market
+(overnight) bars come from the same endpoint with `feed=boats` and are kept apart from the
+SIP/IEX bars (ADR 0030). Credentials
 come from the environment and are never logged, stored or echoed in errors.
 """
 
@@ -30,6 +32,7 @@ from services.market_data.daily import (
     sessions_in_range,
     validate_daily_query,
 )
+from services.market_data.overnight import OVERNIGHT_POLICY_VERSION, overnight_window
 from services.market_data.provider import (
     BarsQuery,
     BarsResult,
@@ -65,6 +68,12 @@ ASSETS_PATH = "/v2/assets"
 
 VENUE_PATTERN = re.compile(r"^[A-Z]{4}$")
 PAGE_LIMIT = 10_000
+BOATS_FEED = "boats"
+BOATS_REVISION = "alpaca-boats-raw-r1"
+MAX_OVERNIGHT_DATES = 14
+OVERNIGHT_PAGES = 50
+# Checked live on 2026-10-22 with the user's plan: the newest BOATS bar was one minute old.
+BOATS_PUBLICATION_DELAY_MINUTES = 0
 
 
 #: Contract adjustment label -> Alpaca's `adjustment` parameter.
@@ -406,6 +415,190 @@ class AlpacaMarketDataProvider:
         )
         return build_daily_result(query, raw, source, self._calendar, now)
 
+    def get_overnight_bars(
+        self,
+        instrument_id: str,
+        timeframe: str,
+        from_date: date,
+        to_date: date,
+        as_of_utc: datetime | None = None,
+    ) -> BarsResult:
+        """Day-market bars (Alpaca `feed=boats`) of the overnight sessions belonging to the
+        trading days from `from_date` to `to_date`, as 1m bars or Nm buckets counted from
+        each session's 20:00 New York start (ADR 0030)."""
+        symbol = self.symbol_for(instrument_id)
+        if symbol is None:
+            raise InstrumentNotFoundError("instrument is not a listed US equity ID")
+        minutes = 1 if timeframe == "1m" else _bucket_minutes(timeframe)
+        if to_date < from_date:
+            raise InvalidBarsQueryError("to_date must not be before from_date")
+        if (to_date - from_date).days >= MAX_OVERNIGHT_DATES:
+            raise InvalidBarsQueryError(f"one request covers at most {MAX_OVERNIGHT_DATES} dates")
+        now = self._now()
+        if as_of_utc is not None and as_of_utc > now:
+            raise InvalidBarsQueryError("as_of_utc cannot be in the future")
+        # Without a trading day in range, coverage still names the dates asked for.
+        asked_start = datetime.combine(
+            from_date - timedelta(days=1), time(20, 0), NEW_YORK
+        ).astimezone(timezone.utc)
+        asked_end = datetime.combine(to_date, time(4, 0), NEW_YORK).astimezone(timezone.utc)
+        windows: list[tuple[datetime, datetime]] = []
+        day = from_date
+        try:
+            while day <= to_date:
+                window = overnight_window(self._calendar, day)
+                if window is not None:
+                    windows.append(window)
+                day += timedelta(days=1)
+        except CalendarError as exc:
+            raise InvalidBarsQueryError(str(exc)) from exc
+        published_until = (now - timedelta(minutes=BOATS_PUBLICATION_DELAY_MINUTES)).replace(
+            second=0, microsecond=0
+        )
+        final_before = now - timedelta(minutes=self.config.finality_minutes)
+        raw: list[dict[str, Any]] = []
+        if windows and windows[0][0] < published_until:
+            raw = self._fetch_pages(
+                symbol,
+                "1Min",
+                windows[0][0],
+                min(windows[-1][1], published_until),
+                OVERNIGHT_PAGES,
+                feed=BOATS_FEED,
+            )
+        by_start: dict[datetime, dict[str, Any]] = {}
+        for item in raw:
+            try:
+                start = _parse_utc(str(item["t"]))
+                values = {key: Decimal(str(item[key])) for key in ("o", "h", "l", "c", "v")}
+            except (KeyError, ValueError, ArithmeticError) as exc:
+                raise ProviderDataError("Alpaca returned a malformed bar") from exc
+            if not any(lo <= start < hi for lo, hi in windows):
+                continue  # outside the overnight policy (e.g. a pre-market print)
+            if start in by_start:
+                raise ProviderDataError("the provider returned two bars for the same minute")
+            by_start[start] = values
+
+        visible: list[dict[str, Any]] = []
+        missing: list[dict[str, str]] = []
+        expected = 0
+        for window_start, window_end in windows:
+            bucket_start = window_start
+            while bucket_start < window_end:
+                bucket_end = min(bucket_start + timedelta(minutes=minutes), window_end)
+                expected += 1
+                bar = self._overnight_bar(
+                    instrument_id, timeframe, bucket_start, bucket_end, by_start, final_before
+                )
+                available = bar is not None and (
+                    as_of_utc is None or _parse_utc(bar["available_at_utc"]) <= as_of_utc
+                )
+                if bar is not None and available:
+                    visible.append(bar)
+                else:
+                    if bar is not None:
+                        reason = "not_available_as_of_cutoff"
+                    elif bucket_end > published_until:
+                        reason = "outside_entitlement"
+                    elif bucket_end > final_before:
+                        reason = "not_yet_final"
+                    elif as_of_utc is not None and bucket_end > as_of_utc:
+                        reason = "not_available_as_of_cutoff"
+                    else:
+                        reason = "provider_no_bar"
+                    missing.append(
+                        {
+                            "start_utc": _utc_text(bucket_start),
+                            "end_utc": _utc_text(bucket_end),
+                            "reason": reason,
+                        }
+                    )
+                bucket_start = bucket_end
+        coverage = {
+            "kind": "coverage_manifest",
+            "schema_version": "0.1",
+            "instrument_id": instrument_id,
+            "timeframe": timeframe,
+            "requested_start_utc": _utc_text(windows[0][0] if windows else asked_start),
+            "requested_end_utc": _utc_text(windows[-1][1] if windows else asked_end),
+            "coverage_status": (
+                "complete" if visible and not missing else ("partial" if visible else "empty")
+            ),
+            "verification_status": "unverified",
+            "observed_interval_count": len(visible),
+            "expected_interval_count": expected,
+            "missing_intervals": missing,
+            "source_id": "alpaca-boats",
+            "source_feed_scope": "alpaca-boats",
+            "adjustment": "raw",
+            "dataset_revision": BOATS_REVISION,
+            "point_in_time_cutoff_utc": _utc_text(as_of_utc) if as_of_utc is not None else None,
+        }
+        result = BarsResult(tuple(visible), coverage)
+        try:
+            validate_document(result.to_document())
+        except ValueError as exc:
+            raise ProviderDataError(f"provider data violates the contract: {exc}") from exc
+        return result
+
+    def _overnight_bar(
+        self,
+        instrument_id: str,
+        timeframe: str,
+        start: datetime,
+        end: datetime,
+        minutes: dict[datetime, dict[str, Decimal]],
+        final_before: datetime,
+    ) -> dict[str, Any] | None:
+        span = [
+            start + timedelta(minutes=i) for i in range(int((end - start).total_seconds() // 60))
+        ]
+        found = [(moment, minutes[moment]) for moment in span if moment in minutes]
+        if not found:
+            return None
+        # As in the session aggregator: a final minute without a print had no trades, so
+        # it is not an expected source bar.
+        settled_empty = sum(
+            1
+            for moment in span
+            if moment not in minutes and moment + timedelta(minutes=1) <= final_before
+        )
+        expected = len(span) - settled_empty
+        final = end <= final_before
+        aggregated = timeframe != "1m"
+        return {
+            "kind": "price_bar",
+            "schema_version": "0.1",
+            "instrument_id": instrument_id,
+            "timeframe": timeframe,
+            "interval_start_utc": _utc_text(start),
+            "interval_end_utc": _utc_text(end),
+            "open": format(found[0][1]["o"], "f"),
+            "high": format(max(item["h"] for _, item in found), "f"),
+            "low": format(min(item["l"] for _, item in found), "f"),
+            "close": format(found[-1][1]["c"], "f"),
+            "volume": format(sum((item["v"] for _, item in found), Decimal(0)), "f"),
+            "volume_unit": "shares",
+            "session": "overnight",
+            "is_final": final,
+            # Minutes without a print are normal in the thin day market, not gaps.
+            "quality": "complete" if final else ("partial" if aggregated else "provisional"),
+            "lineage": {
+                "kind": "aggregated_1m" if aggregated else "provider",
+                "source_timeframe": "1m",
+                "expected_source_bar_count": expected,
+                "observed_source_bar_count": len(found),
+                "source_dataset_revision": BOATS_REVISION if aggregated else None,
+                "calendar_id": "XNAS",
+                "calendar_version": f"{self._calendar.calendar_version}+{OVERNIGHT_POLICY_VERSION}",
+            },
+            "adjustment": "raw",
+            "source_id": "alpaca-boats",
+            "source_feed_scope": "alpaca-boats",
+            "dataset_revision": BOATS_REVISION,
+            "available_at_utc": _utc_text(end + timedelta(minutes=BOATS_PUBLICATION_DELAY_MINUTES)),
+        }
+
     def _validate(self, query: BarsQuery) -> None:
         if query.timeframe != "1m":
             raise InvalidBarsQueryError("the Alpaca adapter serves canonical 1m bars")
@@ -432,6 +625,7 @@ class AlpacaMarketDataProvider:
         end: datetime,
         max_pages: int,
         adjustment: str = "raw",
+        feed: str | None = None,
     ) -> list[dict[str, Any]]:
         params: dict[str, str | int] = {
             "symbols": symbol,
@@ -440,7 +634,7 @@ class AlpacaMarketDataProvider:
             "end": _utc_text(end),
             "limit": self.config.page_limit,
             "adjustment": adjustment,
-            "feed": self.config.feed,
+            "feed": feed or self.config.feed,
             "sort": "asc",
         }
         bars: list[dict[str, Any]] = []
@@ -532,6 +726,13 @@ class AlpacaMarketDataProvider:
                 end + timedelta(minutes=self.config.publication_delay_minutes)
             ),
         }
+
+
+def _bucket_minutes(timeframe: str) -> int:
+    match = re.fullmatch(r"([1-9][0-9]{0,2})m", timeframe)
+    if match is None or not 2 <= int(match.group(1)) <= 480:
+        raise InvalidBarsQueryError("day-market bars come as 1m or 2m to 480m")
+    return int(match.group(1))
 
 
 def _check(argv: list[str]) -> int:

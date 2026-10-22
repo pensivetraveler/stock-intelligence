@@ -27,7 +27,15 @@ export const COLORS = {
   volumeUp: "rgba(63, 182, 139, 0.35)",
   volumeDown: "rgba(229, 86, 107, 0.35)",
   volumeUncertain: "rgba(138, 148, 166, 0.35)",
+  // The US day market (Blue Ocean, ADR 0030): its own hues, never mistaken for SIP bars.
+  dayUp: "#5b8def",
+  dayDown: "#a77bd6",
 };
+
+/** Day-market candles; bars not yet final stay grey like any other. */
+export function toDayMarketCandles(bars: PriceBar[]): CandlePoint[] {
+  return toSeries(bars).candles;
+}
 
 function epochSeconds(utc: string): number {
   return Math.floor(Date.parse(utc) / 1000);

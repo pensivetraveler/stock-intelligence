@@ -31,6 +31,7 @@ from services.api.indicator_routes import register_indicator_routes
 from services.api.journal_routes import register_import_routes, register_journal_routes
 from services.backtest.jobs import BacktestRunner
 from services.backtest.store import BacktestStore
+from services.credentials.catalog import adapter_settings
 from services.credentials.pool import PooledProvider
 from services.credentials.store import CredentialStore, KeyringSecretBackend, SecretStorageError
 from services.custom_indicators.store import CustomIndicatorStore
@@ -57,7 +58,7 @@ from services.market_data.provider import (
     ProviderRateLimitError,
     ProviderUnavailableError,
 )
-from services.market_data.selection import chosen_provider, provider_from_env
+from services.market_data.selection import build_adapter, chosen_provider, provider_from_env
 from services.market_data.storage import (
     CachedMarketDataProvider,
     LocalMarketDataStore,
@@ -287,6 +288,33 @@ def _toss_credentials(credentials: CredentialStore | None) -> TossCredentials | 
     return None
 
 
+class _LazyBoats:
+    """Day-market bars (ADR 0030): an Alpaca adapter on the first enabled Alpaca key,
+    whichever provider serves the charts. Rebuilt when that key changes."""
+
+    def __init__(self, credentials: Callable[[], CredentialStore | None]) -> None:
+        self._credentials = credentials
+        self._key: tuple[str, str] | None = None
+        self._adapter: Any = None
+        self._lock = threading.Lock()
+
+    def get(self) -> Any:
+        store = self._credentials()
+        if store is None:
+            return None
+        record = next((item for item in store.list("alpaca") if item.enabled), None)
+        if record is None:
+            return None
+        secrets = store.secrets(record)
+        key = (secrets["api_key_id"], secrets["api_secret_key"])
+        with self._lock:
+            if self._adapter is None or self._key != key:
+                settings = adapter_settings(os.environ, "alpaca", secrets, record.environment)
+                self._adapter = build_adapter("alpaca", settings)
+                self._key = key
+            return self._adapter
+
+
 def _kiwoom_session(credentials: CredentialStore | None) -> KiwoomAccountSession | None:
     """A read-only account session of the first enabled real-account Kiwoom key."""
     if credentials is None:
@@ -495,6 +523,7 @@ def create_app(
     symbol_directory: SymbolDirectory | None = None,
     toss_session: Callable[[], TossSession | None] | None = None,
     kiwoom_session: Callable[[], KiwoomAccountSession | None] | None = None,
+    overnight_source: Callable[[], Any] | None = None,
     tick_store: TickStore | None = None,
     korean_provider: MarketDataProvider | None = None,
     korean_directory: SymbolDirectory | None = None,
@@ -511,6 +540,7 @@ def create_app(
     provider = _LazyProvider(market_data_provider, credentials.get, korean.get)
     toss = toss_session or (lambda: _toss_session(credentials.get()))
     kiwoom = kiwoom_session or (lambda: _kiwoom_session(credentials.get()))
+    boats = overnight_source or _LazyBoats(credentials.get).get
     symbols = _LazySymbols(symbol_directory, provider, toss, korean_directory)
     ticks_holder: list[TickStore | None] = [tick_store]
 
@@ -699,6 +729,8 @@ def create_app(
             )
         try:
             document = read(session)
+        except InstrumentNotFoundError as exc:
+            return _error_response(request, 404, "instrument_not_found", str(exc))
         except InvalidBarsQueryError as exc:
             return _error_response(request, 422, "invalid_market_data_query", str(exc))
         except ProviderAuthError as exc:
@@ -1075,6 +1107,40 @@ def create_app(
 
     # Provider and cache I/O are blocking; a sync endpoint runs in FastAPI's threadpool
     # instead of stalling the event loop.
+    @application.get("/v1/market/overnight-bars", response_model=None)
+    def overnight_bars(
+        request: Request,
+        instrument_id: Annotated[str, Query(min_length=1, max_length=200)],
+        from_date: Annotated[date, Query()],
+        to_date: Annotated[date, Query()],
+        timeframe: Annotated[str, Query(pattern=r"^[1-9][0-9]{0,2}m$")] = "1m",
+        as_of_utc: Annotated[datetime | None, Query()] = None,
+    ) -> Response:
+        """US day-market (overnight session) bars from Alpaca's BOATS feed, ADR 0030.
+
+        Never merged into /v1/market/bars: a separate stream with its own source label.
+        """
+        if market_of(instrument_id) != "US":
+            return _error_response(
+                request, 422, "invalid_market_data_query", "the day market is for US listings"
+            )
+        if as_of_utc is not None and as_of_utc.utcoffset() is None:
+            return _error_response(
+                request, 422, "invalid_market_data_query", "as_of_utc must carry a UTC offset"
+            )
+        return broker_read(
+            request,
+            boats,
+            "Alpaca",
+            lambda source: source.get_overnight_bars(
+                instrument_id,
+                timeframe,
+                from_date,
+                to_date,
+                None if as_of_utc is None else as_of_utc.astimezone(timezone.utc),
+            ).to_document(),
+        )
+
     @application.get("/v1/market/bars", response_model=None)
     def market_bars(
         request: Request,
