@@ -106,15 +106,21 @@ DEFAULT_CORS_ORIGINS = (
     "http://localhost:5173",
     "tauri://localhost",
 )
+# The Electron shell serves the screen from this origin (ADR 0028). It is allowed even
+# when SIW_CORS_ORIGINS replaces the defaults: no web page can send a siw:// origin.
+APP_SHELL_ORIGINS = ("siw://app",)
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 MAX_SESSION_LIST = 120
 
 
 def _cors_origins() -> list[str]:
     configured = os.getenv("SIW_CORS_ORIGINS")
-    if configured is None:
-        return list(DEFAULT_CORS_ORIGINS)
-    return [origin.strip() for origin in configured.split(",") if origin.strip()]
+    origins = (
+        list(DEFAULT_CORS_ORIGINS)
+        if configured is None
+        else [origin.strip() for origin in configured.split(",") if origin.strip()]
+    )
+    return origins + [origin for origin in APP_SHELL_ORIGINS if origin not in origins]
 
 
 def _incoming_request_id(request: Request) -> str:

@@ -1,5 +1,7 @@
 packages:
   - apps/*
+  # Packaged on its own with npm (ADR 0028), so CI never downloads Electron.
+  - "!apps/electron"
   - packages/contracts
 
 onlyBuiltDependencies:

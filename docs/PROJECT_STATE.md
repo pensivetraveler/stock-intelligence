@@ -1075,6 +1075,27 @@
   - 브라우저(실제 API, AAPL 일봉): 확장과 되돌림이 그려지고 설정이 바로 반영됐다. 확인 후 그림을 지웠다.
   - 확인 중 고친 것: 설정 패널 클릭이 아래 차트로 통과해 실제 체결 입력 창이 열리던 문제. 그림 레이어가 클릭을 통과시키는데 패널이 그 속성을 물려받았기 때문이다. 앞서 원인을 찾지 못했던 체결 입력 창도 같은 원인으로 보인다. 입력 창은 기록 없이 닫았다.
 
+## Electron 패키징 — 2026-10-22
+
+- **사용자 요청:** Electron으로 패키징한다. 결정 기록은 [ADR 0028](decisions/0028-electron-desktop-shell.md)에 있다.
+- **변경:**
+  - `apps/electron`(pnpm 작업공간에서 제외, npm 별도 잠금 파일)을 추가했다. 화면은 웹과 같은 빌드를 `siw://app` 출처로 띄운다.
+  - **로컬 API:** 실행 중이면 그대로 쓰고, 아니면 패키징한 저장소에서 `uv run uvicorn`으로 띄운다. 앱을 끌 때는 앱이 띄운 API만 끈다. 로그는 `~/Library/Logs/siw-electron/api.log`에 남긴다.
+  - **CORS:** API가 `siw://app`을 항상 허용한다. `.env`의 `SIW_CORS_ORIGINS`가 기본값을 대체해도 허용하며, 웹 페이지는 이 출처를 보낼 수 없다.
+  - **빌드 명령(`apps/electron`에서):**
+    - `npm run package`는 `.app`을 만든다.
+    - `npm run dist`는 `.dmg`를 만든다(x64, 서명 없음).
+- **검증:**
+  - `release/mac/Stock Intelligence Workstation.app`(257 MB)과 `release/Stock Intelligence Workstation-0.4.0-dev.dmg`(약 124 MB)를 만들었다.
+  - API를 끈 상태에서 앱을 실행하자 7초 안에 API를 직접 띄웠다. 화면이 종목·봉·원장·지표를 불러왔고 실시간 연결도 수락됐다. 앱을 끄자 앱이 띄운 API도 꺼졌다.
+  - Python 테스트 신규 2개(Electron 출처 허용, 다른 출처 거부)가 통과했다.
+  - 확인 중 고친 것: `.env`가 허용 출처를 대체해 `siw://app`이 막히던 문제.
+- **남은 위험:**
+  - 이 저장소 위치에 의존한다(옮기면 다시 패키징하거나 `SIW_REPO_DIR`를 지정한다).
+  - 서명·공증이 없어 Gatekeeper 경고가 뜬다.
+  - 기본 아이콘을 쓴다.
+  - Tauri 네이티브 빌드는 여전히 미검증이다.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:
