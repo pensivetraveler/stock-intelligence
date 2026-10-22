@@ -416,3 +416,111 @@ export function percent(value: string | null | undefined): string {
   if (value === null || value === undefined) return "—";
   return `${(Number(value) * 100).toFixed(2)}%`;
 }
+
+/** A number in a rules definition that a walk-forward grid may vary (ADR 0032). */
+export interface TunablePath {
+  path: string;
+  label: string;
+  current: string;
+}
+
+/**
+ * Numeric settings of a rules definition as JSON pointers: indicator parameters,
+ * comparison values, sizing, stop loss / take profit and order offsets.
+ */
+export function tunablePaths(definition: unknown): TunablePath[] {
+  const found: TunablePath[] = [];
+  const isNumber = (value: unknown) =>
+    (typeof value === "number" && Number.isFinite(value)) ||
+    (typeof value === "string" &&
+      value.trim() !== "" &&
+      !Number.isNaN(Number(value)));
+  const walk = (node: unknown, path: string, label: string[]) => {
+    if (Array.isArray(node)) {
+      node.forEach((item, index) =>
+        walk(item, `${path}/${index}`, [...label, `#${index + 1}`]),
+      );
+      return;
+    }
+    if (typeof node !== "object" || node === null) return;
+    const record = node as Record<string, unknown>;
+    if (typeof record.indicator === "string" && record.params) {
+      for (const [name, value] of Object.entries(
+        record.params as Record<string, unknown>,
+      )) {
+        if (isNumber(value)) {
+          found.push({
+            path: `${path}/params/${name}`,
+            label: [...label, `${record.indicator} ${name}`].join(" · "),
+            current: String(value),
+          });
+        }
+      }
+      return;
+    }
+    for (const [key, value] of Object.entries(record)) {
+      if (key === "type" || key === "op" || key === "mode") continue;
+      if (
+        isNumber(value) &&
+        ["value", "stop_loss_pct", "take_profit_pct", "offset_pct"].includes(
+          key,
+        )
+      ) {
+        found.push({
+          path: `${path}/${key}`,
+          label: [...label, key].join(" · "),
+          current: String(value),
+        });
+      } else {
+        walk(value, `${path}/${key}`, [...label, key]);
+      }
+    }
+  };
+  walk(definition, "", []);
+  return found;
+}
+
+export interface WalkForwardDraft {
+  enabled: boolean;
+  inSampleBars: string;
+  outOfSampleBars: string;
+  objective:
+    "net_return" | "return_over_drawdown" | "profit_factor" | "win_rate";
+  grid: { path: string; values: string }[];
+}
+
+export const DEFAULT_WALK_FORWARD: WalkForwardDraft = {
+  enabled: false,
+  inSampleBars: "120",
+  outOfSampleBars: "40",
+  objective: "net_return",
+  grid: [{ path: "", values: "" }],
+};
+
+/** The run config's walk_forward, or an error message key when the draft is incomplete. */
+export function walkForwardSpec(
+  draft: WalkForwardDraft,
+): Record<string, unknown> | { error: "bt.wf.incomplete" } {
+  const grid = draft.grid
+    .filter((row) => row.path)
+    .map((row) => ({
+      path: row.path,
+      values: row.values
+        .split(",")
+        .map((text) => text.trim())
+        .filter(Boolean)
+        .map(Number),
+    }));
+  if (
+    grid.length === 0 ||
+    grid.some((row) => row.values.length === 0 || row.values.some(Number.isNaN))
+  ) {
+    return { error: "bt.wf.incomplete" };
+  }
+  return {
+    in_sample_bars: Number(draft.inSampleBars),
+    out_of_sample_bars: Number(draft.outOfSampleBars),
+    objective: draft.objective,
+    grid,
+  };
+}
