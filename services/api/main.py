@@ -50,6 +50,7 @@ from services.market_data.kiwoom_account import (
 )
 from services.market_data.kiwoom_account import sync_domestic as kiwoom_sync_domestic
 from services.market_data.kiwoom_account import sync_executions as kiwoom_sync
+from services.market_data.kiwoom_account import sync_fees as kiwoom_sync_fees
 from services.market_data.market_router import MarketRouter
 from services.market_data.provider import (
     BarsQuery,
@@ -1031,6 +1032,31 @@ def create_app(
             lambda session: kiwoom_sync(session, store, instrument_for, clock, start, until),
         )
 
+    @application.post("/v1/brokers/kiwoom/sync-fees", response_model=None)
+    def kiwoom_sync_fees_endpoint(
+        request: Request,
+        since: Annotated[date | None, Query()] = None,
+        until: Annotated[date | None, Query()] = None,
+    ) -> Response:
+        """Store the commission and tax of Kiwoom US settlement lines (no order numbers)
+        from `since` (default: 90 days ago) to `until`; at most 400 days per call."""
+        store = journal.get()
+        if store is None:
+            return _error_response(
+                request,
+                503,
+                "journal_storage_unconfigured",
+                "set SIW_DATA_DIR to keep the broker ledger",
+            )
+        last = until or clock().astimezone(KIWOOM_NEW_YORK).date()
+        start = since or (last - timedelta(days=90))
+        return broker_read(
+            request,
+            kiwoom,
+            "Kiwoom",
+            lambda session: kiwoom_sync_fees(session, store, instrument_for, clock, start, until),
+        )
+
     @application.post("/v1/brokers/kiwoom/sync-domestic", response_model=None)
     def kiwoom_sync_domestic_endpoint(
         request: Request,
@@ -1081,7 +1107,7 @@ def create_app(
             "ledger": "broker_api",
             "executions": executions if limit is None else executions[-limit:],
             "execution_count": len(executions),
-            "positions": account_positions(executions),
+            "positions": account_positions(executions, store.broker_fee_lines(instrument_id)),
         }
         validate_document(document)
         return JSONResponse(content=document)

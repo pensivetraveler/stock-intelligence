@@ -149,6 +149,9 @@
     },
     {
       "$ref": "#/$defs/CustomIndicatorPreview"
+    },
+    {
+      "$ref": "#/$defs/BrokerFeeLine"
     }
   ],
   "$defs": {
@@ -1326,6 +1329,11 @@
           "type": "integer",
           "minimum": 1,
           "description": "Executions without reported fees (Kiwoom): realized P&L and fees leave their fees out. Absent when every fee is known."
+        },
+        "settlement_fee_lines": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Broker ledger: settlement lines whose commission and tax are included in fees and realized P&L (Kiwoom US). Absent when none."
         }
       }
     },
@@ -6109,6 +6117,78 @@
           }
         }
       }
+    },
+    "BrokerFeeLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "line_id",
+        "broker_id",
+        "broker_account_ref",
+        "instrument_id",
+        "symbol",
+        "side",
+        "settlement_date",
+        "quantity",
+        "price",
+        "commission",
+        "tax",
+        "currency",
+        "synced_at_utc"
+      ],
+      "properties": {
+        "kind": {
+          "const": "broker_fee_line"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "line_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "broker_id": {
+          "enum": ["kiwoom"]
+        },
+        "broker_account_ref": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "instrument_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "side": {
+          "$ref": "#/$defs/Side"
+        },
+        "settlement_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "quantity": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "price": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "commission": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "tax": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "currency": {
+          "enum": ["USD"]
+        },
+        "synced_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      },
+      "description": "Commission and tax of one settlement line (Kiwoom US ust21100), which carries no order number. Positions add these per account and instrument; orders keep fees null."
     }
   }
 }

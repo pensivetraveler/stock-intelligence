@@ -551,6 +551,7 @@ const en = {
   "account.conflicts": "; {n} changed after storing (kept as stored)",
   "account.syncKiwoom": "Sync Kiwoom US fills",
   "account.syncKiwoomDomestic": "Sync Kiwoom Korean trades",
+  "account.syncKiwoomFees": "Sync Kiwoom US fees",
   "account.kiwoomSince": "Kiwoom from",
   "account.kiwoomNote":
     ". Kiwoom: {n} orders outside the US session's hours (e.g. daytime session) were left out; fees are not reported and stay blank.",
@@ -1506,6 +1507,7 @@ const ko: Record<MessageKey, string> = {
   "account.conflicts": "; 저장 후 바뀐 주문 {n}건(저장된 값 유지)",
   "account.syncKiwoom": "키움 미국주식 체결 동기화",
   "account.syncKiwoomDomestic": "키움 국내주식 거래 동기화",
+  "account.syncKiwoomFees": "키움 미국주식 수수료 동기화",
   "account.kiwoomSince": "키움 시작일",
   "account.kiwoomNote":
     ". 키움: 미국 정규·시간외 시간대 밖 주문(주간거래 등) {n}건은 제외했고, 수수료는 제공되지 않아 비워 둡니다.",

@@ -58,6 +58,20 @@ ADR 0030 now places orders outside 04:00–20:00 New York time in the day market
 - **API and token:** `POST /v1/brokers/kiwoom/sync-domestic?since=&until=`. A token replaced by another client (return code 3, 8005) is reissued once.
 - **Live, 2026-10-22 (counts only):** domestic trades were found only in March 2023. 1,509 lines read, 1,423 stored, 86 lines on 7 codes not in the Korean directory, no conflicts.
 
+## Follow-up (2026-10-22): US fees from settlement lines
+
+- **Source:** ust21100 (미국주식 거래내역, 매매), read a month at a time. It reports commission (`fc_cmsn`) and tax (`fc_deal_tax`) per settlement line, without an order number. In the live data a stock's fee often sits on one line of its day.
+- **Storage:** each line with a fee is stored once as a `broker_fee_line` in a separate table. Orders keep `fees` null, because attributing fees to orders would be guesswork.
+- **Positions:** a position adds its account and instrument's fee lines to `fees` and subtracts them from realized P&L. It then shows `settlement_fee_lines`, and the journal no longer labels it "before fees".
+- **Required flag:** `krw_repl_skip_yn` is required in practice although the spec marks it optional (live error 1511).
+- **API:** `POST /v1/brokers/kiwoom/sync-fees?since=&until=` (settlement dates, at most 400 days per call).
+- **Live, 2026-10-22 (counts only):**
+  - **Lines read:** 26,512, 49,281 and 26,148 for the three years with trades.
+  - **Stored:** 58,499 lines with a fee. 586 lines the API returned twice were stored once, and 2 lines have unknown symbols.
+  - **Positions:** 1,898 of 2,095 Kiwoom positions now include reported fees. 23 still have none.
+- **No-data reply:** ust21100 answers an empty month with return code 20 and message code 501724, which is now read as "no rows" like 571758.
+- **Cost:** the broker ledger now reads every fee line to build positions (4.3 s on this data). It can be aggregated in SQL if that grows.
+
 ## Alternatives considered
 
 - **ust21180 to find the dates with fills, then ust21150 per date:** fewer daily calls, but ust21180 lists unfilled orders too and needed more than 200 pages for some months.

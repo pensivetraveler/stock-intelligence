@@ -127,20 +127,36 @@ def manual_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return positions
 
 
-def account_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def account_positions(
+    executions: list[dict[str, Any]], fee_lines: list[dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
     """Broker-ledger positions per broker account and instrument.
 
     Each account is its own FIFO book: a sell in one account never closes a buy made in
     another (for example a Kiwoom sell against a Toss buy). Positions carry `account_ref`.
+
+    `fee_lines` are fees a broker reports per settlement line without an order number
+    (Kiwoom US): their commission and tax are added to the position's fees and taken
+    from its realized P&L, never assigned to an order.
     """
     by_account: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
     for execution in executions:
         by_account[cast(str, execution["broker_account_ref"])].append(execution)
-    return [
-        {"account_ref": account, **position}
-        for account in sorted(by_account)
-        for position in manual_positions(by_account[account])
-    ]
+    fees: defaultdict[tuple[str, str], list[Decimal]] = defaultdict(list)
+    for line in fee_lines or []:
+        key = (cast(str, line["broker_account_ref"]), cast(str, line["instrument_id"]))
+        fees[key].append(Decimal(cast(str, line["commission"])) + Decimal(cast(str, line["tax"])))
+    positions: list[dict[str, Any]] = []
+    for account in sorted(by_account):
+        for position in manual_positions(by_account[account]):
+            reported = fees.get((account, cast(str, position["instrument_id"])))
+            if reported:
+                total = sum(reported, ZERO)
+                position["fees"] = _text(Decimal(position["fees"]) + total)
+                position["realized_pnl"] = _text(Decimal(position["realized_pnl"]) - total)
+                position["settlement_fee_lines"] = len(reported)
+            positions.append({"account_ref": account, **position})
+    return positions
 
 
 def scenario_pnl(scenario: dict[str, Any]) -> dict[str, str]:

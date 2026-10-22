@@ -459,6 +459,7 @@ function fakeApi(
         observed_at_utc: "2026-10-20T13:00:00Z",
       }),
     syncKiwoomDomestic: () => Promise.reject(new Error("not in this test")),
+    syncKiwoomFees: () => Promise.reject(new Error("not in this test")),
     syncKiwoom: () =>
       Promise.resolve({
         kind: "broker_sync_result",

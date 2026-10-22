@@ -49,7 +49,8 @@ export type StockIntelligenceWorkstationContractsV01 =
   | CustomIndicatorListResponse
   | CustomIndicatorResult
   | TradeReconciliationResponse
-  | CustomIndicatorPreview;
+  | CustomIndicatorPreview
+  | BrokerFeeLine;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -473,6 +474,10 @@ export interface LedgerPosition {
    * Executions without reported fees (Kiwoom): realized P&L and fees leave their fees out. Absent when every fee is known.
    */
   fees_unreported_count?: number;
+  /**
+   * Broker ledger: settlement lines whose commission and tax are included in fees and realized P&L (Kiwoom US). Absent when none.
+   */
+  settlement_fee_lines?: number;
 }
 export interface ScenarioLedgerResponse {
   kind: "scenario_ledger_response";
@@ -3493,4 +3498,24 @@ export interface CustomIndicatorPreview {
   outputs: {
     [k: string]: (number | null)[];
   };
+}
+/**
+ * Commission and tax of one settlement line (Kiwoom US ust21100), which carries no order number. Positions add these per account and instrument; orders keep fees null.
+ */
+export interface BrokerFeeLine {
+  kind: "broker_fee_line";
+  schema_version: SchemaVersion;
+  line_id: Identifier;
+  broker_id: "kiwoom";
+  broker_account_ref: Identifier;
+  instrument_id: Identifier;
+  symbol: string;
+  side: Side;
+  settlement_date: string;
+  quantity: NonNegativeDecimalString;
+  price: NonNegativeDecimalString;
+  commission: DecimalString;
+  tax: DecimalString;
+  currency: "USD";
+  synced_at_utc: UtcTimestamp;
 }
