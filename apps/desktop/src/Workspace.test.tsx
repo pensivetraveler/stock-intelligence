@@ -457,6 +457,24 @@ function fakeApi(
         sellable_quantity: "7",
         observed_at_utc: "2026-10-20T13:00:00Z",
       }),
+    syncKiwoom: () =>
+      Promise.resolve({
+        kind: "broker_sync_result",
+        schema_version: "0.1",
+        broker_id: "kiwoom",
+        synced_at_utc: "2026-10-20T13:00:00Z",
+        accounts: 1,
+        orders_seen: 0,
+        stored_new: 0,
+        already_stored: 0,
+        skipped: {
+          not_filled: 0,
+          unsupported_currency: 0,
+          unknown_instrument: 0,
+          time_unresolved: 0,
+        },
+        conflicts: [],
+      }),
     syncBroker: () => {
       broker.push({
         kind: "broker_order_execution",

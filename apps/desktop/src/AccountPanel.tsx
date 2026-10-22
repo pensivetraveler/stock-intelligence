@@ -18,8 +18,8 @@ const dash = (value: string | null | undefined) => value ?? "—";
 
 /**
  * Read-only view of every Toss account (holdings, buying power, commission rates, open
- * orders and conditional orders) and an on-demand sync of filled orders into the broker
- * ledger. Nothing here can place, change or cancel an order.
+ * orders and conditional orders) and on-demand syncs of filled Toss and Kiwoom orders into
+ * the broker ledger. Nothing here can place, change or cancel an order.
  */
 export function AccountPanel({ api, onSynced }: AccountPanelProps) {
   const { t } = useI18n();
@@ -32,6 +32,7 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
     | { state: "failed"; error: unknown }
   >({ state: "idle" });
   const [sellable, setSellable] = useState<Record<string, string>>({});
+  const [kiwoomSince, setKiwoomSince] = useState("");
 
   const load = useCallback(() => {
     let current = true;
@@ -47,10 +48,12 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
 
   useEffect(() => load(), [load]);
 
-  const runSync = () => {
+  const runSync = (broker: "toss" | "kiwoom") => {
     setSync({ state: "busy" });
-    api
-      .syncBroker()
+    (broker === "kiwoom"
+      ? api.syncKiwoom(kiwoomSince || undefined)
+      : api.syncBroker()
+    )
       .then((result) => {
         setSync({ state: "done", result });
         onSynced();
@@ -74,10 +77,25 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
         <button
           type="button"
           disabled={sync.state === "busy"}
-          onClick={runSync}
+          onClick={() => runSync("toss")}
         >
           {sync.state === "busy" ? t("account.syncing") : t("account.sync")}
         </button>{" "}
+        <button
+          type="button"
+          disabled={sync.state === "busy"}
+          onClick={() => runSync("kiwoom")}
+        >
+          {t("account.syncKiwoom")}
+        </button>{" "}
+        <label>
+          {t("account.kiwoomSince")}{" "}
+          <input
+            type="date"
+            value={kiwoomSince}
+            onChange={(event) => setKiwoomSince(event.target.value)}
+          />
+        </label>{" "}
         <button type="button" className="secondary" onClick={() => load()}>
           {t("account.refresh")}
         </button>
@@ -94,6 +112,11 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
               ? t("account.conflicts", { n: sync.result.conflicts.length })
               : "",
           })}
+          {sync.result.broker_id === "kiwoom"
+            ? t("account.kiwoomNote", {
+                n: sync.result.skipped.time_unresolved ?? 0,
+              })
+            : null}
         </p>
       ) : null}
       {sync.state === "failed" ? (

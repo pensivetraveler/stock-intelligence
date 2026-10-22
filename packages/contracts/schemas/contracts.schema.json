@@ -1309,6 +1309,13 @@
           "items": {
             "$ref": "#/$defs/Identifier"
           }
+        },
+        "fees_unreported_execution_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          },
+          "description": "Executions without reported fees: realized P&L and fees leave their fees out. Absent when every fee is known."
         }
       }
     },
@@ -2872,13 +2879,37 @@
           "$ref": "#/$defs/NonNegativeDecimalString"
         },
         "fees": {
-          "$ref": "#/$defs/NonNegativeDecimalString"
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            }
+          ],
+          "description": "null when the broker's order history does not report it (Kiwoom); never assumed zero."
         },
         "commission": {
-          "$ref": "#/$defs/NonNegativeDecimalString"
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            }
+          ],
+          "description": "null when the broker's order history does not report it (Kiwoom); never assumed zero."
         },
         "tax": {
-          "$ref": "#/$defs/NonNegativeDecimalString"
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            }
+          ],
+          "description": "null when the broker's order history does not report it (Kiwoom); never assumed zero."
         },
         "currency": {
           "enum": ["USD", "KRW"],
@@ -2895,8 +2926,8 @@
           ]
         },
         "time_meaning": {
-          "const": "reported_last_fill",
-          "description": "The broker's filledAt for the order: when its last fill happened, as reported. Not a per-fill time."
+          "enum": ["reported_last_fill", "reported_fill_time"],
+          "description": "reported_last_fill: the broker's filledAt for the order, when its last fill happened (Toss). reported_fill_time: the one fill time the broker reports for the order, without saying whether it is the first or the last fill (Kiwoom cntr_time). Neither is a per-fill time."
         },
         "granularity": {
           "const": "order_aggregate",
@@ -2927,7 +2958,7 @@
           ]
         },
         "broker_id": {
-          "const": "toss"
+          "enum": ["toss", "kiwoom"]
         },
         "broker_account_ref": {
           "$ref": "#/$defs/Identifier"
@@ -3003,7 +3034,7 @@
           "$ref": "#/$defs/SchemaVersion"
         },
         "broker_id": {
-          "const": "toss"
+          "enum": ["toss", "kiwoom"]
         },
         "synced_at_utc": {
           "$ref": "#/$defs/UtcTimestamp"
@@ -3044,6 +3075,11 @@
             "unknown_instrument": {
               "type": "integer",
               "minimum": 0
+            },
+            "time_unresolved": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Kiwoom: orders whose reported time could not be placed on the order date's US session (04:00-20:00 New York), for example daytime-session orders. Not stored."
             }
           }
         },

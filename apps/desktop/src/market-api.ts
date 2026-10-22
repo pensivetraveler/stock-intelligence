@@ -106,6 +106,8 @@ export interface MarketApi {
   ): Promise<BrokerSellableQuantity>;
   /** Store the executions of closed, filled orders in the broker ledger. */
   syncBroker(): Promise<BrokerSyncResult>;
+  /** Store the Kiwoom account's filled US orders since a date (YYYY-MM-DD; default a year). */
+  syncKiwoom(since?: string): Promise<BrokerSyncResult>;
   previewImport(
     request: StatementImportRequest,
   ): Promise<ImportPreviewResponse>;
@@ -446,6 +448,18 @@ export function createMarketApi(
       return callForKind<BrokerSyncResult>(
         { ...target, timeoutMs: 120_000 },
         "/v1/brokers/toss/sync",
+        "broker_sync_result",
+        { method: "POST" },
+      );
+    },
+    syncKiwoom(since) {
+      const query = since
+        ? `?${new URLSearchParams({ since }).toString()}`
+        : "";
+      // One request per order date with fills: a year can take a few minutes.
+      return callForKind<BrokerSyncResult>(
+        { ...target, timeoutMs: 600_000 },
+        `/v1/brokers/kiwoom/sync${query}`,
         "broker_sync_result",
         { method: "POST" },
       );

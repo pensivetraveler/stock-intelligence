@@ -509,6 +509,10 @@ const en = {
   "account.synced":
     "{new} new, {same} already stored, {notFilled} without fills, {currency} in other currencies, {unknown} unknown symbols{conflicts}",
   "account.conflicts": "; {n} changed after storing (kept as stored)",
+  "account.syncKiwoom": "Sync Kiwoom US fills",
+  "account.kiwoomSince": "Kiwoom from",
+  "account.kiwoomNote":
+    ". Kiwoom: {n} orders outside the US session's hours (e.g. daytime session) were left out; fees are not reported and stay blank.",
   "account.readOnly":
     "Read-only: this app cannot place, change or cancel orders. Account numbers show only their last four digits.",
   "account.refresh": "Refresh",
@@ -1403,6 +1407,10 @@ const ko: Record<MessageKey, string> = {
   "account.synced":
     "새로 저장 {new}건, 이미 저장 {same}건, 미체결 {notFilled}건, 지원하지 않는 통화 {currency}건, 알 수 없는 종목 {unknown}건{conflicts}",
   "account.conflicts": "; 저장 후 바뀐 주문 {n}건(저장된 값 유지)",
+  "account.syncKiwoom": "키움 미국주식 체결 동기화",
+  "account.kiwoomSince": "키움 시작일",
+  "account.kiwoomNote":
+    ". 키움: 미국 정규·시간외 시간대 밖 주문(주간거래 등) {n}건은 제외했고, 수수료는 제공되지 않아 비워 둡니다.",
   "account.readOnly":
     "조회 전용: 이 앱은 주문을 넣거나 고치거나 취소할 수 없습니다. 계좌번호는 끝 4자리만 표시합니다.",
   "account.refresh": "새로고침",
