@@ -4761,7 +4761,13 @@
                 "$ref": "#/$defs/UtcTimestamp"
               },
               "status": {
-                "enum": ["queued", "filled", "rejected", "unfilled_at_end"]
+                "enum": [
+                  "queued",
+                  "filled",
+                  "rejected",
+                  "unfilled_at_end",
+                  "expired"
+                ]
               },
               "reason": {
                 "anyOf": [
@@ -4782,6 +4788,20 @@
                     "type": "null"
                   }
                 ]
+              },
+              "order_type": {
+                "enum": ["limit", "stop"],
+                "description": "Absent for market orders."
+              },
+              "price": {
+                "$ref": "#/$defs/NonNegativeDecimalString",
+                "description": "The limit or stop price."
+              },
+              "expire_bars": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100,
+                "description": "Bars the order waited for its price before expiring."
               }
             }
           }

@@ -54,6 +54,34 @@ describe("rule builder model", () => {
     });
   });
 
+  it("writes limit and stop orders and reads them back", () => {
+    const draft = {
+      ...defaultRulesDraft(),
+      entryOrder: {
+        type: "limit" as const,
+        offsetPct: "-1.5",
+        expireBars: "3",
+      },
+      exitOrder: { type: "stop" as const, offsetPct: "-2", expireBars: "1" },
+    };
+    const definition = rulesDefinition(draft);
+    expect(definition.entry_order).toEqual({
+      type: "limit",
+      offset_pct: "-1.5",
+      expire_bars: 3,
+    });
+    expect(definition.exit_order).toEqual({
+      type: "stop",
+      offset_pct: "-2",
+      expire_bars: 1,
+    });
+    const back = rulesDraftOf(definition);
+    expect(back?.entryOrder).toEqual(draft.entryOrder);
+    expect(back?.exitOrder).toEqual(draft.exitOrder);
+    // Market orders stay out of the JSON, as before.
+    expect("entry_order" in rulesDefinition(defaultRulesDraft())).toBe(false);
+  });
+
   it("groups several conditions and reads them back", () => {
     const draft = defaultRulesDraft();
     draft.entry.push({
