@@ -213,6 +213,41 @@ class JournalStore:
             raise JournalConflictError("execution_id was already used for a different order")
         return "same" if row["document_sha256"] == digest else "conflict"
 
+    def record_broker_fee_line(self, document: dict[str, Any]) -> str:
+        """Store a settlement line's fees once: "new", "same" or "conflict"."""
+        validate_document(document)
+        content = {key: value for key, value in document.items() if key != "synced_at_utc"}
+        digest = request_hash(content)
+        try:
+            with self._connect() as connection:
+                connection.execute(
+                    "INSERT INTO broker_fee_lines (line_id, broker_id, broker_account_ref, "
+                    "instrument_id, settlement_date, synced_at_utc, document_sha256, "
+                    "document_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        document["line_id"],
+                        document["broker_id"],
+                        document["broker_account_ref"],
+                        document["instrument_id"],
+                        document["settlement_date"],
+                        document["synced_at_utc"],
+                        digest,
+                        _canonical(document),
+                    ),
+                )
+            return "new"
+        except sqlite3.IntegrityError:
+            pass
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT document_sha256 FROM broker_fee_lines WHERE line_id = ?",
+                (document["line_id"],),
+            ).fetchone()
+        return "same" if row is not None and row["document_sha256"] == digest else "conflict"
+
+    def broker_fee_lines(self, instrument_id: str | None = None) -> list[dict[str, Any]]:
+        return self._documents("broker_fee_lines", "settlement_date, line_id", instrument_id)
+
     def broker_executions(self, instrument_id: str | None = None) -> list[dict[str, Any]]:
         return self._documents(
             "broker_order_executions", "executed_at_utc, execution_id", instrument_id

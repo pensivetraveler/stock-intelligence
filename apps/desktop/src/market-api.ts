@@ -118,6 +118,8 @@ export interface MarketApi {
   syncKiwoom(since?: string): Promise<BrokerSyncResult>;
   /** Kiwoom Korean stock trades (settlement lines, no fill times), at most a year. */
   syncKiwoomDomestic(since?: string): Promise<BrokerSyncResult>;
+  /** Kiwoom US commission and tax per settlement line (positions add them). */
+  syncKiwoomFees(since?: string): Promise<BrokerSyncResult>;
   previewImport(
     request: StatementImportRequest,
   ): Promise<ImportPreviewResponse>;
@@ -505,6 +507,17 @@ export function createMarketApi(
       return callForKind<BrokerSyncResult>(
         { ...target, timeoutMs: 600_000 },
         `/v1/brokers/kiwoom/sync${query}`,
+        "broker_sync_result",
+        { method: "POST" },
+      );
+    },
+    syncKiwoomFees(since) {
+      const query = since
+        ? `?${new URLSearchParams({ since }).toString()}`
+        : "";
+      return callForKind<BrokerSyncResult>(
+        { ...target, timeoutMs: 1_800_000 },
+        `/v1/brokers/kiwoom/sync-fees${query}`,
         "broker_sync_result",
         { method: "POST" },
       );

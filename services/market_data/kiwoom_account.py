@@ -64,14 +64,17 @@ DOMESTIC_PATH = "/api/dostk/acnt"
 READ_ONLY_QUERIES = {
     "ust21150": (ACCOUNT_PATH, "result_list"),  # 미국주식 일별 주문체결내역
     "kt00015": (DOMESTIC_PATH, "trst_ovrl_trde_prps_array"),  # 위탁종합거래내역
+    "ust21100": (ACCOUNT_PATH, "result_list"),  # 미국주식 거래내역 (fees per line)
 }
+FEE_RANGE_DAYS = 31  # ust21100 is read a month at a time
+MAX_FEE_DAYS = 400
 READ_ONLY_API_IDS = frozenset(READ_ONLY_QUERIES)
 DOMESTIC_RANGE_DAYS = 365  # kt00015 answers at most a year per request
 RATE_LIMIT_CODES = {1700, 1701, 1702}
 TOKEN_INVALID_CODE = 3
 # Seen live: return_code 20 with message code 571758 ("조회내역이 없습니다", "해당 계좌의
 # 체결내역이 없습니다") when a range or date simply has no orders.
-NO_ROWS = (20, "571758")
+NO_ROWS = (20, ("571758", "501724"))  # 501724 "관련자료가 없습니다" (ust21100)
 MAX_PAGES = 500  # per order date
 MAX_RANGE_DAYS = 400
 MAX_HISTORY_DAYS = 366 * 5
@@ -195,7 +198,11 @@ class KiwoomAccountSession:
             if response.status_code >= 500:
                 raise ProviderUnavailableError(f"Kiwoom is unavailable ({response.status_code})")
             message = str(payload.get("return_msg", ""))
-            if response.status_code == 200 and code == NO_ROWS[0] and NO_ROWS[1] in message:
+            if (
+                response.status_code == 200
+                and code == NO_ROWS[0]
+                and any(marker in message for marker in NO_ROWS[1])
+            ):
                 return {}, None
             if response.status_code >= 400 or code != 0:
                 raise InvalidBarsQueryError(f"Kiwoom refused the query ({code}): {message[:200]}")
@@ -569,3 +576,126 @@ def _order_date(value: object) -> date:
         return datetime.strptime(str(value), "%Y%m%d").date()
     except ValueError as exc:
         raise ProviderDataError("Kiwoom returned an invalid date") from exc
+
+
+def sync_fees(
+    session: KiwoomAccountSession,
+    store: JournalStore,
+    instrument_for: Callable[..., str | None],
+    now: Callable[[], datetime],
+    since: date,
+    until: date | None = None,
+) -> dict[str, Any]:
+    """Store the commission and tax of the Kiwoom account's US settlement lines, once.
+
+    ust21100 (미국주식 거래내역, 매매) reports fees per settlement line without an order
+    number, often on one line of a stock's day; they cannot be tied to orders, so each
+    line with a fee is kept as a `broker_fee_line` and positions add them per account
+    and instrument (ADR 0029). `since`/`until` are settlement (Seoul) dates.
+    """
+    current = now()
+    today = current.astimezone(SEOUL).date()
+    last = min(until or today, today)
+    if since > last:
+        raise InvalidBarsQueryError("since must not be after until or today")
+    if (today - since).days > MAX_HISTORY_DAYS:
+        raise InvalidBarsQueryError(f"since can be at most {MAX_HISTORY_DAYS} days ago")
+    if (last - since).days >= MAX_FEE_DAYS:
+        raise InvalidBarsQueryError(f"one fee sync covers at most {MAX_FEE_DAYS} days")
+    synced_at = _utc_text(current)
+    ref = account_ref(session)
+    counts = {"orders_seen": 0, "stored_new": 0, "already_stored": 0}
+    skipped = {"not_filled": 0, "unsupported_currency": 0, "unknown_instrument": 0}
+    conflicts: list[str] = []
+    unknown: Counter[str] = Counter()
+    cursor = since
+    while cursor <= last:
+        stop = min(last, cursor + timedelta(days=FEE_RANGE_DAYS - 1))
+        body = {
+            "strt_dt": cursor.strftime("%Y%m%d"),
+            "end_dt": stop.strftime("%Y%m%d"),
+            "tp": "3",  # 매매
+            "stex_tp": "",
+            "stk_cd": "",
+            "krw_repl_skip_yn": "N",  # required in practice, though the spec says optional
+        }
+        for row in session.rows("ust21100", body):
+            if not row.get("deal_no"):
+                continue
+            counts["orders_seen"] += 1
+            commission = _signed(row.get("fc_cmsn"))
+            tax = _signed(row.get("fc_deal_tax"))
+            if commission == 0 and tax == 0:
+                continue  # most lines carry no fee; the stock's fee sits on one line
+            if str(row.get("crnc_code") or "USD") != "USD":
+                skipped["unsupported_currency"] += 1
+                continue
+            symbol = str(row.get("stk_cd") or "").strip().upper()
+            side = {"매수": "buy", "매도": "sell"}.get(str(row.get("rmrk_nm") or "").strip())
+            settled = _order_date(row.get("deal_dt"))
+            instrument_id = instrument_for(symbol, "USD", settled) if symbol else None
+            if instrument_id is None or side is None:
+                skipped["unknown_instrument"] += 1
+                unknown[symbol or "?"] += 1
+                continue
+            line_key = f"{settled:%Y%m%d}-{str(row['deal_no']).strip()[:20]}"
+            document = {
+                "kind": "broker_fee_line",
+                "schema_version": "0.1",
+                "line_id": "kiwoom-fee-"
+                + hashlib.sha256(f"{ref}\0{line_key}".encode()).hexdigest()[:32],
+                "broker_id": BROKER_ID,
+                "broker_account_ref": ref,
+                "instrument_id": instrument_id,
+                "symbol": symbol[:32],
+                "side": side,
+                "settlement_date": settled.isoformat(),
+                # Correction lines can carry signed amounts; the fee keeps its sign.
+                "quantity": _text(abs(_signed(row.get("deal_qty")))),
+                "price": _text(abs(_signed(row.get("uv_exrt")))),
+                "commission": _text_signed(commission),
+                "tax": _text_signed(tax),
+                "currency": "USD",
+                "synced_at_utc": synced_at,
+            }
+            outcome = store.record_broker_fee_line(document)
+            if outcome == "new":
+                counts["stored_new"] += 1
+            elif outcome == "same":
+                counts["already_stored"] += 1
+            else:
+                conflicts.append(line_key)
+        cursor = stop + timedelta(days=1)
+    result = {
+        "kind": "broker_sync_result",
+        "schema_version": "0.1",
+        "broker_id": BROKER_ID,
+        "synced_at_utc": synced_at,
+        "accounts": 1,
+        **counts,
+        "skipped": skipped,
+        "conflicts": conflicts,
+        "unknown_symbols": [
+            {"symbol": symbol, "orders": count}
+            for symbol, count in sorted(unknown.items(), key=lambda item: (-item[1], item[0]))[
+                :1000
+            ]
+        ],
+    }
+    validate_document(result)
+    return result
+
+
+def _signed(value: object) -> Decimal:
+    text = str(value or "0").replace(",", "").strip() or "0"
+    try:
+        number = Decimal(text)
+    except InvalidOperation as exc:
+        raise ProviderDataError("Kiwoom returned an invalid amount") from exc
+    if not number.is_finite():
+        raise ProviderDataError("Kiwoom returned an invalid amount")
+    return number
+
+
+def _text_signed(number: Decimal) -> str:
+    return "0" if number == 0 else format(number.normalize(), "f")

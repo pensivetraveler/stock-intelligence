@@ -55,7 +55,7 @@ export function JournalPanel({
       {position.account_ref
         ? `[${accountLabel(position.account_ref, t)}] `
         : ""}
-      {position.fees_unreported_count
+      {position.fees_unreported_count && !position.settlement_fee_lines
         ? t("journal.positionFeesUnreported", {
             symbol: symbolOf(position.instrument_id),
             currency: zoneOf(position.instrument_id).currency,
