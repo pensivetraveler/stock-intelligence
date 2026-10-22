@@ -1326,6 +1326,29 @@
 - **검증:** API를 8765에서 띄웠다. 화면 하단이 "연결됨 · API 주소 http://127.0.0.1:8765"로 표시된다. 8000은 비어 있다.
 - **남은 작업:** 이미 만든 Electron `.app`/`.dmg`는 예전 주소(8000)를 담고 있어 다시 패키징해야 한다.
 
+## 데스크톱 배포 개선 — 2026-10-22
+
+- **사용자 요청:** Electron 앱의 아이콘·저장소 위치 의존·서명 준비를 개선하고 Tauri 네이티브 빌드 상태를 확인한다. 결정 기록은 [ADR 0028](decisions/0028-electron-desktop-shell.md)에 추가했다.
+- **변경(`apps/electron`):**
+  - **아이콘:** `assets/icon.png`(1024×1024, 독자 도안: 어두운 둥근 사각형·캔들 4개·상승선, 브랜드 요소 없음). `scripts/make-icon.cjs`(`npm run icon`)가 의존성 없이 그린다. 빌드에서 `icon.icns`로 바뀌어 `Info.plist`의 `CFBundleIconFile`에 들어간다.
+  - **저장소 위치:** `repo-location.cjs`가 `SIW_REPO_DIR` → 사용자가 고른 폴더(`~/Library/Application Support/siw-electron/settings.json`, 경로만) → 패키징 때 기록한 폴더 순서로 찾는다. 모두 유효하지 않으면 첫 실행 때 폴더 선택 창을 띄우고 고른 위치를 기억한다. 앱 메뉴에 "저장소 폴더 변경…"(다음 실행부터 적용)을 추가했다. 틀린 `SIW_REPO_DIR`는 다른 폴더로 바꾸지 않고 오류로 보인다. API가 이미 응답하면 저장소를 찾지 않는다.
+  - **API 포트:** 앱이 띄우는 API 포트를 `SIW_API_URL`의 포트에서 정한다(기본 8765).
+  - **서명·공증(준비만, 미수행):** 빌드 설정을 `electron-builder.config.cjs`로 옮겼다. `CSC_NAME` 또는 `CSC_LINK`가 있으면 hardened runtime으로 서명하고(`assets/entitlements.mac.plist`: allow-jit만), 그때 `APPLE_*` 자격 증명이 갖춰지면 공증한다. 없으면 이전처럼 서명하지 않는다. 사용자 절차는 `apps/electron/SIGNING.md`.
+- **변경(`apps/desktop/src-tauri`):** 같은 도안으로 `tauri icon`이 만든 데스크톱 아이콘 5종(`icons/`)을 넣고 `bundle.icon`에 연결했다. 컴파일은 미검증이다.
+- **검증:**
+  - `npm test`(`node --test`, 신규 4개: 우선순위, 틀린 env, 옮긴 저장소, 설정 파일 보존) 통과. ESLint·Prettier 통과.
+  - `npm run dist` 성공(exit 0): `release/Stock Intelligence Workstation-0.4.0-dev.dmg`(약 124 MB), `.app` 265 MB, 서명 없음("identity explicitly is set to null").
+  - 실행 확인(사용자의 8765 API는 건드리지 않고 8799에서):
+    - 패키징한 앱: 9초 안에 API를 띄웠고, 앱을 끄자 API도 꺼졌다. asar에 `repo-location.cjs`가 들어 있다.
+    - 폴더 선택: 대화 상자만 바꾼 테스트 하네스(별도 사용자 데이터)로, 잘못된 폴더는 경고 후 다시 묻고, 맞는 폴더는 `settings.json`에 저장한 뒤 API를 띄웠다. 메뉴에 "저장소 폴더 변경…"이 있다.
+    - 서명 설정: 환경 변수 조합 4가지(없음 / 서명만 / 서명+공증 / 공증 변수만)에서 identity·notarize 값이 의도대로 나왔다.
+  - **Tauri:** `tauri build --no-bundle`는 `cargo metadata` 실행 파일이 없어 exit 1. `tauri info`: Xcode 26.3과 Command Line Tools는 있고 rustc·cargo·rustup이 없다. 시스템 소프트웨어 설치는 사용자 승인이 필요해 하지 않았다.
+- **미검증:**
+  - 실제 폴더 선택 창 화면과 클릭(접근성 권한이 없어 자동 조작 불가, 하네스로 논리만 확인).
+  - 실제 서명·공증(사용자 Apple Developer ID 필요), Gatekeeper 통과.
+  - Tauri 컴파일·실행 전부. 코드만 보고 찾은 위험: CSP `connect-src`에 `ws://`가 없어 실시간 연결이 막힐 수 있다.
+- **남은 작업:** 사용자가 Rust(rustup) 설치를 승인하면 Tauri 빌드를 다시 시도한다. 서명은 `SIGNING.md` 절차대로 사용자가 진행한다.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:

@@ -7,28 +7,10 @@
   "scripts": {
     "prepare-ui": "cd ../desktop && corepack pnpm build && cd ../electron && node scripts/copy-ui.cjs",
     "start": "electron .",
-    "package": "npm run prepare-ui && node scripts/write-config.cjs && electron-builder --mac --x64 --dir",
-    "dist": "npm run prepare-ui && node scripts/write-config.cjs && electron-builder --mac --x64"
-  },
-  "build": {
-    "appId": "com.pensivetraveler.siw",
-    "productName": "Stock Intelligence Workstation",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "main.cjs",
-      "api-process.cjs",
-      "ui/**/*",
-      "siw-config.json"
-    ],
-    "mac": {
-      "category": "public.app-category.finance",
-      "identity": null,
-      "target": [
-        "dmg"
-      ]
-    }
+    "package": "npm run prepare-ui && node scripts/write-config.cjs && electron-builder --config electron-builder.config.cjs --mac --x64 --dir",
+    "dist": "npm run prepare-ui && node scripts/write-config.cjs && electron-builder --config electron-builder.config.cjs --mac --x64",
+    "icon": "node scripts/make-icon.cjs",
+    "test": "node --test"
   },
   "devDependencies": {
     "electron": "45.0.0",
