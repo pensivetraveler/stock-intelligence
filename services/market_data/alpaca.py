@@ -44,6 +44,7 @@ from services.market_data.provider import (
     ProviderUnavailableError,
     validate_bars_query,
 )
+from services.market_data.symbol_history import asof_for
 
 Feed = Literal["sip", "iex"]
 DEFAULT_DATA_URL = "https://data.alpaca.markets"
@@ -68,6 +69,16 @@ ASSETS_PATH = "/v2/assets"
 
 VENUE_PATTERN = re.compile(r"^[A-Z]{4}$")
 PAGE_LIMIT = 10_000
+CORPORATE_ACTIONS_PATH = "/v1/corporate-actions"
+HISTORY_SINCE = date(2016, 1, 1)
+HISTORY_PAGES = 200
+# Delisting-like corporate actions and the field naming the security that went away.
+DELISTING_FIELDS = {
+    "worthless_removals": "symbol",
+    "cash_mergers": "acquiree_symbol",
+    "stock_mergers": "acquiree_symbol",
+    "redemptions": "symbol",
+}
 BOATS_FEED = "boats"
 BOATS_REVISION = "alpaca-boats-raw-r1"
 MAX_OVERNIGHT_DATES = 14
@@ -221,14 +232,15 @@ class AlpacaMarketDataProvider:
             return configured
         return listed_symbol(instrument_id)
 
-    def list_assets(self) -> list[dict[str, str]]:
-        """Active US-listed stocks and ETFs: symbol, company name and venue MIC."""
+    def list_assets(self, status: str = "active") -> list[dict[str, str]]:
+        """US-listed stocks and ETFs (active, or `inactive`: delisted): symbol, company
+        name and venue MIC."""
         response: httpx.Response | None = None
         for base in TRADING_URLS:
             try:
                 response = self._client.get(
                     f"{base}{ASSETS_PATH}",
-                    params={"status": "active", "asset_class": "us_equity"},
+                    params={"status": status, "asset_class": "us_equity"},
                     timeout=httpx.Timeout(30.0, connect=5.0),
                 )
             except httpx.HTTPError as exc:
@@ -256,6 +268,62 @@ class AlpacaMarketDataProvider:
             name = " ".join(str(item.get("name") or "").split())[:200]
             assets.append({"symbol": symbol, "name": name, "venue": venue})
         return assets
+
+    def symbol_history(self, since: date = HISTORY_SINCE) -> dict[str, Any]:
+        """Ticker changes and delistings for `SymbolHistory` (ADR 0033): name changes and
+        delisting-like corporate actions since `since`, and the inactive asset list."""
+        actions: dict[str, list[dict[str, Any]]] = {}
+        params: dict[str, str | int] = {
+            "types": "name_change,worthless_removal,cash_merger,stock_merger,redemption",
+            "start": since.isoformat(),
+            "end": self._now().date().isoformat(),
+            "limit": 1000,
+            "sort": "asc",
+        }
+        for _page in range(HISTORY_PAGES):
+            try:
+                response = self._client.get(CORPORATE_ACTIONS_PATH, params=params)
+            except httpx.HTTPError as exc:
+                raise ProviderUnavailableError(
+                    f"could not reach Alpaca: {type(exc).__name__}"
+                ) from exc
+            self._raise_for_status(response)
+            payload = response.json()
+            for kind, items in (payload.get("corporate_actions") or {}).items():
+                actions.setdefault(kind, []).extend(items or [])
+            token = payload.get("next_page_token")
+            if not token:
+                break
+            params["page_token"] = token
+        else:
+            raise ProviderDataError("Alpaca corporate actions did not finish paging")
+        renames = [
+            {"old": item["old_symbol"], "new": item["new_symbol"], "on": item["process_date"]}
+            for item in actions.get("name_changes", [])
+            if item.get("old_symbol")
+            and item.get("new_symbol")
+            and item.get("process_date")
+            and item["old_symbol"] != item["new_symbol"]
+        ]
+        ended: dict[str, tuple[str, str]] = {}
+        for kind, field_name in DELISTING_FIELDS.items():
+            for item in actions.get(kind, []):
+                symbol, when = item.get(field_name), item.get("process_date")
+                if symbol and when and (symbol not in ended or when > ended[symbol][0]):
+                    ended[symbol] = (when, kind.rstrip("s"))
+        active = {item["symbol"] for item in self.list_assets("active")}
+        delisted = [
+            {
+                "symbol": item["symbol"],
+                "name": item["name"],
+                "venue": item["venue"],
+                "on": ended.get(item["symbol"], (None, ""))[0],
+                "reason": ended.get(item["symbol"], ("", "inactive"))[1],
+            }
+            for item in self.list_assets("inactive")
+            if item["symbol"] not in active
+        ]
+        return {"renames": renames, "delisted": delisted}
 
     def instruments(self) -> list[dict[str, Any]]:
         return [
@@ -637,6 +705,10 @@ class AlpacaMarketDataProvider:
             "feed": feed or self.config.feed,
             "sort": "asc",
         }
+        # A delisted ticker is read as the company it was (ADR 0033): Alpaca's `asof`.
+        asof = asof_for(symbol)
+        if asof is not None:
+            params["asof"] = asof.isoformat()
         bars: list[dict[str, Any]] = []
         for _page in range(max_pages):
             try:

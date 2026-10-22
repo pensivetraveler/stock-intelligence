@@ -673,6 +673,22 @@ export interface SymbolSearchResponse {
      * Korean display name from Toss, when a Toss key is registered and Toss has one.
      */
     local_name: null | string;
+    /**
+     * ADR 0033: the result is the listing this old ticker was renamed to.
+     */
+    former_symbol?: string;
+    /**
+     * ADR 0033: a delisted instrument seen in trades; its chart ends where exchange trading ended.
+     */
+    status?: "delisted";
+    /**
+     * Delisted: the latest trade date seen for it (the chart's natural date).
+     */
+    last_trade_date?: string;
+    /**
+     * Delisted: the ticker it trades under now (often an OTC ticker), if it was renamed.
+     */
+    moved_to?: null | string;
   }[];
 }
 /**
@@ -965,6 +981,10 @@ export interface BrokerOrderExecution {
   broker_order_id: string;
   verification_status: "broker_api_reported";
   synced_at_utc: UtcTimestamp;
+  /**
+   * ADR 0033: renamed - the trade is on the chart of the ticker the company uses now (symbol keeps the ticker the broker reported); delisted - the company has left US exchanges and its chart ends there. Absent for a plain listing.
+   */
+  instrument_resolution?: "renamed" | "delisted";
 }
 export interface BrokerLedgerResponse {
   kind: "broker_ledger_response";
@@ -1002,6 +1022,15 @@ export interface BrokerSyncResult {
    * Broker order IDs whose reported execution changed after it was stored; the stored record is kept.
    */
   conflicts: string[];
+  /**
+   * Symbols skipped as unknown_instrument, with their order counts (most first, at most 1,000).
+   *
+   * @maxItems 1000
+   */
+  unknown_symbols?: {
+    symbol: string;
+    orders: number;
+  }[];
 }
 /**
  * A broker account view read on demand: holdings, buying power, commission rates and open orders. Account numbers appear only as their last four digits. Nothing here is stored.

@@ -671,6 +671,9 @@ const en = {
   "chart.regular": "Regular",
   "chart.extended": "Extended",
   "chart.dayMarket": "+ Day market",
+  "chart.formerSymbol": "formerly {symbol}",
+  "chart.delisted": "delisted · last trade {date}{moved}",
+  "chart.movedTo": " · now {symbol} (off-exchange)",
   "chart.dayMarketNote":
     "Day market (Blue Ocean via Alpaca BOATS): {n} bars in blue/purple, kept apart from the other bars; indicators do not use them.",
   "chart.dayMarketFailed": "Day market bars could not be loaded: {error}",
@@ -1618,6 +1621,9 @@ const ko: Record<MessageKey, string> = {
   "chart.regular": "정규장",
   "chart.extended": "장전·장후 포함",
   "chart.dayMarket": "+ 데이마켓",
+  "chart.formerSymbol": "구 {symbol}",
+  "chart.delisted": "상장폐지 · 마지막 거래 {date}{moved}",
+  "chart.movedTo": " · 현재 {symbol}(장외)",
   "chart.dayMarketNote":
     "데이마켓(Blue Ocean, Alpaca BOATS) {n}봉을 파란·보라색으로 따로 표시합니다. 지표 계산에는 쓰지 않습니다.",
   "chart.dayMarketFailed": "데이마켓 봉을 불러오지 못했습니다: {error}",

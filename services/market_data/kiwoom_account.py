@@ -30,6 +30,7 @@ the account is referred to by a hash of the app key.
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
@@ -51,6 +52,7 @@ from services.market_data.provider import (
     ProviderRateLimitError,
     ProviderUnavailableError,
 )
+from services.market_data.symbol_history import resolution_of
 
 BROKER_ID = "kiwoom"
 REAL_BASE_URL = "https://api.kiwoom.com"
@@ -257,7 +259,7 @@ def order_dates(start: date, end: date) -> Iterator[date]:
 def sync_executions(
     session: KiwoomAccountSession,
     store: JournalStore,
-    instrument_for: Callable[[str, str], str | None],
+    instrument_for: Callable[..., str | None],
     now: Callable[[], datetime],
     since: date,
     until: date | None = None,
@@ -287,6 +289,7 @@ def sync_executions(
         "time_unresolved": 0,
     }
     conflicts: list[str] = []
+    unknown: Counter[str] = Counter()
     for order_date in order_dates(since, last):
         body = {
             "ord_dt": order_date.strftime("%Y%m%d"),
@@ -297,7 +300,10 @@ def sync_executions(
             if not row.get("ord_no"):
                 continue
             counts["orders_seen"] += 1
+            unknown_before = skipped["unknown_instrument"]
             document = _execution(row, order_date, ref, synced_at, instrument_for, skipped)
+            if skipped["unknown_instrument"] > unknown_before:
+                unknown[str(row.get("stk_cd") or "?").strip().upper()[:32]] += 1
             if document is None:
                 continue
             outcome = store.record_broker_execution(document)
@@ -316,6 +322,13 @@ def sync_executions(
         **counts,
         "skipped": skipped,
         "conflicts": conflicts,
+        # Which symbols could not be matched to a listing, most orders first.
+        "unknown_symbols": [
+            {"symbol": symbol, "orders": count}
+            for symbol, count in sorted(unknown.items(), key=lambda item: (-item[1], item[0]))[
+                :1000
+            ]
+        ],
     }
     validate_document(result)
     return result
@@ -326,7 +339,7 @@ def _execution(
     order_date: date,
     ref: str,
     synced_at: str,
-    instrument_for: Callable[[str, str], str | None],
+    instrument_for: Callable[..., str | None],
     skipped: dict[str, int],
 ) -> dict[str, Any] | None:
     quantity = _quantity(row.get("cntr_qty"))
@@ -344,7 +357,8 @@ def _execution(
         return None
     symbol = str(row.get("stk_cd") or "").strip().upper()
     side = SIDES.get(str(row.get("slby_tp_nm") or "").strip())
-    instrument_id = instrument_for(symbol, "USD") if symbol else None
+    # The order date lets ticker changes and delistings be followed (ADR 0033).
+    instrument_id = instrument_for(symbol, "USD", order_date) if symbol else None
     if instrument_id is None or side is None:
         skipped["unknown_instrument"] += 1
         return None
@@ -354,6 +368,11 @@ def _execution(
         "schema_version": "0.1",
         "execution_id": "kiwoom-" + hashlib.sha256(f"{ref}\0{order_id}".encode()).hexdigest()[:32],
         "instrument_id": instrument_id,
+        **(
+            {}
+            if (resolution := resolution_of(symbol, instrument_id)) is None
+            else {"instrument_resolution": resolution}
+        ),
         "symbol": symbol[:32],
         "side": side,
         "quantity": _text(quantity),

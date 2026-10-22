@@ -5,11 +5,12 @@ import logging
 import os
 import re
 import threading
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
@@ -39,6 +40,7 @@ from services.journal.ledger import account_positions
 from services.journal.store import JournalStore
 from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
+from services.market_data.broker_common import instrument_listing
 from services.market_data.calendar import CalendarError, UsEquityCalendar
 from services.market_data.instruments import market_of, parse_instrument
 from services.market_data.kiwoom_account import NEW_YORK as KIWOOM_NEW_YORK
@@ -52,6 +54,7 @@ from services.market_data.provider import (
     BarsQuery,
     InstrumentNotFoundError,
     InvalidBarsQueryError,
+    MarketDataError,
     MarketDataProvider,
     ProviderAuthError,
     ProviderDataError,
@@ -72,6 +75,8 @@ from services.market_data.symbol_directory import (
     SymbolEntry,
     search_all,
 )
+from services.market_data.symbol_history import SymbolHistory
+from services.market_data.symbol_history import register as register_symbol_history
 from services.market_data.tick_store import TickStore
 from services.market_data.toss import TossConfig, TossMarketDataProvider
 from services.market_data.toss_account import (
@@ -524,6 +529,7 @@ def create_app(
     toss_session: Callable[[], TossSession | None] | None = None,
     kiwoom_session: Callable[[], KiwoomAccountSession | None] | None = None,
     overnight_source: Callable[[], Any] | None = None,
+    symbol_history: SymbolHistory | None = None,
     tick_store: TickStore | None = None,
     korean_provider: MarketDataProvider | None = None,
     korean_directory: SymbolDirectory | None = None,
@@ -551,20 +557,65 @@ def create_app(
                 ticks_holder[0] = TickStore(Path(configured))
         return ticks_holder[0]
 
-    def instrument_for(symbol: str, currency: str = "USD") -> str | None:
+    # Ticker changes and delistings (ADR 0033), from the Alpaca key when there is one.
+    history_holder: list[SymbolHistory | None] = [symbol_history]
+    register_symbol_history(symbol_history)
+
+    def history() -> SymbolHistory | None:
+        if history_holder[0] is None:
+            configured = os.getenv("SIW_DATA_DIR", "").strip()
+            try:
+                adapter = boats()
+            except SecretStorageError:
+                return None
+            if configured and adapter is not None and hasattr(adapter, "symbol_history"):
+                history_holder[0] = SymbolHistory(
+                    Path(configured), "alpaca", adapter.symbol_history
+                )
+                register_symbol_history(history_holder[0])
+        return history_holder[0]
+
+    listed_cache: dict[str, Any] = {"at": -1e9}
+
+    def listed() -> tuple[dict[str, tuple[str, str]], dict[str, str]]:
+        """US ticker -> (instrument ID, venue) and Korean code -> ID, refreshed each
+        minute (a sync resolves tens of thousands of trades)."""
+        if time.monotonic() - listed_cache["at"] > 60:
+            us: dict[str, tuple[str, str]] = {}
+            kr: dict[str, str] = {}
+            for instrument_id, entry in symbols.known().items():
+                if entry.korean:
+                    kr.setdefault(entry.symbol, instrument_id)
+                else:
+                    us.setdefault(entry.symbol, (instrument_id, entry.venue))
+            for item in provider.get().instruments():  # configured instruments first
+                ref = item["instrument"]
+                us[str(ref["symbol"]).upper()] = (str(ref["instrument_id"]), str(ref["venue"]))
+            listed_cache.update(at=time.monotonic(), us=us, kr=kr)
+        return listed_cache["us"], listed_cache["kr"]
+
+    def instrument_for(symbol: str, currency: str = "USD", on: date | None = None) -> str | None:
         """Instrument ID of a US ticker (USD) or Korean code (KRW).
 
-        US: configured instruments first, then the directory. Korean: the Korean directory.
+        US: configured instruments first, then the directory. With the trade date `on`,
+        ticker changes and delistings are followed (ADR 0033).
         """
-        korean = currency == "KRW"
-        if not korean:
-            for item in provider.get().instruments():
-                if item["instrument"]["symbol"].upper() == symbol:
-                    return cast(str, item["instrument"]["instrument_id"])
-        for instrument_id, entry in symbols.known().items():
-            if entry.symbol == symbol and entry.korean == korean:
-                return instrument_id
-        return None
+        us, kr = listed()
+        if currency == "KRW":
+            return kr.get(symbol)
+        found = history() if on is not None else None
+        if found is None or on is None:
+            return us[symbol][0] if symbol in us else None
+        try:
+            resolved = found.resolve(
+                symbol, on, lambda ticker: us[ticker][1] if ticker in us else None
+            )
+        except (MarketDataError, OSError, ValueError):
+            return us[symbol][0] if symbol in us else None
+        if resolved.kind != "delisted":
+            return us[resolved.symbol][0]
+        candidate = f"us:{resolved.symbol.lower()}:{resolved.venue.lower()}:2026"
+        return candidate if parse_instrument(candidate) is not None else None
 
     def sync_recent(since: str) -> dict[str, object] | None:
         session, store = toss(), journal.get()
@@ -701,10 +752,54 @@ def create_app(
                     "local_name": entry.local_name,
                 }
                 for directory, entry in found
-            ],
+            ]
+            + history_results(q, directories, {entry.instrument_id for _d, entry in found}),
         }
         validate_document(document)
         return JSONResponse(content=document)
+
+    def history_results(
+        query: str, directories: list[Any], shown: set[str]
+    ) -> list[dict[str, Any]]:
+        """ADR 0033: the ticker an old ticker was renamed to, and delisted instruments
+        seen in trades. Only stored files are read here, never the provider."""
+        wanted = query.strip().upper()
+        found = history() if wanted else None  # builds the object; fetches nothing
+        if found is None or not wanted:
+            return []
+        results: list[dict[str, Any]] = []
+        renamed = found.renamed_to(wanted)
+        us, _kr = listed()
+        if renamed is not None and renamed in us and us[renamed][0] not in shown:
+            entry = directories[0].lookup(us[renamed][0])
+            if entry is not None:
+                results.append(
+                    {
+                        "listing": directories[0].listing(entry),
+                        "name": entry.name,
+                        "local_name": entry.local_name,
+                        "former_symbol": wanted,
+                    }
+                )
+        for item in found.delisted_instruments():
+            if not item.symbol.startswith(wanted) or item.instrument_id in shown:
+                continue
+            listing = instrument_listing(
+                item.symbol, item.venue, "symbol-history", "symbol-history-r1", "symbol-history"
+            )
+            results.append(
+                {
+                    "listing": listing,
+                    "name": item.name or item.symbol,
+                    "local_name": None,
+                    "status": "delisted",
+                    "last_trade_date": item.asof.isoformat(),
+                    "moved_to": item.moved_to,
+                }
+            )
+            if len(results) >= 10:
+                break
+        return results
 
     def toss_read(request: Request, read: Callable[[TossSession], dict[str, object]]) -> Response:
         """Run one on-demand Toss read and map its failures to the API's error envelope."""
