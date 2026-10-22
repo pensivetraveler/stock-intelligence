@@ -17,7 +17,13 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from packages.contracts.validator import validate_document
-from services.backtest.data import ADJUSTMENTS, GetAdjusted, GetBars, load_instrument
+from services.backtest.data import (
+    ADJUSTMENTS,
+    MAX_BAR_COUNT,
+    GetAdjusted,
+    GetBars,
+    load_instrument,
+)
 from services.backtest.engine import (
     Backtest,
     Cancelled,
@@ -112,7 +118,14 @@ def validate_config(request: dict[str, Any]) -> dict[str, Any]:
     seed = request.get("seed", 0)
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise RunConfigError("seed must be a whole number")
-    return {
+    bar_count = request.get("bar_count")
+    if bar_count is not None and (
+        isinstance(bar_count, bool)
+        or not isinstance(bar_count, int)
+        or not 1 <= bar_count <= MAX_BAR_COUNT
+    ):
+        raise RunConfigError(f"bar_count must be a whole number from 1 to {MAX_BAR_COUNT}")
+    config = {
         "instrument_ids": list(ids),
         "timeframe": timeframe,
         "start_date": start.isoformat(),
@@ -133,6 +146,9 @@ def validate_config(request: dict[str, Any]) -> dict[str, Any]:
         "as_of_utc": as_of,
         "seed": seed,
     }
+    if bar_count is not None:
+        config["bar_count"] = bar_count
+    return config
 
 
 class BacktestRunner:
@@ -250,6 +266,7 @@ class BacktestRunner:
                     # Runs stored before adjusted prices existed used raw prices.
                     config.get("adjustment", "raw"),
                     self._get_adjusted(),
+                    config.get("bar_count"),
                 )
             )
         source: SignalSource

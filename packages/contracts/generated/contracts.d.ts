@@ -1388,6 +1388,10 @@ export interface BacktestRun {
     as_of_utc: UtcTimestamp | null;
     seed: number;
     adjustment?: "raw" | "split_adjusted" | "fully_adjusted";
+    /**
+     * Bar-count mode: the first N bars from start_date, read forward up to end_date (any past window, not only up to today). Absent: every bar from start_date to end_date.
+     */
+    bar_count?: number;
   };
   created_at_utc: UtcTimestamp;
   started_at_utc: UtcTimestamp | null;
@@ -1498,6 +1502,10 @@ export interface BacktestResults {
     bars_sha256: string;
     suspected_split_dates: string[];
     adjustment_requested?: "raw" | "split_adjusted" | "fully_adjusted";
+    /**
+     * Bar-count mode: the number of bars asked for; bar_count is how many were found.
+     */
+    bar_count_requested?: number;
   }[];
   warnings: string[];
   /**
@@ -1524,7 +1532,8 @@ export interface BacktestResults {
       | "suspected_splits"
       | "no_bars"
       | "survivorship"
-      | "adjusted_prices";
+      | "adjusted_prices"
+      | "fewer_bars";
     instrument_id: Identifier | null;
     count: number | null;
     dates: string[];

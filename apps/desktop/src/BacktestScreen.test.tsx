@@ -97,6 +97,25 @@ function renderScreen(
 }
 
 describe("backtest screen", () => {
+  it("runs on a number of bars from a start date", async () => {
+    const api = fakeApi();
+    renderScreen(api);
+    fireEvent.change(screen.getByLabelText("Range"), {
+      target: { value: "count" },
+    });
+    fireEvent.change(screen.getByLabelText("Start date"), {
+      target: { value: "2012-03-01" },
+    });
+    fireEvent.change(screen.getByLabelText("Bars (up to 5,000)"), {
+      target: { value: "300" },
+    });
+    expect(screen.queryByLabelText("End date")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save and run" }));
+    await waitFor(() => expect(api.submit).toHaveBeenCalled());
+    const [, , config] = vi.mocked(api.submit).mock.calls[0];
+    expect(config).toMatchObject({ start_date: "2012-03-01", bar_count: 300 });
+  });
+
   it("saves a rules strategy, runs it and shows the results", async () => {
     const api = fakeApi();
     const onShowFills = renderScreen(api);

@@ -2,8 +2,11 @@
 
 Daily and weekly runs read the whole date range in one query. Intraday runs read each
 regular session separately (at most MAX_INTRADAY_SESSIONS), because aggregated bars are
-built per session. Every input is pinned: source, feed, adjustment, revisions, coverage,
-missing intervals, non-final bars and a SHA-256 of the bars exactly as the engine got them.
+built per session. In bar-count mode a run takes the first `bar_count` bars (at most
+MAX_BAR_COUNT) from the start date, reading sessions forward until it has them; the end
+date then only bounds the search, so any past window works. Every input is pinned:
+source, feed, adjustment, revisions, coverage, missing intervals, non-final bars and a
+SHA-256 of the bars exactly as the engine got them.
 """
 
 from __future__ import annotations
@@ -23,6 +26,8 @@ from services.market_data.instruments import calendar_for
 from services.market_data.provider import BarsQuery, BarsResult, InvalidBarsQueryError
 
 MAX_INTRADAY_SESSIONS = 60
+MAX_BAR_COUNT = 5_000  # also the Python indicator limit (ADR 0023)
+MAX_COUNT_SESSIONS = 1_000  # bar-count mode: sessions read at most (5,000 60m bars ~ 715)
 MAX_DAILY_DAYS = 366 * 30
 MISSING_LIST_LIMIT = 50
 ASOF = re.compile(r"asof-(\d{4}-\d{2}-\d{2})")
@@ -113,6 +118,7 @@ def load_instrument(
     as_of_utc: datetime | None = None,
     adjustment: str = "raw",
     get_adjusted: GetAdjusted | None = None,
+    bar_count: int | None = None,
 ) -> InstrumentInput:
     if adjustment not in ADJUSTMENTS:
         raise InvalidBarsQueryError("adjustment must be raw, split_adjusted or fully_adjusted")
@@ -120,6 +126,8 @@ def load_instrument(
         raise InvalidBarsQueryError("adjusted prices are available for daily and weekly runs")
     if end < start:
         raise InvalidBarsQueryError("end_date must not be before start_date")
+    if bar_count is not None and not 1 <= bar_count <= MAX_BAR_COUNT:
+        raise InvalidBarsQueryError(f"bar_count must be 1 to {MAX_BAR_COUNT}")
     if (end - start).days > MAX_DAILY_DAYS:
         raise InvalidBarsQueryError("a backtest may span at most 30 years")
     calendar = calendar_for(instrument_id)
@@ -129,6 +137,8 @@ def load_instrument(
     if timeframe in ("1d", "1w"):
         # Whole days, so both regular-session and whole-day (08:00-20:00 KST) bars fit.
         ranges = [(windows[0].pre_open_utc, windows[-1].post_close_utc)]
+    elif bar_count is not None:
+        ranges = [(w.regular_open_utc, w.regular_close_utc) for w in windows]
     else:
         if len(windows) > MAX_INTRADAY_SESSIONS:
             raise InvalidBarsQueryError(
@@ -138,7 +148,11 @@ def load_instrument(
 
     documents: list[dict[str, Any]] = []
     coverages: list[dict[str, Any]] = []
-    for range_start, range_end in ranges:
+    for index, (range_start, range_end) in enumerate(ranges):
+        if bar_count is not None and len(documents) >= bar_count:
+            break
+        if bar_count is not None and index >= MAX_COUNT_SESSIONS:
+            break
         query = BarsQuery(instrument_id, timeframe, range_start, range_end, as_of_utc=as_of_utc)
         if adjustment == "raw":
             result = get_bars(query)
@@ -152,6 +166,16 @@ def load_instrument(
         coverages.append(result.coverage)
 
     documents.sort(key=lambda bar: str(bar["interval_start_utc"]))
+    missing = [gap for coverage in coverages for gap in coverage["missing_intervals"]]
+    expected_count = sum(int(c["expected_interval_count"]) for c in coverages)
+    requested_end = ranges[len(coverages) - 1][1]
+    if bar_count is not None and len(documents) > bar_count:
+        # Keep the first bar_count bars; what lay after the last kept bar was not used.
+        documents = documents[:bar_count]
+        cut = str(documents[-1]["interval_end_utc"])
+        missing = [gap for gap in missing if str(gap["start_utc"]) < cut]
+        expected_count = len(documents) + len(missing)
+        requested_end = datetime.fromisoformat(cut.replace("Z", "+00:00"))
     bars = [
         EngineBar(
             time=_epoch(bar["interval_start_utc"]),
@@ -165,7 +189,6 @@ def load_instrument(
         )
         for bar in documents
     ]
-    missing = [gap for coverage in coverages for gap in coverage["missing_intervals"]]
     non_final = sum(1 for bar in bars if not bar.final)
     adjustments = sorted({str(c["adjustment"]) for c in coverages})
     digest = hashlib.sha256(
@@ -177,20 +200,22 @@ def load_instrument(
         "calendar_id": calendar.calendar_id,
         "calendar_version": calendar.calendar_version,
         "requested_start_utc": _utc(ranges[0][0]),
-        "requested_end_utc": _utc(ranges[-1][1]),
+        "requested_end_utc": _utc(requested_end),
         "as_of_utc": None if as_of_utc is None else _utc(as_of_utc),
         "source_ids": sorted({str(c["source_id"]) for c in coverages}),
         "feed_scopes": sorted({str(c["source_feed_scope"]) for c in coverages}),
         "adjustments": adjustments,
         "dataset_revisions": sorted({str(c["dataset_revision"]) for c in coverages}),
         "bar_count": len(bars),
-        "expected_interval_count": sum(int(c["expected_interval_count"]) for c in coverages),
+        "expected_interval_count": expected_count,
         "missing_interval_count": len(missing),
         "missing_intervals": missing[:MISSING_LIST_LIMIT],
         "non_final_bar_count": non_final,
         "bars_sha256": digest,
         "adjustment_requested": adjustment,
     }
+    if bar_count is not None:
+        pin["bar_count_requested"] = bar_count
     warnings: list[str] = []
     details: list[dict[str, Any]] = []
 
@@ -247,4 +272,11 @@ def load_instrument(
         )
     if not bars:
         warn("no_bars", "no bars in the range")
+    elif bar_count is not None and len(bars) < bar_count:
+        warn(
+            "fewer_bars",
+            f"only {len(bars)} of the {bar_count} requested bars exist between the start "
+            "date and the end of the search",
+            len(bars),
+        )
     return InstrumentInput(instrument_id, str(calendar.zone), bars, pin, warnings, details)
