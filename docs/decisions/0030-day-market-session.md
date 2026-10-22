@@ -25,7 +25,8 @@ Until now:
 - **Name:** `overnight`, shown as "Day market" / "데이마켓". US listings only.
 - **When it runs:** the overnight session of US trading day D runs from 20:00 New York time on the previous calendar day to 04:00 on D, and belongs to D. Monday's session starts on Sunday evening. When D is not a trading day, there is no session into D.
 - **Policy version:** `us-overnight-boats-v1-2026-10-22`.
-- **Unverified:** the policy assumes Blue Ocean's schedule around US holidays and early closes. It has not been checked against Blue Ocean's own calendar.
+- **Holidays and early closes (checked 2026-10-22):** Toss's market calendar (`GET /v1/market/broker-calendar`, its `dayMarket` sessions) agreed with this policy on all 86 dates read around the holidays and early closes of 2025–2026 and both DST changes. Examples: no session into Thanksgiving, Christmas or 2026-07-03; a normal 20:00–04:00 session into the day after Thanksgiving (an early close); the session after an early close starts at the usual 20:00 of the evening before the next trading day. The policy version stays `v1`.
+- **Still not verified:** Blue Ocean's own calendar. Toss is a broker that routes to Blue Ocean, not Blue Ocean itself.
 
 ### A separate data stream, not merged into the existing bars
 
@@ -58,7 +59,7 @@ Until now:
 
 ## Remaining risks
 
-- The holiday and early-close schedule is assumed, not verified (see above).
+- The holiday and early-close schedule matches Toss's calendar, but not checked against Blue Ocean's own calendar (see above).
 - **Thin trading:** AAPL showed about 80 bars per eight-hour night, so most buckets have no bar.
 - **Plan:** BOATS access depends on the Alpaca plan. Another key may be refused (502 `provider_auth_failed`).
 - **Shown range:** the chart shows the day market for the newest 14 session dates only.

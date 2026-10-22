@@ -46,6 +46,29 @@ def test_the_session_runs_20_to_04_new_york_before_its_trading_day() -> None:
     assert overnight_session_of(CALENDAR, utc("2026-10-24T01:00:00Z")) is None
 
 
+@pytest.mark.parametrize(
+    ("session_date", "expected"),
+    [
+        # Toss's market calendar `dayMarket` sessions, read on 2026-10-22 (ADR 0030).
+        (date(2025, 11, 27), None),  # Thanksgiving: no session on Wednesday night
+        (date(2025, 11, 28), ("2025-11-28T01:00:00Z", "2025-11-28T09:00:00Z")),  # early close
+        (date(2025, 12, 1), ("2025-12-01T01:00:00Z", "2025-12-01T09:00:00Z")),
+        (date(2025, 12, 25), None),
+        (date(2025, 12, 26), ("2025-12-26T01:00:00Z", "2025-12-26T09:00:00Z")),
+        (date(2026, 3, 9), ("2026-03-09T00:00:00Z", "2026-03-09T08:00:00Z")),  # DST began
+        (date(2026, 7, 3), None),
+        (date(2026, 7, 6), ("2026-07-06T00:00:00Z", "2026-07-06T08:00:00Z")),
+        (date(2026, 11, 2), ("2026-11-02T01:00:00Z", "2026-11-02T09:00:00Z")),  # DST ended
+        (date(2026, 12, 28), ("2026-12-28T01:00:00Z", "2026-12-28T09:00:00Z")),
+    ],
+)
+def test_holidays_and_early_closes_match_the_toss_calendar(
+    session_date: date, expected: tuple[str, str] | None
+) -> None:
+    window = overnight_window(CALENDAR, session_date)
+    assert window == (None if expected is None else (utc(expected[0]), utc(expected[1])))
+
+
 def minute(stamp: str, o: str, h: str, low: str, c: str, v: int) -> str:
     return f'{{"t":"2026-10-22T{stamp}:00Z","o":{o},"h":{h},"l":{low},"c":{c},"v":{v}}}'
 
