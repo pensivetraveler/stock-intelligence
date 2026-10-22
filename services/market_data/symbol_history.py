@@ -223,6 +223,10 @@ class SymbolHistory:
                 key = reused[0].symbol if reused else f"{original}.D{year % 100:02d}"
             if not KEY.fullmatch(key):
                 return Resolution("delisted", key, DEFAULT_VENUE, False, moved_to)
+            registered = self._registered().get(key)
+            if venue is None and registered is not None and registered.venue_verified:
+                # A venue verified later (SIP tape) is kept, so the ID stays the same.
+                venue = registered.venue
             entry = DelistedInstrument(
                 key,
                 venue or DEFAULT_VENUE,

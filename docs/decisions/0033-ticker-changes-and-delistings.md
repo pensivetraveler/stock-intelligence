@@ -30,6 +30,7 @@ The Kiwoom sync (ADR 0029) could not match 728 tickers (33,896 orders) to the sy
 3. **Normal:** if S is an active listed ticker and was not renamed after D, nothing changes.
 4. **Delisted:** otherwise the company no longer trades on a US exchange; it was delisted, often to OTC. The trade keeps its own instrument `us:S:<venue>:2026` (`instrument_resolution: delisted`).
    - **Venue:** comes from the inactive asset list when it names a listed exchange. Otherwise it is XNAS and is marked unverified, because Kiwoom reports no exchange.
+   - **Verified later:** a venue marked verified in the registry wins over the XNAS default, so a later trade keeps the same ID. Added on 2026-10-22 after the SIP tape check below.
    - **Registry:** the instrument goes into `SIW_DATA_DIR/symbols/delisted-instruments.json` with `asof` = the latest trade date seen for it and the ticker it moved to, if any.
 5. **Reused tickers:** when S is delisted under rule 4 but another company uses S today, the delisted company gets its own ID with a year suffix: `us:S.Dyy:<venue>:2026`.
    - **The year:** the year it was renamed away when known, otherwise the year of its first trade seen. Later trades of the same company reuse that ID.
@@ -51,7 +52,8 @@ The Kiwoom sync (ADR 0029) could not match 728 tickers (33,896 orders) to the sy
 ### Checks after the decision (2026-10-22, counts only)
 
 - **Toss reports today's ticker:** of the 5,710 stored Toss executions, 177 (18 tickers) were filled before a recorded rename of their ticker's company, and every one of them carries the new ticker. None carries an old ticker. Following renames is therefore not needed for Toss; Toss sync keeps its plain directory lookup. Toss trades of delisted companies were not checked.
-- **Venue of delisted instruments:** Alpaca SIP trades queried with `asof` = the registry date carry the tape of the primary listing (`z`: A = NYSE, B = NYSE American, NYSE Arca, Cboe and other exchanges, C = Nasdaq). For the 7 instruments with a verified venue, the tape agreed every time. Of the 534 unverified ones (all set to XNAS): 435 tape C (Nasdaq, as set), 56 tape A (NYSE), 38 tape B (not Nasdaq; the exchange inside tape B cannot be told apart), 5 without data. The 94 that are not Nasdaq would need new IDs, which re-keys stored trades; that waits for the user's decision.
+- **Venue of delisted instruments:** Alpaca SIP trades queried with `asof` = the registry date carry the tape of the primary listing (`z`: A = NYSE, B = NYSE American, NYSE Arca, Cboe and other exchanges, C = Nasdaq). For the 7 instruments with a verified venue, the tape agreed every time. Of the 534 unverified ones (all set to XNAS): 435 tape C (Nasdaq, as set), 56 tape A (NYSE), 38 tape B (not Nasdaq; the exchange inside tape B cannot be told apart), 5 without data. The 94 that are not Nasdaq would need new IDs, which re-keys stored trades.
+- **Re-keyed with the user's approval (2026-10-22):** the 56 tape A instruments moved to XNYS (`venue_verified: true` in the registry). The 38 tape B ones stay XNAS and unverified, as do the 5 without data. The 435 tape C ones keep XNAS; their registry flag was not changed.
 
 ## Alternatives considered
 
