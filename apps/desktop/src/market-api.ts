@@ -97,9 +97,15 @@ export interface MarketApi {
   recordScenario(request: ScenarioRequest): Promise<ScenarioDefinition>;
   importedLedger(): Promise<ImportedLedgerResponse>;
   /** A computed comparison of the broker ledger with manual and imported executions. */
-  reconciliation(): Promise<TradeReconciliationResponse>;
+  /** `limit`: only the newest records; the summary counts all of them. */
+  reconciliation(limit?: number): Promise<TradeReconciliationResponse>;
   /** Executions reported by the broker API (one per order), kept as their own ledger. */
-  brokerLedger(): Promise<BrokerLedgerResponse>;
+  /** One instrument's executions, or with `limit` only the newest ones; positions
+   * always cover the whole ledger (or instrument). */
+  brokerLedger(options?: {
+    instrumentId?: string;
+    limit?: number;
+  }): Promise<BrokerLedgerResponse>;
   /** Holdings, buying power, commission rates and open orders of every Toss account. */
   brokerAccount(): Promise<BrokerAccountSnapshot>;
   sellableQuantity(
@@ -452,9 +458,15 @@ export function createMarketApi(
         request,
       );
     },
-    brokerLedger() {
+    brokerLedger(options = {}) {
+      const query = new URLSearchParams({
+        ...(options.instrumentId
+          ? { instrument_id: options.instrumentId }
+          : {}),
+        ...(options.limit ? { limit: String(options.limit) } : {}),
+      }).toString();
       return get<BrokerLedgerResponse>(
-        "/v1/trades/broker",
+        `/v1/trades/broker${query ? `?${query}` : ""}`,
         "broker_ledger_response",
       );
     },
@@ -501,9 +513,9 @@ export function createMarketApi(
         "imported_ledger_response",
       );
     },
-    reconciliation() {
+    reconciliation(limit) {
       return get<TradeReconciliationResponse>(
-        "/v1/trades/reconciliation",
+        `/v1/trades/reconciliation${limit ? `?limit=${limit}` : ""}`,
         "trade_reconciliation_response",
       );
     },

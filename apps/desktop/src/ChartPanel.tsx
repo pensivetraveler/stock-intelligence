@@ -1,5 +1,6 @@
 import type {
   BacktestFill,
+  BrokerOrderExecution,
   ImportedExecution,
   ManualExecution,
   MarketBarsResponse,
@@ -116,6 +117,8 @@ interface ChartPanelProps {
     manual: ManualExecution[];
     imported: ImportedExecution[];
     scenarios: ScenarioDefinition[];
+    /** Broker API fills of this chart's instrument, when the workspace has read them. */
+    broker?: BrokerOrderExecution[];
   };
   onJournalChange: () => void;
   /** Ask the review Agent about this chart up to a candle's end. */
@@ -581,6 +584,7 @@ export function ChartPanel({
               journal.manual,
               journal.scenarios,
               journal.imported,
+              journal.broker,
             ),
             ...backtestMarkers(bars, instrumentId, backtestFills ?? []),
           ].sort((a, b) => a.time - b.time || a.id.localeCompare(b.id))

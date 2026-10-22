@@ -191,6 +191,19 @@ def test_available_at_uses_latest_instant_not_latest_text() -> None:
     assert result[0]["available_at_utc"] == "2026-10-09T13:35:00.500Z"
 
 
+def test_a_bucket_ending_without_trades_is_not_available_before_it_ends() -> None:
+    # Minutes 13:33 and 13:34 had no trades (settled), and the source has no delay: the
+    # bucket is complete, but only from 13:35 on (regression: it claimed 13:33:02).
+    bars = make_bars(utc(2026, 10, 9, 13, 30), 3)
+    no_trade = frozenset({utc(2026, 10, 9, 13, 33), utc(2026, 10, 9, 13, 34)})
+
+    bar = MinuteBarAggregator().aggregate(bars, "5m", no_trade_minutes=no_trade)[0]
+
+    assert bar["quality"] == "complete"
+    assert bar["available_at_utc"] == "2026-10-09T13:35:02Z"  # the source's 2 s delay
+    validate_document(bar)
+
+
 def test_extended_day_buckets_are_returned_in_time_order() -> None:
     pre = make_bars(utc(2026, 10, 9, 13, 25), 5, session="pre")
     regular = make_bars(utc(2026, 10, 9, 13, 30), 5, session="regular")

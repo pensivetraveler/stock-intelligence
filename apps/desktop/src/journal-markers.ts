@@ -1,5 +1,6 @@
 import type {
   BacktestFill,
+  BrokerOrderExecution,
   ImportedExecution,
   ManualExecution,
   PriceBar,
@@ -45,8 +46,30 @@ export function journalMarkers(
   manual: ManualExecution[],
   scenarios: ScenarioDefinition[],
   imported: ImportedExecution[] = [],
+  broker: BrokerOrderExecution[] = [],
 ): ChartMarker[] {
   const markers: ChartMarker[] = [];
+  // Broker API fills: one per order (total quantity at the average price), at the
+  // time the broker reported; an order without a reported time is not drawn.
+  for (const execution of broker) {
+    if (
+      execution.instrument_id !== instrumentId ||
+      !execution.executed_at_utc
+    ) {
+      continue;
+    }
+    const time = barStart(bars, execution.executed_at_utc);
+    if (time === null) continue;
+    const buy = execution.side === "buy";
+    markers.push({
+      id: `broker:${execution.execution_id}`,
+      time,
+      position: buy ? "belowBar" : "aboveBar",
+      shape: buy ? "arrowUp" : "arrowDown",
+      color: MARKER_COLORS.broker,
+      text: `B ${execution.side} ${execution.quantity}`,
+    });
+  }
   for (const execution of imported) {
     if (execution.instrument_id !== instrumentId) continue;
     const time = barStart(bars, execution.executed_at_utc);

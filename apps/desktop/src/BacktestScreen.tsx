@@ -97,6 +97,7 @@ export function BacktestScreen({
   shownRunId,
   onShowFills,
   onClose,
+  onNeedReal,
 }: {
   api: BacktestApi;
   /** When given, a finished run can be critiqued by the review Agent. */
@@ -107,6 +108,8 @@ export function BacktestScreen({
   shownRunId: string | null;
   onShowFills: (shown: { runId: string; fills: BacktestFill[] } | null) => void;
   onClose: () => void;
+  /** Asks the workspace to read real fills for a result's instruments. */
+  onNeedReal?: (instrumentIds: string[]) => void;
 }) {
   const { t } = useI18n();
   const [strategies, setStrategies] = useState<BacktestStrategy[]>([]);
@@ -694,6 +697,7 @@ export function BacktestScreen({
                     agentApi={agentApi}
                     symbolOf={symbolOf}
                     real={real}
+                    onNeedReal={onNeedReal}
                     shown={shownRunId === selectedRun.run_id}
                     onToggleShown={() =>
                       onShowFills(

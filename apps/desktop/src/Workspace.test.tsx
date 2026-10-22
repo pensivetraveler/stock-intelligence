@@ -1155,7 +1155,9 @@ describe("chart workspace", () => {
       "1 new, 0 already stored, 1 without fills",
     );
     fireEvent.click(screen.getByRole("button", { name: "Trade journal" }));
-    const heading = await screen.findByText("Broker API executions (Toss)");
+    const heading = await screen.findByText(
+      "Broker API executions (Toss, Kiwoom)",
+    );
     const ledger = heading.closest(".ledger") as HTMLElement;
     expect(await within(ledger).findByText("250.10")).toBeVisible();
     expect(within(ledger).getByText("0.25")).toBeVisible();

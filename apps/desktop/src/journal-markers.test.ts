@@ -1,5 +1,6 @@
 import type {
   BacktestFill,
+  BrokerOrderExecution,
   ManualExecution,
   PriceBar,
   ScenarioDefinition,
@@ -33,6 +34,63 @@ const bars: PriceBar[] = [0, 5, 10].map((offset) => ({
 }));
 
 describe("journal markers", () => {
+  it("draws broker API fills at their reported time and skips unknown times", () => {
+    const base: BrokerOrderExecution = {
+      kind: "broker_order_execution",
+      schema_version: "0.1",
+      execution_id: "kiwoom-exec-1",
+      instrument_id: "us:aapl:xnas:2026",
+      symbol: "AAPL",
+      side: "buy",
+      quantity: "10",
+      price: "250.10",
+      fees: null,
+      commission: null,
+      tax: null,
+      currency: "USD",
+      executed_at_utc: "2026-10-09T14:01:00Z",
+      time_meaning: "reported_fill_time",
+      granularity: "order_aggregate",
+      order_type: "지정가",
+      order_status: "체결완료",
+      ordered_at_utc: "2026-10-09T14:00:00Z",
+      settlement_date: null,
+      broker_id: "kiwoom",
+      broker_account_ref: "kiwoom-abc",
+      broker_order_id: "20261009-000000001",
+      verification_status: "broker_api_reported",
+      synced_at_utc: "2026-10-10T00:00:00Z",
+    };
+    const markers = journalMarkers(
+      bars,
+      "us:aapl:xnas:2026",
+      [],
+      [],
+      [],
+      [
+        {
+          ...base,
+          instrument_id: "us:aapl:xnas:2026",
+          side: "sell",
+          executed_at_utc: "2026-10-09T14:11:00Z",
+        },
+        { ...base, instrument_id: "us:aapl:xnas:2026", executed_at_utc: null },
+        {
+          ...base,
+          instrument_id: "us:msft:xnas:2026",
+          executed_at_utc: "2026-10-09T14:01:00Z",
+        },
+      ],
+    );
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toMatchObject({
+      time: Date.UTC(2026, 9, 9, 14, 10) / 1000,
+      position: "aboveBar",
+      color: MARKER_COLORS.broker,
+    });
+    expect(markers[0].text).toMatch(/^B sell/);
+  });
+
   it("places each ledger on the bar containing its time with distinct shapes", () => {
     const manual: ManualExecution = {
       ...fixture<ManualExecution>("manual-execution.json"),

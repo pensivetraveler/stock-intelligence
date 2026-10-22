@@ -2,6 +2,7 @@ import type {
   BacktestFill,
   CustomIndicator,
   BrokerLedgerResponse,
+  BrokerOrderExecution,
   ImportedLedgerResponse,
   ManualLedgerResponse,
   ScenarioLedgerResponse,
@@ -265,6 +266,9 @@ type NameForm = {
   error: string | null;
 } | null;
 
+/** Newest broker executions listed in the journal panel. */
+const JOURNAL_BROKER_ROWS = 500;
+
 export function Workspace({
   api,
   storage = browserStorage(),
@@ -459,7 +463,8 @@ export function Workspace({
     Promise.all([
       api.manualLedger(),
       api.importedLedger(),
-      api.brokerLedger(),
+      // The panel lists the newest executions; positions cover the whole ledger.
+      api.brokerLedger({ limit: JOURNAL_BROKER_ROWS }),
       api.scenarioLedger(),
     ])
       .then(([manual, imported, broker, scenarios]) =>
@@ -543,17 +548,59 @@ export function Workspace({
     setPanel("review");
   }, []);
   const clearAgentRequest = useCallback(() => setAgentRequest(null), []);
+  // Broker executions are read per instrument (the whole ledger can hold tens of
+  // thousands): the charts' instruments plus those a backtest result compares.
+  const [extraRealIds, setExtraRealIds] = useState<string[]>([]);
+  const wantedReal = useMemo(
+    () =>
+      [
+        ...new Set([
+          ...layout.charts.map((chart) => chart.instrumentId),
+          ...extraRealIds,
+        ]),
+      ].sort(),
+    [layout.charts, extraRealIds],
+  );
+  const wantedRealKey = wantedReal.join("|");
+  const [brokerFills, setBrokerFills] = useState<
+    Map<string, BrokerOrderExecution[]>
+  >(new Map());
+  useEffect(() => {
+    let current = true;
+    const ids = wantedRealKey ? wantedRealKey.split("|") : [];
+    // Re-read after every journal refresh (a sync may have added executions).
+    if (ledgers.broker === null) return;
+    void Promise.all(
+      ids.map((instrumentId) =>
+        api
+          .brokerLedger({ instrumentId })
+          .then((response) => [instrumentId, response.executions] as const)
+          .catch(() => [instrumentId, [] as BrokerOrderExecution[]] as const),
+      ),
+    ).then((pairs) => {
+      if (current) setBrokerFills(new Map(pairs));
+    });
+    return () => {
+      current = false;
+    };
+  }, [api, wantedRealKey, ledgers.broker]);
   const realFills = useMemo(
     () => ({
       manual: ledgers.manual?.executions ?? [],
       imported: ledgers.imported?.executions ?? [],
-      broker: ledgers.broker?.executions ?? [],
+      broker: [...brokerFills.values()].flat(),
     }),
-    [ledgers],
+    [ledgers, brokerFills],
+  );
+  const chartJournal = useMemo(
+    () => ({ ...journal, broker: realFills.broker }),
+    [journal, realFills],
   );
   const symbolOf = (instrumentId: string) =>
     instruments.find((item) => item.instrument.instrument_id === instrumentId)
-      ?.instrument.symbol ?? instrumentId;
+      ?.instrument.symbol ??
+    // Not in the loaded list (e.g. a ledger-only ticker): "us:aaoi:xnas:2026" -> AAOI.
+    (instrumentId.split(":")[1]?.toUpperCase() || instrumentId);
 
   const setLayout = (update: (previous: WorkspaceState) => WorkspaceState) =>
     setLibrary((previous) =>
@@ -1211,7 +1258,7 @@ export function Workspace({
               instruments={instruments}
               instrumentsReady={instrumentsReady}
               sync={sync}
-              journal={journal}
+              journal={chartJournal}
               backtestFills={backtestShown?.fills}
               onAskAgent={agentApi ? askAgent : undefined}
               customApi={customApi}
@@ -1455,6 +1502,7 @@ export function Workspace({
           instruments={instruments}
           activeInstrumentId={activeConfig.instrumentId}
           real={realFills}
+          onNeedReal={setExtraRealIds}
           agentApi={agentApi}
           shownRunId={backtestShown?.runId ?? null}
           onShowFills={setBacktestShown}

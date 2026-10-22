@@ -29,6 +29,9 @@ type State =
   | { phase: "error"; message: string }
   | { phase: "ready"; result: TradeReconciliationResponse };
 
+/** Newest records listed; the summary still counts every record. */
+const RECONCILIATION_ROWS = 500;
+
 /**
  * The broker API ledger compared with manual entries and statement imports. The API
  * computes it on request; nothing here changes or merges a ledger.
@@ -46,7 +49,7 @@ export function ReconciliationView({
     let current = true;
     setState({ phase: "loading" });
     api
-      .reconciliation()
+      .reconciliation(RECONCILIATION_ROWS)
       .then((result) => {
         if (current) setState({ phase: "ready", result });
       })
@@ -138,6 +141,15 @@ function ReconciliationTable({
     : result.records;
   return (
     <>
+      {result.record_count !== undefined &&
+      result.record_count > result.records.length ? (
+        <p className="workspace-note">
+          {t("journal.newestOnly", {
+            shown: result.records.length,
+            total: result.record_count,
+          })}
+        </p>
+      ) : null}
       <ul className="ledger-summary reconciliation-summary">
         {STATUSES.map((status) => (
           <li key={status} data-status={status}>

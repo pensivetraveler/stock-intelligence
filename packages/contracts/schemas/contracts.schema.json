@@ -1318,16 +1318,14 @@
             "$ref": "#/$defs/Identifier"
           }
         },
-        "fees_unreported_execution_ids": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Identifier"
-          },
-          "description": "Executions without reported fees: realized P&L and fees leave their fees out. Absent when every fee is known."
-        },
         "account_ref": {
           "$ref": "#/$defs/Identifier",
           "description": "Broker ledger only: the broker account this FIFO book belongs to. Accounts are never netted against each other."
+        },
+        "fees_unreported_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Executions without reported fees (Kiwoom): realized P&L and fees leave their fees out. Absent when every fee is known."
         }
       }
     },
@@ -3020,6 +3018,11 @@
           "items": {
             "$ref": "#/$defs/LedgerPosition"
           }
+        },
+        "execution_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "All executions in the ledger (or for the instrument); `executions` may list only the newest of them."
         }
       }
     },
@@ -5805,6 +5808,11 @@
           "items": {
             "$ref": "#/$defs/ReconciliationRecord"
           }
+        },
+        "record_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "All records; `records` may list only the newest of them, while `summary` always counts all."
         }
       }
     },
