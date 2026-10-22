@@ -42,3 +42,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0026-formula-indicators.md`: 수식 지표(Phase 4) — 허용 목록 함수·사칙연산의 안전한 수식, eval 없는 파서, 상수 길이·과거만 참조, 차트별 저장, 입력 중 검증
 - `0027-higher-timeframe-indicators.md`: 큰 시간대 지표 — 분봉 차트에 일봉·주봉 지표, 확정·공개된 큰 봉만 각 차트 봉 종료 시점 기준으로 반영(미래 차단), 요청별 캐시
 - `0028-electron-desktop-shell.md`: Electron 데스크톱 셸 — siw://app 출처로 화면 제공, 로컬 API는 저장소에서 찾거나 실행(번들 안 함), 서명 없는 x64 .app/.dmg
+- `0035-alpaca-default-us-provider.md`: Alpaca(SIP·BOATS)를 미국 시세·종목 검색·기업 행위의 기본 공급업체로 선정(사용자 결정, 코드 기본값은 합성 데이터 유지), Massive는 미검증 대체 후보
