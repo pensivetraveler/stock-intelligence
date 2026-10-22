@@ -127,6 +127,22 @@ def manual_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return positions
 
 
+def account_positions(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Broker-ledger positions per broker account and instrument.
+
+    Each account is its own FIFO book: a sell in one account never closes a buy made in
+    another (for example a Kiwoom sell against a Toss buy). Positions carry `account_ref`.
+    """
+    by_account: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+    for execution in executions:
+        by_account[cast(str, execution["broker_account_ref"])].append(execution)
+    return [
+        {"account_ref": account, **position}
+        for account in sorted(by_account)
+        for position in manual_positions(by_account[account])
+    ]
+
+
 def scenario_pnl(scenario: dict[str, Any]) -> dict[str, str]:
     """Hypothetical round-trip P&L: slippage is adverse at both entry and exit."""
     quantity = Decimal(cast(str, scenario["quantity"]))

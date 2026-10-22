@@ -1324,6 +1324,10 @@
             "$ref": "#/$defs/Identifier"
           },
           "description": "Executions without reported fees: realized P&L and fees leave their fees out. Absent when every fee is known."
+        },
+        "account_ref": {
+          "$ref": "#/$defs/Identifier",
+          "description": "Broker ledger only: the broker account this FIFO book belongs to. Accounts are never netted against each other."
         }
       }
     },
