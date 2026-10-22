@@ -43,6 +43,10 @@ On 2026-10-22 the user asked to import the trade history of their Kiwoom account
   - no conflicts.
 - **Five years, in yearly calls:** 66,413 stored, 33,754 with unknown symbols and 1,119 `time_unresolved`. Two of the years had no orders. Per-year counts are in PROJECT_STATE.
 
+## Follow-up (2026-10-22): day-market orders
+
+ADR 0030 now places orders outside 04:00–20:00 New York time in the day market that belongs to their `ord_dt`. A re-sync stored 977 of the 1,119 orders that had been `time_unresolved`. The other 142 have symbols missing from the directory. No conflicts.
+
 ## Alternatives considered
 
 - **ust21180 to find the dates with fills, then ust21150 per date:** fewer daily calls, but ust21180 lists unfilled orders too and needed more than 200 pages for some months.
