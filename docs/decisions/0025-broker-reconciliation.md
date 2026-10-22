@@ -18,7 +18,7 @@ The first three can describe the same real trades. Roadmap Phase 6 asks for "inc
 
 ### A computed view, never a write
 
-- **Endpoint:** `GET /v1/trades/reconciliation?instrument_id=&since=&price_tolerance_bps=` returns `trade_reconciliation_response`, with `view: "computed"`.
+- **Endpoint:** `GET /v1/trades/reconciliation?instrument_id=&since=&until=&from_date=&to_date=&status=&price_tolerance_bps=&limit=` returns `trade_reconciliation_response`, with `view: "computed"` (the filters after `since` were added on 2026-10-23, see below).
 - **Reads only:** it reads the three actual-fill ledgers. It does not merge, rewrite or annotate them, and stores nothing. A test checks that the journal file's bytes are unchanged.
 - **Evidence status unchanged:** a manual record's `evidence_status` stays as recorded. Promoting it to `reconciled` would be a new, user-approved append, which is deferred.
 - **Scenarios:** hypothetical scenarios are never compared.
@@ -115,6 +115,15 @@ It reloads whenever the journal ledgers reload, for example after a Toss sync or
 - `tests/journal/test_reconciliation_api.py` covers the contract, filters, rejected parameters, the 503 without storage, and the unchanged journal bytes.
 - Desktop tests: `ReconciliationView.test.tsx`, plus the journal panel in `Workspace.test.tsx`.
 - A live run against a scratch journal is recorded in PROJECT_STATE.
+
+## Follow-up (2026-10-23): a broker-only ledger
+
+With no manual entries and no statement imports, every broker order is "broker only" (108,417 of them in the user's journal) and a raw list says nothing. So:
+
+- **Response:** `ledger_counts` (records per ledger before any filter) and `breakdown` (status counts per instrument and per exchange-local day) were added. `until_utc`, `from_date`, `to_date` and `status_filter` echo the new filters.
+- **Filters:** `until` (UTC, exclusive), `from_date`/`to_date` (inclusive days on each record's own exchange calendar: New York for US, Seoul for KR) and `status`. Like `since`, they filter the result, not the matching input. `status` narrows `records` and `record_count` only; `summary` and `breakdown` still count every status.
+- **View:** when both user ledgers are empty, the view says so, opens per instrument, and its "Needs attention" filter hides broker-only rows. A row of the per-instrument or per-day table opens that instrument's or day's records.
+- **Cost:** the breakdown adds about 0.8 s to the unfiltered answer on the user's journal (about 4.2 s → 5.0 s).
 
 ## Revisit when
 

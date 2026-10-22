@@ -43,6 +43,7 @@ import { LIBRARY_STORAGE_KEY } from "./workspace-library";
 import { DEFAULT_WORKSPACE, WORKSPACE_STORAGE_KEY } from "./workspace-state";
 
 // The real chart draws on canvas, which jsdom does not implement.
+const onChart = { selector: '[data-testid^="chart-"]' };
 vi.mock("./PriceChart", () => ({
   PriceChart: ({
     chartId,
@@ -841,7 +842,7 @@ describe("chart workspace", () => {
     );
 
     // Both charts show the same instrument and day, so both carry the marker.
-    expect(await screen.findAllByText(/M buy 10/)).toHaveLength(2);
+    expect(await screen.findAllByText(/M buy 10/, onChart)).toHaveLength(2);
     expect(api.manualRequests[0]).toMatchObject({
       price: "250.20",
       executed_date_et: "2026-10-09",
@@ -963,7 +964,9 @@ describe("chart workspace", () => {
     expect(
       await screen.findByText(/kept after duplicate review/),
     ).toBeInTheDocument();
-    expect((await screen.findAllByText(/I buy 5/)).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByText(/I buy/, onChart)).length,
+    ).toBeGreaterThan(0);
     expect(
       screen.getByText(
         "No actual executions recorded. Click a candle to add one.",
@@ -2252,13 +2255,15 @@ describe("daily and weekly charts", () => {
       within(dialog).getByRole("button", { name: "Close backtest" }),
     );
 
-    expect(await screen.findByText(/BT buy/)).toBeInTheDocument();
+    expect(await screen.findByText(/BT buy/, onChart)).toBeInTheDocument();
     const chip = screen.getByRole("status", { name: /^Simulated fills only/ });
     expect(chip).toHaveTextContent("Backtest fills: 1 (simulated)");
     fireEvent.click(
       within(chip).getByRole("button", { name: "Hide fills from charts" }),
     );
-    await waitFor(() => expect(screen.queryByText(/BT buy/)).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByText(/BT buy/, onChart)).toBeNull(),
+    );
   });
   it("asks the review Agent about a clicked candle up to its end", async () => {
     const reviewChart = vi.fn<AgentApi["reviewChart"]>(() =>

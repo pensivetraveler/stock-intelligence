@@ -5981,6 +5981,58 @@
           ],
           "description": "Filters the records shown; earlier records still count as counterparts."
         },
+        "until_utc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Exclusive end of the records shown; later records still count as counterparts."
+        },
+        "from_date": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "First exchange-local day shown (inclusive), on each record's own exchange calendar."
+        },
+        "to_date": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Last exchange-local day shown (inclusive)."
+        },
+        "status_filter": {
+          "anyOf": [
+            {
+              "enum": [
+                "matched",
+                "conflicting",
+                "broker_only",
+                "manual_only",
+                "imported_only"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Narrows `records` (and `record_count`) only; `summary` and `breakdown` count every status."
+        },
         "parameters": {
           "type": "object",
           "additionalProperties": false,
@@ -6036,6 +6088,74 @@
             }
           }
         },
+        "ledger_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Records in each ledger before any filter, so a view can tell an empty manual/import ledger from a filtered one.",
+          "required": ["broker_api", "manual_actual", "statement_imported"],
+          "properties": {
+            "broker_api": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "manual_actual": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "statement_imported": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "breakdown": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Status counts of every record in range (before the status filter), per instrument and per exchange-local day; a record without a time counts under date null.",
+          "required": ["by_instrument", "by_day"],
+          "properties": {
+            "by_instrument": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["instrument_id", "counts"],
+                "properties": {
+                  "instrument_id": {
+                    "$ref": "#/$defs/Identifier"
+                  },
+                  "counts": {
+                    "$ref": "#/$defs/ReconciliationStatusCounts"
+                  }
+                }
+              }
+            },
+            "by_day": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["date", "counts"],
+                "properties": {
+                  "date": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "counts": {
+                    "$ref": "#/$defs/ReconciliationStatusCounts"
+                  }
+                }
+              }
+            }
+          }
+        },
         "records": {
           "type": "array",
           "items": {
@@ -6046,6 +6166,39 @@
           "type": "integer",
           "minimum": 0,
           "description": "All records; `records` may list only the newest of them, while `summary` always counts all."
+        }
+      }
+    },
+    "ReconciliationStatusCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "matched",
+        "conflicting",
+        "broker_only",
+        "manual_only",
+        "imported_only"
+      ],
+      "properties": {
+        "matched": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "conflicting": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "broker_only": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "manual_only": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imported_only": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

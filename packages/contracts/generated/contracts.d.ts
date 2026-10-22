@@ -3256,6 +3256,30 @@ export interface TradeReconciliationResponse {
    * Filters the records shown; earlier records still count as counterparts.
    */
   since_utc: UtcTimestamp | null;
+  /**
+   * Exclusive end of the records shown; later records still count as counterparts.
+   */
+  until_utc?: UtcTimestamp | null;
+  /**
+   * First exchange-local day shown (inclusive), on each record's own exchange calendar.
+   */
+  from_date?: string | null;
+  /**
+   * Last exchange-local day shown (inclusive).
+   */
+  to_date?: string | null;
+  /**
+   * Narrows `records` (and `record_count`) only; `summary` and `breakdown` count every status.
+   */
+  status_filter?:
+    | (
+        | "matched"
+        | "conflicting"
+        | "broker_only"
+        | "manual_only"
+        | "imported_only"
+      )
+    | null;
   parameters: {
     price_tolerance_bps: NonNegativeDecimalString;
     time_tolerance_seconds: number;
@@ -3268,11 +3292,39 @@ export interface TradeReconciliationResponse {
     manual_only: number;
     imported_only: number;
   };
+  /**
+   * Records in each ledger before any filter, so a view can tell an empty manual/import ledger from a filtered one.
+   */
+  ledger_counts?: {
+    broker_api: number;
+    manual_actual: number;
+    statement_imported: number;
+  };
+  /**
+   * Status counts of every record in range (before the status filter), per instrument and per exchange-local day; a record without a time counts under date null.
+   */
+  breakdown?: {
+    by_instrument: {
+      instrument_id: Identifier;
+      counts: ReconciliationStatusCounts;
+    }[];
+    by_day: {
+      date: string | null;
+      counts: ReconciliationStatusCounts;
+    }[];
+  };
   records: ReconciliationRecord[];
   /**
    * All records; `records` may list only the newest of them, while `summary` always counts all.
    */
   record_count?: number;
+}
+export interface ReconciliationStatusCounts {
+  matched: number;
+  conflicting: number;
+  broker_only: number;
+  manual_only: number;
+  imported_only: number;
 }
 /**
  * One record of an actual-fill ledger as the reconciliation classified it. The ledger record itself is unchanged.

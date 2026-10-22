@@ -15,6 +15,8 @@ type Mode = "manual" | "hypothetical";
 interface TradeEntryProps {
   api: MarketApi;
   bar: PriceBar;
+  /** Records already drawn on this candle, one line each (all ledgers). */
+  fills?: string[];
   symbol: string;
   sessionDate: string;
   newId?: () => string;
@@ -40,6 +42,7 @@ function message(t: Translate, error: unknown): string {
 export function TradeEntry({
   api,
   bar,
+  fills = [],
   symbol,
   sessionDate,
   newId = () => crypto.randomUUID(),
@@ -165,6 +168,16 @@ export function TradeEntry({
             close: bar.close,
           })}
         </p>
+        {fills.length > 0 ? (
+          <details className="trade-fills">
+            <summary>{t("trade.fillsOnCandle", { n: fills.length })}</summary>
+            <ul>
+              {fills.map((line, index) => (
+                <li key={index}>{line}</li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </div>
 
       {mode === "manual" ? (
