@@ -44,7 +44,9 @@ import {
   higherBarsOf,
   higherChoices,
   higherRange,
+  intradaySessions,
   isHigherTimeframe,
+  isIntradayHigher,
   type HigherBars,
   type HigherTimeframe,
 } from "./higher-timeframe";
@@ -650,6 +652,21 @@ export function ChartPanel({
     }
     if (ohlcv.length === 0) return [];
     return [...wanted].map(([timeframe, lookback]) => {
+      if (isIntradayHigher(timeframe)) {
+        // Larger intraday bars are session buckets: fetched one session at a time,
+        // for the chart's sessions plus warm-up sessions before them (ADR 0034).
+        const count = intradaySessions(
+          timeframe,
+          lookback,
+          history.sessions.length + 1,
+          sessionScope !== "regular",
+        );
+        return {
+          timeframe,
+          sessions: count,
+          key: `${instrumentId}|${timeframe}|${sessionScope}|${sessionDate}|${count}`,
+        };
+      }
       const range = higherRange(
         ohlcv[0].time,
         ohlcvEnds[ohlcvEnds.length - 1],
@@ -665,22 +682,61 @@ export function ChartPanel({
     });
     // The list is replaced (never mutated) whenever settings change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instrumentId, ohlcv, ohlcvEnds, config.indicators]);
+  }, [
+    instrumentId,
+    ohlcv,
+    ohlcvEnds,
+    config.indicators,
+    history.sessions.length,
+    sessionScope,
+    sessionDate,
+  ]);
+  const loadHigher = useCallback(
+    async (request: (typeof higherRequests)[number]): Promise<PriceBar[]> => {
+      const instrument = request.key.split("|")[0];
+      if (!("sessions" in request) || request.sessions === undefined) {
+        const response = await api.bars({
+          instrumentId: instrument,
+          timeframe: request.timeframe,
+          ...request.range!,
+        });
+        return response.bars;
+      }
+      const windows = await api.sessions(
+        sessionDate,
+        request.sessions,
+        zoneOf(instrument).calendarId,
+      );
+      const bars: PriceBar[] = [];
+      for (const window of windows) {
+        const range = sessionRange(window, sessionScope);
+        if (range === null) continue;
+        const response = await api.bars({
+          instrumentId: instrument,
+          timeframe: request.timeframe,
+          ...range,
+        });
+        bars.push(...response.bars);
+      }
+      return bars;
+    },
+    [api, sessionDate, sessionScope],
+  );
   const [higherCache, setHigherCache] = useState<Record<string, HigherBars>>(
     {},
   );
   const [higherErrors, setHigherErrors] = useState<Record<string, string>>({});
   const higherPending = useRef(new Set<string>());
   useEffect(() => {
-    for (const { timeframe, range, key } of higherRequests) {
+    for (const request of higherRequests) {
+      const { timeframe, key } = request;
       if (higherCache[key] || higherPending.current.has(key)) continue;
       higherPending.current.add(key);
-      api
-        .bars({ instrumentId: key.split("|")[0], timeframe, ...range })
-        .then((response) => {
+      loadHigher(request)
+        .then((loaded) => {
           setHigherCache((cache) => ({
             ...cache,
-            [key]: higherBarsOf(response.bars),
+            [key]: higherBarsOf(loaded),
           }));
           setHigherErrors((errors) => {
             const rest = { ...errors };
@@ -699,7 +755,7 @@ export function ChartPanel({
         )
         .finally(() => higherPending.current.delete(key));
     }
-  }, [api, higherRequests, higherCache, t]);
+  }, [loadHigher, higherRequests, higherCache, t]);
   const higher = useMemo(
     () =>
       Object.fromEntries(

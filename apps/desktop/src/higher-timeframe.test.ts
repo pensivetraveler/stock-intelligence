@@ -5,6 +5,7 @@ import {
   alignToChart,
   higherBarsOf,
   higherChoices,
+  intradaySessions,
   higherRange,
 } from "./higher-timeframe";
 import {
@@ -31,9 +32,26 @@ const at = (utc: string) => Math.floor(Date.parse(utc) / 1000);
 
 describe("larger-timeframe indicators", () => {
   it("offer only timeframes larger than the chart's", () => {
-    expect(higherChoices("5m")).toEqual(["1d", "1w"]);
+    expect(higherChoices("5m")).toEqual([
+      "15m",
+      "30m",
+      "60m",
+      "120m",
+      "240m",
+      "1d",
+      "1w",
+    ]);
+    expect(higherChoices("60m")).toEqual(["120m", "240m", "1d", "1w"]);
     expect(higherChoices("1d")).toEqual(["1w"]);
     expect(higherChoices("1w")).toEqual([]);
+  });
+
+  it("fetch the chart's sessions plus warm-up sessions for larger intraday bars", () => {
+    // 60m regular: 7 bars a session; SMA 20 needs 65 bars, so 10 sessions of warm-up.
+    expect(intradaySessions("60m", 20, 3, false)).toBe(3 + 10 + 1);
+    // Extended hours hold 16 hourly bars a session.
+    expect(intradaySessions("60m", 20, 3, true)).toBe(3 + 5 + 1);
+    expect(intradaySessions("15m", 500, 100, false)).toBe(120);
   });
 
   it("use final bars only and show a value once it was published", () => {
