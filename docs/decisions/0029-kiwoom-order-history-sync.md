@@ -41,7 +41,7 @@ On 2026-10-22 the user asked to import the trade history of their Kiwoom account
   - 3,667 were skipped because their symbol is not in the symbol directory;
   - 1,019 were skipped as `time_unresolved`;
   - no conflicts.
-- **Earlier years:** see PROJECT_STATE.
+- **Five years, in yearly calls:** 66,413 stored, 33,754 with unknown symbols and 1,119 `time_unresolved`. Two of the years had no orders. Per-year counts are in PROJECT_STATE.
 
 ## Alternatives considered
 
