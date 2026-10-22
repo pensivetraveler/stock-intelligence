@@ -197,9 +197,7 @@ describe("ReconciliationView", () => {
         expect.objectContaining({ instrumentId: "us:aapl:xnas:2026" }),
       ),
     );
-    expect(
-      await within(view).findByText(/to list them/),
-    ).toBeInTheDocument();
+    expect(await within(view).findByText(/to list them/)).toBeInTheDocument();
     fireEvent.change(within(view).getByLabelText(/^Show/), {
       target: { value: "broker_only" },
     });
