@@ -55,7 +55,7 @@ class Evidence:
     source_refs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     agent_id: str = "chart_trade_review"
-    agent_version: str = "chart-trade-review-1"
+    agent_version: str = "chart-trade-review-2"
     indicator_versions: dict[str, str] = field(default_factory=lambda: dict(INDICATOR_VERSIONS))
 
 
@@ -222,6 +222,18 @@ class Execution:
     at: datetime | None  # exact time when known
     day: date
     precise: bool
+    # The FIFO book this fill belongs to: one per broker account ("broker:<account_ref>"),
+    # one per imported statement label, one for manual records. Kept locally, never sent.
+    book: str = "manual"
+    fees_reported: bool = True
+
+
+def _book(ledger: str, document: dict[str, Any]) -> str:
+    if ledger == "broker":
+        return f"broker:{document['broker_account_ref']}"
+    if ledger == "imported":
+        return f"imported:{document['broker_label']}"
+    return ledger
 
 
 def execution_of(ledger: str, document: dict[str, Any], instrument_id: str) -> Execution:
@@ -233,14 +245,9 @@ def execution_of(ledger: str, document: dict[str, Any], instrument_id: str) -> E
     moment = _parse(str(when))
     precision = document.get("time_precision", "exact")
     precise = document.get("executed_at_utc") is not None and precision in ("exact", "minute")
-    fees = sum(
-        (
-            Decimal(str(document[name]))
-            for name in ("fees", "commission", "tax")
-            if document.get(name) not in (None, "")
-        ),
-        Decimal(0),
-    )
+    # `fees` is the total; a broker's `commission` and `tax` are its parts, not extra.
+    reported = document.get("fees") not in (None, "")
+    fees = Decimal(str(document["fees"])) if reported else Decimal(0)
     return Execution(
         f"{ledger}:{document['execution_id']}",
         str(document["side"]),
@@ -250,7 +257,30 @@ def execution_of(ledger: str, document: dict[str, Any], instrument_id: str) -> E
         moment if precise else None,
         _session_date(instrument_id, moment),
         precise,
+        _book(ledger, document),
+        reported,
     )
+
+
+def _fifo(fills: Sequence[Execution]) -> tuple[Decimal, Decimal, Decimal]:
+    """Long-only FIFO over one book: (realized before fees, open quantity, unmatched sells)."""
+    lots: list[list[Decimal]] = []  # [quantity, price]
+    realized = Decimal(0)
+    unmatched = Decimal(0)
+    for fill in fills:
+        if fill.side == "buy":
+            lots.append([fill.quantity, fill.price])
+            continue
+        remaining = fill.quantity
+        while remaining > 0 and lots:
+            take = min(remaining, lots[0][0])
+            realized += take * (fill.price - lots[0][1])
+            lots[0][0] -= take
+            remaining -= take
+            if lots[0][0] == 0:
+                lots.pop(0)
+        unmatched += remaining
+    return realized, sum((lot[0] for lot in lots), Decimal(0)), unmatched
 
 
 def trade_review(
@@ -270,30 +300,34 @@ def trade_review(
         {"type": "trades", "instrument_id": instrument_id, "execution_count": len(fills)},
         _utc(now),
     )
-    evidence.source_refs = [f.ref for f in fills]
+    # Each account is its own FIFO book, as in the broker ledger: a sell in one account
+    # never closes a buy made in another. Books are named by order of first fill.
+    books: dict[str, list[Execution]] = {}
+    for fill in fills:
+        books.setdefault(fill.book, []).append(fill)
+    accounts = [f"account:{book}" for book in books if book != "manual"]
+    evidence.source_refs = [f.ref for f in fills] + accounts
     if any(not f.precise for f in fills):
         evidence.uncertainty.append(
             "Some executions have no exact time; they are placed by their date only."
         )
+    unreported = sum(1 for f in fills if not f.fees_reported)
+    if unreported:
+        evidence.uncertainty.append(
+            f"The broker reported no fees for {unreported} execution(s); they count without "
+            "fees, so realized P&L after fees is overstated by those fees."
+        )
     facts = evidence.facts
 
-    # FIFO matching, long positions.
-    lots: list[list[Decimal]] = []  # [quantity, price]
-    realized = Decimal(0)
-    unmatched = Decimal(0)
-    for fill in fills:
-        if fill.side == "buy":
-            lots.append([fill.quantity, fill.price])
-            continue
-        remaining = fill.quantity
-        while remaining > 0 and lots:
-            take = min(remaining, lots[0][0])
-            realized += take * (fill.price - lots[0][1])
-            lots[0][0] -= take
-            remaining -= take
-            if lots[0][0] == 0:
-                lots.pop(0)
-        unmatched += remaining
+    results = {book: _fifo(book_fills) for book, book_fills in books.items()}
+    realized = sum((r[0] for r in results.values()), Decimal(0))
+    open_quantity = sum((r[1] for r in results.values()), Decimal(0))
+    unmatched = sum((r[2] for r in results.values()), Decimal(0))
+    matching = (
+        "FIFO within one account"
+        if len(books) == 1
+        else f"FIFO within each of {len(books)} accounts, never across them"
+    )
     buys = [f for f in fills if f.side == "buy"]
     sells = [f for f in fills if f.side == "sell"]
     fees = sum((f.fees for f in fills), Decimal(0))
@@ -301,7 +335,6 @@ def trade_review(
     sold = sum((f.quantity for f in sells), Decimal(0))
     avg_buy = sum((f.quantity * f.price for f in buys), Decimal(0)) / bought if bought else None
     avg_sell = sum((f.quantity * f.price for f in sells), Decimal(0)) / sold if sold else None
-    open_quantity = sum((lot[0] for lot in lots), Decimal(0))
     facts.append(
         Fact(
             "execution_count", str(len(fills)), "count", f"{len(buys)} buys and {len(sells)} sells"
@@ -330,9 +363,30 @@ def trade_review(
             "realized_pnl",
             _fmt(realized - fees),
             "currency",
-            f"Realized P&L after fees {realized - fees:.2f} (FIFO, fees {fees:.2f})",
+            f"Realized P&L after fees {realized - fees:.2f} ({matching}, fees {fees:.2f})",
         )
     )
+    if len(books) > 1:
+        facts.append(
+            Fact(
+                "account_count",
+                str(len(books)),
+                "count",
+                f"The chosen executions span {len(books)} accounts; each is matched on its own",
+            )
+        )
+        for n, (book, (book_realized, book_open, _)) in enumerate(results.items(), start=1):
+            book_fees = sum((f.fees for f in books[book]), Decimal(0))
+            facts.append(
+                Fact(
+                    "account_realized_pnl",
+                    _fmt(book_realized - book_fees),
+                    "currency",
+                    f"Account {n}: realized P&L after fees {book_realized - book_fees:.2f}, "
+                    f"{book_open:f} shares open",
+                    subject=f"account {n}",
+                )
+            )
     facts.append(
         Fact(
             "holding_days",
@@ -357,10 +411,12 @@ def trade_review(
                 "unmatched_sell",
                 f"{unmatched:f}",
                 "count",
-                f"{unmatched:f} shares sold without a matching buy in the chosen executions",
+                f"{unmatched:f} shares sold without a matching earlier buy in the same account",
             )
         )
-        evidence.uncertainty.append("Sells exceed the chosen buys; earlier buys may be missing.")
+        evidence.uncertainty.append(
+            "Sells exceed the chosen buys in their account; earlier buys may be missing."
+        )
 
     end = min(last_day + timedelta(days=14), today)
     loaded = load_instrument(

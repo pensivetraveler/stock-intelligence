@@ -1,4 +1,8 @@
-import type { AgentAnalysis, ManualExecution } from "@siw/contracts/types";
+import type {
+  AgentAnalysis,
+  BrokerOrderExecution,
+  ManualExecution,
+} from "@siw/contracts/types";
 import {
   fireEvent,
   render,
@@ -121,6 +125,37 @@ describe("review Agent panel", () => {
       ]),
     );
     expect(await screen.findByText("hindsight")).toBeInTheDocument();
+  });
+
+  it("labels broker fills with their account", () => {
+    render(
+      <AgentPanel
+        api={fakeApi()}
+        instrumentId={AAPL}
+        timeframe="1d"
+        cutoffUtc={() => "2026-10-21T12:00:00Z"}
+        real={{
+          manual: [],
+          imported: [],
+          broker: [
+            {
+              ...execution("b1", AAPL),
+              broker_account_ref: "toss-abc-2",
+            } as unknown as BrokerOrderExecution,
+            {
+              ...execution("b2", AAPL),
+              broker_account_ref: "kiwoom-us",
+            } as unknown as BrokerOrderExecution,
+          ],
+        }}
+        request={null}
+        onRequestHandled={vi.fn()}
+        symbolOf={(id) => (id === AAPL ? "AAPL" : id)}
+      />,
+    );
+    const list = screen.getByRole("list", { name: "Executions to review" });
+    expect(within(list).getByText(/\[Toss account 2\]/)).toBeInTheDocument();
+    expect(within(list).getByText(/\[Kiwoom\]/)).toBeInTheDocument();
   });
 
   it("shows what will be sent, then Claude's commentary apart from the facts", async () => {
