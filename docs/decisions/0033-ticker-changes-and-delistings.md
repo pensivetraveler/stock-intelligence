@@ -31,7 +31,11 @@ The Kiwoom sync (ADR 0029) could not match 728 tickers (33,896 orders) to the sy
 4. **Delisted:** otherwise the company no longer trades on a US exchange; it was delisted, often to OTC. The trade keeps its own instrument `us:S:<venue>:2026` (`instrument_resolution: delisted`).
    - **Venue:** comes from the inactive asset list when it names a listed exchange. Otherwise it is XNAS and is marked unverified, because Kiwoom reports no exchange.
    - **Registry:** the instrument goes into `SIW_DATA_DIR/symbols/delisted-instruments.json` with `asof` = the latest trade date seen for it and the ticker it moved to, if any.
-5. **Not resolved:** a ticker an active company uses now, which another company used at D without a recorded rename, is not detected. It resolves as normal (rule 3). This is a known limitation.
+5. **Reused tickers:** when S is delisted under rule 4 but another company uses S today, the delisted company gets its own ID with a year suffix: `us:S.Dyy:<venue>:2026`.
+   - **The year:** the year it was renamed away when known, otherwise the year of its first trade seen. Later trades of the same company reuse that ID.
+   - **Charts:** `asof` and the Alpaca ticker are looked up per instrument, not per ticker, so today's S keeps its own chart.
+   - **Added after review:** a first version shared one ID per ticker. Today's DXF chart then took the 2023 company's `asof`.
+6. **Not resolved:** a ticker an active company uses now, which another company used at D without a recorded rename or exchange move, is not detected. It resolves as normal (rule 3). This is a known limitation.
 
 ### Charts
 
