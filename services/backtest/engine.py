@@ -299,25 +299,32 @@ class PythonSignals:
         self.bars = {item.instrument_id: [b for b in item.bars if b.final] for item in inputs}
         zone = inputs[0].time_zone if inputs else "America/New_York"
         self.process = process(definition["code"], definition.get("params", {}), zone)
+        # Index of the last bar each instrument's strategy has seen.
+        self.seen: dict[str, int] = {}
 
     @property
     def logs(self) -> list[str]:
         return self.process.logs
 
     def signals(self, instrument_id: str, index: int, book: dict[str, Any]) -> list[dict[str, Any]]:
+        # A run that starts after the first bar (a walk-forward window) first hands the
+        # strategy the bars it skipped, as history only: ctx.history is always complete.
+        skipped = self.bars[instrument_id][self.seen.get(instrument_id, -1) + 1 : index]
+        if skipped:
+            self.process.call(
+                {
+                    "type": "history",
+                    "instrument_id": instrument_id,
+                    "bars": [_bar_message(item) for item in skipped],
+                }
+            )
+        self.seen[instrument_id] = index
         bar = self.bars[instrument_id][index]
         reply = self.process.call(
             {
                 "type": "bar",
                 "instrument_id": instrument_id,
-                "bar": {
-                    "time": bar.time,
-                    "open": str(bar.open),
-                    "high": str(bar.high),
-                    "low": str(bar.low),
-                    "close": str(bar.close),
-                    "volume": str(bar.volume),
-                },
+                "bar": _bar_message(bar),
                 **book,
             }
         )
@@ -326,6 +333,17 @@ class PythonSignals:
 
     def close(self) -> None:
         self.process.close()
+
+
+def _bar_message(bar: EngineBar) -> dict[str, Any]:
+    return {
+        "time": bar.time,
+        "open": str(bar.open),
+        "high": str(bar.high),
+        "low": str(bar.low),
+        "close": str(bar.close),
+        "volume": str(bar.volume),
+    }
 
 
 def _utc(epoch: int) -> str:

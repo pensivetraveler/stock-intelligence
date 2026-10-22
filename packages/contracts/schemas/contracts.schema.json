@@ -4501,6 +4501,10 @@
                       }
                     }
                   }
+                },
+                "anchored": {
+                  "type": "boolean",
+                  "description": "true: every in-sample stretch starts at the first bar and grows; false (default): rolling windows of in_sample_bars."
                 }
               },
               "description": "Walk-forward (ADR 0032): rolling in-sample/out-of-sample windows in bars; each window's grid combination with the best in-sample objective trades its out-of-sample stretch."
@@ -5349,6 +5353,9 @@
                   }
                 }
               }
+            },
+            "anchored": {
+              "type": "boolean"
             }
           },
           "description": "Present on walk-forward runs: the windows, the parameters chosen in-sample and their in-sample score. Everything else in the results is out-of-sample only."

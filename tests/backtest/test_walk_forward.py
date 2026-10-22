@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from packages.contracts.validator import validate_document
-from services.backtest.engine import EngineConfig, RuleSignals
+from services.backtest.engine import EngineConfig, PythonSignals, RuleSignals
 from services.backtest.strategy import validate_definition
 from services.backtest.walkforward import WalkForward, WalkForwardError, clean_spec, windows
 from tests.backtest.test_backtest_api import (
@@ -139,3 +139,56 @@ def test_a_walk_forward_run_through_the_api(setup: Any) -> None:  # noqa: F811
         },
     )
     assert refused.status_code == 422
+
+
+def test_anchored_windows_grow_from_the_first_bar() -> None:
+    spec = clean_spec({**SPEC, "anchored": True})
+    assert windows(list(range(60)), spec) == [
+        (0, 20, 30, 29),
+        (0, 30, 40, 39),
+        (0, 40, 50, 49),
+        (0, 50, 60, 59),
+    ]
+    assert walk({**SPEC, "anchored": True})["walk_forward"]["anchored"] is True
+
+
+PYTHON = {
+    "type": "python",
+    # Buys only once 21 bars of history exist: a window starting later still sees them.
+    "code": (
+        "def on_bar(ctx):\n"
+        "    if ctx.position is None and len(ctx.history) > 20 "
+        "and ctx.bar.close > ctx.params.get('threshold', 1000):\n"
+        "        return ctx.buy(quantity=1)\n"
+    ),
+    "params": {},
+}
+
+
+def test_python_strategies_get_fresh_processes_with_full_history() -> None:
+    inputs = [instrument("a", rising(60))]
+    definition = validate_definition(PYTHON)
+    result = WalkForward(
+        "wfpy",
+        definition,
+        clean_spec({**SPEC, "grid": [{"path": "/params/threshold", "values": [1000, 5]}]}),
+        inputs,
+        EngineConfig(Decimal(100000), "USD"),
+        lambda chosen: PythonSignals(chosen, inputs),
+    ).run()
+    section = result["walk_forward"]
+    # Window 1's in-sample stretch holds only 20 bars, so nothing can trade there and
+    # the tie keeps the first value; later windows choose 5.
+    assert [w["chosen"][0]["value"] for w in section["windows"]] == ["1000", "5", "5", "5"]
+    # Window 2 trades from bar 30 in a fresh process; with the earlier bars handed over
+    # as history it buys at once, instead of waiting 21 bars into the window.
+    assert result["fills"][0]["filled_at_utc"] <= section["windows"][1]["out_of_sample_end_utc"]
+    with pytest.raises(WalkForwardError, match="params"):
+        WalkForward(
+            "wfpy2",
+            definition,
+            clean_spec({**SPEC, "grid": [{"path": "/code", "values": [1]}]}),
+            inputs,
+            EngineConfig(Decimal(100000), "USD"),
+            lambda chosen: PythonSignals(chosen, inputs),
+        ).run()

@@ -2787,6 +2787,10 @@ export interface BacktestRun {
                   ];
             },
           ];
+      /**
+       * true: every in-sample stretch starts at the first bar and grows; false (default): rolling windows of in_sample_bars.
+       */
+      anchored?: boolean;
     };
   };
   created_at_utc: UtcTimestamp;
@@ -2964,6 +2968,7 @@ export interface BacktestResults {
       }[];
       in_sample_score: DecimalString | null;
     }[];
+    anchored?: boolean;
   };
 }
 export interface AgentAnalysis {

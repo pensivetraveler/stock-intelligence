@@ -16,7 +16,9 @@ A backtest tuned on the same bars it reports on overstates what a strategy would
   - `objective`: `net_return`, `return_over_drawdown`, `profit_factor` or `win_rate`;
   - `grid`: 1–3 numbers of the rules strategy, each a JSON pointer such as `/entry/left/params/length`, with 1–20 distinct values.
 - **Limits:** at most 50 windows and 400 backtests (windows × combinations).
-- **Python strategies:** not accepted for now. Every combination would need its own sandbox process.
+- **Python strategies (added 2026-10-22):** accepted when the grid varies their `params` (`/params/<name>`). Every in-sample run and every window of the final pass gets a fresh sandbox process, because a strategy keeps state in its process. At most 100 backtests.
+- **Warm-up for Python:** a strategy whose run starts after the first bar first receives the earlier bars as history only (no `on_bar` call), so `ctx.history` is always complete.
+- **Anchored windows (added 2026-10-22):** with `anchored: true`, every in-sample stretch starts at the first bar and grows by one out-of-sample stretch per window.
 
 ### Windows
 
@@ -42,5 +44,4 @@ A backtest tuned on the same bars it reports on overstates what a strategy would
 
 ## Revisit when
 
-- Python strategies need walk-forward (a pooled sandbox per combination).
 - Users want anchored windows, more parameters or random search.

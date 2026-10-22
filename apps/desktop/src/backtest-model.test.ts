@@ -84,7 +84,13 @@ describe("rule builder model", () => {
       out_of_sample_bars: 40,
       objective: "net_return",
       grid: [{ path: "/entry/left/params/length", values: [5, 10, 20] }],
+      anchored: false,
     });
+    expect(
+      tunablePaths({ type: "python", params: { threshold: 3, name: "x" } }),
+    ).toEqual([
+      { path: "/params/threshold", label: "params · threshold", current: "3" },
+    ]);
   });
 
   it("writes limit and stop orders and reads them back", () => {

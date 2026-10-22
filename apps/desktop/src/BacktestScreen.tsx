@@ -92,6 +92,15 @@ function editorOf(strategy: BacktestStrategy): Editor {
  * instruments on the API's queue, and read the results. Backtest fills stay in the
  * backtest store; showing them on the charts never adds them to the journal.
  */
+/** The Python editor's params JSON, or {} while it does not parse. */
+function pythonParams(text: string): unknown {
+  try {
+    return JSON.parse(text || "{}");
+  } catch {
+    return {};
+  }
+}
+
 export function BacktestScreen({
   api,
   agentApi,
@@ -269,7 +278,7 @@ export function BacktestScreen({
           throw new Error(t("bt.barCountInvalid"));
         }
         let walkForwardConfig: Record<string, unknown> | null = null;
-        if (walkForward.enabled && editor.type === "rules") {
+        if (walkForward.enabled) {
           const spec = walkForwardSpec(walkForward);
           if ("error" in spec) throw new Error(t("bt.wf.incomplete"));
           walkForwardConfig = spec;
@@ -602,13 +611,15 @@ export function BacktestScreen({
             {config.timeframe !== "1d" && config.timeframe !== "1w" ? (
               <p className="workspace-note">{t("bt.intradayNote")}</p>
             ) : null}
-            {editor.type === "rules" ? (
-              <WalkForwardFields
-                draft={walkForward}
-                definition={editor.savedRules ?? rulesDefinition(editor.rules)}
-                onChange={setWalkForward}
-              />
-            ) : null}
+            <WalkForwardFields
+              draft={walkForward}
+              definition={
+                editor.type === "rules"
+                  ? (editor.savedRules ?? rulesDefinition(editor.rules))
+                  : { type: "python", params: pythonParams(editor.params) }
+              }
+              onChange={setWalkForward}
+            />
             <p className="bt-actions">
               <button
                 type="button"
