@@ -2124,6 +2124,32 @@
                   }
                 ],
                 "description": "Korean display name from Toss, when a Toss key is registered and Toss has one."
+              },
+              "former_symbol": {
+                "type": "string",
+                "maxLength": 32,
+                "description": "ADR 0033: the result is the listing this old ticker was renamed to."
+              },
+              "status": {
+                "enum": ["delisted"],
+                "description": "ADR 0033: a delisted instrument seen in trades; its chart ends where exchange trading ended."
+              },
+              "last_trade_date": {
+                "type": "string",
+                "format": "date",
+                "description": "Delisted: the latest trade date seen for it (the chart's natural date)."
+              },
+              "moved_to": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "maxLength": 32
+                  }
+                ],
+                "description": "Delisted: the ticker it trades under now (often an OTC ticker), if it was renamed."
               }
             }
           }
@@ -2983,6 +3009,10 @@
         },
         "synced_at_utc": {
           "$ref": "#/$defs/UtcTimestamp"
+        },
+        "instrument_resolution": {
+          "enum": ["renamed", "delisted"],
+          "description": "ADR 0033: renamed - the trade is on the chart of the ticker the company uses now (symbol keeps the ticker the broker reported); delisted - the company has left US exchanges and its chart ends there. Absent for a plain listing."
         }
       },
       "description": "An order's execution as reported by a broker API, read on demand and stored append-only. A separate ledger from manual entries and statement imports; never summed with them."
@@ -3106,6 +3136,27 @@
             "maxLength": 200
           },
           "description": "Broker order IDs whose reported execution changed after it was stored; the stored record is kept."
+        },
+        "unknown_symbols": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["symbol", "orders"],
+            "properties": {
+              "symbol": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              },
+              "orders": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "description": "Symbols skipped as unknown_instrument, with their order counts (most first, at most 1,000)."
         }
       },
       "description": "What one on-demand sync of closed broker orders stored."

@@ -95,7 +95,7 @@ def session(broker: Broker) -> KiwoomAccountSession:
     )
 
 
-def instrument_for(symbol: str, currency: str) -> str | None:
+def instrument_for(symbol: str, currency: str, on: object = None) -> str | None:
     return "us:aapl:xnas:2026" if symbol == "AAPL" and currency == "USD" else None
 
 
@@ -129,6 +129,7 @@ def test_sync_stores_each_filled_order_once_without_inventing_fees(tmp_path: Pat
         "unknown_instrument": 1,
         "time_unresolved": 1,
     }
+    assert result["unknown_symbols"] == [{"symbol": "ZZZZ", "orders": 1}]
     # Every weekday from 1 to 9 July was read; 7 July in two pages.
     daily = [r for r in broker.requests if r.headers.get("api-id") == "ust21150"]
     assert [json.loads(r.content)["ord_dt"][-2:] for r in daily] == [

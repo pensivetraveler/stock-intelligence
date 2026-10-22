@@ -705,12 +705,22 @@ export function Workspace({
     setSearch(null);
     updateActive({ instrumentId });
   };
-  const chooseListing = (listing: InstrumentListing) => {
+  const chooseListing = (
+    listing: InstrumentListing,
+    lastTradeDate?: string,
+  ) => {
     const id = listing.instrument.instrument_id;
     if (!instruments.some((item) => item.instrument.instrument_id === id)) {
       changeAdded([...added, listing]);
     }
-    chooseInstrument(id);
+    setSearch(null);
+    // A delisted stock has no bars after it left its exchange (ADR 0033): open it on its
+    // last trade date instead of today.
+    updateActive(
+      lastTradeDate
+        ? { instrumentId: id, sessionDate: lastTradeDate }
+        : { instrumentId: id },
+    );
   };
   useEffect(() => {
     if (!query) return;
@@ -878,12 +888,25 @@ export function Workspace({
                   <li key={item.listing.instrument.instrument_id}>
                     <button
                       type="button"
-                      onClick={() => chooseListing(item.listing)}
+                      onClick={() =>
+                        chooseListing(item.listing, item.last_trade_date)
+                      }
                     >
                       <strong>{item.listing.instrument.symbol}</strong>
                       <small>
                         {item.local_name ? `${item.local_name} · ` : ""}
                         {item.name} · {item.listing.instrument.venue}
+                        {item.former_symbol
+                          ? ` · ${t("chart.formerSymbol", { symbol: item.former_symbol })}`
+                          : ""}
+                        {item.status === "delisted"
+                          ? ` · ${t("chart.delisted", {
+                              date: item.last_trade_date ?? "?",
+                              moved: item.moved_to
+                                ? t("chart.movedTo", { symbol: item.moved_to })
+                                : "",
+                            })}`
+                          : ""}
                       </small>
                     </button>
                   </li>
