@@ -5,7 +5,16 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/generated/**", "**/src-tauri/target/**"] },
+  {
+    ignores: [
+      "**/dist/**",
+      "**/generated/**",
+      "**/src-tauri/target/**",
+      "apps/electron/release/**",
+      "apps/electron/ui/**",
+      "apps/electron/node_modules/**",
+    ],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -25,5 +34,14 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
     },
+  },
+  {
+    // Electron main process (ADR 0028): CommonJS on Node.
+    files: ["apps/electron/**/*.cjs"],
+    languageOptions: {
+      sourceType: "commonjs",
+      globals: { ...globals.node },
+    },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
   },
 );

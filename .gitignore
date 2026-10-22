@@ -36,3 +36,8 @@ secrets/
 .DS_Store
 .idea/
 .vscode/
+
+# Electron shell build output
+apps/electron/ui/
+apps/electron/release/
+apps/electron/siw-config.json

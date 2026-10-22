@@ -1,0 +1,37 @@
+{
+  "name": "siw-electron",
+  "version": "0.4.0-dev",
+  "private": true,
+  "description": "Electron desktop shell for Stock Intelligence Workstation (ADR 0028)",
+  "main": "main.cjs",
+  "scripts": {
+    "prepare-ui": "cd ../desktop && corepack pnpm build && cd ../electron && node scripts/copy-ui.cjs",
+    "start": "electron .",
+    "package": "npm run prepare-ui && node scripts/write-config.cjs && electron-builder --mac --x64 --dir",
+    "dist": "npm run prepare-ui && node scripts/write-config.cjs && electron-builder --mac --x64"
+  },
+  "build": {
+    "appId": "com.pensivetraveler.siw",
+    "productName": "Stock Intelligence Workstation",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.cjs",
+      "api-process.cjs",
+      "ui/**/*",
+      "siw-config.json"
+    ],
+    "mac": {
+      "category": "public.app-category.finance",
+      "identity": null,
+      "target": [
+        "dmg"
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3"
+  }
+}
