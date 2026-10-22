@@ -46,15 +46,15 @@ pnpm install --frozen-lockfile
 ### API
 
 ```bash
-uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8000
-curl http://127.0.0.1:8000/health
-curl http://127.0.0.1:8000/version
+uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8765
+curl http://127.0.0.1:8765/health
+curl http://127.0.0.1:8765/version
 ```
 
 합성 AAPL 1분봉과 Coverage 계약은 다음처럼 확인한다. 이 경로는 로컬 fixture만 읽고 외부 네트워크를 호출하지 않는다.
 
 ```bash
-curl --get http://127.0.0.1:8000/v1/market/bars \
+curl --get http://127.0.0.1:8765/v1/market/bars \
   --data-urlencode 'instrument_id=us:aapl:xnas:2026' \
   --data-urlencode 'start_utc=2026-10-09T13:30:00Z' \
   --data-urlencode 'end_utc=2026-10-09T13:34:00Z' \
@@ -64,7 +64,7 @@ curl --get http://127.0.0.1:8000/v1/market/bars \
 영속 cache를 사용하려면 쓰기 가능한 로컬 디렉터리를 명시한다. 설정하지 않으면 API는 파일을 생성하지 않고 합성 Provider를 직접 사용한다.
 
 ```bash
-SIW_DATA_DIR=data uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8000
+SIW_DATA_DIR=data uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8765
 ```
 
 `data/metadata.sqlite3`에는 migration·Coverage·수집 작업·revision pin·복구 journal이 저장되고, bar는 `data/bars/` 아래 source/instrument/timeframe/거래소 세션 날짜(`session_date`, America/New_York 기준)/revision별 Parquet part로 저장된다. 여러 프로세스가 같은 디렉터리를 열 수 있으며 `data/owners/`의 프로세스별 잠금으로 살아 있는 프로세스의 작업은 복구 대상에서 제외한다([ADR 0004](docs/decisions/0004-multi-process-store-and-point-in-time-contract.md)). 이 디렉터리는 Git에서 제외되며 네트워크 파일 공유용이 아니다.
@@ -79,14 +79,14 @@ SIW_DATA_DIR=data uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8
 `GET /v1/market/bars`는 `timeframe=1m|5m|15m|30m|60m`을 지원한다. 큰 timeframe은 같은 cache·cutoff의 1분봉을 요청마다 세션 기준으로 집계한다. 요청 범위는 세션 bucket 경계에 맞아야 하며, 맞지 않으면 422를 반환한다. 일부 1분봉만 있는 bucket은 `quality: partial`로 표시된다([ADR 0007](docs/decisions/0007-aggregated-api-cache-composition-and-backfill.md)).
 
 ```bash
-curl --get http://127.0.0.1:8000/v1/market/bars \
+curl --get http://127.0.0.1:8765/v1/market/bars \
   --data-urlencode 'instrument_id=us:aapl:xnas:2026' \
   --data-urlencode 'start_utc=2026-10-09T13:30:00Z' \
   --data-urlencode 'end_utc=2026-10-09T13:45:00Z' \
   --data-urlencode 'timeframe=15m'
 ```
 
-포트 `8000`이 사용 중이면 API와 데스크톱을 같은 대체 포트로 맞춘다.
+포트 `8765`이 사용 중이면 API와 데스크톱을 같은 대체 포트로 맞춘다.
 
 ```bash
 uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8123
@@ -99,7 +99,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8123 pnpm dev
 pnpm dev
 ```
 
-기본 주소는 `http://127.0.0.1:5173`이다. API(`uv run uvicorn services.api.main:app --port 8000`)에 연결되면 차트 2개가 있는 workspace가 열린다([ADR 0008](docs/decisions/0008-chart-workspace-slice.md)).
+기본 주소는 `http://127.0.0.1:5173`이다. API(`uv run uvicorn services.api.main:app --port 8765`)에 연결되면 차트 2개가 있는 workspace가 열린다([ADR 0008](docs/decisions/0008-chart-workspace-slice.md)).
 
 - 각 차트는 종목(합성 `SYNTH`, AAPL 표본), timeframe(1m~60m), 세션 날짜, 정규장/연장장을 따로 설정한다.
 - 시간 축과 결측 구간은 미국 동부시간(ET)으로 표시한다. 세션 경계는 API의 `GET /v1/market/sessions/{date}`에서 받는다.
@@ -156,7 +156,7 @@ set -a; source .env; set +a; uv run python -m services.market_data.alpaca check 
 API 실행: `.env`를 읽어 실행한다. 화면에서 종목을 `SPY` 등으로 바꾼다.
 
 ```bash
-uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8000 --env-file .env
+uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8765 --env-file .env
 ```
 
 Alpaca 데이터에서 체결이 없는 분은 bar가 오지 않는다. 이 분은 결측이 아니라 `provider_no_bar`(체결 없음)로 표시하며, 가격을 만들어 넣지 않는다. 최근 15분(sip 무료 요금제)은 `outside_entitlement`, 아직 확정 전인 분은 `not_yet_final`로 표시한다. 오류 응답 코드는 다음과 같다: 키나 요금제가 거부되면 502 `provider_auth_failed`, 호출 한도에 걸리면 503 `provider_rate_limited`, 일시 장애는 503 `provider_unavailable`이다.

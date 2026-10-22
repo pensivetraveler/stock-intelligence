@@ -41,7 +41,7 @@ export function App({ languageStorage, ...props }: AppProps) {
 }
 
 function AppContent({
-  apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000",
+  apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8765",
   fetcher = fetch,
   retryMs = 5_000,
   timeoutMs = 5_000,

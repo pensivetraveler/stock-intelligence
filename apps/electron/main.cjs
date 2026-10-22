@@ -28,7 +28,7 @@ const CONFIG = (() => {
   }
 })();
 const API_URL =
-  process.env.SIW_API_URL || CONFIG.apiUrl || "http://127.0.0.1:8000";
+  process.env.SIW_API_URL || CONFIG.apiUrl || "http://127.0.0.1:8765";
 const REPO_DIR = process.env.SIW_REPO_DIR || CONFIG.repoDir || null;
 
 protocol.registerSchemesAsPrivileged([

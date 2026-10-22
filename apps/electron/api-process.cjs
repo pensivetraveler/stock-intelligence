@@ -1,4 +1,4 @@
-// Finds or starts the local API (FastAPI on 127.0.0.1:8000) for the Electron shell.
+// Finds or starts the local API (FastAPI on 127.0.0.1:8765) for the Electron shell.
 // The API is not bundled: it needs this repository's Python environment, .env and the
 // OS keychain. If it is already running (e.g. in a terminal) it is used as it is.
 const { spawn } = require("node:child_process");
@@ -48,7 +48,7 @@ async function ensureApi({ apiUrl, repoDir, log }) {
     "--host",
     "127.0.0.1",
     "--port",
-    "8000",
+    "8765",
   ];
   if (fs.existsSync(path.join(repoDir, ".env")))
     args.push("--env-file", ".env");

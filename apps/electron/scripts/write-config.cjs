@@ -6,6 +6,6 @@ const path = require("node:path");
 const repoDir = path.resolve(__dirname, "../../..");
 fs.writeFileSync(
   path.resolve(__dirname, "../siw-config.json"),
-  `${JSON.stringify({ repoDir, apiUrl: "http://127.0.0.1:8000" }, null, 2)}\n`,
+  `${JSON.stringify({ repoDir, apiUrl: "http://127.0.0.1:8765" }, null, 2)}\n`,
 );
 console.log(`siw-config.json: repoDir=${repoDir}`);
