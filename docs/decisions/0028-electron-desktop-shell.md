@@ -37,7 +37,7 @@ The planned native shell is Tauri (Phase 0), but it has never been built: `cargo
 
 - **Not self-contained:** the package still needs this repository and its Python environment. 저장소를 옮기면 다시 패키징하지 않고 폴더 선택 창이나 `SIW_REPO_DIR`로 새 위치를 알려 준다.
 - **Gatekeeper:** 서명하지 않은 빌드는 첫 실행 때 경고가 뜬다. 사용자가 Apple Developer ID를 제공해 서명·공증해야 사라진다.
-- **Tauri:** stays the long-term plan in the spec; the two shells share the same screen.
+- **Tauri:** stays the long-term plan in the spec; the two shells share the same screen. 2026-10-23 Rust 설치 후 Tauri `.app` 빌드와 실행을 처음 확인했다. Tauri 앱은 아직 API를 직접 띄우지 않는다.
 
 ## Revisit when
 

@@ -9,10 +9,10 @@
 - **Confirmed:** 미국 주식 중심 로컬 우선 워크스테이션. 차트별 독립 지표 및 선택 차트 프리셋 일괄 적용. 실제/수동/가상/백테스트 체결 분리. 1분봉 기본 저장과 소스 출처 무결성.
 - **Decision:** 2026-10-22 사용자 결정으로 Alpaca를 미국 기본 공급업체로 선정했다([ADR 0035](decisions/0035-alpaca-default-us-provider.md)). Massive는 미검증 대체 후보이며, 증권사 API/공개 정보 수집원은 별도 출처로 병행한다. (이전: Alpaca와 Massive는 동등한 미선정 후보였다.)
 - **Candidate register (2026-10-19):** 사용자가 지정한 13곳(Webull, Massive, Databento, Alpaca, 토스·키움·한국투자·메리츠·DB·LS·KB증권, ChartExchange, Unusual Whales)을 [공급업체 평가 8절](DATA_PROVIDER_EVALUATION_v1.5.md#8-후보-등록부-2026-10-19-사용자-등록)에 후보로 등록했다. 등록은 선정·결제·구현 승인이 아니며, 구현된 채널은 fake·Alpaca·KIS·토스·키움·메리츠뿐이다.
-- **Runtime verified (2026-10-12):** macOS 15.7.9 x86_64, Python 3.10.19, uv 0.12.23, Node 22.23.2, pnpm 11.25.0, Tauri CLI 2.12.2. 2026-10-15에도 `command -v cargo`와 `command -v rustc`는 실행 파일을 찾지 못했다. 나머지 버전은 이번 정리에서 재검증하지 않았다.
+- **Runtime verified (2026-10-12):** macOS 15.7.9 x86_64, Python 3.10.19, uv 0.12.23, Node 22.23.2, pnpm 11.25.0, Tauri CLI 2.12.2. 2026-10-23 사용자 승인으로 rustup(minimal, `~/.cargo`, 셸 설정 파일 수정 없음)을 설치해 rustc·cargo 1.99.1을 쓴다. 이전에는 cargo·rustc가 없었다. 나머지 버전은 이번 정리에서 재검증하지 않았다.
 - **Repository:** ZIP 배포 경로를 `git init -b main`으로 초기화하고 Phase 0 local baseline commit을 생성했다. 2026-10-19 원격 `origin`(https://github.com/pensivetraveler/stock-intelligence)을 연결하고 `main`을 푸시해 upstream으로 설정했다. 같은 날 GitHub에서 `main` 보호 규칙을 켰다: PR 필수(승인 0명), `verify` 검사 통과와 최신 상태 필수, 직선 이력, 강제 푸시·삭제 금지. 저장소는 공개 상태다.
-- **Phase 0 status:** P0-01~P0-07의 코드·계약·로컬 품질 게이트 완료. Tauri native dev/build만 `blocked: prerequisite (cargo missing)`이며 웹 셸은 실행 검증했다.
-- **Open questions:** Rust toolchain 설치 시점, 실제 공급업체 계정 권한/저장 라이선스, 향후 예산. Phase 0은 외부 계정 연결을 요구하거나 수행하지 않았다.
+- **Phase 0 status:** P0-01~P0-07의 코드·계약·로컬 품질 게이트 완료. Tauri native build는 2026-10-23 처음 성공했다(아래 "Tauri 네이티브 빌드"). `tauri dev`는 미실행이다.
+- **Open questions:** 실제 공급업체 계정 권한/저장 라이선스, 향후 예산. Phase 0은 외부 계정 연결을 요구하거나 수행하지 않았다.
 - **Phase 1A status:** `FakeMarketDataProvider`가 합성 AAPL 1분봉을 canonical `MarketBarsResponse`와 `CoverageManifest`로 `GET /v1/market/bars`에 반환한다. 동일 요청은 `fake-aapl-20261009-r1`을 결정적으로 반환하며, 누락은 보간하지 않고 `partial/empty`와 명시적 누락 구간으로 노출한다.
 - **Phase 1B status:** 명시적 `SIW_DATA_DIR`에서 SQLite migration·Coverage·수집 작업·revision pin·복구 journal과 content-addressed immutable Parquet cache가 동작한다. cache hit는 upstream을 다시 호출하지 않고, 중복 요청은 파일·Coverage를 늘리지 않는다.
 - **Phase 1C status:** XNAS/XNYS 정규장 calendar와 `America/New_York` DST, 2026 휴장·반장, 버전된 extended-hours 정책, session-aligned 5m/15m/30m/60m 집계가 동작한다. 모든 bar는 quality와 source/calendar lineage를 보존한다.
@@ -29,7 +29,7 @@
 - **Desktop:** `pnpm dev`가 `http://127.0.0.1:5173`에서 HTTP 200. 연결 성공·non-2xx·거부 후 복구·잘못된 payload 상태 테스트 통과. `pnpm build` 성공.
 - **Quality:** `./scripts/verify.sh` 최종 통과 — Ruff format/lint, mypy, pytest 26개, Prettier, ESLint, TypeScript typecheck, Vitest 계약 17개/UI 4개, Vite production build.
 - **CI:** `.github/workflows/ci.yml`이 동일 verify 스크립트를 실행하도록 구성했다. 2026-10-19 첫 GitHub Actions 실행(run 39173054570)은 `pnpm-workspace.yaml`의 `allowBuilds.esbuild`가 pnpm 자리표시 값으로 남아 `ERR_PNPM_IGNORED_BUILDS`로 실패했다. 값을 `true`로 고쳤다.
-- **Tauri:** `tauri-cli 2.12.2` 확인. `pnpm desktop:tauri`는 `cargo metadata` 실행 파일 부재로 exit 1; native window/dev/build는 **미실행**이다.
+- **Tauri:** `tauri-cli 2.12.2` 확인. 2026-10-23 `tauri build`로 `.app`을 만들고 실행해 API·실시간 연결을 확인했다. `tauri dev`(`pnpm desktop:tauri`)는 미실행이다.
 - **Safety:** 시장 데이터·증권사·유료 API·계좌·주문·결제·크롤링 호출 없음. fixture는 합성 데이터이며 실제 키·계좌정보 없음.
 
 ## Phase 1A acceptance evidence — 2026-10-12
@@ -1388,6 +1388,22 @@
   - 대사 응답이 전체 기준 약 4.2초에서 5.0초로 늘었다(집계 추가).
   - 라벨 솎기는 봉 간격으로만 계산하며 라벨 실제 폭은 재지 않는다.
   - 사용자가 말한 "WORX 2026-10-20" 체결은 미국 동부 기준으로는 대부분 2026-10-19 거래일이다(10-20 거래일에는 1건).
+
+## Tauri 네이티브 빌드 — 2026-10-23
+
+- **사용자 요청:** Rust 설치를 승인하고 Tauri 빌드를 진행한다.
+- **설치:** 공식 rustup 스크립트로 사용자 영역에만 설치했다(`--profile minimal --no-modify-path`, `~/.rustup`·`~/.cargo`). 셸 설정 파일은 바꾸지 않았으므로 쓰려면 `PATH="$HOME/.cargo/bin:$PATH"`를 붙인다. rustc·cargo 1.99.1, Xcode 26.3.
+- **고친 것(`apps/desktop/src-tauri/tauri.conf.json`):**
+  - `beforeBuildCommand`/`beforeDevCommand`가 맨 `pnpm`을 불러 exit 127로 실패했다. 저장소 다른 곳처럼 `corepack pnpm`으로 바꿨다.
+  - CSP `connect-src`에 `ws://127.0.0.1:*`·`ws://localhost:*`를 더했다. 화면의 실시간 연결(`src/realtime.ts`)이 WebSocket을 쓴다.
+  - `bundle.active`를 켜고 대상은 `app`만 둔다(dmg는 Finder 자동화가 필요해 제외).
+- **기타:** `Cargo.lock`을 커밋한다(앱 crate). `.gitignore`의 `src-tauri/target/`는 저장소 최상위에만 맞아 `apps/desktop/src-tauri/target`을 무시하지 못했다. `**/src-tauri/target/`로 고치고 생성 파일 `**/src-tauri/gen/`도 무시한다.
+- **빌드(`apps/desktop`에서):** `PATH="$HOME/.cargo/bin:$PATH" corepack pnpm exec tauri build` → `src-tauri/target/release/bundle/macos/Stock Intelligence Workstation.app`(10 MB, 서명 없음). 첫 컴파일 1분 53초, 이후 약 30초.
+- **검증:**
+  - 첫 시도는 `pnpm: command not found`(exit 1), 수정 후 exit 0.
+  - 실행 확인: 화면을 8799 API로 향하게 한 임시 빌드로 앱을 띄웠다. 종목·세션·봉 요청이 200으로 응답했고 `WebSocket /v1/realtime`이 수락됐다(Tauri 출처 `tauri://localhost`는 API가 이미 허용). 원장 계열 503은 이 worktree에 저장소 설정(`.env`)이 없기 때문이다. 확인 후 기본 주소(8765)로 다시 빌드했다.
+- **Electron과의 차이:** Tauri 앱은 로컬 API를 띄우지 않는다. API가 먼저 실행 중이어야 한다.
+- **미검증:** `tauri dev`, 창 화면 자체(스크린샷 없음, API 로그로만 확인), 외부 링크 열기, 서명·공증, Windows.
 
 ## 상태 변경 양식
 
