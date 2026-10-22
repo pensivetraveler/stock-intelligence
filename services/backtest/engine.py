@@ -1,7 +1,9 @@
 """Deterministic multi-symbol, long-only portfolio backtest (ADR 0021).
 
 At each bar time, across instruments in ID order:
-  1. orders queued at an earlier close fill at this bar's open, sells before buys;
+  1. orders queued at an earlier close fill, sells before buys: market orders at this
+     bar's open; limit and stop orders when this bar trades through their price (a gap
+     fills at the open), otherwise they wait until their expiry in bars (ADR 0031);
   2. stops and targets are checked against this bar's high and low;
   3. positions are marked to the close;
   4. a final bar is shown to the strategy, whose orders wait for the instrument's next bar.
@@ -33,6 +35,11 @@ from services.custom_indicators import runner as custom_runner
 
 ENGINE_VERSION = "siw-backtest-1"
 FILL_MODEL = "next-open-slippage-v1"
+# Limit fills need a trade through the limit (a touch is not enough) and take no slippage;
+# stop fills take slippage from the stop price or from a gapped open.
+ORDER_FILL_MODEL = "limit-stop-v1"
+ORDER_TYPES = ("market", "limit", "stop")
+MAX_EXPIRE_BARS = 100
 MONEY = Decimal("0.01")
 PRICE = Decimal("0.000001")
 RATIO = Decimal("0.000001")
@@ -75,6 +82,10 @@ class Order:
     signal_time: int
     quantity: int | None = None  # fixed shares (buy) or shares to sell (None: all)
     cash_target: Decimal | None = None
+    order_type: str = "market"
+    price: Decimal | None = None  # the limit or stop price
+    expire_bars: int = 1  # bars a limit or stop order waits before it expires
+    waited: int = 0
     status: str = "queued"
     reason: str | None = None
     fill_time: int | None = None
@@ -98,6 +109,8 @@ class Position:
     trade: Trade
     stop: Decimal | None
     target: Decimal | None
+    # Filled inside a bar (limit or stop): that bar's earlier prices may predate the entry.
+    intrabar_entry: bool = False
 
 
 class SignalSource(Protocol):
@@ -245,18 +258,35 @@ class RuleSignals:
         exit_rule = self.definition["exit"]
         if book["position"] is not None:
             if exit_rule is not None and evaluator.holds(exit_rule, index):
-                return [{"side": "sell"}]
+                return [{"side": "sell", **_order_intent(self.definition.get("exit_order"))}]
             return []
         if evaluator.holds(self.definition["entry"], index):
             sizing = self.definition["sizing"]
             key = {"percent_equity": "percent_equity", "fixed_cash": "cash"}.get(
                 sizing["mode"], "quantity"
             )
-            return [{"side": "buy", key: sizing["value"]}]
+            return [
+                {
+                    "side": "buy",
+                    key: sizing["value"],
+                    **_order_intent(self.definition.get("entry_order")),
+                }
+            ]
         return []
 
     def close(self) -> None:
         return None
+
+
+def _order_intent(order: dict[str, Any] | None) -> dict[str, Any]:
+    """A rules strategy's entry or exit order as intent fields (market when absent)."""
+    if order is None or order["type"] == "market":
+        return {}
+    return {
+        "order_type": order["type"],
+        "offset_pct": order["offset_pct"],
+        "expire_bars": order["expire_bars"],
+    }
 
 
 class PythonSignals:
@@ -410,7 +440,9 @@ class Backtest:
             "fee": _money(fee),
             "currency": self.config.currency,
             "filled_at_utc": _utc(time),
-            "fill_model_version": FILL_MODEL,
+            "fill_model_version": FILL_MODEL
+            if order.order_type == "market"
+            else f"{FILL_MODEL}+{ORDER_FILL_MODEL}",
             "fill_reason": reason,
         }
         if notes:
@@ -429,9 +461,10 @@ class Backtest:
         time: int,
         reason: str,
         notes: list[str],
+        price: Decimal | None = None,
     ) -> None:
         position = self.positions[order.instrument_id]
-        price = reference * (1 - self.slip)
+        price = reference * (1 - self.slip) if price is None else price
         proceeds = Decimal(quantity) * price
         fee = self._fee(proceeds)
         self.cash += proceeds - fee
@@ -444,27 +477,63 @@ class Backtest:
             del self.positions[order.instrument_id]
             self.trades.append(position.trade)
 
-    def _fill_sell(self, order: Order, bar: EngineBar) -> None:
+    def _trigger(self, order: Order, bar: EngineBar) -> tuple[Decimal, Decimal, str] | None:
+        """(reference price, fill price, fill reason) when the order fills on this bar."""
+        buy = order.side == "buy"
+
+        def slipped(price: Decimal) -> Decimal:
+            return price * (1 + self.slip) if buy else price * (1 - self.slip)
+
+        if order.order_type == "market":
+            return bar.open, slipped(bar.open), "signal"
+        level = order.price
+        assert level is not None
+        if order.order_type == "limit":
+            # Never worse than the limit; a touch is not a fill, a trade through is.
+            if buy and bar.open <= level:
+                return bar.open, min(slipped(bar.open), level), "limit_order"
+            if not buy and bar.open >= level:
+                return bar.open, max(slipped(bar.open), level), "limit_order"
+            if (buy and bar.low < level) or (not buy and bar.high > level):
+                return level, level, "limit_order"
+            return None
+        if (buy and bar.open >= level) or (not buy and bar.open <= level):
+            return bar.open, slipped(bar.open), "stop_order"  # gapped through the stop
+        if (buy and bar.high >= level) or (not buy and bar.low <= level):
+            return level, slipped(level), "stop_order"
+        return None
+
+    def _fill_sell(self, order: Order, bar: EngineBar) -> bool:
+        """False when a limit or stop order did not trigger on this bar."""
         position = self.positions.get(order.instrument_id)
         if position is None:
             self._reject(order, "no_position")
-            return
+            return True
+        triggered = self._trigger(order, bar)
+        if triggered is None:
+            return False
+        reference, price, reason = triggered
         quantity = position.quantity if order.quantity is None else order.quantity
         if quantity > position.quantity:
             quantity = position.quantity
-        self._sell(order, quantity, bar.open, bar.time, "signal", [])
+        self._sell(order, quantity, reference, bar.time, reason, [], price)
+        return True
 
-    def _fill_buy(self, order: Order, bar: EngineBar) -> None:
+    def _fill_buy(self, order: Order, bar: EngineBar) -> bool:
+        """False when a limit or stop order did not trigger on this bar."""
         if order.instrument_id in self.positions:
             self._reject(order, "already_in_position")
-            return
-        price = bar.open * (1 + self.slip)
+            return True
+        triggered = self._trigger(order, bar)
+        if triggered is None:
+            return False
+        reference, price, reason = triggered
         notes: list[str] = []
         if order.quantity is not None:
             quantity = order.quantity
             if Decimal(quantity) * price + self._fee(Decimal(quantity) * price) > self.cash:
                 self._reject(order, "insufficient_cash")
-                return
+                return True
         else:
             assert order.cash_target is not None
             budget = order.cash_target
@@ -476,7 +545,7 @@ class Backtest:
             quantity = int((spendable / per_share).to_integral_value(rounding=ROUND_DOWN))
             if spendable <= 0 or quantity <= 0:
                 self._reject(order, "insufficient_cash" if notes else "quantity_rounds_to_zero")
-                return
+                return True
         notional = Decimal(quantity) * price
         fee = self._fee(notional)
         self.cash -= notional + fee
@@ -489,8 +558,10 @@ class Backtest:
             trade,
             None if self.stop_pct is None else price * (1 - self.stop_pct),
             None if self.target_pct is None else price * (1 + self.target_pct),
+            intrabar_entry=reference != bar.open,
         )
-        self._record_fill(order, quantity, price, fee, bar.time, "signal", bar.open, notes)
+        self._record_fill(order, quantity, price, fee, bar.time, reason, reference, notes)
+        return True
 
     def _protect(self, instrument_id: str, bar: EngineBar) -> None:
         position = self.positions.get(instrument_id)
@@ -502,6 +573,9 @@ class Backtest:
             return
         order = self._new_order(instrument_id, "sell", bar.time)
         notes: list[str] = []
+        if position.intrabar_entry and position.trade.entry_time == bar.time:
+            # Entered inside this bar: its low or high may have come before the entry.
+            notes.append("same_bar_as_entry")
         if stop_hit:
             assert position.stop is not None
             # A gap through the stop fills at the open, not at the stop.
@@ -544,7 +618,8 @@ class Backtest:
                             self._reject(order, "invalid_quantity")
                             continue
                         order.quantity = int(number)
-                    queued.append(order)
+                    if self._order_terms(order, intent):
+                        queued.append(order)
                 continue
             if instrument_id in self.positions or any(o.side == "buy" for o in queued):
                 self._reject(order, "already_in_position")
@@ -575,7 +650,54 @@ class Backtest:
                     self._reject(order, "invalid_size")
                     continue
                 order.cash_target = self.equity() * number / HUNDRED
-            queued.append(order)
+            if self._order_terms(order, intent):
+                queued.append(order)
+
+    def _order_terms(self, order: Order, intent: dict[str, Any]) -> bool:
+        """Order type, price and expiry from an intent; False (and rejected) if invalid.
+
+        A limit or stop price is absolute (`limit_price` / `stop_price`) or relative to
+        the signal bar's close (`offset_pct`, e.g. -2 for 2% below it).
+        """
+        kind = intent.get("order_type", "market")
+        if kind not in ORDER_TYPES:
+            self._reject(order, "invalid_order_type")
+            return False
+        order.order_type = str(kind)
+        priced = [k for k in ("limit_price", "stop_price", "offset_pct") if k in intent]
+        if kind == "market":
+            if priced:
+                self._reject(order, "invalid_order_price")
+                return False
+            return True
+        allowed = {"limit": ("limit_price", "offset_pct"), "stop": ("stop_price", "offset_pct")}
+        if len(priced) != 1 or priced[0] not in allowed[kind]:
+            self._reject(order, "invalid_order_price")
+            return False
+        number = _number(intent[priced[0]])
+        if number is None:
+            self._reject(order, "invalid_order_price")
+            return False
+        if priced[0] == "offset_pct":
+            if not Decimal(-90) <= number <= Decimal(1000):
+                self._reject(order, "invalid_order_price")
+                return False
+            close = self.last_close[order.instrument_id]
+            number = close * (1 + number / HUNDRED)
+        if number <= 0:
+            self._reject(order, "invalid_order_price")
+            return False
+        order.price = number.quantize(PRICE)
+        expire = intent.get("expire_bars", 1)
+        if (
+            isinstance(expire, bool)
+            or not isinstance(expire, int)
+            or not 1 <= expire <= MAX_EXPIRE_BARS
+        ):
+            self._reject(order, "invalid_expiry")
+            return False
+        order.expire_bars = expire
+        return True
 
     # --- run ------------------------------------------------------------------------
 
@@ -607,11 +729,17 @@ class Backtest:
                         for order in [
                             o for o in self.pending.get(instrument_id, []) if o.side == side
                         ]:
-                            self.pending[instrument_id].remove(order)
-                            if side == "sell":
+                            done = (
                                 self._fill_sell(order, bar)
-                            else:
-                                self._fill_buy(order, bar)
+                                if side == "sell"
+                                else self._fill_buy(order, bar)
+                            )
+                            if not done:
+                                order.waited += 1
+                                if order.waited < order.expire_bars:
+                                    continue
+                                order.status = "expired"
+                            self.pending[instrument_id].remove(order)
                 for instrument_id in active:
                     self._protect(instrument_id, bars_at[instrument_id][time])
                 for instrument_id in active:
@@ -693,6 +821,10 @@ class Backtest:
             "return": _ratio(pnl / trade.cost) if trade.cost else None,
         }
 
+    def _fill_model(self) -> str:
+        used = any(o.order_type != "market" for o in self.orders)
+        return f"{FILL_MODEL}+{ORDER_FILL_MODEL}" if used else FILL_MODEL
+
     def _results(self, exposed: int, steps: int) -> dict[str, Any]:
         initial = self.config.initial_capital
         final = self.equity()
@@ -756,7 +888,7 @@ class Backtest:
             "schema_version": "0.1",
             "run_id": self.run_id,
             "engine_version": ENGINE_VERSION,
-            "fill_model_version": FILL_MODEL,
+            "fill_model_version": self._fill_model(),
             "currency": self.config.currency,
             "initial_capital": _money(initial),
             "final_equity": _money(final),
@@ -772,6 +904,15 @@ class Backtest:
                     "status": o.status,
                     "reason": o.reason,
                     "filled_at_utc": None if o.fill_time is None else _utc(o.fill_time),
+                    **(
+                        {}
+                        if o.order_type == "market"
+                        else {
+                            "order_type": o.order_type,
+                            "price": None if o.price is None else _price(o.price),
+                            "expire_bars": o.expire_bars,
+                        }
+                    ),
                 }
                 for o in self.orders
             ],

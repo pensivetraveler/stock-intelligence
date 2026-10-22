@@ -1459,9 +1459,21 @@ export interface BacktestResults {
     instrument_id: Identifier;
     side: Side;
     signal_utc: UtcTimestamp;
-    status: "queued" | "filled" | "rejected" | "unfilled_at_end";
+    status: "queued" | "filled" | "rejected" | "unfilled_at_end" | "expired";
     reason: Identifier | null;
     filled_at_utc: UtcTimestamp | null;
+    /**
+     * Absent for market orders.
+     */
+    order_type?: "limit" | "stop";
+    /**
+     * The limit or stop price.
+     */
+    price?: string;
+    /**
+     * Bars the order waited for its price before expiring.
+     */
+    expire_bars?: number;
   }[];
   fills: BacktestFill[];
   trades: {

@@ -151,6 +151,28 @@ def _condition(
     }
 
 
+def _order(value: object, what: str) -> dict[str, Any]:
+    """A rules strategy's order: market, or limit/stop at an offset from the signal close."""
+    if not isinstance(value, dict) or value.get("type") not in ("market", "limit", "stop"):
+        raise StrategyError(f"{what} type must be market, limit or stop")
+    if value["type"] == "market":
+        if set(value) != {"type"}:
+            raise StrategyError(f"a market {what} takes no price or expiry")
+        return {"type": "market"}
+    if set(value) - {"type", "offset_pct", "expire_bars"} or "offset_pct" not in value:
+        raise StrategyError(f"a {value['type']} {what} needs offset_pct (and may set expire_bars)")
+    expire = value.get("expire_bars", 1)
+    if isinstance(expire, bool) or not isinstance(expire, int) or not 1 <= expire <= 100:
+        raise StrategyError(f"{what} expire_bars must be a whole number from 1 to 100")
+    return {
+        "type": value["type"],
+        "offset_pct": _decimal(
+            value["offset_pct"], f"{what} offset_pct", Decimal(-90), Decimal(1000)
+        ),
+        "expire_bars": expire,
+    }
+
+
 def _risk(definition: dict[str, Any], clean: dict[str, Any]) -> None:
     for name in ("stop_loss_pct", "take_profit_pct"):
         value = definition.get(name)
@@ -174,7 +196,7 @@ def validate_definition(definition: object, custom: CustomLookup | None = None) 
     clean: dict[str, Any] = {"type": kind}
     if kind == "rules":
         allowed = {"type", "entry", "exit", "stop_loss_pct", "take_profit_pct"}
-        allowed |= {"sizing", "max_positions"}
+        allowed |= {"sizing", "max_positions", "entry_order", "exit_order"}
         extra = set(definition) - allowed
         if extra:
             raise StrategyError(f"unexpected fields: {', '.join(sorted(extra))}")
@@ -193,6 +215,10 @@ def validate_definition(definition: object, custom: CustomLookup | None = None) 
         if mode == "fixed_shares" and Decimal(amount) != Decimal(amount).to_integral_value():
             raise StrategyError("fixed_shares must be a whole number")
         clean["sizing"] = {"mode": mode, "value": amount}
+        # Absent means market at the next open, as before (keeps old fingerprints).
+        for name in ("entry_order", "exit_order"):
+            if name in definition:
+                clean[name] = _order(definition[name], name.replace("_", " "))
         _risk(definition, clean)
     elif kind == "python":
         extra = set(definition) - {"type", "code", "params", "stop_loss_pct", "take_profit_pct"}

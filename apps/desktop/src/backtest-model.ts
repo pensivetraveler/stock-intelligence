@@ -94,7 +94,22 @@ export interface ConditionDraft {
   right: OperandDraft;
 }
 
+export type OrderKind = "market" | "limit" | "stop";
+/** How an entry or exit is ordered (ADR 0031): offset from the signal bar's close. */
+export interface OrderDraft {
+  type: OrderKind;
+  offsetPct: string;
+  expireBars: string;
+}
+export const MARKET_ORDER: OrderDraft = {
+  type: "market",
+  offsetPct: "",
+  expireBars: "1",
+};
+
 export interface RulesDraft {
+  entryOrder?: OrderDraft;
+  exitOrder?: OrderDraft;
   entryMode: "all" | "any";
   entry: ConditionDraft[];
   exitMode: "all" | "any";
@@ -148,7 +163,9 @@ export const PYTHON_TEMPLATE = `# on_bar(ctx) runs at the close of every final b
 # ctx.position (None or {"quantity", "average_price"}), ctx.cash, ctx.equity,
 # ctx.indicator(id, output=None, **params) -> latest value or None.
 # Return ctx.buy(percent_equity=…|cash=…|quantity=…), ctx.sell(), a list, or None.
-# Orders fill at the next bar's open. No network, files or subprocesses.
+# Orders fill at the next bar's open. Add order_type="limit" or "stop" with limit_price /
+# stop_price (or offset_pct from this close) and expire_bars for other orders.
+# No network, files or subprocesses.
 
 def on_bar(ctx):
     rsi = ctx.indicator("rsi", length=ctx.params.get("length", 14))
@@ -189,6 +206,26 @@ function group(
 const optionalNumber = (text: string) =>
   text.trim() === "" ? null : text.trim();
 
+function orderJson(order: OrderDraft | undefined): Record<string, unknown> {
+  if (!order || order.type === "market") return {};
+  return {
+    type: order.type,
+    offset_pct: order.offsetPct.trim(),
+    expire_bars: Number(order.expireBars),
+  };
+}
+
+function orderDraft(value: unknown): OrderDraft {
+  if (typeof value !== "object" || value === null) return MARKET_ORDER;
+  const item = value as Record<string, unknown>;
+  if (item.type !== "limit" && item.type !== "stop") return MARKET_ORDER;
+  return {
+    type: item.type,
+    offsetPct: String(item.offset_pct ?? ""),
+    expireBars: String(item.expire_bars ?? 1),
+  };
+}
+
 /** The JSON the API validates; it, not this screen, is the judge of what is valid. */
 export function rulesDefinition(draft: RulesDraft): StrategyDefinition {
   return {
@@ -199,6 +236,13 @@ export function rulesDefinition(draft: RulesDraft): StrategyDefinition {
     take_profit_pct: optionalNumber(draft.takeProfitPct),
     sizing: { mode: draft.sizingMode, value: draft.sizingValue.trim() },
     max_positions: Number(draft.maxPositions),
+    // Market orders are left out, so saved strategies keep their fingerprints.
+    ...(draft.entryOrder?.type && draft.entryOrder.type !== "market"
+      ? { entry_order: orderJson(draft.entryOrder) }
+      : {}),
+    ...(draft.exitOrder?.type && draft.exitOrder.type !== "market"
+      ? { exit_order: orderJson(draft.exitOrder) }
+      : {}),
   };
 }
 
@@ -267,6 +311,8 @@ export function rulesDraftOf(
     sizingMode: sizing.mode,
     sizingValue: String(sizing.value),
     maxPositions: String(definition.max_positions ?? 10),
+    entryOrder: orderDraft(definition.entry_order),
+    exitOrder: orderDraft(definition.exit_order),
   };
 }
 

@@ -5,11 +5,14 @@ import {
   conditionKey,
   indicatorLabel,
   indicatorOperand,
+  MARKET_ORDER,
   PRICES,
   ruleIndicatorIds,
   SIZING_MODES,
   type ConditionDraft,
   type OperandDraft,
+  type OrderDraft,
+  type OrderKind,
   type RulesDraft,
 } from "./backtest-model";
 import { useI18n, type MessageKey } from "./i18n";
@@ -227,6 +230,63 @@ function ConditionList({
 }
 
 /** Form for a rules strategy; the API decides whether the result is valid. */
+/** Market, or a limit/stop order at an offset from the signal close with an expiry. */
+function OrderFields({
+  title,
+  order,
+  onChange,
+}: {
+  title: string;
+  order: OrderDraft;
+  onChange: (order: OrderDraft) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <>
+      <label>
+        {title}
+        <select
+          value={order.type}
+          onChange={(event) =>
+            onChange({ ...order, type: event.target.value as OrderKind })
+          }
+        >
+          {(["market", "limit", "stop"] as OrderKind[]).map((kind) => (
+            <option key={kind} value={kind}>
+              {t(`bt.order.${kind}` as MessageKey)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {order.type === "market" ? null : (
+        <>
+          <label>
+            {t("bt.orderOffset", { title })}
+            <input
+              inputMode="decimal"
+              value={order.offsetPct}
+              placeholder={order.type === "limit" ? "-1" : "1"}
+              onChange={(event) =>
+                onChange({ ...order, offsetPct: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            {t("bt.orderExpiry", { title })}
+            <input
+              inputMode="numeric"
+              value={order.expireBars}
+              onChange={(event) =>
+                onChange({ ...order, expireBars: event.target.value })
+              }
+            />
+          </label>
+        </>
+      )}
+    </>
+  );
+}
+
 export function RuleBuilder({
   draft,
   onChange,
@@ -251,6 +311,18 @@ export function RuleBuilder({
         conditions={draft.exit}
         onChange={(exitMode, exit) => onChange({ ...draft, exitMode, exit })}
       />
+      <div className="bt-grid">
+        <OrderFields
+          title={t("bt.entryOrder")}
+          order={draft.entryOrder ?? MARKET_ORDER}
+          onChange={(entryOrder) => onChange({ ...draft, entryOrder })}
+        />
+        <OrderFields
+          title={t("bt.exitOrder")}
+          order={draft.exitOrder ?? MARKET_ORDER}
+          onChange={(exitOrder) => onChange({ ...draft, exitOrder })}
+        />
+      </div>
       <div className="bt-grid">
         <label>
           {t("bt.stopLoss")}
