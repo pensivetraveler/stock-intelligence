@@ -12,18 +12,22 @@ import type {
   StrategyDefinition,
 } from "./backtest-api";
 import {
+  DEFAULT_WALK_FORWARD,
   defaultRulesDraft,
   percent,
   PYTHON_TEMPLATE,
   rulesDefinition,
   rulesDraftOf,
   type RulesDraft,
+  type WalkForwardDraft,
+  walkForwardSpec,
 } from "./backtest-model";
 import type { AgentApi } from "./agent-api";
 import { BacktestResultsView, type RealFills } from "./BacktestResultsView";
 import { translateDynamic, useI18n } from "./i18n";
 import type { InstrumentListing } from "./market-api";
 import { RuleBuilder } from "./RuleBuilder";
+import { WalkForwardFields } from "./WalkForwardFields";
 
 const POLL_MS = 1_500;
 const ADJUSTMENT_CHOICES = ["split_adjusted", "fully_adjusted", "raw"] as const;
@@ -121,6 +125,8 @@ export function BacktestScreen({
     results: BacktestResults;
   } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [walkForward, setWalkForward] =
+    useState<WalkForwardDraft>(DEFAULT_WALK_FORWARD);
   const [busy, setBusy] = useState(false);
   const today = new Date();
   const [config, setConfig] = useState({
@@ -262,6 +268,12 @@ export function BacktestScreen({
         ) {
           throw new Error(t("bt.barCountInvalid"));
         }
+        let walkForwardConfig: Record<string, unknown> | null = null;
+        if (walkForward.enabled && editor.type === "rules") {
+          const spec = walkForwardSpec(walkForward);
+          if ("error" in spec) throw new Error(t("bt.wf.incomplete"));
+          walkForwardConfig = spec;
+        }
         const request: RunConfigRequest = {
           instrument_ids: chosen,
           timeframe: config.timeframe,
@@ -269,6 +281,13 @@ export function BacktestScreen({
           end_date:
             config.rangeMode === "count" ? isoDate(today) : config.endDate,
           ...(config.rangeMode === "count" ? { bar_count: barCount } : {}),
+          ...(walkForwardConfig
+            ? {
+                // Shape checked by the API (ADR 0032); the form builds it from text.
+                walk_forward:
+                  walkForwardConfig as RunConfigRequest["walk_forward"],
+              }
+            : {}),
           initial_capital: config.capital.trim(),
           currency: currency as RunConfigRequest["currency"],
           fee_rate: config.feeRate.trim() || "0",
@@ -582,6 +601,13 @@ export function BacktestScreen({
             </p>
             {config.timeframe !== "1d" && config.timeframe !== "1w" ? (
               <p className="workspace-note">{t("bt.intradayNote")}</p>
+            ) : null}
+            {editor.type === "rules" ? (
+              <WalkForwardFields
+                draft={walkForward}
+                definition={editor.savedRules ?? rulesDefinition(editor.rules)}
+                onChange={setWalkForward}
+              />
             ) : null}
             <p className="bt-actions">
               <button

@@ -35,6 +35,7 @@ from services.backtest.engine import (
 from services.backtest.sandbox import SandboxError, StrategyProcess
 from services.backtest.store import BacktestStore
 from services.backtest.strategy import StrategyError
+from services.backtest.walkforward import WalkForward, WalkForwardError, clean_spec
 from services.custom_indicators.store import CustomIndicatorStore
 from services.market_data.instruments import market_of
 from services.market_data.provider import MarketDataError
@@ -148,6 +149,11 @@ def validate_config(request: dict[str, Any]) -> dict[str, Any]:
     }
     if bar_count is not None:
         config["bar_count"] = bar_count
+    if request.get("walk_forward") is not None:
+        try:
+            config["walk_forward"] = clean_spec(request["walk_forward"])
+        except WalkForwardError as exc:
+            raise RunConfigError(str(exc)) from exc
     return config
 
 
@@ -233,7 +239,7 @@ class BacktestRunner:
             results = self._results(run_id)
         except Cancelled:
             self.store.finish(run_id, "cancelled")
-        except (StrategyError, SandboxError, MarketDataError, ValueError) as exc:
+        except (StrategyError, SandboxError, MarketDataError, WalkForwardError, ValueError) as exc:
             self.store.finish(run_id, "failed", error=str(exc) or type(exc).__name__)
         except Exception as exc:  # noqa: BLE001  (stored, never raised into the thread)
             LOGGER.exception("backtest %s failed", run_id)
@@ -269,6 +275,27 @@ class BacktestRunner:
                     config.get("bar_count"),
                 )
             )
+        engine_config = EngineConfig(
+            Decimal(config["initial_capital"]),
+            config["currency"],
+            Decimal(config["fee_rate"]),
+            Decimal(config["fee_per_order"]),
+            Decimal(config["slippage_bps"]),
+        )
+        if config.get("walk_forward") is not None:
+            self.store.set_progress(run_id, 0.1)
+            results = WalkForward(
+                run_id,
+                definition,
+                config["walk_forward"],
+                inputs,
+                engine_config,
+                lambda chosen: RuleSignals(chosen, inputs, self.custom_indicator, self._process),
+                custom=self.custom_indicator,
+                cancelled=lambda: self._cancelled(run_id),
+                progress=lambda fraction: self.store.set_progress(run_id, 0.1 + 0.9 * fraction),
+            ).run()
+            return self._finish(results)
         source: SignalSource
         if definition["type"] == "rules":
             source = RuleSignals(definition, inputs, self.custom_indicator, self._process)
@@ -278,26 +305,24 @@ class BacktestRunner:
             run_id,
             definition,
             inputs,
-            EngineConfig(
-                Decimal(config["initial_capital"]),
-                config["currency"],
-                Decimal(config["fee_rate"]),
-                Decimal(config["fee_per_order"]),
-                Decimal(config["slippage_bps"]),
-            ),
+            engine_config,
             source,
             cancelled=lambda: self._cancelled(run_id),
             progress=lambda fraction: self.store.set_progress(run_id, 0.1 + 0.9 * fraction),
         )
         self.store.set_progress(run_id, 0.1)
         results = engine.run()
-        results["warnings"].append(SURVIVORSHIP)
-        results["warning_details"].append(
-            {"code": "survivorship", "instrument_id": None, "count": None, "dates": []}
-        )
         if isinstance(source, PythonSignals):
             results["logs"] = source.logs[-200:]
         if isinstance(source, RuleSignals) and source.custom_pins:
             results["custom_indicators"] = source.custom_pins
+        return self._finish(results)
+
+    @staticmethod
+    def _finish(results: dict[str, Any]) -> dict[str, Any]:
+        results["warnings"].append(SURVIVORSHIP)
+        results["warning_details"].append(
+            {"code": "survivorship", "instrument_id": None, "count": None, "dates": []}
+        )
         validate_document(results)
         return results

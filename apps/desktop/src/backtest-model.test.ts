@@ -18,6 +18,9 @@ import {
   ruleIndicatorIds,
   rulesDefinition,
   rulesDraftOf,
+  tunablePaths,
+  walkForwardSpec,
+  DEFAULT_WALK_FORWARD,
   backtestOutputs,
 } from "./backtest-model";
 import { registerCustom } from "./custom-indicators";
@@ -51,6 +54,36 @@ describe("rule builder model", () => {
       take_profit_pct: null,
       sizing: { mode: "percent_equity", value: "20" },
       max_positions: 5,
+    });
+  });
+
+  it("lists the numbers a walk-forward grid can vary and builds its settings", () => {
+    const paths = tunablePaths(rulesDefinition(defaultRulesDraft()));
+    expect(paths.map((item) => item.path)).toEqual([
+      "/entry/left/params/length",
+      "/entry/right/params/length",
+      "/exit/left/params/length",
+      "/exit/right/params/length",
+      "/sizing/value",
+    ]);
+    expect(paths[0]).toMatchObject({
+      label: "entry · left · ema length",
+      current: "10",
+    });
+    expect(walkForwardSpec(DEFAULT_WALK_FORWARD)).toEqual({
+      error: "bt.wf.incomplete",
+    });
+    expect(
+      walkForwardSpec({
+        ...DEFAULT_WALK_FORWARD,
+        enabled: true,
+        grid: [{ path: "/entry/left/params/length", values: "5, 10,20" }],
+      }),
+    ).toEqual({
+      in_sample_bars: 120,
+      out_of_sample_bars: 40,
+      objective: "net_return",
+      grid: [{ path: "/entry/left/params/length", values: [5, 10, 20] }],
     });
   });
 

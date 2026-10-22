@@ -366,8 +366,13 @@ class Backtest:
         source: SignalSource,
         cancelled: Callable[[], bool] = lambda: False,
         progress: Callable[[float], None] = lambda _fraction: None,
+        trade_window: tuple[int, int] | None = None,
     ) -> None:
+        """`trade_window` [start, end) in epoch seconds limits the run to those bar times:
+        earlier bars only warm indicators up, and the run ends before `end` (walk-forward
+        windows, ADR 0032)."""
         self.run_id = run_id
+        self.trade_window = trade_window
         self.definition = definition
         self.inputs = sorted(inputs, key=lambda item: item.instrument_id)
         self.config = config
@@ -712,6 +717,9 @@ class Backtest:
             for item in self.inputs
         }
         times = sorted({time for bars in bars_at.values() for time in bars})
+        if self.trade_window is not None:
+            start, end = self.trade_window
+            times = [time for time in times if start <= time < end]
         ids = [item.instrument_id for item in self.inputs]
         benchmark_shares: dict[str, Decimal] = {}
         benchmark_cash = self.config.initial_capital

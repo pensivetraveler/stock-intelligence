@@ -1401,6 +1401,1364 @@ export interface BacktestRun {
      * Bar-count mode: the first N bars from start_date, read forward up to end_date (any past window, not only up to today). Absent: every bar from start_date to end_date.
      */
     bar_count?: number;
+    /**
+     * Walk-forward (ADR 0032): rolling in-sample/out-of-sample windows in bars; each window's grid combination with the best in-sample objective trades its out-of-sample stretch.
+     */
+    walk_forward?: {
+      in_sample_bars: number;
+      out_of_sample_bars: number;
+      objective:
+        "net_return" | "return_over_drawdown" | "profit_factor" | "win_rate";
+      /**
+       * @minItems 1
+       * @maxItems 3
+       */
+      grid:
+        | [
+            {
+              path: string;
+              /**
+               * @minItems 1
+               * @maxItems 20
+               */
+              values:
+                | [number]
+                | [number, number]
+                | [number, number, number]
+                | [number, number, number, number]
+                | [number, number, number, number, number]
+                | [number, number, number, number, number, number]
+                | [number, number, number, number, number, number, number]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ];
+            },
+          ]
+        | [
+            {
+              path: string;
+              /**
+               * @minItems 1
+               * @maxItems 20
+               */
+              values:
+                | [number]
+                | [number, number]
+                | [number, number, number]
+                | [number, number, number, number]
+                | [number, number, number, number, number]
+                | [number, number, number, number, number, number]
+                | [number, number, number, number, number, number, number]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ];
+            },
+            {
+              path: string;
+              /**
+               * @minItems 1
+               * @maxItems 20
+               */
+              values:
+                | [number]
+                | [number, number]
+                | [number, number, number]
+                | [number, number, number, number]
+                | [number, number, number, number, number]
+                | [number, number, number, number, number, number]
+                | [number, number, number, number, number, number, number]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ];
+            },
+          ]
+        | [
+            {
+              path: string;
+              /**
+               * @minItems 1
+               * @maxItems 20
+               */
+              values:
+                | [number]
+                | [number, number]
+                | [number, number, number]
+                | [number, number, number, number]
+                | [number, number, number, number, number]
+                | [number, number, number, number, number, number]
+                | [number, number, number, number, number, number, number]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ];
+            },
+            {
+              path: string;
+              /**
+               * @minItems 1
+               * @maxItems 20
+               */
+              values:
+                | [number]
+                | [number, number]
+                | [number, number, number]
+                | [number, number, number, number]
+                | [number, number, number, number, number]
+                | [number, number, number, number, number, number]
+                | [number, number, number, number, number, number, number]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ];
+            },
+            {
+              path: string;
+              /**
+               * @minItems 1
+               * @maxItems 20
+               */
+              values:
+                | [number]
+                | [number, number]
+                | [number, number, number]
+                | [number, number, number, number]
+                | [number, number, number, number, number]
+                | [number, number, number, number, number, number]
+                | [number, number, number, number, number, number, number]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]
+                | [
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                    number,
+                  ];
+            },
+          ];
+    };
   };
   created_at_utc: UtcTimestamp;
   started_at_utc: UtcTimestamp | null;
@@ -1559,6 +2917,25 @@ export interface BacktestResults {
     count: number | null;
     dates: string[];
   }[];
+  /**
+   * Present on walk-forward runs: the windows, the parameters chosen in-sample and their in-sample score. Everything else in the results is out-of-sample only.
+   */
+  walk_forward?: {
+    objective: string;
+    in_sample_bars: number;
+    out_of_sample_bars: number;
+    combinations: number;
+    windows: {
+      in_sample_start_utc: UtcTimestamp;
+      out_of_sample_start_utc: UtcTimestamp;
+      out_of_sample_end_utc: UtcTimestamp;
+      chosen: {
+        path: string;
+        value: DecimalString;
+      }[];
+      in_sample_score: DecimalString | null;
+    }[];
+  };
 }
 export interface AgentAnalysis {
   kind: "agent_analysis";

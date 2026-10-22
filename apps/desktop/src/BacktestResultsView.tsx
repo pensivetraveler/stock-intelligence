@@ -380,6 +380,41 @@ export function BacktestResultsView({
         </table>
       </details>
 
+      {results.walk_forward ? (
+        <details open>
+          <summary>
+            {t("bt.wf.windows", { n: results.walk_forward.combinations })}
+          </summary>
+          <table className="bt-table">
+            <thead>
+              <tr>
+                <th>{t("bt.wf.col.inSample")}</th>
+                <th>{t("bt.wf.col.outOfSample")}</th>
+                <th>{t("bt.wf.col.chosen")}</th>
+                <th>{t("bt.wf.col.score")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.walk_forward.windows.map((window) => (
+                <tr key={window.out_of_sample_start_utc}>
+                  <td>{window.in_sample_start_utc.slice(0, 10)}</td>
+                  <td>
+                    {window.out_of_sample_start_utc.slice(0, 10)} →{" "}
+                    {window.out_of_sample_end_utc.slice(0, 10)}
+                  </td>
+                  <td>
+                    {window.chosen
+                      .map((item) => `${item.path}=${item.value}`)
+                      .join(", ")}
+                  </td>
+                  <td>{window.in_sample_score ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      ) : null}
+
       {results.custom_indicators?.length ? (
         <details>
           <summary>{t("bt.customPins")}</summary>
