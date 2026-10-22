@@ -44,7 +44,7 @@ from services.market_data.provider import (
     ProviderUnavailableError,
     validate_bars_query,
 )
-from services.market_data.symbol_history import asof_for
+from services.market_data.symbol_history import asof_for, ticker_for
 
 Feed = Literal["sip", "iex"]
 DEFAULT_DATA_URL = "https://data.alpaca.markets"
@@ -226,11 +226,19 @@ class AlpacaMarketDataProvider:
         }
 
     def symbol_for(self, instrument_id: str) -> str | None:
-        """Alpaca symbol of a configured instrument or of any listed US equity ID."""
+        """Alpaca symbol of a configured instrument or of any listed US equity ID; a
+        delisted instrument (ADR 0033) maps to the ticker it traded under."""
         configured = self._symbols.get(instrument_id)
         if configured is not None:
             return configured
-        return listed_symbol(instrument_id)
+        listed = listed_symbol(instrument_id)
+        return None if listed is None else ticker_for(listed)
+
+    @staticmethod
+    def _asof(instrument_id: str) -> date | None:
+        """Alpaca `asof` for a delisted instrument: read as the company it was."""
+        listed = listed_symbol(instrument_id)
+        return None if listed is None else asof_for(listed)
 
     def list_assets(self, status: str = "active") -> list[dict[str, str]]:
         """US-listed stocks and ETFs (active, or `inactive`: delisted): symbol, company
@@ -361,7 +369,7 @@ class AlpacaMarketDataProvider:
         published_until = now - timedelta(minutes=self.config.publication_delay_minutes)
         request_end = min(query.end_utc, published_until.replace(second=0, microsecond=0))
         raw = (
-            self._fetch(symbol, query.start_utc, request_end)
+            self._fetch(symbol, query.start_utc, request_end, self._asof(query.instrument_id))
             if request_end > query.start_utc
             else []
         )
@@ -459,7 +467,13 @@ class AlpacaMarketDataProvider:
             start = datetime.combine(sessions[0].session_date, time(0, 0), NEW_YORK)
             end = min(sessions[-1].regular_close_utc, published_until.replace(microsecond=0))
             for item in self._fetch_pages(
-                symbol, "1Day", start, end, DAILY_PAGES, ALPACA_ADJUSTMENTS.get(adjustment, "raw")
+                symbol,
+                "1Day",
+                start,
+                end,
+                DAILY_PAGES,
+                ALPACA_ADJUSTMENTS.get(adjustment, "raw"),
+                asof=self._asof(query.instrument_id),
             ):
                 try:
                     day = session_date_of(str(item["t"]))
@@ -533,6 +547,7 @@ class AlpacaMarketDataProvider:
                 min(windows[-1][1], published_until),
                 OVERNIGHT_PAGES,
                 feed=BOATS_FEED,
+                asof=self._asof(instrument_id),
             )
         by_start: dict[datetime, dict[str, Any]] = {}
         for item in raw:
@@ -679,10 +694,12 @@ class AlpacaMarketDataProvider:
         if query.as_of_utc is not None and query.as_of_utc > self._now():
             raise InvalidBarsQueryError("as_of_utc cannot be in the future")
 
-    def _fetch(self, symbol: str, start: datetime, end: datetime) -> list[dict[str, Any]]:
+    def _fetch(
+        self, symbol: str, start: datetime, end: datetime, asof: date | None = None
+    ) -> list[dict[str, Any]]:
         # Enough pages for a full 1,440-minute range even at small test page sizes.
         return self._fetch_pages(
-            symbol, "1Min", start, end, MAX_QUERY_MINUTES // self.config.page_limit + 2
+            symbol, "1Min", start, end, MAX_QUERY_MINUTES // self.config.page_limit + 2, asof=asof
         )
 
     def _fetch_pages(
@@ -694,6 +711,7 @@ class AlpacaMarketDataProvider:
         max_pages: int,
         adjustment: str = "raw",
         feed: str | None = None,
+        asof: date | None = None,
     ) -> list[dict[str, Any]]:
         params: dict[str, str | int] = {
             "symbols": symbol,
@@ -705,8 +723,7 @@ class AlpacaMarketDataProvider:
             "feed": feed or self.config.feed,
             "sort": "asc",
         }
-        # A delisted ticker is read as the company it was (ADR 0033): Alpaca's `asof`.
-        asof = asof_for(symbol)
+        # A delisted instrument is read as the company it was (ADR 0033): Alpaca's `asof`.
         if asof is not None:
             params["asof"] = asof.isoformat()
         bars: list[dict[str, Any]] = []

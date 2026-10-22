@@ -15,7 +15,14 @@ from services.api.main import create_app
 from services.journal.store import JournalStore
 from services.market_data.alpaca import AlpacaConfig, AlpacaMarketDataProvider
 from services.market_data.fake import FakeMarketDataProvider
-from services.market_data.symbol_history import SymbolHistory, asof_for, register
+from services.market_data.provider import BarsQuery
+from services.market_data.symbol_history import (
+    SymbolHistory,
+    asof_for,
+    register,
+    resolution_of,
+    ticker_for,
+)
 from tests.market_data.test_kiwoom_account import NOW, Broker, fill, session
 
 HISTORY = {
@@ -25,6 +32,7 @@ HISTORY = {
         {"old": "BBB", "new": "CCC", "on": "2025-01-10"},
         {"old": "DEVS", "new": "DEVSF", "on": "2025-08-27"},
         {"old": "OLDA", "new": "AAPL", "on": "2026-08-01"},
+        {"old": "DXF", "new": "DXFFY", "on": "2023-08-01"},
     ],
     "delisted": [
         {
@@ -124,20 +132,15 @@ def test_bars_of_a_delisted_ticker_are_read_as_that_company(tmp_path: Path) -> N
     )
     register(found)
     try:
-        adapter._fetch_pages(
-            "DEVS",
-            "1Day",
-            datetime(2025, 1, 1, tzinfo=timezone.utc),
-            datetime(2025, 2, 1, tzinfo=timezone.utc),
-            1,
-        )
-        adapter._fetch_pages(
-            "AAPL",
-            "1Day",
-            datetime(2025, 1, 1, tzinfo=timezone.utc),
-            datetime(2025, 2, 1, tzinfo=timezone.utc),
-            1,
-        )
+        for instrument_id in ("us:devs:xnas:2026", "us:aapl:xnas:2026"):
+            adapter.get_daily_bars(
+                BarsQuery(
+                    instrument_id,
+                    "1d",
+                    datetime(2025, 1, 2, tzinfo=timezone.utc),
+                    datetime(2025, 2, 1, tzinfo=timezone.utc),
+                )
+            )
     finally:
         register(None)
     assert requests[0].url.params["asof"] == "2025-01-02"
@@ -169,5 +172,27 @@ def test_sync_and_search_follow_the_history(tmp_path: Path) -> None:
             assert by_symbol["OLDA"]["instrument_resolution"] == "renamed"
             assert by_symbol["DEVS"]["instrument_id"] == "us:devs:xnas:2026"
             assert by_symbol["DEVS"]["instrument_resolution"] == "delisted"
+    finally:
+        register(None)
+
+
+def test_a_reused_ticker_keeps_todays_company_apart(tmp_path: Path) -> None:
+    found = history(tmp_path)
+    listed = {**LISTED, "DXF": "XNAS"}.get  # another company uses DXF today
+    old = found.resolve("DXF", date(2023, 4, 5), listed)
+    assert (old.kind, old.symbol, old.moved_to) == ("delisted", "DXF.D23", "DXFFY")
+    # Later trades of the same company reuse the ID; today's DXF stays a plain listing.
+    assert found.resolve("DXF", date(2023, 6, 1), listed).symbol == "DXF.D23"
+    assert found.resolve("DXF", date(2024, 1, 2), listed).kind == "listed"
+    register(found)
+    try:
+        assert asof_for("DXF") is None
+        assert asof_for("DXF.D23") == date(2023, 6, 1)
+        assert ticker_for("DXF.D23") == "DXF" and ticker_for("DXF") == "DXF"
+        assert resolution_of("DXF", "us:dxf.d23:xnas:2026") == "delisted"
+        assert resolution_of("DXF", "us:dxf:xnas:2026") is None
+        adapter = AlpacaMarketDataProvider(AlpacaConfig(key_id="k", secret_key="s"))
+        assert adapter.symbol_for("us:dxf.d23:xnas:2026") == "DXF"
+        assert adapter._asof("us:dxf:xnas:2026") is None
     finally:
         register(None)

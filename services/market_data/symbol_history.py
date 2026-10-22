@@ -13,12 +13,16 @@ A broker trade in ticker S on date D resolves to:
 - **delisted**: otherwise. The instrument stays `us:S:<venue>:2026` and is registered in
   `symbols/delisted-instruments.json` with `asof` = the latest trade date seen, so its
   bars are read as that company (Alpaca `asof`) and end where exchange trading ended.
+  When another company uses S today, the delisted one gets its own ID with a year
+  suffix (`us:s.d23:xnas:2026`: the year it was renamed away, else of its first trade
+  seen), so today's S keeps its own chart.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -30,6 +34,8 @@ from uuid import uuid4
 MAX_AGE = timedelta(hours=24)
 RETRY_AFTER_FAILURE = timedelta(minutes=5)
 DEFAULT_VENUE = "XNAS"
+# An instrument symbol that fits the US instrument ID (instruments.US_ID).
+KEY = re.compile(r"^[A-Z][A-Z0-9.]{0,9}$")
 
 
 @dataclass(frozen=True)
@@ -50,13 +56,14 @@ class Resolution:
 
 @dataclass(frozen=True)
 class DelistedInstrument:
-    symbol: str
+    symbol: str  # the instrument's symbol: the ticker, or TICKER.DYY when reused
     venue: str
     venue_verified: bool
     asof: date  # a date on which the ticker belonged to the traded company
     name: str | None
     moved_to: str | None
     delisted_on: date | None  # the last delisting-like corporate action, when known
+    ticker: str = ""  # the ticker Alpaca knows it by (empty: the same as symbol)
 
     @property
     def instrument_id(self) -> str:
@@ -151,6 +158,7 @@ class SymbolHistory:
                     None
                     if item.get("delisted_on") is None
                     else date.fromisoformat(item["delisted_on"]),
+                    item.get("ticker") or symbol,
                 )
         return self._registry
 
@@ -172,6 +180,7 @@ class SymbolHistory:
                     "delisted_on": None
                     if item.delisted_on is None
                     else item.delisted_on.isoformat(),
+                    "ticker": item.ticker or symbol,
                 }
                 for symbol, item in sorted(registry.items())
             },
@@ -188,10 +197,12 @@ class SymbolHistory:
             self._ensure()
             original = symbol.upper()
             current, when = original, on
+            renamed_on: date | None = None
             for _step in range(10):  # chains are short; this also stops loops
                 later = [r for r in self._renames.get(current, []) if r.on > when]
                 if not later:
                     break
+                renamed_on = renamed_on or later[0].on
                 current, when = later[0].new, later[0].on
             venue = listed_venue(current)
             if venue is not None:
@@ -200,8 +211,20 @@ class SymbolHistory:
             inactive = self._inactive.get(original)
             venue = None if inactive is None else inactive.get("venue")
             moved_to = None if current == original else current
+            key = original
+            if listed_venue(original) is not None:
+                # Another company uses the ticker today: this one needs its own ID.
+                reused = [
+                    item
+                    for item in self._registered().values()
+                    if item.ticker == original and item.symbol != original
+                ]
+                year = (renamed_on or on).year
+                key = reused[0].symbol if reused else f"{original}.D{year % 100:02d}"
+            if not KEY.fullmatch(key):
+                return Resolution("delisted", key, DEFAULT_VENUE, False, moved_to)
             entry = DelistedInstrument(
-                original,
+                key,
                 venue or DEFAULT_VENUE,
                 venue is not None,
                 on,
@@ -210,9 +233,10 @@ class SymbolHistory:
                 None
                 if inactive is None or inactive.get("on") is None
                 else date.fromisoformat(inactive["on"]),
+                original,
             )
             self._register(entry)
-            return Resolution("delisted", original, entry.venue, entry.venue_verified, moved_to)
+            return Resolution("delisted", key, entry.venue, entry.venue_verified, moved_to)
 
     def delisted(self, symbol: str) -> DelistedInstrument | None:
         with self._lock:
@@ -247,15 +271,24 @@ def resolution_of(symbol: str, instrument_id: str) -> str | None:
     """`renamed` when a trade went on another ticker's chart, `delisted` when its ticker
     is a registered delisted instrument, else None (a plain listing)."""
     parts = instrument_id.split(":")
-    if len(parts) == 4 and parts[0] == "us" and parts[1].upper() != symbol.upper():
-        return "renamed"
-    if _REGISTERED and _REGISTERED[0].delisted(symbol) is not None:
+    if len(parts) != 4 or parts[0] != "us":
+        return None
+    if _REGISTERED and _REGISTERED[0].delisted(parts[1]) is not None:
         return "delisted"
-    return None
+    return "renamed" if parts[1].upper() != symbol.upper() else None
 
 
 def asof_for(symbol: str) -> date | None:
+    """`asof` for an instrument symbol (ticker, or TICKER.DYY) when it is delisted."""
     if not _REGISTERED:
         return None
     entry = _REGISTERED[0].delisted(symbol)
     return None if entry is None else entry.asof
+
+
+def ticker_for(symbol: str) -> str:
+    """The ticker Alpaca knows an instrument symbol by (TICKER.DYY -> TICKER)."""
+    if not _REGISTERED:
+        return symbol
+    entry = _REGISTERED[0].delisted(symbol)
+    return symbol if entry is None or not entry.ticker else entry.ticker
