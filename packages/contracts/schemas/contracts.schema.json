@@ -2962,12 +2962,12 @@
           ]
         },
         "time_meaning": {
-          "enum": ["reported_last_fill", "reported_fill_time"],
-          "description": "reported_last_fill: the broker's filledAt for the order, when its last fill happened (Toss). reported_fill_time: the one fill time the broker reports for the order, without saying whether it is the first or the last fill (Kiwoom cntr_time). Neither is a per-fill time."
+          "enum": ["reported_last_fill", "reported_fill_time", "not_reported"],
+          "description": "reported_last_fill: the broker's filledAt for the order, when its last fill happened (Toss). reported_fill_time: the one fill time the broker reports for the order, without saying whether it is the first or the last fill (Kiwoom cntr_time). Neither is a per-fill time. not_reported: the broker reports no fill time (Kiwoom domestic settlement lines); executed_at_utc is null and trade_date gives the day."
         },
         "granularity": {
-          "const": "order_aggregate",
-          "description": "One record per order: total filled quantity at the average fill price. The broker reports no individual fills."
+          "enum": ["order_aggregate", "settlement_line"],
+          "description": "order_aggregate: one record per order, total filled quantity at the average fill price. settlement_line: one line of the broker's transaction history (Kiwoom domestic), without an order number."
         },
         "order_type": {
           "type": "string",
@@ -2980,7 +2980,15 @@
           "maxLength": 40
         },
         "ordered_at_utc": {
-          "$ref": "#/$defs/UtcTimestamp"
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            }
+          ],
+          "description": "Null when the broker reports no order time (settlement lines)."
         },
         "settlement_date": {
           "oneOf": [
@@ -3013,6 +3021,11 @@
         "instrument_resolution": {
           "enum": ["renamed", "delisted"],
           "description": "ADR 0033: renamed - the trade is on the chart of the ticker the company uses now (symbol keeps the ticker the broker reported); delisted - the company has left US exchanges and its chart ends there. Absent for a plain listing."
+        },
+        "trade_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "The trade (contract) date in the exchange's calendar, when no fill time is reported."
         }
       },
       "description": "An order's execution as reported by a broker API, read on demand and stored append-only. A separate ledger from manual entries and statement imports; never summed with them."

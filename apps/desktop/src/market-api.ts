@@ -116,6 +116,8 @@ export interface MarketApi {
   syncBroker(): Promise<BrokerSyncResult>;
   /** Store the Kiwoom account's filled US orders since a date (YYYY-MM-DD; default a year). */
   syncKiwoom(since?: string): Promise<BrokerSyncResult>;
+  /** Kiwoom Korean stock trades (settlement lines, no fill times), at most a year. */
+  syncKiwoomDomestic(since?: string): Promise<BrokerSyncResult>;
   previewImport(
     request: StatementImportRequest,
   ): Promise<ImportPreviewResponse>;
@@ -503,6 +505,17 @@ export function createMarketApi(
       return callForKind<BrokerSyncResult>(
         { ...target, timeoutMs: 600_000 },
         `/v1/brokers/kiwoom/sync${query}`,
+        "broker_sync_result",
+        { method: "POST" },
+      );
+    },
+    syncKiwoomDomestic(since) {
+      const query = since
+        ? `?${new URLSearchParams({ since }).toString()}`
+        : "";
+      return callForKind<BrokerSyncResult>(
+        { ...target, timeoutMs: 600_000 },
+        `/v1/brokers/kiwoom/sync-domestic${query}`,
         "broker_sync_result",
         { method: "POST" },
       );

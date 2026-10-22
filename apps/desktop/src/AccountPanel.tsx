@@ -48,11 +48,13 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
 
   useEffect(() => load(), [load]);
 
-  const runSync = (broker: "toss" | "kiwoom") => {
+  const runSync = (broker: "toss" | "kiwoom" | "kiwoom-kr") => {
     setSync({ state: "busy" });
     (broker === "kiwoom"
       ? api.syncKiwoom(kiwoomSince || undefined)
-      : api.syncBroker()
+      : broker === "kiwoom-kr"
+        ? api.syncKiwoomDomestic(kiwoomSince || undefined)
+        : api.syncBroker()
     )
       .then((result) => {
         setSync({ state: "done", result });
@@ -87,6 +89,13 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
           onClick={() => runSync("kiwoom")}
         >
           {t("account.syncKiwoom")}
+        </button>{" "}
+        <button
+          type="button"
+          disabled={sync.state === "busy"}
+          onClick={() => runSync("kiwoom-kr")}
+        >
+          {t("account.syncKiwoomDomestic")}
         </button>{" "}
         <label>
           {t("account.kiwoomSince")}{" "}

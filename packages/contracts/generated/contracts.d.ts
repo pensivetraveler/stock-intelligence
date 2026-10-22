@@ -965,16 +965,19 @@ export interface BrokerOrderExecution {
   currency: "USD" | "KRW";
   executed_at_utc: null | UtcTimestamp;
   /**
-   * reported_last_fill: the broker's filledAt for the order, when its last fill happened (Toss). reported_fill_time: the one fill time the broker reports for the order, without saying whether it is the first or the last fill (Kiwoom cntr_time). Neither is a per-fill time.
+   * reported_last_fill: the broker's filledAt for the order, when its last fill happened (Toss). reported_fill_time: the one fill time the broker reports for the order, without saying whether it is the first or the last fill (Kiwoom cntr_time). Neither is a per-fill time. not_reported: the broker reports no fill time (Kiwoom domestic settlement lines); executed_at_utc is null and trade_date gives the day.
    */
-  time_meaning: "reported_last_fill" | "reported_fill_time";
+  time_meaning: "reported_last_fill" | "reported_fill_time" | "not_reported";
   /**
-   * One record per order: total filled quantity at the average fill price. The broker reports no individual fills.
+   * order_aggregate: one record per order, total filled quantity at the average fill price. settlement_line: one line of the broker's transaction history (Kiwoom domestic), without an order number.
    */
-  granularity: "order_aggregate";
+  granularity: "order_aggregate" | "settlement_line";
   order_type: string;
   order_status: string;
-  ordered_at_utc: UtcTimestamp;
+  /**
+   * Null when the broker reports no order time (settlement lines).
+   */
+  ordered_at_utc: null | UtcTimestamp;
   settlement_date: null | string;
   broker_id: "toss" | "kiwoom";
   broker_account_ref: Identifier;
@@ -985,6 +988,10 @@ export interface BrokerOrderExecution {
    * ADR 0033: renamed - the trade is on the chart of the ticker the company uses now (symbol keeps the ticker the broker reported); delisted - the company has left US exchanges and its chart ends there. Absent for a plain listing.
    */
   instrument_resolution?: "renamed" | "delisted";
+  /**
+   * The trade (contract) date in the exchange's calendar, when no fill time is reported.
+   */
+  trade_date?: string;
 }
 export interface BrokerLedgerResponse {
   kind: "broker_ledger_response";

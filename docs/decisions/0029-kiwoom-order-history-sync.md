@@ -47,6 +47,17 @@ On 2026-10-22 the user asked to import the trade history of their Kiwoom account
 
 ADR 0030 now places orders outside 04:00–20:00 New York time in the day market that belongs to their `ord_dt`. A re-sync stored 977 of the 1,119 orders that had been `time_unresolved`. The other 142 have symbols missing from the directory. No conflicts.
 
+## Follow-up (2026-10-22): Korean stock trades
+
+- **Source:** kt00015 (위탁종합거래내역; 매매, 국내주식), at most a year per request. kt00007 (per-order detail) returned nothing for 2023 dates when checked, so it is not used for history.
+- **What a line holds:** the trade (contract) date, side, quantity, price, commission and taxes. It has no order number and no fill or order time.
+- **How a line is stored:** as one record with `granularity: settlement_line` and `time_meaning: not_reported`. `executed_at_utc` and `ordered_at_utc` stay null, the new `trade_date` holds the day, and `settlement_date` holds the settlement day.
+- **Fees:** fees = commission + 거래및농특세.
+- **Positions and reconciliation:** FIFO positions list these lines as unordered instead of guessing an order. Reconciliation bounds them to their local trade day.
+- **Instruments:** codes with prefix A are matched to the Korean directory. ELW (J), ETN (Q) and codes missing from the directory are skipped as `unknown_instrument`.
+- **API and token:** `POST /v1/brokers/kiwoom/sync-domestic?since=&until=`. A token replaced by another client (return code 3, 8005) is reissued once.
+- **Live, 2026-10-22 (counts only):** domestic trades were found only in March 2023. 1,509 lines read, 1,423 stored, 86 lines on 7 codes not in the Korean directory, no conflicts.
+
 ## Alternatives considered
 
 - **ust21180 to find the dates with fills, then ust21150 per date:** fewer daily calls, but ust21180 lists unfilled orders too and needed more than 200 pages for some months.

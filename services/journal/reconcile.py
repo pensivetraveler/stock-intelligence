@@ -29,10 +29,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Literal, cast
+from zoneinfo import ZoneInfo
 
+SEOUL = ZoneInfo("Asia/Seoul")
+NEW_YORK = ZoneInfo("America/New_York")
 Ledger = Literal["broker_api", "manual_actual", "statement_imported"]
 BROKER: Ledger = "broker_api"
 MANUAL: Ledger = "manual_actual"
@@ -85,6 +88,16 @@ def _text(value: Decimal) -> str:
 
 def _broker(document: dict[str, Any]) -> _Record:
     executed = document["executed_at_utc"]
+    ordered = document.get("ordered_at_utc")  # null on settlement lines (no order time)
+    earliest = None if ordered is None else _parse(cast(str, ordered))
+    latest = None if executed is None else _parse(cast(str, executed))
+    trade_date = document.get("trade_date")
+    if executed is None and trade_date:
+        # Only the day is known (Kiwoom domestic settlement lines): that local day.
+        zone = SEOUL if str(document["instrument_id"]).startswith("kr:") else NEW_YORK
+        start = datetime.combine(date.fromisoformat(str(trade_date)), time(0), zone)
+        earliest = earliest or start.astimezone(timezone.utc)
+        latest = (start + timedelta(days=1)).astimezone(timezone.utc)
     return _Record(
         BROKER,
         document,
@@ -92,8 +105,8 @@ def _broker(document: dict[str, Any]) -> _Record:
         Decimal(cast(str, document["quantity"])),
         Decimal(cast(str, document["price"])),
         "reported_last_fill",
-        _parse(cast(str, document["ordered_at_utc"])),
-        None if executed is None else _parse(cast(str, executed)),
+        earliest,
+        latest,
     )
 
 
@@ -378,7 +391,7 @@ def _record_time(record: _Record) -> str | None:
     document = record.document
     if record.ledger == BROKER:
         return cast(str | None, document["executed_at_utc"]) or cast(
-            str, document["ordered_at_utc"]
+            str | None, document.get("ordered_at_utc")
         )
     return cast(str | None, document["executed_at_utc"])
 
