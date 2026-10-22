@@ -34,7 +34,12 @@ function findUv() {
  */
 async function ensureApi({ apiUrl, repoDir, log }) {
   if (await healthy(apiUrl)) return { started: false, process: null };
-  if (!repoDir || !fs.existsSync(path.join(repoDir, "services/api/main.py"))) {
+  if (!repoDir) {
+    throw new Error(
+      "the local API is not running and no repository folder was chosen (SIW_REPO_DIR, or pick one from the app menu)",
+    );
+  }
+  if (!fs.existsSync(path.join(repoDir, "services/api/main.py"))) {
     throw new Error(
       `the local API is not running and the repository was not found at ${repoDir}`,
     );
@@ -48,7 +53,7 @@ async function ensureApi({ apiUrl, repoDir, log }) {
     "--host",
     "127.0.0.1",
     "--port",
-    "8765",
+    new URL(apiUrl).port || "8765",
   ];
   if (fs.existsSync(path.join(repoDir, ".env")))
     args.push("--env-file", ".env");
