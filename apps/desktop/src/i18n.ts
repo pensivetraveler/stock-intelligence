@@ -550,6 +550,7 @@ const en = {
     "{new} new, {same} already stored, {notFilled} without fills, {currency} in other currencies, {unknown} unknown symbols{conflicts}",
   "account.conflicts": "; {n} changed after storing (kept as stored)",
   "account.syncKiwoom": "Sync Kiwoom US fills",
+  "account.syncKiwoomDomestic": "Sync Kiwoom Korean trades",
   "account.kiwoomSince": "Kiwoom from",
   "account.kiwoomNote":
     ". Kiwoom: {n} orders outside the US session's hours (e.g. daytime session) were left out; fees are not reported and stay blank.",
@@ -802,6 +803,7 @@ const en = {
   "journal.entryExit": "Entry → exit",
   "journal.netPnl": "Net P&L",
   "journal.unknownTime": "unknown",
+  "journal.dateOnly": "{date} (time not reported)",
   "journal.noManual":
     "No actual executions recorded. Click a candle to add one.",
   "journal.noImported": "No statements imported.",
@@ -1503,6 +1505,7 @@ const ko: Record<MessageKey, string> = {
     "새로 저장 {new}건, 이미 저장 {same}건, 미체결 {notFilled}건, 지원하지 않는 통화 {currency}건, 알 수 없는 종목 {unknown}건{conflicts}",
   "account.conflicts": "; 저장 후 바뀐 주문 {n}건(저장된 값 유지)",
   "account.syncKiwoom": "키움 미국주식 체결 동기화",
+  "account.syncKiwoomDomestic": "키움 국내주식 거래 동기화",
   "account.kiwoomSince": "키움 시작일",
   "account.kiwoomNote":
     ". 키움: 미국 정규·시간외 시간대 밖 주문(주간거래 등) {n}건은 제외했고, 수수료는 제공되지 않아 비워 둡니다.",
@@ -1751,6 +1754,7 @@ const ko: Record<MessageKey, string> = {
   "journal.entryExit": "진입 → 청산",
   "journal.netPnl": "순손익",
   "journal.unknownTime": "모름",
+  "journal.dateOnly": "{date}(시각 미제공)",
   "journal.noManual": "기록된 실제 체결이 없습니다. 캔들을 클릭해 추가하세요.",
   "journal.noImported": "가져온 거래내역이 없습니다.",
   "journal.brokerTitle": "증권사 API 체결(토스·키움)",

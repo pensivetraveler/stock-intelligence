@@ -275,7 +275,9 @@ export function JournalPanel({
                   <td>
                     {item.executed_at_utc
                       ? exchangeTime(item.executed_at_utc)
-                      : t("journal.unknownTime")}
+                      : item.trade_date
+                        ? t("journal.dateOnly", { date: item.trade_date })
+                        : t("journal.unknownTime")}
                   </td>
                   <td>{item.fees}</td>
                 </tr>

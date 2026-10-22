@@ -59,8 +59,16 @@ REAL_BASE_URL = "https://api.kiwoom.com"
 DEMO_BASE_URL = "https://mockapi.kiwoom.com"
 TOKEN_PATH = "/oauth2/token"
 ACCOUNT_PATH = "/api/us/acnt"
-READ_ONLY_API_IDS = frozenset({"ust21150"})
+DOMESTIC_PATH = "/api/dostk/acnt"
+# The only account queries that can be sent: api-id -> (path, list field of the reply).
+READ_ONLY_QUERIES = {
+    "ust21150": (ACCOUNT_PATH, "result_list"),  # 미국주식 일별 주문체결내역
+    "kt00015": (DOMESTIC_PATH, "trst_ovrl_trde_prps_array"),  # 위탁종합거래내역
+}
+READ_ONLY_API_IDS = frozenset(READ_ONLY_QUERIES)
+DOMESTIC_RANGE_DAYS = 365  # kt00015 answers at most a year per request
 RATE_LIMIT_CODES = {1700, 1701, 1702}
+TOKEN_INVALID_CODE = 3
 # Seen live: return_code 20 with message code 571758 ("조회내역이 없습니다", "해당 계좌의
 # 체결내역이 없습니다") when a range or date simply has no orders.
 NO_ROWS = (20, "571758")
@@ -98,7 +106,7 @@ class KiwoomAccountSession:
         base_url = DEMO_BASE_URL if credentials.environment == "demo" else REAL_BASE_URL
         self._http = AllowlistedClient(
             base_url,
-            [("POST", TOKEN_PATH), ("POST", ACCOUNT_PATH)],
+            [("POST", TOKEN_PATH), ("POST", ACCOUNT_PATH), ("POST", DOMESTIC_PATH)],
             transport=transport,
             min_interval_seconds=min_interval_seconds,
         )
@@ -136,13 +144,14 @@ class KiwoomAccountSession:
         return str(token), lifetime
 
     def rows(self, api_id: str, body: dict[str, str]) -> Iterator[dict[str, Any]]:
-        """Every `result_list` row of a read-only account query, following continuation."""
+        """Every row of a read-only account query, following continuation."""
         if api_id not in READ_ONLY_API_IDS:
             raise ProviderDataError(f"{api_id} is not on the read-only allowlist")
+        path, field = READ_ONLY_QUERIES[api_id]
         continuation: tuple[str, str] | None = None
         for _page in range(MAX_PAGES):
-            payload, continuation = self._page(api_id, body, continuation)
-            for row in payload.get("result_list") or []:
+            payload, continuation = self._page(api_id, path, body, continuation)
+            for row in payload.get(field) or []:
                 if isinstance(row, dict):
                     yield row
             if continuation is None:
@@ -150,7 +159,11 @@ class KiwoomAccountSession:
         raise ProviderDataError(f"Kiwoom {api_id} returned more than {MAX_PAGES} pages")
 
     def _page(
-        self, api_id: str, body: dict[str, str], continuation: tuple[str, str] | None
+        self,
+        api_id: str,
+        path: str,
+        body: dict[str, str],
+        continuation: tuple[str, str] | None,
     ) -> tuple[dict[str, Any], tuple[str, str] | None]:
         for attempt in range(2):
             headers = {
@@ -160,7 +173,7 @@ class KiwoomAccountSession:
             }
             if continuation is not None:
                 headers["cont-yn"], headers["next-key"] = continuation
-            response = self._http.request("POST", ACCOUNT_PATH, json=body, headers=headers)
+            response = self._http.request("POST", path, json=body, headers=headers)
             try:
                 payload = response.json()
             except ValueError as exc:
@@ -170,8 +183,11 @@ class KiwoomAccountSession:
                     ) from exc
                 raise ProviderDataError("Kiwoom returned a response that is not JSON") from exc
             code = int(payload.get("return_code", 0) or 0)
-            if response.status_code == 401 and attempt == 0:
-                continue  # token expired or rejected: reissue once
+            # A token stops working when another client issues one for the same key
+            # (8005 "Token이 유효하지 않습니다", answered with HTTP 200): reissue once.
+            invalid = code == TOKEN_INVALID_CODE and "8005" in str(payload.get("return_msg", ""))
+            if (response.status_code == 401 or invalid) and attempt == 0:
+                continue
             if code in RATE_LIMIT_CODES or response.status_code == 429:
                 raise ProviderRateLimitError("Kiwoom request limit reached; retry later")
             if response.status_code in (401, 403):
@@ -180,7 +196,7 @@ class KiwoomAccountSession:
                 raise ProviderUnavailableError(f"Kiwoom is unavailable ({response.status_code})")
             message = str(payload.get("return_msg", ""))
             if response.status_code == 200 and code == NO_ROWS[0] and NO_ROWS[1] in message:
-                return {"result_list": []}, None
+                return {}, None
             if response.status_code >= 400 or code != 0:
                 raise InvalidBarsQueryError(f"Kiwoom refused the query ({code}): {message[:200]}")
             more = response.headers.get("cont-yn", "N") == "Y" and response.headers.get("next-key")
@@ -394,3 +410,162 @@ def _execution(
         "verification_status": "broker_api_reported",
         "synced_at_utc": synced_at,
     }
+
+
+DOMESTIC_SIDES = {"매수": "buy", "매도": "sell"}
+
+
+def _won(value: object) -> Decimal:
+    """A Kiwoom amount such as "000000000000102", "+0000102" or "56,900" in exact form."""
+    text = str(value or "0").replace(",", "").strip() or "0"
+    try:
+        number = Decimal(text)
+    except InvalidOperation as exc:
+        raise ProviderDataError("Kiwoom returned an invalid amount") from exc
+    if not number.is_finite():
+        raise ProviderDataError("Kiwoom returned an invalid amount")
+    return abs(number)
+
+
+def sync_domestic(
+    session: KiwoomAccountSession,
+    store: JournalStore,
+    instrument_for: Callable[..., str | None],
+    now: Callable[[], datetime],
+    since: date,
+    until: date | None = None,
+) -> dict[str, Any]:
+    """Store the Kiwoom account's Korean stock trades from `since` to `until`, once.
+
+    Source: kt00015 (위탁종합거래내역, 매매, 국내주식), the only account history that
+    still answers for past years (kt00007 returned nothing for 2023 dates when checked).
+    It reports settlement lines: trade (contract) date, side, quantity, price,
+    commission and taxes, but no order number and no fill or order time. Each line
+    becomes one record marked `settlement_line` with `time_meaning: not_reported`; its
+    fill time is left empty rather than guessed, so FIFO positions list it as unordered.
+    """
+    current = now()
+    today = current.astimezone(SEOUL).date()
+    last = min(until or today, today)
+    if since > last:
+        raise InvalidBarsQueryError("since must not be after until or today")
+    if (today - since).days > MAX_HISTORY_DAYS:
+        raise InvalidBarsQueryError(f"since can be at most {MAX_HISTORY_DAYS} days ago")
+    if (last - since).days >= DOMESTIC_RANGE_DAYS:
+        raise InvalidBarsQueryError(f"one domestic sync covers at most {DOMESTIC_RANGE_DAYS} days")
+    synced_at = _utc_text(current)
+    ref = account_ref(session)
+    counts = {"orders_seen": 0, "stored_new": 0, "already_stored": 0}
+    skipped = {"not_filled": 0, "unsupported_currency": 0, "unknown_instrument": 0}
+    conflicts: list[str] = []
+    unknown: Counter[str] = Counter()
+    body = {
+        "strt_dt": since.strftime("%Y%m%d"),
+        "end_dt": last.strftime("%Y%m%d"),
+        "tp": "3",  # 매매
+        "stk_cd": "",
+        "crnc_cd": "",
+        "gds_tp": "1",  # 국내주식
+        "frgn_stex_code": "",
+        "dmst_stex_tp": "%",
+        "qry_sort_tp": "2",  # oldest first
+    }
+    for row in session.rows("kt00015", body):
+        if not row.get("trde_no"):
+            continue
+        counts["orders_seen"] += 1
+        before = skipped["unknown_instrument"]
+        document = _domestic_execution(row, ref, synced_at, instrument_for, skipped)
+        if skipped["unknown_instrument"] > before:
+            unknown[str(row.get("stk_cd") or "?").strip().upper()[:32]] += 1
+        if document is None:
+            continue
+        outcome = store.record_broker_execution(document)
+        if outcome == "new":
+            counts["stored_new"] += 1
+        elif outcome == "same":
+            counts["already_stored"] += 1
+        else:
+            conflicts.append(document["broker_order_id"])
+    result = {
+        "kind": "broker_sync_result",
+        "schema_version": "0.1",
+        "broker_id": BROKER_ID,
+        "synced_at_utc": synced_at,
+        "accounts": 1,
+        **counts,
+        "skipped": skipped,
+        "conflicts": conflicts,
+        "unknown_symbols": [
+            {"symbol": symbol, "orders": count}
+            for symbol, count in sorted(unknown.items(), key=lambda item: (-item[1], item[0]))[
+                :1000
+            ]
+        ],
+    }
+    validate_document(result)
+    return result
+
+
+def _domestic_execution(
+    row: dict[str, Any],
+    ref: str,
+    synced_at: str,
+    instrument_for: Callable[..., str | None],
+    skipped: dict[str, int],
+) -> dict[str, Any] | None:
+    quantity = _won(row.get("trde_qty_jwa_cnt"))
+    price = _won(row.get("trde_unit"))
+    if quantity == 0 or price == 0:
+        skipped["not_filled"] += 1
+        return None
+    if str(row.get("crnc_cd") or "KRW") != "KRW":
+        skipped["unsupported_currency"] += 1
+        return None
+    raw_code = str(row.get("stk_cd") or "").strip().upper()
+    side = DOMESTIC_SIDES.get(str(row.get("io_tp_nm") or "").strip())
+    # "A005930": A marks a stock (J: ELW, Q: ETN are not listings the app charts).
+    code = raw_code[1:] if raw_code.startswith("A") and len(raw_code) == 7 else None
+    instrument_id = instrument_for(code, "KRW") if code else None
+    if instrument_id is None or side is None:
+        skipped["unknown_instrument"] += 1
+        return None
+    trade_day = _order_date(row.get("cntr_dt") or row.get("trde_dt"))
+    settled = _order_date(row.get("trde_dt"))
+    order_id = f"kr-{settled:%Y%m%d}-{str(row['trde_no']).strip()[:20]}"
+    commission = _won(row.get("cmsn"))
+    tax = _won(row.get("trde_agri_tax"))
+    return {
+        "kind": "broker_order_execution",
+        "schema_version": "0.1",
+        "execution_id": "kiwoom-" + hashlib.sha256(f"{ref}\0{order_id}".encode()).hexdigest()[:32],
+        "instrument_id": instrument_id,
+        "symbol": code,
+        "side": side,
+        "quantity": _text(quantity),
+        "price": _text(price),
+        "fees": _text(commission + tax),
+        "commission": _text(commission),
+        "tax": _text(tax),
+        "currency": "KRW",
+        "executed_at_utc": None,
+        "time_meaning": "not_reported",
+        "granularity": "settlement_line",
+        "order_type": str(row.get("crd_deal_tp_nm") or "UNKNOWN").strip()[:40] or "UNKNOWN",
+        "order_status": str(row.get("rmrk_nm") or "UNKNOWN").strip()[:40] or "UNKNOWN",
+        "ordered_at_utc": None,
+        "trade_date": trade_day.isoformat(),
+        "settlement_date": settled.isoformat(),
+        "broker_id": BROKER_ID,
+        "broker_account_ref": ref,
+        "broker_order_id": order_id,
+        "verification_status": "broker_api_reported",
+        "synced_at_utc": synced_at,
+    }
+
+
+def _order_date(value: object) -> date:
+    try:
+        return datetime.strptime(str(value), "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderDataError("Kiwoom returned an invalid date") from exc

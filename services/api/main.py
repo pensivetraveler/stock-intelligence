@@ -48,6 +48,7 @@ from services.market_data.kiwoom_account import (
     KiwoomAccountCredentials,
     KiwoomAccountSession,
 )
+from services.market_data.kiwoom_account import sync_domestic as kiwoom_sync_domestic
 from services.market_data.kiwoom_account import sync_executions as kiwoom_sync
 from services.market_data.market_router import MarketRouter
 from services.market_data.provider import (
@@ -1028,6 +1029,33 @@ def create_app(
             kiwoom,
             "Kiwoom",
             lambda session: kiwoom_sync(session, store, instrument_for, clock, start, until),
+        )
+
+    @application.post("/v1/brokers/kiwoom/sync-domestic", response_model=None)
+    def kiwoom_sync_domestic_endpoint(
+        request: Request,
+        since: Annotated[date | None, Query()] = None,
+        until: Annotated[date | None, Query()] = None,
+    ) -> Response:
+        """Store the Kiwoom account's Korean stock trades (settlement lines, no fill
+        times) from `since` (default: a year ago) to `until`; at most 365 days per call."""
+        store = journal.get()
+        if store is None:
+            return _error_response(
+                request,
+                503,
+                "journal_storage_unconfigured",
+                "set SIW_DATA_DIR to keep the broker ledger",
+            )
+        last = until or clock().astimezone(KIWOOM_NEW_YORK).date()
+        start = since or (last - timedelta(days=364))
+        return broker_read(
+            request,
+            kiwoom,
+            "Kiwoom",
+            lambda session: kiwoom_sync_domestic(
+                session, store, instrument_for, clock, start, until
+            ),
         )
 
     @application.get("/v1/trades/broker", response_model=None)
