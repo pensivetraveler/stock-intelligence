@@ -196,3 +196,17 @@ def test_a_reused_ticker_keeps_todays_company_apart(tmp_path: Path) -> None:
         assert adapter._asof("us:dxf:xnas:2026") is None
     finally:
         register(None)
+
+
+def test_a_verified_venue_in_the_registry_is_kept(tmp_path: Path) -> None:
+    found = history(tmp_path)
+    found.resolve("DEVS", date(2025, 1, 2), LISTED.get)
+    path = tmp_path / "symbols" / "delisted-instruments.json"
+    stored = json.loads(path.read_text())
+    # The venue was verified afterwards (SIP tape A: NYSE) and written to the registry.
+    stored["DEVS"].update(venue="XNYS", venue_verified=True)
+    path.write_text(json.dumps(stored))
+    again = history(tmp_path)
+    later = again.resolve("DEVS", date(2025, 5, 2), LISTED.get)
+    assert (later.venue, later.venue_verified) == ("XNYS", True)
+    assert json.loads(path.read_text())["DEVS"]["venue"] == "XNYS"
