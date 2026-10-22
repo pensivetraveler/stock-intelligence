@@ -199,6 +199,15 @@ def register_journal_routes(
         since: Annotated[
             str | None, Query(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
         ] = None,
+        until: Annotated[
+            str | None, Query(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+        ] = None,
+        from_date: date | None = None,
+        to_date: date | None = None,
+        status: Annotated[
+            Literal["matched", "conflicting", "broker_only", "manual_only", "imported_only"] | None,
+            Query(),
+        ] = None,
         price_tolerance_bps: Annotated[
             str | None, Query(pattern=r"^(0|[1-9][0-9]{0,3})(\.[0-9]{1,2})?$")
         ] = None,
@@ -218,9 +227,16 @@ def register_journal_routes(
             store.manual_executions(instrument_id),
             store.imported_executions(instrument_id),
             since=None if since is None else datetime.fromisoformat(since.replace("Z", "+00:00")),
+            until=None if until is None else datetime.fromisoformat(until.replace("Z", "+00:00")),
+            from_date=from_date,
+            to_date=to_date,
             parameters=parameters,
         )
-        records = result["records"]
+        # The status filter narrows the list only; summary and breakdown count all.
+        matching = [
+            record for record in result["records"] if status is None or record["status"] == status
+        ]
+        records = matching
         if limit is not None and len(records) > limit:
             # The newest records; the summary still counts every one of them.
             newest = sorted(
@@ -235,9 +251,13 @@ def register_journal_routes(
             "view": "computed",
             "instrument_id": instrument_id,
             "since_utc": since,
+            "until_utc": until,
+            "from_date": None if from_date is None else from_date.isoformat(),
+            "to_date": None if to_date is None else to_date.isoformat(),
+            "status_filter": status,
             **result,
             "records": records,
-            "record_count": len(result["records"]),
+            "record_count": len(matching),
         }
         validate_document(document)
         return JSONResponse(content=document)

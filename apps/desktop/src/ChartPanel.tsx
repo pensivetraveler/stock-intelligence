@@ -58,7 +58,11 @@ import {
   signature,
   storeResult,
 } from "./custom-indicators";
-import { backtestMarkers, journalMarkers } from "./journal-markers";
+import {
+  backtestMarkers,
+  groupMarkers,
+  journalMarkers,
+} from "./journal-markers";
 import {
   MarketApiError,
   type InstrumentListing,
@@ -579,7 +583,7 @@ export function ChartPanel({
   const markers = useMemo(
     () =>
       bars
-        ? [
+        ? groupMarkers([
             ...journalMarkers(
               bars,
               instrumentId,
@@ -589,7 +593,7 @@ export function ChartPanel({
               journal.broker,
             ),
             ...backtestMarkers(bars, instrumentId, backtestFills ?? []),
-          ].sort((a, b) => a.time - b.time || a.id.localeCompare(b.id))
+          ])
         : [],
     [bars, instrumentId, journal, backtestFills],
   );
@@ -877,6 +881,22 @@ export function ChartPanel({
     bars?.at(-1) ||
     null;
   const change = legendBar ? barChange(legendBar) : null;
+  const legendMarkers = legendBar
+    ? markers.filter(
+        (marker) =>
+          marker.time ===
+          Math.floor(Date.parse(legendBar.interval_start_utc) / 1000),
+      )
+    : [];
+  const selectedFills = selected
+    ? markers
+        .filter(
+          (marker) =>
+            marker.time ===
+            Math.floor(Date.parse(selected.interval_start_utc) / 1000),
+        )
+        .flatMap((marker) => marker.details ?? [marker.text])
+    : [];
   const legendIndex = legendBar
     ? ohlcv.findIndex(
         (item) =>
@@ -968,6 +988,15 @@ export function ChartPanel({
                 {isUncertain(legendBar) ? (
                   <span className="legend-provisional">
                     {t("legend.notFinal")}
+                  </span>
+                ) : null}
+                {legendMarkers.length > 0 ? (
+                  <span className="legend-fills">
+                    {legendMarkers.map((marker) => (
+                      <b key={marker.id} style={{ color: marker.color }}>
+                        {marker.text}
+                      </b>
+                    ))}
                   </span>
                 ) : null}
                 {rendered.length > 0 ? (
@@ -1187,6 +1216,7 @@ export function ChartPanel({
             key={selected.interval_start_utc}
             api={api}
             bar={selected}
+            fills={selectedFills}
             symbol={symbol}
             sessionDate={sessionDate}
             onRecorded={onJournalChange}

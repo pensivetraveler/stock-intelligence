@@ -21,6 +21,7 @@ import type {
   SessionWindow,
   StockInfo,
   SymbolSearchResponse,
+  ReconciliationRecord,
   TradeReconciliationResponse,
 } from "@siw/contracts/types";
 
@@ -55,6 +56,15 @@ export interface SessionQuote {
   open: string;
   last: string;
   lastFinal: boolean;
+}
+
+/** Filters of the read-only reconciliation; days are each exchange's own dates. */
+export interface ReconciliationQuery {
+  instrumentId?: string;
+  fromDate?: string;
+  toDate?: string;
+  status?: ReconciliationRecord["status"];
+  limit?: number;
 }
 
 export interface MarketApi {
@@ -98,7 +108,9 @@ export interface MarketApi {
   importedLedger(): Promise<ImportedLedgerResponse>;
   /** A computed comparison of the broker ledger with manual and imported executions. */
   /** `limit`: only the newest records; the summary counts all of them. */
-  reconciliation(limit?: number): Promise<TradeReconciliationResponse>;
+  reconciliation(
+    query?: ReconciliationQuery,
+  ): Promise<TradeReconciliationResponse>;
   /** Executions reported by the broker API (one per order), kept as their own ledger. */
   /** One instrument's executions, or with `limit` only the newest ones; positions
    * always cover the whole ledger (or instrument). */
@@ -539,9 +551,18 @@ export function createMarketApi(
         "imported_ledger_response",
       );
     },
-    reconciliation(limit) {
+    reconciliation(options = {}) {
+      const query = new URLSearchParams({
+        ...(options.instrumentId
+          ? { instrument_id: options.instrumentId }
+          : {}),
+        ...(options.fromDate ? { from_date: options.fromDate } : {}),
+        ...(options.toDate ? { to_date: options.toDate } : {}),
+        ...(options.status ? { status: options.status } : {}),
+        ...(options.limit ? { limit: String(options.limit) } : {}),
+      }).toString();
       return get<TradeReconciliationResponse>(
-        `/v1/trades/reconciliation${limit ? `?limit=${limit}` : ""}`,
+        `/v1/trades/reconciliation${query ? `?${query}` : ""}`,
         "trade_reconciliation_response",
       );
     },

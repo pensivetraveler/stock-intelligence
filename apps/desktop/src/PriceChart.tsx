@@ -24,7 +24,7 @@ import type { ChartSyncGroup } from "./chart-sync";
 import { DrawingLayer, type Projection } from "./DrawingLayer";
 import { snapPrice, type Drawing, type DrawingTool } from "./drawings";
 import type { RenderedIndicator } from "./indicators";
-import type { ChartMarker } from "./journal-markers";
+import { thinLabels, type ChartMarker } from "./journal-markers";
 
 interface PriceChartProps {
   chartId: string;
@@ -77,6 +77,9 @@ function timeOf(value: Time): number {
 }
 
 /** Candlestick and volume chart; the time axis and crosshair are labelled in ET. */
+/** Room a marker label needs before the next one on the same side, in pixels. */
+const LABEL_WIDTH = 90;
+
 export function PriceChart({
   chartId,
   candles,
@@ -114,6 +117,8 @@ export function PriceChart({
   const [ready, setReady] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [redraw, setRedraw] = useState(0);
+  // Pixels per bar, so marker labels thin out as the chart zooms out.
+  const [barSpacing, setBarSpacing] = useState(6);
   const candlesRef = useRef(candles);
   candlesRef.current = candles;
   const magnetRef = useRef(magnet);
@@ -209,12 +214,16 @@ export function PriceChart({
       );
     };
     const bump = () => setRedraw((count) => count + 1);
+    const onZoom = () => {
+      bump();
+      setBarSpacing(Math.round(instance.timeScale().options().barSpacing));
+    };
     const onMoveAndRedraw = (param: MouseEventParams<Time>) => {
       onMove(param);
       bump();
     };
     instance.timeScale().subscribeVisibleTimeRangeChange(onRange);
-    instance.timeScale().subscribeVisibleLogicalRangeChange(bump);
+    instance.timeScale().subscribeVisibleLogicalRangeChange(onZoom);
     instance.subscribeClick(onClick);
     instance.subscribeCrosshairMove(onMoveAndRedraw);
     const element = container.current;
@@ -248,7 +257,7 @@ export function PriceChart({
       unregister();
       observer?.disconnect();
       setReady(false);
-      instance.timeScale().unsubscribeVisibleLogicalRangeChange(bump);
+      instance.timeScale().unsubscribeVisibleLogicalRangeChange(onZoom);
       instance.unsubscribeCrosshairMove(onMoveAndRedraw);
       instance.unsubscribeClick(onClick);
       instance.timeScale().unsubscribeVisibleTimeRangeChange(onRange);
@@ -407,13 +416,24 @@ export function PriceChart({
   }, [indicators]);
 
   useEffect(() => {
-    markerLayer.current?.setMarkers(
-      markers.map((marker) => ({
-        ...marker,
-        time: marker.time as UTCTimestamp,
-      })),
+    // About one label per LABEL_WIDTH pixels on each side of the candles.
+    const gapBars = Math.max(
+      1,
+      Math.ceil(LABEL_WIDTH / Math.max(barSpacing, 1)),
     );
-  }, [markers, candles]);
+    markerLayer.current?.setMarkers(
+      thinLabels(markers, barSeconds, gapBars).map(
+        ({ id, position, shape, color, text, time }) => ({
+          id,
+          position,
+          shape,
+          color,
+          text,
+          time: time as UTCTimestamp,
+        }),
+      ),
+    );
+  }, [markers, candles, barSeconds, barSpacing]);
 
   const projection = useMemo<Projection>(
     () => ({

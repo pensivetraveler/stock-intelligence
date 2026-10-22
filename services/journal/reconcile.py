@@ -434,18 +434,34 @@ def _since_time(record: _Record) -> datetime | None:
     return _parse(cast(str, executed))
 
 
+def _zone(instrument_id: str) -> ZoneInfo:
+    return SEOUL if instrument_id.startswith("kr:") else NEW_YORK
+
+
+def _within_days(record: _Record, moment: datetime, first: date | None, last: date | None) -> bool:
+    if first is None and last is None:
+        return True
+    day = moment.astimezone(_zone(cast(str, record.document["instrument_id"]))).date()
+    return (first is None or day >= first) and (last is None or day <= last)
+
+
 def reconcile(
     broker: list[dict[str, Any]],
     manual: list[dict[str, Any]],
     imported: list[dict[str, Any]],
     *,
     since: datetime | None = None,
+    until: datetime | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
     parameters: Parameters | None = None,
 ) -> dict[str, Any]:
     """Classify every record of the three actual-fill ledgers; nothing is stored.
 
-    `since` filters the result, not the input: records just before it still count as
-    counterparts, so a match is never lost at the boundary.
+    `since` and `until` (exclusive, UTC) and `from_date`/`to_date` (inclusive days on
+    each record's own exchange calendar) filter the result, not the input: records
+    outside them still count as counterparts, so a match is never lost at the boundary.
+    A record without any time is never filtered out.
     """
     parameters = parameters or Parameters()
     orders = [_broker(document) for document in broker]
@@ -464,7 +480,12 @@ def reconcile(
     every = [
         record
         for record in orders + manual_records + imported_records
-        if since is None or (moment := _since_time(record)) is None or moment >= since
+        if (moment := _since_time(record)) is None
+        or (
+            (since is None or moment >= since)
+            and (until is None or moment < until)
+            and _within_days(record, moment, from_date, to_date)
+        )
     ]
     ledger_order = {BROKER: 0, MANUAL: 1, IMPORTED: 2}
     every.sort(
@@ -476,10 +497,7 @@ def reconcile(
         )
     )
     views = [_view(record) for record in every]
-    summary = {
-        status: sum(1 for view in views if view["status"] == status)
-        for status in ("matched", "conflicting", "broker_only", "manual_only", "imported_only")
-    }
+    summary = {status: sum(1 for view in views if view["status"] == status) for status in _STATUSES}
     return {
         "parameters": {
             "price_tolerance_bps": _text(parameters.price_tolerance_bps),
@@ -487,5 +505,44 @@ def reconcile(
             "approximate_window_seconds": int(parameters.approximate_window.total_seconds()),
         },
         "summary": summary,
+        "ledger_counts": {
+            BROKER: len(orders),
+            MANUAL: len(manual_records),
+            IMPORTED: len(imported_records),
+        },
+        "breakdown": breakdown(views),
         "records": views,
+    }
+
+
+_STATUSES = ("matched", "conflicting", "broker_only", "manual_only", "imported_only")
+
+
+def _local_day(instrument_id: str, time_utc: str | None) -> str | None:
+    if time_utc is None:
+        return None
+    return _parse(time_utc).astimezone(_zone(instrument_id)).date().isoformat()
+
+
+def breakdown(views: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Status counts per instrument and per exchange-local day of the given records.
+
+    A record without a time counts under the day `null`.
+    """
+    by_instrument: dict[str, dict[str, int]] = {}
+    by_day: dict[str | None, dict[str, int]] = {}
+    for view in views:
+        instrument_id = cast(str, view["instrument_id"])
+        day = _local_day(instrument_id, cast(str | None, view["time_utc"]))
+        status = cast(str, view["status"])
+        by_instrument.setdefault(instrument_id, dict.fromkeys(_STATUSES, 0))[status] += 1
+        by_day.setdefault(day, dict.fromkeys(_STATUSES, 0))[status] += 1
+    return {
+        "by_instrument": [
+            {"instrument_id": key, "counts": by_instrument[key]} for key in sorted(by_instrument)
+        ],
+        "by_day": [
+            {"date": key, "counts": by_day[key]}
+            for key in sorted(by_day, key=lambda day: day or "9999", reverse=True)
+        ],
     }
