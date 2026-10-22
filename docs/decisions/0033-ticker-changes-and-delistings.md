@@ -48,10 +48,15 @@ The Kiwoom sync (ADR 0029) could not match 728 tickers (33,896 orders) to the sy
 - **History file:** `SIW_DATA_DIR/symbols/history-<source>.json`, refreshed when more than a day old; a failed refresh keeps the previous copy.
 - **Delisted instruments:** the registry is written by the broker syncs. A re-sync stores the trades it can now resolve. Trades already stored are never changed; a different resolution would be reported as a conflict.
 
+### Checks after the decision (2026-10-22, counts only)
+
+- **Toss reports today's ticker:** of the 5,710 stored Toss executions, 177 (18 tickers) were filled before a recorded rename of their ticker's company, and every one of them carries the new ticker. None carries an old ticker. Following renames is therefore not needed for Toss; Toss sync keeps its plain directory lookup. Toss trades of delisted companies were not checked.
+- **Venue of delisted instruments:** Alpaca SIP trades queried with `asof` = the registry date carry the tape of the primary listing (`z`: A = NYSE, B = NYSE American, NYSE Arca, Cboe and other exchanges, C = Nasdaq). For the 7 instruments with a verified venue, the tape agreed every time. Of the 534 unverified ones (all set to XNAS): 435 tape C (Nasdaq, as set), 56 tape A (NYSE), 38 tape B (not Nasdaq; the exchange inside tape B cannot be told apart), 5 without data. The 94 that are not Nasdaq would need new IDs, which re-keys stored trades; that waits for the user's decision.
+
 ## Alternatives considered
 
 - **Instrument IDs per company instead of per ticker:** the right long-term identity, but every stored bar, drawing and layout keys on ticker IDs today.
-- **Alpaca's OTC feed for prints after a delisting:** a separate subscription, not checked.
+- **Alpaca's OTC feed for prints after a delisting:** a separate subscription. On 2026-10-22 one read-only request (`feed=otc`, daily bars) with the user's key was refused: 403 "subscription does not permit querying OTC data".
 
 ## Revisit when
 
