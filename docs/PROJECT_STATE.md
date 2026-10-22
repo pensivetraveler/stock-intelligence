@@ -7,7 +7,7 @@
 문서 탐색은 [문서 안내](README.md), 커밋별 누적 작업은 [구현 이력](IMPLEMENTATION_HISTORY.md)을 참고한다. 아래 기능 검증 기록은 별도 표시가 없으면 2026-10-12 실행 결과이며, 이번 문서 정리에서 재실행한 결과는 아니다.
 
 - **Confirmed:** 미국 주식 중심 로컬 우선 워크스테이션. 차트별 독립 지표 및 선택 차트 프리셋 일괄 적용. 실제/수동/가상/백테스트 체결 분리. 1분봉 기본 저장과 소스 출처 무결성.
-- **Decision:** Alpaca와 Massive는 동등한 _미선정_ 유료 후보이며 증권사 API/공개 정보 수집원과 병행 검증한다.
+- **Decision:** 2026-10-22 사용자 결정으로 Alpaca를 미국 기본 공급업체로 선정했다([ADR 0035](decisions/0035-alpaca-default-us-provider.md)). Massive는 미검증 대체 후보이며, 증권사 API/공개 정보 수집원은 별도 출처로 병행한다. (이전: Alpaca와 Massive는 동등한 미선정 후보였다.)
 - **Candidate register (2026-10-19):** 사용자가 지정한 13곳(Webull, Massive, Databento, Alpaca, 토스·키움·한국투자·메리츠·DB·LS·KB증권, ChartExchange, Unusual Whales)을 [공급업체 평가 8절](DATA_PROVIDER_EVALUATION_v1.5.md#8-후보-등록부-2026-10-19-사용자-등록)에 후보로 등록했다. 등록은 선정·결제·구현 승인이 아니며, 구현된 채널은 fake·Alpaca·KIS·토스·키움·메리츠뿐이다.
 - **Runtime verified (2026-10-12):** macOS 15.7.9 x86_64, Python 3.10.19, uv 0.12.23, Node 22.23.2, pnpm 11.25.0, Tauri CLI 2.12.2. 2026-10-15에도 `command -v cargo`와 `command -v rustc`는 실행 파일을 찾지 못했다. 나머지 버전은 이번 정리에서 재검증하지 않았다.
 - **Repository:** ZIP 배포 경로를 `git init -b main`으로 초기화하고 Phase 0 local baseline commit을 생성했다. 2026-10-19 원격 `origin`(https://github.com/pensivetraveler/stock-intelligence)을 연결하고 `main`을 푸시해 upstream으로 설정했다. 같은 날 GitHub에서 `main` 보호 규칙을 켰다: PR 필수(승인 0명), `verify` 검사 통과와 최신 상태 필수, 직선 이력, 강제 푸시·삭제 금지. 저장소는 공개 상태다.
@@ -1333,3 +1333,20 @@
 - 새로 확정된 사항과 근거:
 - 변경한 가정 또는 남은 문제:
 - 다음 작업:
+
+## Agent 매매 복기 계좌별 FIFO — 2026-10-22
+
+- **사용자 요청:** 보류 항목을 정리한다. 단순 버그는 고치고, 결정이 필요한 것은 사실을 모아 묻는다. 결정 기록은 [ADR 0022](decisions/0022-chart-trade-review-agent.md)의 Real trades 절에 있다.
+- **변경:**
+  - **계좌별 FIFO:** 매매 복기 Agent가 고른 체결을 계좌마다 따로 FIFO로 맞춘다. 브로커 원장(`account_positions`)과 같은 규칙이다.
+    - 증권사 API 체결은 `broker_account_ref`별, 가져온 체결은 명세서 라벨별, 수동 기록은 한 묶음이다.
+    - 계좌가 둘 이상이면 계좌 수와 계좌별 실현 손익을 사실로 추가한다. 이름은 "account 1/2"(첫 체결 순)이다.
+    - 계좌 참조는 로컬 `source_refs`(`account:broker:<ref>`)에만 남고 Claude에 보내는 내용에는 없다.
+  - **수수료 이중 계산 수정:** 증권사 체결의 `fees`(합계)에 `commission`·`tax`(구성)를 다시 더하던 버그를 고쳤다. 수수료 미제공(키움) 체결은 건수를 불확실성에 적는다.
+  - **화면:** Agent 체결 목록의 증권사 체결에 "[토스 계좌 N]"/"[키움]"을 붙인다.
+  - Agent 버전을 `chart-trade-review-2`로 올렸다.
+- **검증:** 계좌 분리 테스트(Python 1개, 화면 1개)를 추가했다. 한 FIFO였다면 토스 매수를 키움 매도가 닫았을 사례에서 계좌별 결과를 확인한다.
+- **남은 위험:** 키움 미국 정산 행 수수료(`broker_fee_lines`)는 Agent 손익에 아직 넣지 않는다(불확실성으로 표시). 통화가 다른 체결을 섞어 고르는 경우는 막지 않는다.
+- **보류 유지(사용자 결정):** News·News Cycle·DART Agent와 Claude 코멘터리 확장은 구현하지 않았다.
+- **포트 확인:** API(8765)로 "WORX" 검색이 SCWorx 1건을 돌려줬다. 8000·3000 포트에는 수신 중인 프로세스가 없었다.
+- **Alpaca 기본 공급업체 선정(사용자 결정):** 근거(유료 SIP·BOATS·기업 행위 사용·실패 사례)를 보고 사용자가 선정을 승인했다. [ADR 0035](decisions/0035-alpaca-default-us-provider.md)를 쓰고 AGENTS.md·PROJECT_INSTRUCTIONS·SYSTEM_SPEC의 "미선정" 문구를 고쳤다. 코드 기본값은 바꾸지 않았다.
