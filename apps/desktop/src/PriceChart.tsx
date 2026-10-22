@@ -30,6 +30,8 @@ interface PriceChartProps {
   chartId: string;
   candles: CandlePoint[];
   volume: VolumePoint[];
+  /** US day-market candles, drawn as their own series in their own colors (ADR 0030). */
+  dayMarket?: CandlePoint[];
   sync: ChartSyncGroup;
   markers?: ChartMarker[];
   /** Called with the start time (epoch seconds) of the clicked candle. */
@@ -79,6 +81,7 @@ export function PriceChart({
   chartId,
   candles,
   volume,
+  dayMarket = [],
   sync,
   markers = [],
   onCandleClick,
@@ -102,6 +105,7 @@ export function PriceChart({
   const container = useRef<HTMLDivElement | null>(null);
   const chart = useRef<IChartApi | null>(null);
   const candleSeries = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const dayMarketSeries = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeries = useRef<ISeriesApi<"Histogram"> | null>(null);
   const markerLayer = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const applyingSyncedRange = useRef(false);
@@ -169,6 +173,15 @@ export function PriceChart({
       borderVisible: false,
     });
     candleSeries.current = candlesApi;
+    dayMarketSeries.current = instance.addSeries(CandlestickSeries, {
+      upColor: COLORS.dayUp,
+      downColor: COLORS.dayDown,
+      wickUpColor: COLORS.dayUp,
+      wickDownColor: COLORS.dayDown,
+      borderVisible: false,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
     markerLayer.current = createSeriesMarkers(candlesApi, []);
     volumeSeries.current = instance.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
@@ -307,6 +320,15 @@ export function PriceChart({
     shownCount.current = candles.length;
     shownFirst.current = candles[0]?.time ?? null;
   }, [candles, volume, fitKey]);
+
+  useEffect(() => {
+    dayMarketSeries.current?.setData(
+      dayMarket.map((point) => ({
+        ...point,
+        time: point.time as UTCTimestamp,
+      })),
+    );
+  }, [dayMarket]);
 
   useEffect(() => {
     chart.current?.applyOptions({

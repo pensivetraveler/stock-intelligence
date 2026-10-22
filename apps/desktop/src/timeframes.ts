@@ -111,11 +111,11 @@ export const MAX_HISTORY_SESSIONS = 60;
 /** Sessions to load so a chart shows about DEFAULT_CANDLES bars, capped. */
 export function sessionsForCandles(
   timeframe: string,
-  scope: "regular" | "extended",
+  scope: "regular" | "extended" | "overnight",
 ): number {
   if (isDailyTimeframe(timeframe)) return 1; // one request already spans the history
   const minutes = timeframeMinutes(timeframe) ?? 1;
-  const sessionMinutes = scope === "extended" ? 960 : 390;
+  const sessionMinutes = scope === "regular" ? 390 : 960;
   const barsPerSession = Math.max(1, Math.ceil(sessionMinutes / minutes));
   return Math.min(
     MAX_HISTORY_SESSIONS,

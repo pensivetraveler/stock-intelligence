@@ -149,9 +149,10 @@ export interface PriceBar {
   volume: NonNegativeDecimalString;
   volume_unit: "shares" | "provider_units";
   /**
-   * all_day: a daily or weekly bar spanning the whole trading day, extended sessions included (Toss Korean daily candles, 08:00-20:00 KST).
+   * overnight: the US day market (Blue Ocean ATS, 20:00-04:00 New York time before the trading day it belongs to), served apart from the other sessions (ADR 0030).
    */
-  session: "pre" | "regular" | "post" | "all_day" | "closed" | "unknown";
+  session:
+    "pre" | "regular" | "post" | "overnight" | "all_day" | "closed" | "unknown";
   is_final: boolean;
   quality: "complete" | "partial" | "provisional" | "unknown";
   lineage: {

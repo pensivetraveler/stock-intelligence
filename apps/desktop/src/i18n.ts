@@ -638,6 +638,11 @@ const en = {
   "chart.hours": "Hours",
   "chart.regular": "Regular",
   "chart.extended": "Extended",
+  "chart.dayMarket": "+ Day market",
+  "chart.dayMarketNote":
+    "Day market (Blue Ocean via Alpaca BOATS): {n} bars in blue/purple, kept apart from the other bars; indicators do not use them.",
+  "chart.dayMarketFailed": "Day market bars could not be loaded: {error}",
+  "session.overnight": "day market",
   "chart.loading": "Loading bars…",
   "chart.closed": "{date} is not a trading day.",
   "chart.notOffered":
@@ -1541,6 +1546,11 @@ const ko: Record<MessageKey, string> = {
   "chart.hours": "시간대",
   "chart.regular": "정규장",
   "chart.extended": "장전·장후 포함",
+  "chart.dayMarket": "+ 데이마켓",
+  "chart.dayMarketNote":
+    "데이마켓(Blue Ocean, Alpaca BOATS) {n}봉을 파란·보라색으로 따로 표시합니다. 지표 계산에는 쓰지 않습니다.",
+  "chart.dayMarketFailed": "데이마켓 봉을 불러오지 못했습니다: {error}",
+  "session.overnight": "데이마켓",
   "chart.loading": "캔들을 불러오는 중…",
   "chart.closed": "{date}은(는) 거래일이 아닙니다.",
   "chart.notOffered":

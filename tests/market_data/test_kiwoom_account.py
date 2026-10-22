@@ -54,12 +54,14 @@ class Broker:
                 fill("000049914", "AAPL", "매수", "149", "0.5890", "22:51:23"),
                 # After midnight in Seoul, still 7 July in New York.
                 fill("000081698", "AAPL", "매도", "100", "0.6000", "06:58:43"),
-                # Daytime session (11:00 Seoul = 22:00 New York the day before).
+                # Day market (11:00 Seoul = 22:00 New York the evening before).
                 fill("000090000", "AAPL", "매수", "1", "1.0000", "11:00:00"),
                 fill("000090001", "ZZZZ", "매수", "1", "1.0000", "23:00:00"),
                 {**fill("000090002", "AAPL", "매수", "1", "1.0", "23:00:00"), "crnc_code": "HKD"},
                 fill("000090003", "AAPL", "매수", "0", "0.0000", "23:00:00"),
-            ]
+            ],
+            # 3 July 2026 is a US holiday: no session of any kind to place the time in.
+            "20260703": [fill("000000001", "AAPL", "매수", "1", "1.0000", "23:00:00")],
         }
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -105,7 +107,9 @@ def test_session_time_places_seoul_clock_times_on_the_us_order_date() -> None:
     assert session_time(day, time(6, 58, 43)) == datetime(
         2026, 7, 7, 21, 58, 43, tzinfo=timezone.utc
     )
-    assert session_time(day, time(11, 0)) is None  # outside 04:00-20:00 New York
+    # Day market: 11:00 Seoul = 22:00 New York the evening before (ADR 0030).
+    assert session_time(day, time(11, 0)) == datetime(2026, 7, 7, 2, 0, tzinfo=timezone.utc)
+    assert session_time(date(2026, 7, 3), time(23, 0)) is None  # a US holiday
     # Winter (EST): 23:30 Seoul = 09:30 New York.
     assert session_time(date(2026, 1, 6), time(23, 30)) == datetime(
         2026, 1, 6, 14, 30, tzinfo=timezone.utc
@@ -118,7 +122,7 @@ def test_sync_stores_each_filled_order_once_without_inventing_fees(tmp_path: Pat
     result = sync_executions(session(broker), store, instrument_for, lambda: NOW, date(2026, 7, 1))
     validate_document(result)
     assert result["broker_id"] == "kiwoom"
-    assert (result["orders_seen"], result["stored_new"], result["already_stored"]) == (6, 2, 0)
+    assert (result["orders_seen"], result["stored_new"], result["already_stored"]) == (7, 3, 0)
     assert result["skipped"] == {
         "not_filled": 1,
         "unsupported_currency": 1,
@@ -131,6 +135,7 @@ def test_sync_stores_each_filled_order_once_without_inventing_fees(tmp_path: Pat
         "01",
         "02",
         "03",
+        "03",
         "06",
         "07",
         "07",
@@ -140,10 +145,11 @@ def test_sync_stores_each_filled_order_once_without_inventing_fees(tmp_path: Pat
 
     executions = store.broker_executions()
     assert [e["executed_at_utc"] for e in executions] == [
+        "2026-07-07T02:00:00Z",
         "2026-07-07T13:51:23Z",
         "2026-07-07T21:58:43Z",
     ]
-    first = executions[0]
+    first = executions[1]
     assert (first["side"], first["quantity"], first["price"]) == ("buy", "149", "0.589")
     assert (first["fees"], first["commission"], first["tax"]) == (None, None, None)
     assert first["time_meaning"] == "reported_fill_time"
@@ -152,10 +158,10 @@ def test_sync_stores_each_filled_order_once_without_inventing_fees(tmp_path: Pat
     assert "app-key" not in json.dumps(executions)
 
     again = sync_executions(session(broker), store, instrument_for, lambda: NOW, date(2026, 7, 1))
-    assert (again["stored_new"], again["already_stored"]) == (0, 2)
+    assert (again["stored_new"], again["already_stored"]) == (0, 3)
 
     (position,) = manual_positions(executions)
-    assert position["open_quantity"] == "49"
+    assert position["open_quantity"] == "50"
     assert position["fees_unreported_execution_ids"] == sorted(
         e["execution_id"] for e in executions
     )
@@ -177,7 +183,7 @@ def test_since_is_bounded(tmp_path: Path) -> None:
     one_day = sync_executions(
         session(Broker()), store, instrument_for, lambda: NOW, date(2026, 7, 7), date(2026, 7, 7)
     )
-    assert one_day["stored_new"] == 2
+    assert one_day["stored_new"] == 3
 
 
 def test_kiwoom_sync_api(tmp_path: Path) -> None:

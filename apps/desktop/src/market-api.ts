@@ -89,6 +89,8 @@ export interface MarketApi {
   ): Promise<SessionWindow[]>;
   session(sessionDate: string, calendarId?: string): Promise<SessionWindow>;
   bars(request: BarsRequest): Promise<MarketBarsResponse>;
+  /** US day-market (overnight) bars from Alpaca BOATS, a stream of their own (ADR 0030). */
+  overnightBars(request: OvernightBarsRequest): Promise<MarketBarsResponse>;
   manualLedger(): Promise<ManualLedgerResponse>;
   scenarioLedger(): Promise<ScenarioLedgerResponse>;
   recordManual(request: ManualExecutionRequest): Promise<ManualExecution>;
@@ -158,6 +160,15 @@ export interface ScenarioRequest {
   entry_interval_start_utc: string;
   exit_date_et: string;
   exit_time_et: string;
+}
+
+export interface OvernightBarsRequest {
+  instrumentId: string;
+  timeframe: Timeframe;
+  /** Trading days whose day-market sessions are wanted (at most 14). */
+  fromDate: string;
+  toDate: string;
+  asOfUtc?: string;
 }
 
 export interface BarsRequest {
@@ -299,7 +310,27 @@ export function createMarketApi(
     );
   };
 
+  const overnightBars = ({
+    instrumentId,
+    timeframe,
+    fromDate,
+    toDate,
+    asOfUtc,
+  }: OvernightBarsRequest) => {
+    const query = new URLSearchParams({
+      instrument_id: instrumentId,
+      timeframe,
+      from_date: fromDate,
+      to_date: toDate,
+      ...(asOfUtc ? { as_of_utc: asOfUtc } : {}),
+    });
+    return get<MarketBarsResponse>(
+      `/v1/market/overnight-bars?${query.toString()}`,
+      "market_bars_response",
+    );
+  };
   return {
+    overnightBars,
     async quote(instrumentId, sessionDate) {
       const window = await session(
         sessionDate,

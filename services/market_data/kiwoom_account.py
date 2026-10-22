@@ -14,8 +14,11 @@ What is and is not reported, checked live on 2026-10-22 (account suffix 2859):
 - Times are Seoul clock times and `ord_dt` is the order's US (New York) trading date: one
   order date held orders from 22:51 to 06:58 Seoul time, in order-number order, which is
   09:51 to 17:58 New York time on that date. A time is placed on the Seoul date that puts
-  it inside 04:00-20:00 New York time on `ord_dt`; when none does (for example a daytime
-  session order), the order is skipped as `time_unresolved` rather than dated by guess.
+  it inside 04:00-20:00 New York time on `ord_dt`. Otherwise it is placed in the day market
+  (overnight session) that belongs to `ord_dt`, 20:00 the evening before to 04:00 New York
+  time (ADR 0030): live day-market fills were at 09:00-17:59 Seoul time with order numbers
+  before the date's first 04:00-20:00 order. When neither fits, the order is skipped as
+  `time_unresolved` rather than dated by guess.
 - Neither API reports commission or tax per order (ust21100 has them per settlement line
   without an order number), so fees are stored as null, never as zero.
 
@@ -39,6 +42,8 @@ import httpx
 from packages.contracts.validator import validate_document
 from services.journal.store import JournalStore
 from services.market_data.broker_common import AllowlistedClient, TokenCache
+from services.market_data.calendar import UsEquityCalendar
+from services.market_data.overnight import overnight_window
 from services.market_data.provider import (
     InvalidBarsQueryError,
     ProviderAuthError,
@@ -64,6 +69,7 @@ SEOUL = ZoneInfo("Asia/Seoul")
 NEW_YORK = ZoneInfo("America/New_York")
 SESSION_START, SESSION_END = time(4, 0), time(20, 0)  # pre-market open to after-hours close
 SIDES = {"매수": "buy", "매도": "sell"}
+US_CALENDAR = UsEquityCalendar("XNAS")
 
 
 @dataclass(frozen=True)
@@ -192,14 +198,27 @@ def _clock(value: object) -> time | None:
 
 
 def session_time(order_date: date, seoul_clock: time) -> datetime | None:
-    """The instant of a Seoul clock time inside `order_date`'s US session (04:00-20:00
-    New York), or None when no Seoul date puts it there."""
+    """The instant of a Seoul clock time inside `order_date`'s US sessions: 04:00-20:00
+    New York on that date, else its day market (ADR 0030); None when neither fits or the
+    date is not a US trading day."""
+    if US_CALENDAR.window_for_date(order_date) is None:
+        return None
     for offset in (0, 1):
         moment = datetime.combine(order_date + timedelta(days=offset), seoul_clock, SEOUL)
         local = moment.astimezone(NEW_YORK)
         if local.date() == order_date and SESSION_START <= local.time() < SESSION_END:
             return moment
-    return None
+    window = overnight_window(US_CALENDAR, order_date)
+    if window is None:
+        return None
+    found = [
+        moment
+        for offset in (-1, 0)
+        if window[0]
+        <= (moment := datetime.combine(order_date + timedelta(days=offset), seoul_clock, SEOUL))
+        < window[1]
+    ]
+    return found[0] if len(found) == 1 else None
 
 
 def _ordered_at(fill: datetime, seoul_clock: time) -> datetime:

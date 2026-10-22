@@ -1296,7 +1296,11 @@ export function Workspace({
             </button>
           </div>
           <div className="tb-group" role="group" aria-label={t("chart.hours")}>
-            {(["regular", "extended"] as SessionScope[]).map((value) => (
+            {(
+              (activeConfig.instrumentId.startsWith("us:")
+                ? ["regular", "extended", "overnight"]
+                : ["regular", "extended"]) as SessionScope[]
+            ).map((value) => (
               <button
                 key={value}
                 type="button"
@@ -1311,7 +1315,13 @@ export function Workspace({
                 }
                 onClick={() => updateActive({ sessionScope: value })}
               >
-                {t(value === "regular" ? "chart.regular" : "chart.extended")}
+                {t(
+                  value === "regular"
+                    ? "chart.regular"
+                    : value === "extended"
+                      ? "chart.extended"
+                      : "chart.dayMarket",
+                )}
               </button>
             ))}
           </div>
