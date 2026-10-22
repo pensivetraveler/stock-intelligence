@@ -7,7 +7,7 @@ import type {
 
 import { exchangeTime } from "./chart-data";
 import { zoneOf } from "./market-zone";
-import { useI18n } from "./i18n";
+import { useI18n, type Translate } from "./i18n";
 import { MARKER_COLORS } from "./journal-markers";
 
 interface JournalPanelProps {
@@ -24,6 +24,15 @@ interface JournalPanelProps {
  * broker-API executions (all actual fills, possibly of the same trades) and hypothetical
  * scenarios.
  */
+/** A broker account as the user knows it, without any account number. */
+function accountLabel(ref: string, t: Translate): string {
+  if (ref.startsWith("toss-")) {
+    return t("journal.accountToss", { n: ref.split("-").at(-1) ?? "?" });
+  }
+  if (ref.startsWith("kiwoom-")) return t("journal.accountKiwoom");
+  return ref;
+}
+
 export function JournalPanel({
   manual,
   imported,
@@ -183,7 +192,12 @@ export function JournalPanel({
         {broker && broker.positions.length > 0 ? (
           <ul className="ledger-summary">
             {broker.positions.map((position) => (
-              <li key={position.instrument_id}>
+              <li
+                key={`${position.account_ref ?? ""}|${position.instrument_id}`}
+              >
+                {position.account_ref
+                  ? `[${accountLabel(position.account_ref, t)}] `
+                  : ""}
                 {t("journal.position", {
                   symbol: symbolOf(position.instrument_id),
                   currency: zoneOf(position.instrument_id).currency,

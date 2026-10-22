@@ -469,6 +469,10 @@ export interface LedgerPosition {
    * Executions without reported fees: realized P&L and fees leave their fees out. Absent when every fee is known.
    */
   fees_unreported_execution_ids?: Identifier[];
+  /**
+   * Broker ledger only: the broker account this FIFO book belongs to. Accounts are never netted against each other.
+   */
+  account_ref?: string;
 }
 export interface ScenarioLedgerResponse {
   kind: "scenario_ledger_response";

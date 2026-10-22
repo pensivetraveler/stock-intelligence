@@ -35,7 +35,7 @@ from services.credentials.catalog import adapter_settings
 from services.credentials.pool import PooledProvider
 from services.credentials.store import CredentialStore, KeyringSecretBackend, SecretStorageError
 from services.custom_indicators.store import CustomIndicatorStore
-from services.journal.ledger import manual_positions
+from services.journal.ledger import account_positions
 from services.journal.store import JournalStore
 from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
@@ -954,7 +954,7 @@ def create_app(
             "schema_version": "0.1",
             "ledger": "broker_api",
             "executions": executions,
-            "positions": manual_positions(executions),
+            "positions": account_positions(executions),
         }
         validate_document(document)
         return JSONResponse(content=document)

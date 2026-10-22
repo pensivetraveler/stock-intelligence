@@ -7,6 +7,7 @@ import pytest
 
 from services.journal.ledger import (
     ExchangeTimeError,
+    account_positions,
     exchange_local_to_utc,
     manual_positions,
     scenario_pnl,
@@ -111,3 +112,19 @@ def test_exchange_local_time_rejects_dst_gaps_and_overlaps(
 ) -> None:
     with pytest.raises(ExchangeTimeError, match=message):
         exchange_local_to_utc(day, clock)
+
+
+def test_broker_accounts_are_separate_books() -> None:
+    toss = execution("t1", "buy", "10", "50.00", "2026-10-09T14:00:00Z")
+    kiwoom = execution("k1", "sell", "10", "55.00", "2026-10-09T15:00:00Z")
+    positions = account_positions(
+        [
+            {**toss, "broker_account_ref": "toss-abc-1"},
+            {**kiwoom, "broker_account_ref": "kiwoom-def"},
+        ]
+    )
+    by_account = {item["account_ref"]: item for item in positions}
+    # A Kiwoom sell never closes the Toss buy: no realized P&L across accounts.
+    assert by_account["toss-abc-1"]["open_quantity"] == "10"
+    assert by_account["kiwoom-def"]["open_quantity"] == "-10"
+    assert {item["realized_pnl"] for item in positions} == {"0"}
