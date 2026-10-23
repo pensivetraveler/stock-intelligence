@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -67,6 +67,47 @@ def test_holidays_and_early_closes_match_the_toss_calendar(
 ) -> None:
     window = overnight_window(CALENDAR, session_date)
     assert window == (None if expected is None else (utc(expected[0]), utc(expected[1])))
+
+
+# Blue Ocean ATS's own holiday notice (blueocean-tech.io/trading-updates, read 2026-10-23):
+# the evenings it stays closed. Each is the start of the session into the next day.
+BOATS_CLOSED_EVENINGS = [
+    "2024-12-31",
+    "2025-01-19",
+    "2025-02-16",
+    "2025-04-17",
+    "2025-05-25",
+    "2025-06-18",
+    "2025-07-03",
+    "2025-08-31",
+    "2025-11-26",
+    "2025-12-24",
+    "2025-12-31",
+    "2026-01-18",
+    "2026-02-15",
+    "2026-04-02",
+    "2026-05-24",
+    "2026-06-18",
+    "2026-07-02",
+    "2026-09-06",
+    "2026-11-25",
+    "2026-12-24",
+    "2026-12-31",
+    "2027-01-17",
+    "2027-02-14",
+    "2027-03-25",
+    "2027-05-30",
+    "2027-06-17",
+    "2027-07-04",
+    "2027-09-05",
+    "2027-11-24",
+    "2027-12-23",
+]
+
+
+@pytest.mark.parametrize("evening", BOATS_CLOSED_EVENINGS)
+def test_blue_oceans_closed_evenings_have_no_session(evening: str) -> None:
+    assert overnight_window(CALENDAR, date.fromisoformat(evening) + timedelta(days=1)) is None
 
 
 def minute(stamp: str, o: str, h: str, low: str, c: str, v: int) -> str:

@@ -175,6 +175,7 @@ def test_sync_stores_each_filled_us_order_once_as_an_order_aggregate(tmp_path: P
         "unsupported_currency": 0,
         "unknown_instrument": 1,
     }
+    assert [item["orders"] for item in first["unknown_symbols"]] == [1]
     # The Korean order is stored in KRW under its Korean listing.
     korean = next(row for row in store.broker_executions() if row["currency"] == "KRW")
     assert (korean["instrument_id"], korean["price"]) == ("kr:005930:xkrx:2026", "70000")

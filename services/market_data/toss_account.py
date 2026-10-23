@@ -13,20 +13,24 @@ toss_session.py).
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from packages.contracts.validator import validate_document
 from services.journal.store import JournalStore
 from services.market_data.provider import MarketDataError, ProviderDataError
+from services.market_data.symbol_history import resolution_of
 from services.market_data.toss_session import TossSession
 
 BROKER_ID = "toss"
 ORDER_PAGE = 100
 MAX_ORDER_PAGES = 200  # 20,000 closed orders per account
 SIDES = {"BUY": "buy", "SELL": "sell"}
+NEW_YORK = ZoneInfo("America/New_York")
 
 
 def _utc(value: object) -> str | None:
@@ -39,6 +43,13 @@ def _utc(value: object) -> str | None:
     if stamp.tzinfo is None:
         raise ProviderDataError("Toss returned a time without an offset")
     return stamp.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _new_york_date(value: object) -> date | None:
+    stamp = _utc(value)
+    if stamp is None:
+        return None
+    return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone(NEW_YORK).date()
 
 
 def _now_text(now: Callable[[], datetime]) -> str:
@@ -253,11 +264,15 @@ def sync_executions(
     instrument_for: Callable[[str, str], str | None],
     now: Callable[[], datetime],
     since: str | None = None,
+    history_instrument: Callable[[str, date], str | None] | None = None,
 ) -> dict[str, Any]:
     """Store the executions of every closed, filled order in every account, once.
 
     `instrument_for(symbol, currency)` maps a Toss symbol to an instrument ID: USD orders
-    to US listings, KRW orders to Korean ones.
+    to US listings, KRW orders to Korean ones. A US symbol it does not know (Toss reports
+    today's ticker, often an OTC one after a delisting) goes to
+    `history_instrument(symbol, New York trade date)` (ADR 0033), and the stored execution
+    says how it was resolved.
 
     `since` (YYYY-MM-DD, KST order date) limits the read to recent orders.
     """
@@ -265,6 +280,7 @@ def sync_executions(
     counts = {"orders_seen": 0, "stored_new": 0, "already_stored": 0}
     skipped = {"not_filled": 0, "unsupported_currency": 0, "unknown_instrument": 0}
     conflicts: list[str] = []
+    unknown: Counter[str] = Counter()
     account_list = accounts(session)
     for account in account_list:
         seq = int(account.get("accountSeq", 0))
@@ -282,7 +298,9 @@ def sync_executions(
                 if not isinstance(order, dict) or not order.get("orderId"):
                     continue
                 counts["orders_seen"] += 1
-                document = _execution(order, ref, synced_at, instrument_for, skipped)
+                document = _execution(
+                    order, ref, synced_at, instrument_for, skipped, unknown, history_instrument
+                )
                 if document is None:
                     continue
                 outcome = store.record_broker_execution(document)
@@ -304,6 +322,13 @@ def sync_executions(
         **counts,
         "skipped": skipped,
         "conflicts": conflicts,
+        # Which symbols could not be matched to a listing, most orders first.
+        "unknown_symbols": [
+            {"symbol": symbol, "orders": count}
+            for symbol, count in sorted(unknown.items(), key=lambda item: (-item[1], item[0]))[
+                :1000
+            ]
+        ],
     }
     validate_document(result)
     return result
@@ -315,6 +340,8 @@ def _execution(
     synced_at: str,
     instrument_for: Callable[[str, str], str | None],
     skipped: dict[str, int],
+    unknown: Counter[str],
+    history_instrument: Callable[[str, date], str | None] | None = None,
 ) -> dict[str, Any] | None:
     execution = _as_dict(order.get("execution"))
     quantity = _dec(execution.get("filledQuantity"), non_negative=True)
@@ -328,9 +355,16 @@ def _execution(
         return None
     symbol = str(order.get("symbol") or "").upper()
     instrument_id = instrument_for(symbol, str(currency))
+    resolution: str | None = None
+    traded_on = _new_york_date(execution.get("filledAt") or order.get("orderedAt"))
+    if instrument_id is None and currency == "USD" and history_instrument and traded_on:
+        instrument_id = history_instrument(symbol, traded_on)
+        resolution = None if instrument_id is None else resolution_of(symbol, instrument_id)
     side = SIDES.get(str(order.get("side")))
     if instrument_id is None or side is None:
         skipped["unknown_instrument"] += 1
+        if instrument_id is None:
+            unknown[symbol[:32] or "?"] += 1
         return None
     commission = _dec(execution.get("commission"), non_negative=True) or "0"
     tax = _dec(execution.get("tax"), non_negative=True) or "0"
@@ -363,4 +397,5 @@ def _execution(
         "broker_order_id": order_id,
         "verification_status": "broker_api_reported",
         "synced_at_utc": synced_at,
+        **({} if resolution is None else {"instrument_resolution": resolution}),
     }

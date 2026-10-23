@@ -55,6 +55,20 @@ The Kiwoom sync (ADR 0029) could not match 728 tickers (33,896 orders) to the sy
 - **Venue of delisted instruments:** Alpaca SIP trades queried with `asof` = the registry date carry the tape of the primary listing (`z`: A = NYSE, B = NYSE American, NYSE Arca, Cboe and other exchanges, C = Nasdaq). For the 7 instruments with a verified venue, the tape agreed every time. Of the 534 unverified ones (all set to XNAS): 435 tape C (Nasdaq, as set), 56 tape A (NYSE), 38 tape B (not Nasdaq; the exchange inside tape B cannot be told apart), 5 without data. The 94 that are not Nasdaq would need new IDs, which re-keys stored trades.
 - **Re-keyed with the user's approval (2026-10-22):** the 56 tape A instruments moved to XNYS (`venue_verified: true` in the registry). The 38 tape B ones stay XNAS and unverified, as do the 5 without data. The 435 tape C ones keep XNAS; their registry flag was not changed.
 
+### Follow-up (2026-10-23)
+
+- **Toss symbols missing from the directory:** the Toss sync skipped 506 filled orders on 31 symbols. Toss reports today's ticker, and for a delisted company that is often its OTC ticker (MMATQ for a trade made as MMAT).
+  - **Rule:** Toss trades still use the plain directory lookup first, so stored Toss records do not change. A US symbol the directory does not know is traced back through the renames processed after the trade's New York date (`SymbolHistory.traded_as`, newest rename first) to the ticker traded that day. That ticker is then resolved by rules 1–5, and the execution records `instrument_resolution`.
+  - **Live result (counts only):** all 506 orders were stored as `delisted`, with no conflicts and no symbols left unknown. Two symbols (XTKGF, EMWPF) have no recorded rename and keep their OTC ticker as a delisted instrument whose venue is not verified. If those were OTC trades after the delisting, the chart has no bars for them.
+  - **Toss sync result:** now lists `unknown_symbols` like the Kiwoom sync.
+- **Venue from the closing cross:** for the 478 instruments still unverified, the largest SIP closing print (condition 6) at 16:00 New York on the instrument's last bar day was read with `asof`. On a listing exchange the closing auction is that print.
+  - **NYSE American:** 27 tape B instruments crossed there. With the user's approval they moved from XNAS to XASE. Backups were made first: `journal-before-xase-rekey-20261023T075532Z.sqlite3` and the registry copy. Their 1,652 executions (1,629 Kiwoom, 23 Toss) and 1,014 fee lines were deleted and synced again, with the same execution and line IDs and no conflicts. Row counts are unchanged, and no row uses the old IDs.
+  - **Nasdaq:** 397 tape C instruments crossed on Nasdaq. With the user's approval they are now marked verified at XNAS (registry only).
+  - **Still unverified:** 10 tape B instruments without a cross, 1 that crossed on another venue, 25 tape C ones without a Nasdaq cross, and 18 without data.
+- **Ticker reuse without a record (rule 6): evaluated, not implemented.**
+  - **Method:** every stored US fill without a resolution was compared with the raw SIP 1-hour bars in the hour around it. Day-market fills were excluded.
+  - **Result:** see PROJECT_STATE. A first pass with daily bars flagged hundreds of instruments, but these were extended-hours fills outside the regular-session range, not reuse.
+
 ## Alternatives considered
 
 - **Instrument IDs per company instead of per ticker:** the right long-term identity, but every stored bar, drawing and layout keys on ticker IDs today.

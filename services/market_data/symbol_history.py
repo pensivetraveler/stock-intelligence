@@ -250,6 +250,25 @@ class SymbolHistory:
         with self._lock:
             return sorted(self._registered().values(), key=lambda item: item.symbol)
 
+    def traded_as(self, symbol: str, on: date) -> str:
+        """The ticker a company used on `on`, given the ticker it uses now (renames after
+        `on` followed backwards, newest first). Toss reports today's ticker, often an OTC
+        one such as MMATQ for a trade made as MMAT."""
+        with self._lock:
+            self._ensure()
+            into: dict[str, list[Rename]] = {}
+            for items in self._renames.values():
+                for rename in items:
+                    into.setdefault(rename.new, []).append(rename)
+            current, before = symbol.upper(), date.max
+            for _step in range(10):
+                earlier = [r for r in into.get(current, []) if on < r.on < before]
+                if not earlier:
+                    break
+                rename = max(earlier, key=lambda item: item.on)
+                current, before = rename.old, rename.on
+            return current
+
     def renamed_to(self, symbol: str) -> str | None:
         """The ticker a renamed ticker trades under now (chains followed), if any."""
         with self._lock:
