@@ -684,6 +684,13 @@ const en = {
   "chart.dayMarketFailed": "Day market bars could not be loaded: {error}",
   "session.overnight": "day market",
   "chart.loading": "Loading bars…",
+  "chart.older": "◀ Older bars",
+  "chart.olderHint":
+    "Load the bars before the first one shown. Scrolling or zooming out past the first bar does the same.",
+  "chart.olderLoading": "Loading older bars…",
+  "chart.olderNone": "No older bars",
+  "chart.olderLimit": "Older-bar limit reached",
+  "chart.olderFailed": "Older bars could not be loaded.",
   "chart.closed": "{date} is not a trading day.",
   "chart.notOffered":
     "This instrument is not offered by the current data provider. Choose another.",
@@ -1717,6 +1724,13 @@ const ko: Record<MessageKey, string> = {
   "chart.dayMarketFailed": "데이마켓 봉을 불러오지 못했습니다: {error}",
   "session.overnight": "데이마켓",
   "chart.loading": "캔들을 불러오는 중…",
+  "chart.older": "◀ 이전 봉",
+  "chart.olderHint":
+    "처음 보이는 봉보다 앞의 봉을 불러옵니다. 첫 봉 너머로 스크롤하거나 축소해도 같습니다.",
+  "chart.olderLoading": "이전 봉 불러오는 중…",
+  "chart.olderNone": "더 이전 봉 없음",
+  "chart.olderLimit": "이전 봉 한도 도달",
+  "chart.olderFailed": "이전 봉을 불러오지 못했습니다.",
   "chart.closed": "{date}은(는) 거래일이 아닙니다.",
   "chart.notOffered":
     "현재 시세 공급업체가 제공하지 않는 종목입니다. 다른 종목을 고르세요.",

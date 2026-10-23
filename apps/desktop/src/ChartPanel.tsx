@@ -68,6 +68,12 @@ import {
   type InstrumentListing,
   type MarketApi,
 } from "./market-api";
+import {
+  contiguousFromNewest,
+  MAX_OLDER_BARS,
+  olderDailyRange,
+  prependOlder,
+} from "./older-bars";
 import { PriceChart } from "./PriceChart";
 import { TradeEntry } from "./TradeEntry";
 import { sessionRange, type ChartConfig } from "./workspace-state";
@@ -357,20 +363,145 @@ export function ChartPanel({
   ]);
   // Only a contiguous run of loaded sessions back from the chart's day is shown, so a
   // slow older session never appears before the ones between it and today.
-  const historyBars = useMemo(() => {
+  const { historyBars, historyFrom } = useMemo(() => {
     const loaded: PriceBar[][] = [];
+    let from: string | null = null;
     for (let i = history.sessions.length - 1; i >= 0; i -= 1) {
       const bars = history.bars.get(history.sessions[i].session_date);
       if (!bars) break;
       loaded.unshift(bars);
+      from = history.sessions[i].session_date;
     }
-    return loaded.flat();
+    return { historyBars: loaded.flat(), historyFrom: from };
   }, [history]);
-  const earliestDate =
-    history.sessions.length > 0 && historyBars.length > 0
-      ? (history.sessions.find((item) => history.bars.has(item.session_date))
-          ?.session_date ?? sessionDate)
-      : sessionDate;
+
+  // Bars before the default history, loaded on request (the "older bars" button, or
+  // scrolling or zooming out past the first bar), one batch of about DEFAULT_CANDLES at
+  // a time. `from` is the first session date (or daily start) they cover.
+  const olderKey = `${instrumentId}|${timeframe}|${sessionDate}|${sessionScope}`;
+  const [older, setOlder] = useState<{
+    key: string;
+    bars: PriceBar[];
+    from: string | null;
+    busy: boolean;
+    exhausted: boolean;
+    error: boolean;
+  }>({
+    key: olderKey,
+    bars: [],
+    from: null,
+    busy: false,
+    exhausted: false,
+    error: false,
+  });
+  // A different chart (instrument, timeframe, day or scope) starts with no older bars.
+  const olderState = useMemo(
+    () =>
+      older.key === olderKey
+        ? older
+        : {
+            key: olderKey,
+            bars: [],
+            from: null,
+            busy: false,
+            exhausted: false,
+            error: false,
+          },
+    [older, olderKey],
+  );
+  const olderKeyRef = useRef(olderKey);
+  olderKeyRef.current = olderKey;
+  const olderBusy = useRef(false);
+  // Start of the first bar on the chart before any older batch (history or the day).
+  const firstShown = useRef<string | null>(null);
+  const shownStart =
+    load.status === "ready" && isDailyTimeframe(timeframe)
+      ? dailyRange(timeframe, sessionDate).startUtc.slice(0, 10)
+      : (historyFrom ?? sessionDate);
+  const canLoadOlder =
+    load.status === "ready" &&
+    history.done &&
+    replayTime === null &&
+    !olderState.exhausted &&
+    olderState.bars.length < MAX_OLDER_BARS;
+  const loadOlder = useCallback(() => {
+    if (!canLoadOlder || olderBusy.current) return;
+    const key = olderKey;
+    const before = olderState.from ?? shownStart;
+    olderBusy.current = true;
+    setOlder({ ...olderState, busy: true, error: false });
+    void (async () => {
+      let bars: PriceBar[] = [];
+      let from: string | null = null;
+      let failed = false;
+      try {
+        if (isDailyTimeframe(timeframe)) {
+          const range = olderDailyRange(timeframe, before);
+          bars = (await api.bars({ instrumentId, timeframe, ...range })).bars;
+          from = range.startUtc.slice(0, 10);
+        } else {
+          const sessions = await api.sessions(
+            previousDay(before),
+            sessionsForCandles(timeframe, sessionScope),
+            zoneOf(instrumentId).calendarId,
+          );
+          const answers = await Promise.all(
+            sessions.map(async (item) => {
+              const range = sessionRange(item, sessionScope);
+              if (range === null) return [];
+              try {
+                return (await api.bars({ instrumentId, timeframe, ...range }))
+                  .bars;
+              } catch {
+                return null;
+              }
+            }),
+          );
+          const run = contiguousFromNewest(answers);
+          bars = run.bars;
+          from =
+            run.sessions > 0
+              ? sessions[sessions.length - run.sessions].session_date
+              : null;
+          failed = run.sessions < sessions.length;
+          if (sessions.length === 0) from = null;
+        }
+      } catch {
+        failed = true;
+      } finally {
+        olderBusy.current = false;
+      }
+      if (olderKeyRef.current !== key) return;
+      setOlder((previous) => {
+        const base =
+          previous.key === key
+            ? previous
+            : { ...olderState, bars: [], from: null };
+        const merged = prependOlder(base.bars, bars, firstShown.current);
+        const added = merged.length - base.bars.length;
+        return {
+          key,
+          bars: merged,
+          from: from ?? base.from,
+          busy: false,
+          // Nothing earlier: the provider's history (or the instrument) starts here.
+          exhausted: !failed && added === 0,
+          error: failed && added === 0,
+        };
+      });
+    })();
+  }, [
+    api,
+    canLoadOlder,
+    instrumentId,
+    olderKey,
+    olderState,
+    sessionScope,
+    shownStart,
+    timeframe,
+  ]);
+  const olderBars = olderState.bars;
+  const earliestDate = olderState.from ?? historyFrom ?? sessionDate;
 
   // Daily and weekly charts already load about 1,200 bars, enough to warm up.
   const neededWarmup = isDailyTimeframe(timeframe)
@@ -429,16 +560,17 @@ export function ChartPanel({
     instrumentsReady,
   ]);
   const dayBars = load.status === "ready" ? load.response.bars : null;
-  const allBars = useMemo(
-    () =>
-      dayBars === null
-        ? null
-        : // The most recent DEFAULT_CANDLES bars, always including the whole day.
-          [...historyBars, ...dayBars].slice(
-            -Math.max(DEFAULT_CANDLES, dayBars.length),
-          ),
-    [historyBars, dayBars],
-  );
+  firstShown.current =
+    (historyBars[0] ?? dayBars?.[0])?.interval_start_utc ?? null;
+  const allBars = useMemo(() => {
+    if (dayBars === null) return null;
+    // Older bars continue the whole history, so nothing in between is cut.
+    if (olderBars.length > 0) return [...olderBars, ...historyBars, ...dayBars];
+    // The most recent DEFAULT_CANDLES bars, always including the whole day.
+    return [...historyBars, ...dayBars].slice(
+      -Math.max(DEFAULT_CANDLES, dayBars.length),
+    );
+  }, [olderBars, historyBars, dayBars]);
 
   // Replay asks the API for the session as of the replay time, so bars this account
   // could not yet have had (a feed's publication delay, unfinished bars) never reach
@@ -506,9 +638,11 @@ export function ChartPanel({
   // as-of answer arrives, only the bars it says were available by then.
   const bars = useMemo(() => {
     if (replayTime === null) return allBars;
-    const source = asOf ? [...historyBars, ...asOf.response.bars] : allBars;
+    const source = asOf
+      ? [...olderBars, ...historyBars, ...asOf.response.bars]
+      : allBars;
     return source ? barsAsOf(source, replayTime) : null;
-  }, [allBars, historyBars, replayTime, asOf]);
+  }, [allBars, olderBars, historyBars, replayTime, asOf]);
   const series = useMemo(() => (bars ? toSeries(bars) : null), [bars]);
 
   // The US day market (ADR 0030): its own request and series, never mixed into `bars`,
@@ -960,7 +1094,29 @@ export function ChartPanel({
               }
               onToolDone={onToolDone}
               drawingsSelectable={!replayChoosing}
+              onReachStart={loadOlder}
             />
+            {replayTime === null ? (
+              <div className="chart-older">
+                <button
+                  type="button"
+                  onClick={loadOlder}
+                  disabled={!canLoadOlder || olderState.busy}
+                  title={t("chart.olderHint")}
+                >
+                  {olderState.busy
+                    ? t("chart.olderLoading")
+                    : olderState.exhausted
+                      ? t("chart.olderNone")
+                      : olderState.bars.length >= MAX_OLDER_BARS
+                        ? t("chart.olderLimit")
+                        : t("chart.older")}
+                </button>
+                {olderState.error ? (
+                  <span role="status">{t("chart.olderFailed")}</span>
+                ) : null}
+              </div>
+            ) : null}
             {legendBar && change ? (
               <div className="chart-legend" aria-live="off">
                 <span className="legend-title">
