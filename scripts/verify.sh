@@ -37,6 +37,11 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+# The Research build must not carry the Agent's paper-trading screen (ADR 0037 §7).
+if grep -lq "/v1/paper/arm" apps/desktop/dist-research/assets/*.js; then
+  echo "SIW Research build contains the paper-trading screen." >&2
+  exit 1
+fi
 
 if ! cmp -s "$generated_contract_snapshot" packages/contracts/generated/contracts.d.ts; then
   echo "Generated TypeScript contracts are stale." >&2

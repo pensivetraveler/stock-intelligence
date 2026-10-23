@@ -1508,6 +1508,22 @@
 - **안전:** 실제 키움 호출 없음. 키 값은 실행기 메모리에만 있고 API 응답·로그에 없다.
 - **다음:** P3b(Tauri·빌드 분리·Agent 화면).
 
+## SIW Agent P3b: 빌드 분리·Agent 화면·Tauri 실행기 제어 — 2026-10-23
+
+- **사용자 지시:** "모두 진행". 설계·결정은 [ADR 0037](decisions/0037-paper-order-execution.md) "P3b 구현" 절.
+- **변경:**
+  - 빌드: `dist-agent`(Tauri)와 `dist-research`(Electron). Research 번들에 모의 주문 화면이 없는지 `verify.sh`가 검사한다.
+  - Agent 화면(`apps/desktop/src/agent/`): 모의투자 띠, 킬 스위치, 실행기 상태, 상주 실행기 설치·중지·제거, 실행 계획 승인·무장, 주문 의도·모의 체결 표.
+  - Tauri(`lib.rs`): API 자동 기동, LaunchAgent 설치·`launchctl` 정지·제거 명령. `serde`·`serde_json`을 직접 의존성으로 추가(이미 잠금 파일에 있던 버전).
+  - 실행기 `--env-file`.
+- **검증:**
+  - `verify.sh` exit 0(pytest 711개, Vitest 86개·239개). 화면 테스트 7개(띠·킬 스위치, 무장, 정지 중 해제만, API 실패 시 LaunchAgent 정지, 거절 메시지 유지, Tauri 밖 안내, API 클라이언트에 주문 없음). Rust `cargo test` 2개(plist에 키 없음, XML 이스케이프).
+  - 브라우저: 워크트리 API(8766, 스크래치 데이터)와 Agent 개발 서버(5174)로 화면을 띄웠다. 킬 스위치를 누르면 "정지됨"이 됐고, 브라우저 출처에서 해제는 403 "Only the SIW Agent app can start paper trading"으로 거절되고 메시지가 남았다. 처음에는 다음 새로고침이 이 메시지를 지워 고쳤다.
+  - 번들: `dist-research`에 `/v1/paper/arm`·`runner_install` 없음, `dist-agent`에 백테스트 화면 없음.
+  - `tauri build` exit 0 → `SIW Agent.app`(10 MB).
+- **미검증:** 앱 실행 후 API 자동 기동, LaunchAgent 실제 설치·`launchctl` 동작(사용자 컴퓨터에 상주 설정을 만드는 일이라 실행하지 않았다), Tauri 안에서의 출처 `tauri://localhost` 쓰기 요청.
+- **다음:** P4(첫 실제 키움 모의 주문) — 미국 정규장 시간에 사용자 확인 후.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:

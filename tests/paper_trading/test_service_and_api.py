@@ -316,3 +316,20 @@ def test_live_keys_and_unsupported_listings_are_refused(client: Any) -> None:
     )
     response = test_client.post("/v1/paper/approvals", json=arca, headers=AGENT)
     assert response.json()["error"]["code"] == "instrument_not_supported"
+
+
+def test_env_file_fills_only_missing_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from services.paper_trading.service import load_env_file
+
+    monkeypatch.setenv("SIW_KEEP", "mine")
+    monkeypatch.delenv("SIW_NEW", raising=False)
+    env = tmp_path / ".env"
+    env.write_text(
+        '# comment\nSIW_KEEP=theirs\nexport SIW_NEW="data"\nbad line\n', encoding="utf-8"
+    )
+    load_env_file(env)
+    import os
+
+    assert (os.environ["SIW_KEEP"], os.environ["SIW_NEW"]) == ("mine", "data")

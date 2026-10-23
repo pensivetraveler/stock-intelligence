@@ -8,6 +8,8 @@ export default tseslint.config(
   {
     ignores: [
       "**/dist/**",
+      "**/dist-agent/**",
+      "**/dist-research/**",
       "**/generated/**",
       "**/src-tauri/target/**",
       "apps/electron/release/**",

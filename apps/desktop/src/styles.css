@@ -2533,3 +2533,115 @@ body {
   color: var(--term-text);
   background: var(--term-bg);
 }
+
+/* SIW Agent (paper trading, ADR 0037) */
+.agent-app {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.agent-banner {
+  padding: 10px 14px;
+  border: 1px solid #b8862b;
+  border-radius: 6px;
+  background: #3a2c10;
+  color: #ffd98a;
+  font-weight: 600;
+}
+
+.agent-header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.agent-header h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.agent-kill {
+  padding: 10px 16px;
+  border: 1px solid #ff6b6b;
+  border-radius: 6px;
+  background: #5a1717;
+  color: #ffe1e1;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.agent-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.agent-card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.agent-card p {
+  margin: 0;
+}
+
+.agent-card button {
+  justify-self: start;
+}
+
+.agent-error {
+  color: #ff9a9a;
+}
+
+.agent-warning {
+  color: #ffd98a;
+}
+
+.agent-muted {
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+.agent-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-list li {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.agent-form {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.agent-form label {
+  display: grid;
+  gap: 4px;
+}
+
+.agent-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.agent-table th,
+.agent-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}

@@ -1,8 +1,8 @@
-// Copies the built desktop screen (apps/desktop/dist) into this package as ui/.
+// Copies the SIW Research screen build (apps/desktop/dist-research) into this package as ui/.
 const fs = require("node:fs");
 const path = require("node:path");
 
-const source = path.resolve(__dirname, "../../desktop/dist");
+const source = path.resolve(__dirname, "../../desktop/dist-research");
 const target = path.resolve(__dirname, "../ui");
 if (!fs.existsSync(path.join(source, "index.html"))) {
   throw new Error(`no built screen at ${source}; run the desktop build first`);

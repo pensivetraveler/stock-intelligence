@@ -408,6 +408,22 @@ Research에서 승인된 전략 버전을 "Agent에서 실행"으로 넘기는 �
 - **환율 출처(결정):** 실행 승인 때 사용자가 입력한 고정 환율을 쓴다. 출처 문구와 승인 시각을 의도에 남긴다. 키움 `exch_rate`는 실제 응답을 확인하지 않아 쓰지 않는다.
 - **아직 없는 것(P3b):** Tauri 본체의 API 기동·LaunchAgent 설치·`launchctl` 정지, `dist-agent`/`dist-research` 빌드 분리, Agent 화면.
 
+## P3b 구현(2026-10-23, 사용자 승인 "모두 진행")
+
+- **빌드 분리:** 같은 소스를 Vite 모드로 두 번 빌드한다. `vite build --mode agent` → `apps/desktop/dist-agent`(Tauri), 그 밖의 모드 → `apps/desktop/dist-research`(Electron, 웹 개발 서버). `main.tsx`는 `VITE_SIW_APP`이 상수라서, 다른 앱의 화면은 번들에 들어가지 않는다. `verify.sh`가 Research 번들에 `/v1/paper/arm`이 있으면 실패한다. Electron의 `copy-ui.cjs`는 `dist-research`를, Tauri는 `dist-agent`(`build:agent`, 개발은 `dev:agent`)를 쓴다.
+- **Agent 화면(`apps/desktop/src/agent/`):**
+  - 상단 띠 "모의투자 전용 — 실제 주문이 아닙니다"와 항상 보이는 킬 스위치. 킬 스위치는 API에 정지를 기록하고, API가 응답하지 않으면 셸이 실행기 LaunchAgent를 내린다.
+  - 실행기 상태(무장·정지·heartbeat·미확인 주문 수), 정지 해제(무장 해제 상태 유지), 무장 해제.
+  - 상주 실행기 설치·중지·제거(Tauri 안에서만).
+  - 승인한 실행 계획 목록과 무장 버튼(정지 중에는 비활성), 새 계획 승인 양식(전략, 키움 `demo` 키, 종목, 1건 금액, 환율, 시장가 버퍼, 고정 자산).
+  - 주문 의도 표(한도 검사·결과·제출 상태), 모의 체결 표("증권사 모의 서버가 만든 체결, 실제 원장에 더하지 않음").
+  - 문구는 영어·한국어(`paper.*` 키). 기존 복기 Agent의 `agent.*` 키와 겹치지 않게 했다.
+- **Tauri 본체(`src-tauri/src/lib.rs`):**
+  - 시작할 때 127.0.0.1:8765가 응답하지 않으면 저장소에서 `uv run uvicorn services.api.main:app …`(있으면 `--env-file .env`)을 띄운다. 저장소는 `SIW_REPO_DIR` → `~/Library/Application Support/com.pensivetraveler.siw.agent/settings.json`의 `repo_dir` → 앱을 빌드한 저장소 순서로 찾는다. 로그는 `~/Library/Logs/siw-agent/api.log`. 종료 때 자기가 띄운 API만 멈춘다.
+  - 명령 `runner_state`, `runner_install`, `runner_stop`, `runner_uninstall`. 설치는 `~/Library/LaunchAgents/com.pensivetraveler.siw.agent.runner.plist`를 쓰고 `launchctl bootstrap gui/<uid>`로 올린다. plist에는 uv 경로, `python -m services.paper_trading.service`(`--env-file .env`), 작업 폴더, `UV_CACHE_DIR`, 로그 경로(`runner.log`)만 있고 키는 없다. 로그인 때 시작하고 비정상 종료 때 다시 띄운다(`KeepAlive.SuccessfulExit=false`, 30초 간격).
+  - 앱을 꺼도 상주 실행기는 계속 돈다.
+- **실행기 `--env-file`:** LaunchAgent는 셸 없이 실행기를 띄우므로, 저장소 `.env`의 `KEY=VALUE`를 이미 설정되지 않은 값만 채운다. 값은 기록하지 않는다.
+
 ## Test plan
 
 **자동 테스트(P1~P3, P5의 가짜 서버 단계, 외부 호출 없음):**

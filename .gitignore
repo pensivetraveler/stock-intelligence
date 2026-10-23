@@ -19,6 +19,8 @@ __pycache__/
 node_modules/
 .pnpm-store/
 dist/
+dist-agent/
+dist-research/
 build/
 **/src-tauri/target/
 **/src-tauri/gen/

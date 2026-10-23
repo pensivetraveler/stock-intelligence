@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev:web": "vite",
+    "dev:agent": "vite --mode agent",
     "dev:tauri": "tauri dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "tsc --noEmit && vite build"
+    "build": "tsc --noEmit && vite build --mode research && vite build --mode agent",
+    "build:agent": "tsc --noEmit && vite build --mode agent"
   },
   "dependencies": {
     "@siw/contracts": "workspace:*",
