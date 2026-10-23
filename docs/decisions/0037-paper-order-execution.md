@@ -350,7 +350,7 @@ Research에서 승인된 전략 버전을 "Agent에서 실행"으로 넘기는 �
 
 - **계약:** `paper_order_intent`, `paper_order_submission`, `paper_execution`, `paper_runner_status`와 한도 묶음 `PaperOrderLimits`. Python·TypeScript 의미 검사가 같다.
   - 의도: `environment`는 `demo`만, `signal_bar_final`은 `true`만 허용한다. 신호 봉 종료가 데이터 기준 시각보다 늦으면 거부한다. 지정가는 지정가만, 시장가는 추정 상한가·버퍼만 갖는다. 한도 검사는 실패할 때만 사유를 갖는다. 원화 금액 한도를 통과한 USD 의도는 원화 금액과 환율을 기록해야 한다. 통과한 의도는 허용 종목이어야 한다.
-  - 제출: 응답 대기 중일 때만 `responded_at_utc`가 비고, 접수(`accepted`)에는 증권사 주문번호가 있다.
+  - 제출: 응답 대기(`pending_response`)에는 응답 시각이 없고, 접수·거절에는 있다. 결과 미확인(`unknown`)은 응답을 읽지 못한 것이라 비어 있을 수 있다. 접수(`accepted`)에는 증권사 주문번호가 있다.
   - 체결: `fill_origin`은 `broker_demo_simulated`, `ledger`는 `broker_paper`만 허용한다.
   - 상태: 무장(`armed`)이면 정지가 아니고 승인 ID가 있다.
 - **`services/paper_trading/`:**
@@ -361,7 +361,33 @@ Research에서 승인된 전략 버전을 "Agent에서 실행"으로 넘기는 �
   - 킬 스위치: `halt`는 정지 + 무장 해제(미체결은 그대로), `release`는 정지만 풀고 무장 해제 상태로 둔다. `arm`은 정지 중이면 거부하고, 기록된 승인이 있어야 한다. `may_submit`은 정지·미무장·다른 승인·미확인 제출이면 거부한다.
   - `__main__.py`: `uv run python -m services.paper_trading status|halt|release [--reason] [--data-dir]`. 로컬 상태만 바꾼다.
 - **정적 검사:** `scripts/check_paper_only.py`를 `verify.sh`에서 돌린다. `services/paper_trading`에 실전 host(`api.kiwoom.com`, `openapi.koreainvestment.com`, host 전체 일치), 실전 KIS TR ID(`T…`), 조회 모듈의 실전 URL import가 있으면 실패한다.
-- **아직 없는 것:** 키움 adapter와 실행기(P2), API·Tauri·화면(P3), 환율 출처 결정.
+- **아직 없는 것:** API·Tauri·화면(P3), 환율 출처 결정.
+
+## P2 구현(2026-10-23, 사용자 승인)
+
+사용자 승인("응 진행해줘")으로 키움 모의 adapter와 실행기의 핵심 루프를 구현했다. 가짜 키움 서버(`httpx.MockTransport`)로만 시험했고, 실제 `mockapi.kiwoom.com` 호출은 없다.
+
+- **`brokers/base.py`:** 증권사 중립 adapter 계약 `PaperBroker`(`capabilities`, `order_type_code`, `submit`, `cancel`, `today_orders`)와 `SubmitResult`, `BrokerOrder`.
+- **`brokers/kiwoom_paper.py`(`KiwoomPaperBroker`):**
+  - 허용목록: 토큰 `au10001`, 매수 `ust20000`, 매도 `ust20001`, 취소 `ust20003`, 당일 주문체결 `ust21510`. `ust31490`(모의 미제공)과 잔고 `ust21070`(아직 쓰지 않음)은 없다.
+  - `demo`로 등록되지 않은 키는 생성 단계에서 거부한다. 계좌 참조는 `kiwoom-<sha256(app_key)[:16]>-demo`이고, 요청 본문에 계좌번호가 없다.
+  - **지원 시장 기본값은 없음:** 미국 모의 주문 지원이 확인되기 전(P4)에는 `markets`가 비어 있어, 실행기의 한도 검사가 모든 주문을 `market_not_supported`로 막는다.
+  - 거래소 코드: XNAS `ND`, XNYS `NY`, XASE `NA`. NYSE Arca(ARCX)와 BATS는 키움 코드가 없어 보내지 않는다(`OrderNotSupportedError`).
+  - 주문 유형: 지정가 `00`(가격 포함), 시장가 `03`(가격 빈 값).
+  - 결과: `return_code` 0이고 주문번호가 있으면 접수, 그 밖의 응답은 거절. 응답을 읽지 못하면(시간 초과, 연결 끊김, 본문 없는 5xx) **미확인**이고 다시 보내지 않는다. 토큰이 다른 클라이언트 발급으로 바뀐 경우(3·8005)만 토큰을 다시 받아 한 번 더 보낸다(처리 전 거절이므로).
+  - 조회: 0 채움 숫자, 연속조회(`cont-yn`/`next-key`), 스펙 예시의 `result_lsit` 철자를 함께 읽는다. 모의 미제공 응답(RC9000)은 오류로 올린다.
+- **`signals.py`:** 규칙 전략 신호를 백테스트와 같은 `RuleSignals`로 계산한다. 확정 봉만 보여 주고 마지막 확정 봉에서 묻는다. Python 전략, Python 지표 피연산자, 손절·익절(`stop_loss_pct`·`take_profit_pct`)은 아직 거부한다.
+- **`runner.py`(`PaperRunner.step`):** 봉 공급원·adapter·시계를 주입받는다.
+  1. heartbeat.
+  2. 응답 대기·미확인 제출을 당일 주문 목록으로 먼저 맞춘다. 같은 종목·방향·수량·주문유형이면서 다른 제출이 차지하지 않은 주문이 하나면 접수, 없으면 "주문 안 됨"(거절), 둘 이상이거나 이전 증권사 날짜의 제출이면 킬 스위치를 켠다.
+  3. 체결 동기화: 잔량 0이고 체결 수량이 있는 접수 주문을 `order_aggregate` 모의 체결 1건으로 저장한다. 체결 시각은 서울 `HH:MM:SS`를 그 시각이 지난 가장 최근 서울 날짜에 놓는다(모의 서버에서 미확인). 수수료는 응답에 없어 `null`이다.
+  4. 정지가 아니면 승인 종목마다 마지막 확정 봉을 한 번만 전략에 보인다. 신호 → 수량 계산 → 의도 → 한도 → 신호 나이 → `may_submit` → 주문 유형 확인 → 제출. 제출 기록은 보내기 전에 `pending_response`로 남겨, 도중에 멈추면 다음 주문을 막는다.
+  - 수량: 고정 주수, 고정 금액(÷ 기준가 × (1 + 수수료율)), 자산 비율. 자산 비율은 실행 승인에 적은 고정 자산(`equity_basis`)이 있어야 하고 없으면 건너뛴다. 모두 정수 주로 내림. 매도는 모의 원장의 보유 수량 전부.
+  - 지정가 진입·청산: 신호 봉 종가 × (1 + `offset_pct`/100)를 $1 이상은 1센트, 미만은 0.0001 단위로 매수는 내림·매도는 올림. 스톱 주문은 보내지 않는다.
+  - 신호 나이: 신호 봉 종료 후 `max_signal_age_seconds`(기본 300초)가 지나면 `expired`.
+  - 실행 계획(`RunPlan`)의 내용 해시가 승인 ID다. 다른 증권사 계정의 계획은 거부한다.
+- **계약 변경:** 결과 미확인(`unknown`) 제출은 응답 시각이 없을 수 있다. 응답 대기에는 응답 시각이 없고, 접수·거절에는 있다.
+- **아직 없는 것(P3):** 실제 봉 공급원 연결, 키체인에서 키 읽기, LaunchAgent·`launchctl`, API·화면, 미체결 주문 만료 취소, 일 손실 계산, 환율 출처.
 
 ## Test plan
 
