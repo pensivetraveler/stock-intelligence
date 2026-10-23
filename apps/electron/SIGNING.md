@@ -37,11 +37,11 @@ CSC_NAME="Developer ID Application: 이름 (팀ID)" APPLE_KEYCHAIN_PROFILE="siw-
 ## 3. 확인
 
 ```bash
-codesign --verify --deep --strict --verbose=2 "release/mac/Stock Intelligence Workstation.app"
+codesign --verify --deep --strict --verbose=2 "release/mac/SIW Research.app"
 ```
 
 ```bash
-spctl --assess --type execute --verbose "release/mac/Stock Intelligence Workstation.app"
+spctl --assess --type execute --verbose "release/mac/SIW Research.app"
 ```
 
 `spctl` 결과가 `accepted` / `source=Notarized Developer ID`이면 공증까지 끝난 것이다. 결과를 `docs/PROJECT_STATE.md`에 기록한다.

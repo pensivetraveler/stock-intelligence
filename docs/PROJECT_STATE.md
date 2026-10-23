@@ -1405,6 +1405,26 @@
 - **Electron과의 차이:** Tauri 앱은 로컬 API를 띄우지 않는다. API가 먼저 실행 중이어야 한다.
 - **미검증:** `tauri dev`, 창 화면 자체(스크린샷 없음, API 로그로만 확인), 외부 링크 열기, 서명·공증, Windows.
 
+## 데스크톱 앱 역할 분리 — 2026-10-23
+
+- **사용자 결정:** Tauri는 정해진 전략에 따라 매수·매도를 실행하는 Agent용, Electron은 사용자와 AI가 함께 전략을 연구하고 백테스트하는 용도로 나눈다. 결정 기록은 [ADR 0036](decisions/0036-desktop-app-roles.md)에 있다.
+  - 첫 주문 범위는 모의투자만, 첫 주문 증권사는 한국투자(KIS)다.
+  - Electron의 주문은 지금은 없고, 나중에 Gate에서 다시 검토할 수 있다.
+  - 이번 작업은 결정 기록과 앱 구분까지다. 주문 코드는 없다.
+- **변경:**
+  - **Tauri:** 이름 `SIW Agent`, 번들 ID `com.pensivetraveler.siw.agent`(이전 `local.siw.desktop`), 창 제목 "SIW Agent — 전략 실행".
+  - **Electron:** 이름 `SIW Research`, 번들 ID `com.pensivetraveler.siw.research`, 창 제목 "SIW Research — 전략 연구·백테스트". 공용 화면의 `<title>`이 창 제목을 덮지 않게 했다. 사용자 데이터 폴더는 `siw-electron` 그대로라 기억한 저장소 폴더와 로그 위치가 유지된다.
+  - **문서:** AGENTS.md, SYSTEM_SPEC, PROJECT_INSTRUCTIONS의 "자동 주문 범위 밖" 문장에 ADR 0036의 재범위 지정을 반영했다. ADR 0028에 SIW Research 개정을 표시했다.
+- **검증:**
+  - `npm run dist` exit 0 → `release/SIW Research-0.4.0-dev.dmg`. asar의 `package.json`에 `productName`이 없어 사용자 데이터 폴더가 바뀌지 않음을 확인했다.
+  - `tauri build` exit 0 → `SIW Agent.app`.
+  - 두 앱의 `Info.plist` 이름·번들 ID를 확인했다. 두 앱을 함께 실행해도 각자 떴고, 실행 중인 8765 API를 그대로 썼다.
+- **미검증:** 창 제목이 화면에 실제로 보이는 모습(접근성 권한 없음).
+- **남은 작업:**
+  - 화면은 아직 두 앱이 같다. 앱별 화면 분리는 단계 1 설계에서 정한다.
+  - 단계 1(KIS 모의투자 주문)은 사용자가 별도로 승인해야 착수한다.
+  - 기존에 설치한 `/Applications/Stock Intelligence Workstation.app`(이전 이름의 Tauri 빌드)은 사용자가 지운다.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:

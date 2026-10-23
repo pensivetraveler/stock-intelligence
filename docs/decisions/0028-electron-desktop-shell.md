@@ -2,6 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-22
+- **Amended:** 2026-10-23 — [ADR 0036](0036-desktop-app-roles.md)에 따라 이 앱은 연구·백테스트 앱 **SIW Research**(`com.pensivetraveler.siw.research`)다. 주문 기능이 없다. 사용자 데이터 폴더는 그대로 `siw-electron`이다.
 
 ## Context
 

@@ -1,4 +1,5 @@
-// Electron shell for Stock Intelligence Workstation (ADR 0028).
+// Electron shell for Stock Intelligence Workstation (ADR 0028): "SIW Research", the
+// research and backtesting app. Order execution belongs to the Tauri app (ADR 0036).
 //
 // The screen is the same build as the web app (apps/desktop/dist), served from a
 // custom "siw://app" origin, which the local API allows. Read-only like the web app:
@@ -80,13 +81,15 @@ function createWindow() {
     minWidth: 960,
     minHeight: 640,
     backgroundColor: "#10131a",
-    title: "Stock Intelligence Workstation",
+    title: "SIW Research — 전략 연구·백테스트",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
   });
+  // Keep the app's own title (SIW Research) instead of the shared page title.
+  window.on("page-title-updated", (event) => event.preventDefault());
   // Links out of the app (e.g. chart attribution) open in the browser, not in the app.
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
