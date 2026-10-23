@@ -1,7 +1,7 @@
 // Electron shell for Stock Intelligence Workstation (ADR 0028): "SIW Research", the
 // research and backtesting app. Order execution belongs to the Tauri app (ADR 0036).
 //
-// The screen is the same build as the web app (apps/desktop/dist), served from a
+// The screen is the SIW Research build (apps/desktop/dist-research), served from a
 // custom "siw://app" origin, which the local API allows. Read-only like the web app:
 // the shell adds no trading, keys or file access.
 const {

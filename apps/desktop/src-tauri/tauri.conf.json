@@ -4,10 +4,10 @@
   "version": "0.4.0-dev",
   "identifier": "com.pensivetraveler.siw.agent",
   "build": {
-    "beforeDevCommand": "corepack pnpm dev:web",
+    "beforeDevCommand": "corepack pnpm dev:agent",
     "devUrl": "http://127.0.0.1:5173",
-    "beforeBuildCommand": "corepack pnpm build",
-    "frontendDist": "../dist"
+    "beforeBuildCommand": "corepack pnpm build:agent",
+    "frontendDist": "../dist-agent"
   },
   "app": {
     "windows": [

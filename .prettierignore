@@ -1,5 +1,7 @@
 node_modules
 dist
+dist-agent
+dist-research
 target
 uv.lock
 pnpm-lock.yaml

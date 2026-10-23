@@ -10,7 +10,7 @@ The planned native shell is Tauri (Phase 0), but it has never been built: `cargo
 
 ## Decision
 
-- **Package:** `apps/electron` is an Electron shell for the same screen build as the web app (`apps/desktop/dist`). It is kept out of the pnpm workspace (`!apps/electron`) and has its own npm lockfile, so CI never downloads Electron.
+- **Package:** `apps/electron` is an Electron shell for the same screen build as the web app (`apps/desktop/dist`; since ADR 0037 P3b the Research build `apps/desktop/dist-research`, without the Agent's paper-trading screen). It is kept out of the pnpm workspace (`!apps/electron`) and has its own npm lockfile, so CI never downloads Electron.
 - **Serving the screen:** the screen is served from a custom privileged scheme, `siw://app`. It is registered as standard, secure, fetch-capable and CORS-enabled, so the screen behaves like a normal web origin. The API always allows that origin, even when `SIW_CORS_ORIGINS` replaces the defaults: no web page can send a `siw://` origin. Realtime WebSocket connections use the same origin check.
 - **API:** not bundled, because it needs this repository's Python environment, `.env` and the OS keychain.
   - On launch, the shell uses an API that already answers on 127.0.0.1:8765.

@@ -134,12 +134,34 @@ class RunnerService:
         )
 
 
+def load_env_file(path: Path) -> None:
+    """KEY=VALUE lines from the repository's .env, without replacing what is already set.
+
+    The LaunchAgent starts the runner without a shell, so this is how it gets the same
+    settings as the API (which uvicorn reads with --env-file). Values are never logged.
+    """
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        name = name.removeprefix("export ").strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if name and name not in os.environ:
+            os.environ[name] = value
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m services.paper_trading.service")
     parser.add_argument("--data-dir", type=Path, help="defaults to SIW_DATA_DIR")
     parser.add_argument("--interval-seconds", type=float, default=10.0)
     parser.add_argument("--once", action="store_true", help="one pass, then exit")
+    parser.add_argument("--env-file", type=Path, help="settings file such as the repo's .env")
     args = parser.parse_args(argv)
+    if args.env_file is not None and args.env_file.is_file():
+        load_env_file(args.env_file)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     configured = os.getenv("SIW_DATA_DIR", "").strip()
     data_dir = args.data_dir or (Path(configured) if configured else None)
