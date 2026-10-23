@@ -279,3 +279,15 @@ def test_ecos_rate_is_used_and_missing_rate_blocks(tmp_path: Path) -> None:
     intent = store2.intents(1)[0]["intent"]
     assert intent["fx"]["krw_per_usd"] == "1385.2"
     assert intent["fx"]["source"].startswith("BOK ECOS")
+
+
+def test_cancel_rows_are_never_matched_to_an_unknown_submission(tmp_path: Path) -> None:
+    fake = FakeKiwoomPaper(drop_next_order=True)
+    runner, fake, feed, store = _setup(tmp_path, fake=fake)
+    feed.bars = _bars(99, 101)
+    runner.step(_end(feed))
+    lost = fake.orders[0]
+    fake.orders.clear()  # the order never stayed; only a cancel row of an older order is listed
+    fake.orders.append(replace(lost, ord_no="000000448", original="000000436"))
+    runner.step(_end(feed, 10))
+    assert [s["response_code"] for s in store.submissions("rejected")] == ["not_found_on_reconcile"]

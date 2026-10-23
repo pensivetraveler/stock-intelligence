@@ -27,6 +27,7 @@ class FakeOrder:
     fill_price: Decimal = Decimal(0)
     cntr_time: str = ""
     cancelled: bool = False
+    original: str = "000000000"
 
 
 @dataclass
@@ -99,7 +100,7 @@ class FakeKiwoomPaper:
         remaining = Decimal(0) if order.cancelled else order.qty - order.filled
         return {
             "ord_no": order.ord_no,
-            "orig_ord_no": "000000000",
+            "orig_ord_no": order.original,
             "stk_cd": order.stk_cd,
             "frgn_trde_tp": order.trde_tp,
             "slby_tp": order.side,
