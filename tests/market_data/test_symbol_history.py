@@ -23,6 +23,7 @@ from services.market_data.symbol_history import (
     resolution_of,
     ticker_for,
 )
+from services.market_data.toss_account import sync_executions as toss_sync
 from tests.market_data.test_kiwoom_account import NOW, Broker, fill, session
 
 HISTORY = {
@@ -74,6 +75,54 @@ def test_renames_are_followed_to_the_active_ticker(tmp_path: Path) -> None:
     # After its own rename date the old ticker is no longer that company's.
     assert found.resolve("AAPL", date(2026, 9, 1), listed).kind == "listed"
     assert found.renamed_to("FB") == "META" and found.renamed_to("AAPL") is None
+
+
+def test_todays_ticker_is_traced_back_to_the_one_traded(tmp_path: Path) -> None:
+    found = history(tmp_path)
+    # Toss reports today's ticker: DEVSF for a 2025 trade made as DEVS.
+    assert found.traded_as("DEVSF", date(2025, 1, 2)) == "DEVS"
+    assert found.traded_as("devsf", date(2025, 9, 1)) == "DEVSF"  # after the rename
+    assert found.traded_as("CCC", date(2023, 5, 1)) == "AAA"  # chains, newest first
+    assert found.traded_as("CCC", date(2024, 6, 1)) == "BBB"
+    assert found.traded_as("GONE", date(2024, 6, 3)) == "GONE"
+
+
+def test_toss_symbols_missing_from_the_directory_follow_the_history(tmp_path: Path) -> None:
+    from tests.market_data import test_toss_account as toss
+
+    found = history(tmp_path)
+    store = JournalStore(tmp_path)
+    broker = toss.Broker()
+    broker.closed_pages[1]["orders"][1]["symbol"] = "DEVSF"
+    broker.closed_pages[1]["orders"][1]["execution"]["filledAt"] = "2025-01-02T23:30:05+09:00"
+
+    def history_instrument(symbol: str, on: date) -> str | None:
+        traded = found.traded_as(symbol, on)
+        resolved = found.resolve(traded, on, LISTED.get)
+        return f"us:{resolved.symbol.lower()}:{resolved.venue.lower()}:2026"
+
+    register(found)
+    try:
+        result = toss_sync(
+            toss.session(broker),
+            store,
+            toss.instrument_for,
+            lambda: toss.NOW,
+            history_instrument=history_instrument,
+        )
+    finally:
+        register(None)
+    assert result["skipped"]["unknown_instrument"] == 0 and result["unknown_symbols"] == []
+    (devs,) = [row for row in store.broker_executions() if row["symbol"] == "DEVSF"]
+    assert devs["instrument_id"] == "us:devs:xnas:2026"
+    assert devs["instrument_resolution"] == "delisted"
+    # Symbols the directory knows are stored as before, without a resolution.
+    assert all(
+        "instrument_resolution" not in row
+        for row in store.broker_executions()
+        if row["symbol"] != "DEVSF"
+    )
+    assert found.delisted("DEVS").asof == date(2025, 1, 2)
 
 
 def test_delisted_tickers_are_kept_and_registered(tmp_path: Path) -> None:

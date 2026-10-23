@@ -26,7 +26,8 @@ Until now:
 - **When it runs:** the overnight session of US trading day D runs from 20:00 New York time on the previous calendar day to 04:00 on D, and belongs to D. Monday's session starts on Sunday evening. When D is not a trading day, there is no session into D.
 - **Policy version:** `us-overnight-boats-v1-2026-10-22`.
 - **Holidays and early closes (checked 2026-10-22):** Toss's market calendar (`GET /v1/market/broker-calendar`, its `dayMarket` sessions) agreed with this policy on all 86 dates read around the holidays and early closes of 2025–2026 and both DST changes. Examples: no session into Thanksgiving, Christmas or 2026-07-03; a normal 20:00–04:00 session into the day after Thanksgiving (an early close); the session after an early close starts at the usual 20:00 of the evening before the next trading day. The policy version stays `v1`.
-- **Still not verified:** Blue Ocean's own calendar. Toss is a broker that routes to Blue Ocean, not Blue Ocean itself.
+- **Blue Ocean's own calendar (checked 2026-10-23):** Blue Ocean's holiday notice (blueocean-tech.io/trading-updates) lists the evenings it is closed for 2025–2027. All 30 closed evenings agree with this policy: each one starts the session into a US holiday. The dates are fixed as regression tests. Blue Ocean lists no early closes.
+- **One date the notice does not list:** 2025-01-09, the national day of mourning on which NYSE closed. The policy has no session into it. Whether Blue Ocean closed that night is not verified.
 
 ### A separate data stream, not merged into the existing bars
 
@@ -59,7 +60,7 @@ Until now:
 
 ## Remaining risks
 
-- The holiday and early-close schedule matches Toss's calendar, but not checked against Blue Ocean's own calendar (see above).
+- **Unannounced closures:** the schedule matches Toss's calendar and Blue Ocean's published holidays. One-off closures (such as 2025-01-09) follow the NYSE calendar, which Blue Ocean may not match.
 - **Thin trading:** AAPL showed about 80 bars per eight-hour night, so most buckets have no bar.
 - **Plan:** BOATS access depends on the Alpaca plan. Another key may be refused (502 `provider_auth_failed`).
 - **Shown range:** the chart shows the day market for the newest 14 session dates only.

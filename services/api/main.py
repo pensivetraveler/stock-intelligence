@@ -621,11 +621,25 @@ def create_app(
         candidate = f"us:{resolved.symbol.lower()}:{resolved.venue.lower()}:2026"
         return candidate if parse_instrument(candidate) is not None else None
 
+    def toss_history_instrument(symbol: str, on: date) -> str | None:
+        """A Toss US symbol missing from the directory: today's ticker (often OTC after a
+        delisting), traced back to the ticker traded on `on` and resolved (ADR 0033)."""
+        found = history()
+        if found is None:
+            return None
+        try:
+            traded = found.traded_as(symbol, on)
+        except (MarketDataError, OSError, ValueError):
+            return None
+        return instrument_for(traded, "USD", on)
+
     def sync_recent(since: str) -> dict[str, object] | None:
         session, store = toss(), journal.get()
         if session is None or store is None:
             return None
-        return sync_executions(session, store, instrument_for, clock, since)
+        return sync_executions(
+            session, store, instrument_for, clock, since, toss_history_instrument
+        )
 
     hub = RealtimeHub(
         toss,
@@ -1005,7 +1019,10 @@ def create_app(
                 "set SIW_DATA_DIR to keep the broker ledger",
             )
         return toss_read(
-            request, lambda session: sync_executions(session, store, instrument_for, clock)
+            request,
+            lambda session: sync_executions(
+                session, store, instrument_for, clock, history_instrument=toss_history_instrument
+            ),
         )
 
     @application.post("/v1/brokers/kiwoom/sync", response_model=None)
