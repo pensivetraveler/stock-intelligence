@@ -63,6 +63,8 @@ const CURRENCY_BY_MARKET_KINDS = new Set([
   "broker_order_execution",
   "broker_confirmed_execution",
   "market_quote",
+  "paper_order_intent",
+  "paper_execution",
 ]);
 
 export function compareDecimal(left: string, right: string): number {
@@ -102,6 +104,78 @@ function pointInTimeErrors(bars: Document[], coverage: Document): string[] {
     ) {
       errors.push("response bar was not available at the point-in-time cutoff");
     }
+  }
+  return errors;
+}
+
+function paperIntentErrors(document: Document): string[] {
+  const errors: string[] = [];
+  const data = document.data as Document;
+  const barStart = Date.parse(asString(data, "signal_bar_start_utc"));
+  const barEnd = Date.parse(asString(data, "signal_bar_end_utc"));
+  if (barEnd <= barStart) {
+    errors.push("signal bar end must be after its start");
+  }
+  if (Date.parse(asString(data, "data_as_of_utc")) < barEnd) {
+    errors.push(
+      "a signal cannot use a bar that had not ended at the data cutoff",
+    );
+  }
+  if (
+    Date.parse(asString(document, "created_at_utc")) <
+    Date.parse(asString(data, "data_as_of_utc"))
+  ) {
+    errors.push("an intent cannot be created before its data cutoff");
+  }
+  const order = document.order as Document;
+  if (compareDecimal(asString(order, "quantity"), "0") <= 0) {
+    errors.push("intent quantity must be positive");
+  }
+  if (
+    order.order_type === "limit" &&
+    (order.limit_price === null ||
+      compareDecimal(asString(order, "limit_price"), "0") <= 0 ||
+      order.estimated_max_price !== null ||
+      order.market_buffer_bps !== null)
+  ) {
+    errors.push(
+      "a limit order has a positive limit price and no market estimate",
+    );
+  }
+  if (
+    order.order_type === "market" &&
+    (order.limit_price !== null ||
+      order.estimated_max_price === null ||
+      order.market_buffer_bps === null ||
+      compareDecimal(asString(order, "estimated_max_price"), "0") <= 0)
+  ) {
+    errors.push(
+      "a market order has an estimated maximum price and no limit price",
+    );
+  }
+  const check = document.limit_check as Document;
+  const reasons = check.reasons as unknown[];
+  const limits = check.limits as Document;
+  if (check.passed === reasons.length > 0) {
+    errors.push("a limit check lists reasons exactly when it fails");
+  }
+  if (check.passed === true && limits.max_order_amount_krw !== null) {
+    if (check.order_amount_krw === null) {
+      errors.push("a passed amount limit must record the order amount in KRW");
+    }
+    if (document.currency === "USD" && document.fx === null) {
+      errors.push(
+        "a USD order checked against a KRW limit must record its exchange rate",
+      );
+    }
+  }
+  if (
+    check.passed === true &&
+    !(limits.allowed_instrument_ids as unknown[]).includes(
+      document.instrument_id,
+    )
+  ) {
+    errors.push("a passed intent must be for an allowed instrument");
   }
   return errors;
 }
@@ -423,6 +497,59 @@ export function semanticErrors(document: Document): string[] {
     }
     if (document.coverage_status === "empty" && observed !== 0) {
       errors.push("empty coverage must not contain observed intervals");
+    }
+  }
+
+  if (document.kind === "paper_order_intent") {
+    errors.push(...paperIntentErrors(document));
+  }
+
+  if (document.kind === "paper_order_submission") {
+    const responded = document.responded_at_utc;
+    if (
+      typeof responded === "string" &&
+      Date.parse(responded) < Date.parse(asString(document, "requested_at_utc"))
+    ) {
+      errors.push("a submission cannot be answered before it was requested");
+    }
+    if ((document.status === "pending_response") !== (responded === null)) {
+      errors.push(
+        "responded_at_utc is null exactly while the response is pending",
+      );
+    }
+    if (document.status === "accepted" && document.broker_order_ref === null) {
+      errors.push(
+        "an accepted submission must carry the broker's order reference",
+      );
+    }
+  }
+
+  if (document.kind === "paper_execution") {
+    if (
+      compareDecimal(asString(document, "quantity"), "0") <= 0 ||
+      compareDecimal(asString(document, "price"), "0") <= 0
+    ) {
+      errors.push("paper execution quantity and price must be positive");
+    }
+    if (
+      (document.executed_at_utc === null) !==
+      (document.time_meaning === "time_unresolved")
+    ) {
+      errors.push(
+        "executed_at_utc is null exactly when its time is unresolved",
+      );
+    }
+  }
+
+  if (document.kind === "paper_runner_status") {
+    if (
+      document.armed === true &&
+      (document.halted === true || document.approval_id === null)
+    ) {
+      errors.push("an armed runner must be unhalted and name its approval");
+    }
+    if ((document.halted === true) !== (document.halted_reason !== null)) {
+      errors.push("halted_reason is set exactly while the runner is halted");
     }
   }
 

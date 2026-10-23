@@ -1470,6 +1470,17 @@
   - 키움: 미국 모의 지원, 모의 서버가 받는 거래소·매매구분, 호출 한도, 모의 체결 형식.
   - KIS: 모의 TR ID, 호출 한도, 모의 체결 형식.
 
+## SIW Agent P1: 모의 주문 계약·원장·한도·킬 스위치 — 2026-10-23
+
+- **사용자 승인:** "P1 구현을 승인합니다. 외부 호출 없이 진행해 주세요." 설계는 [ADR 0037](decisions/0037-paper-order-execution.md)의 "P1 구현" 절.
+- **변경:**
+  - 계약 `paper_order_intent`·`paper_order_submission`·`paper_execution`·`paper_runner_status`(+ `PaperOrderLimits`), Python·TypeScript 의미 검사, valid 5개·invalid 10개 fixture, 생성 타입.
+  - `services/paper_trading/`: `PaperOnlyClient`(모의 도메인만), 한도 검사, 의도 생성, `paper_orders.sqlite3` 저장소와 migration, 킬 스위치, `python -m services.paper_trading status|halt|release`.
+  - `scripts/check_paper_only.py`를 `verify.sh`에 추가했다.
+- **검증:** `verify.sh` exit 0(pytest 669개, Vitest 84개·232개). `tests/paper_trading` 48개(모의 host 외 차단·허용목록·리다이렉트·KIS `T…` 거부·`demo` 키만, 의도 결정성·비확정 봉 거부·지정가/시장가 금액·각 한도 경계, 추가 전용 의도·의도당 제출 1건·킬 스위치 재무장·미확인 제출 차단·CLI, 정적 검사).
+- **안전:** 외부 호출 없음. 키·계좌번호를 읽는 코드 없음. 실전 도메인을 부를 경로 없음.
+- **남은 작업:** P2(키움 모의 adapter·실행기, 가짜 서버로만 시험), P3(API·Tauri·화면), 환율 출처.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:

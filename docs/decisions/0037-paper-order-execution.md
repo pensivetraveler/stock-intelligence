@@ -234,7 +234,7 @@ kiwoom-spec MCP 서버(공식 REST 스펙 색인, 읽기 전용)의 `spec_search
   2. 실행기는 정지 상태를 몇 초마다 읽고, 보면 주문 루프를 멈춘다. 프로세스는 살아 있어 상태와 조회는 계속 보고한다.
   3. 실행기가 응답하지 않으면 SIW Agent(Rust)가 `launchctl`로 실행기 서비스를 내린다(6절). API나 화면이 응답하지 않아도 이 경로로 멈출 수 있다.
   4. **신규 주문만 중지한다(사용자 결정).** 미체결 모의 주문은 취소하지 않고 그대로 둔다. 화면에 미체결 목록을 보여 주고, 취소는 사용자가 주문별로 누른다(모의 도메인으로만 간다).
-- **앱 없이 켜기:** SIW Agent가 꺼져 있어도 `uv run python -m services.paper_trading.runner halt`로 정지 상태를 기록할 수 있다.
+- **앱 없이 켜기:** SIW Agent가 꺼져 있어도 `uv run python -m services.paper_trading halt --reason …`로 정지 상태를 기록할 수 있다.
 - **해제:** 정지 해제만으로는 다시 주문하지 않는다. 사용자가 재무장(arm)해야 하고, 그 기록이 남는다.
 
 ### 6. 실행 구조: API와 상주 실행기
@@ -343,6 +343,25 @@ Research에서 승인된 전략 버전을 "Agent에서 실행"으로 넘기는 �
    - 미국 정규장 시간에 낸다. 장 시간 밖 모의 주문 처리는 미확인이다.
    - 지정가가 확인되면 시장가(`trde_tp=03`) 1주를 따로 확인한 뒤 시장가를 연다.
 5. **P5:** KIS 모의 adapter. 사용자가 KIS 모의 키를 등록한 뒤 P2·P4와 같은 순서로 한다.
+
+## P1 구현(2026-10-23, 사용자 승인)
+
+외부 호출 없이 구현했다. 키를 읽거나 증권사에 요청하는 코드는 아직 없다.
+
+- **계약:** `paper_order_intent`, `paper_order_submission`, `paper_execution`, `paper_runner_status`와 한도 묶음 `PaperOrderLimits`. Python·TypeScript 의미 검사가 같다.
+  - 의도: `environment`는 `demo`만, `signal_bar_final`은 `true`만 허용한다. 신호 봉 종료가 데이터 기준 시각보다 늦으면 거부한다. 지정가는 지정가만, 시장가는 추정 상한가·버퍼만 갖는다. 한도 검사는 실패할 때만 사유를 갖는다. 원화 금액 한도를 통과한 USD 의도는 원화 금액과 환율을 기록해야 한다. 통과한 의도는 허용 종목이어야 한다.
+  - 제출: 응답 대기 중일 때만 `responded_at_utc`가 비고, 접수(`accepted`)에는 증권사 주문번호가 있다.
+  - 체결: `fill_origin`은 `broker_demo_simulated`, `ledger`는 `broker_paper`만 허용한다.
+  - 상태: 무장(`armed`)이면 정지가 아니고 승인 ID가 있다.
+- **`services/paper_trading/`:**
+  - `paper_client.py`: `PaperOnlyClient`. 증권사별 모의 도메인 상수(키움 `mockapi.kiwoom.com:443`, KIS `openapivts.koreainvestment.com:29443`), URL 인자 없음, 요청마다 scheme·host·port 정확 비교, (method, path, api-id/tr_id) 허용목록, 리다이렉트 거부, KIS `V…` TR ID만 허용. `require_paper_environment`는 `demo`가 아닌 키를 거부한다.
+  - `limits.py`: 한도 검사. `null` 한도는 통과하고 기록만 한다. 미확인 제출, 지원하지 않는 시장, 허용 밖 종목은 항상 막는다. 원화 한도에 USD 주문을 비교할 환율이 없으면 `fx_unavailable`로 막는다.
+  - `intent.py`: 의도 생성. 확정되지 않은 봉은 `NonFinalBarError`. `intent_id`는 승인·전략 버전·정의 SHA·종목·방향·신호 봉 시작의 SHA-256. 시장가 추정 상한가 = 기준가 × (1 + 버퍼 bp / 10,000).
+  - `store.py` + `migrations/0001_paper_orders.sql`: `paper_orders.sqlite3`. 승인(내용 해시가 ID), 의도(UPDATE·DELETE를 막는 트리거로 추가 전용), 의도 결과, 제출(의도당 1건), 모의 체결, 한도 거절 기록, 킬 스위치 상태 1행과 그 이력.
+  - 킬 스위치: `halt`는 정지 + 무장 해제(미체결은 그대로), `release`는 정지만 풀고 무장 해제 상태로 둔다. `arm`은 정지 중이면 거부하고, 기록된 승인이 있어야 한다. `may_submit`은 정지·미무장·다른 승인·미확인 제출이면 거부한다.
+  - `__main__.py`: `uv run python -m services.paper_trading status|halt|release [--reason] [--data-dir]`. 로컬 상태만 바꾼다.
+- **정적 검사:** `scripts/check_paper_only.py`를 `verify.sh`에서 돌린다. `services/paper_trading`에 실전 host(`api.kiwoom.com`, `openapi.koreainvestment.com`, host 전체 일치), 실전 KIS TR ID(`T…`), 조회 모듈의 실전 URL import가 있으면 실패한다.
+- **아직 없는 것:** 키움 adapter와 실행기(P2), API·Tauri·화면(P3), 환율 출처 결정.
 
 ## Test plan
 

@@ -1,0 +1,294 @@
+"""Paper-order ledger and kill switch in `SIW_DATA_DIR/paper_orders.sqlite3` (ADR 0037).
+
+The kill switch stops new orders only: it never cancels resting paper orders. Releasing
+it does not resume trading; the runner must be armed again with an approval.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import sqlite3
+from collections.abc import Callable, Iterator
+from contextlib import closing, contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from packages.contracts.validator import validate_document
+from services.market_data.storage import MigrationRunner
+from services.paper_trading.limits import LimitResult
+
+MIGRATIONS_DIR = Path(__file__).with_name("migrations")
+DATABASE_NAME = "paper_orders.sqlite3"
+OPEN_SUBMISSION_STATUSES = ("pending_response", "unknown")
+
+
+class PaperStoreError(RuntimeError):
+    pass
+
+
+def _utc(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _canonical(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def approval_id(content: dict[str, Any]) -> str:
+    """Approvals are identified by their content, so a changed one is a new approval."""
+    return hashlib.sha256(_canonical(content).encode()).hexdigest()
+
+
+class PaperOrderStore:
+    def __init__(self, root: Path, *, now: Callable[[], datetime] | None = None) -> None:
+        self.root = root.resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.database_path = self.root / DATABASE_NAME
+        self._now = now or (lambda: datetime.now(timezone.utc))
+        MigrationRunner(self.database_path, MIGRATIONS_DIR).apply()
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        with closing(sqlite3.connect(self.database_path, timeout=10)) as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            with connection:
+                yield connection
+
+    # Approvals and intents
+
+    def record_approval(self, content: dict[str, Any]) -> str:
+        identifier = approval_id(content)
+        with self._connect() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO approvals VALUES (?, ?, ?)",
+                (identifier, _canonical(content), _utc(self._now())),
+            )
+        return identifier
+
+    def record_intent(self, document: dict[str, Any], result: LimitResult) -> bool:
+        """Store an intent once. False if the same intent was already recorded.
+
+        An intent that failed its limit check is stored as blocked, with its reasons.
+        """
+        validate_document(document)
+        now = _utc(self._now())
+        with self._connect() as db:
+            cursor = db.execute(
+                "INSERT OR IGNORE INTO order_intents VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    document["intent_id"],
+                    document["approval_id"],
+                    document["broker_id"],
+                    document["instrument_id"],
+                    _canonical(document),
+                    document["created_at_utc"],
+                ),
+            )
+            if cursor.rowcount == 0:
+                return False
+            if not result.passed:
+                db.execute(
+                    "INSERT INTO limit_events (intent_id, reasons_json, at_utc) VALUES (?, ?, ?)",
+                    (document["intent_id"], json.dumps(list(result.reasons)), now),
+                )
+                db.execute(
+                    "INSERT INTO intent_outcomes VALUES (?, 'blocked', ?, ?)",
+                    (document["intent_id"], ",".join(result.reasons), now),
+                )
+        return True
+
+    def intent(self, intent_id: str) -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT document_json FROM order_intents WHERE intent_id = ?", (intent_id,)
+            ).fetchone()
+        return None if row is None else dict(json.loads(row["document_json"]))
+
+    def outcome(self, intent_id: str) -> tuple[str, str | None] | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT status, reason FROM intent_outcomes WHERE intent_id = ?", (intent_id,)
+            ).fetchone()
+        return None if row is None else (str(row["status"]), row["reason"])
+
+    def set_outcome(self, intent_id: str, status: str, reason: str | None = None) -> None:
+        with self._connect() as db:
+            try:
+                db.execute(
+                    "INSERT INTO intent_outcomes VALUES (?, ?, ?, ?)",
+                    (intent_id, status, reason, _utc(self._now())),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise PaperStoreError(f"intent {intent_id} already has an outcome") from exc
+
+    # Submissions
+
+    def record_submission(self, document: dict[str, Any]) -> None:
+        """Insert or update one submission; its intent may be submitted only once."""
+        validate_document(document)
+        now = _utc(self._now())
+        with self._connect() as db:
+            existing = db.execute(
+                "SELECT intent_id FROM order_submissions WHERE submission_id = ?",
+                (document["submission_id"],),
+            ).fetchone()
+            if existing is None:
+                try:
+                    db.execute(
+                        "INSERT INTO order_submissions VALUES (?, ?, ?, ?, ?, ?)",
+                        (
+                            document["submission_id"],
+                            document["intent_id"],
+                            document["status"],
+                            document["requested_at_utc"],
+                            _canonical(document),
+                            now,
+                        ),
+                    )
+                except sqlite3.IntegrityError as exc:
+                    raise PaperStoreError(
+                        f"intent {document['intent_id']} was already submitted"
+                    ) from exc
+            elif existing["intent_id"] != document["intent_id"]:
+                raise PaperStoreError("a submission cannot move to another intent")
+            else:
+                db.execute(
+                    "UPDATE order_submissions SET status = ?, document_json = ?, "
+                    "updated_at_utc = ? WHERE submission_id = ?",
+                    (document["status"], _canonical(document), now, document["submission_id"]),
+                )
+
+    def unknown_submission_count(self) -> int:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT count(*) FROM order_submissions WHERE status IN (?, ?)",
+                OPEN_SUBMISSION_STATUSES,
+            ).fetchone()
+        return int(row[0])
+
+    def submissions_between(self, start: datetime, end: datetime) -> int:
+        """Submissions requested in [start, end), for a daily order count."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT count(*) FROM order_submissions "
+                "WHERE requested_at_utc >= ? AND requested_at_utc < ?",
+                (_utc(start), _utc(end)),
+            ).fetchone()
+        return int(row[0])
+
+    def record_execution(self, document: dict[str, Any]) -> bool:
+        validate_document(document)
+        with self._connect() as db:
+            cursor = db.execute(
+                "INSERT OR IGNORE INTO paper_executions VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    document["execution_id"],
+                    document["broker_id"],
+                    document["broker_account_ref"],
+                    document["instrument_id"],
+                    _canonical(document),
+                    document["synced_at_utc"],
+                ),
+            )
+        return cursor.rowcount == 1
+
+    # Kill switch and arming
+
+    def _event(
+        self,
+        db: sqlite3.Connection,
+        event: str,
+        source: str,
+        reason: str | None = None,
+        approval: str | None = None,
+    ) -> None:
+        db.execute(
+            "INSERT INTO control_events (event, reason, source, approval_id, at_utc) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (event, reason, source, approval, _utc(self._now())),
+        )
+
+    def halt(self, reason: str, source: str) -> None:
+        """Kill switch: stop new orders and disarm. Resting orders are left alone."""
+        reason = reason.strip()[:200] or "halted"
+        with self._connect() as db:
+            db.execute(
+                "UPDATE control_state SET halted = 1, halted_reason = ?, armed = 0, "
+                "updated_at_utc = ? WHERE id = 1",
+                (reason, _utc(self._now())),
+            )
+            self._event(db, "halt", source, reason)
+
+    def release(self, source: str) -> None:
+        """Clear the kill switch. The runner stays disarmed until it is armed again."""
+        with self._connect() as db:
+            db.execute(
+                "UPDATE control_state SET halted = 0, halted_reason = NULL, armed = 0, "
+                "updated_at_utc = ? WHERE id = 1",
+                (_utc(self._now()),),
+            )
+            self._event(db, "release", source)
+
+    def arm(self, approval: str, source: str) -> None:
+        with self._connect() as db:
+            state = db.execute("SELECT halted FROM control_state WHERE id = 1").fetchone()
+            if state["halted"]:
+                raise PaperStoreError("the kill switch is on; release it before arming")
+            if (
+                db.execute("SELECT 1 FROM approvals WHERE approval_id = ?", (approval,)).fetchone()
+                is None
+            ):
+                raise PaperStoreError("arming needs a recorded approval")
+            db.execute(
+                "UPDATE control_state SET armed = 1, approval_id = ?, updated_at_utc = ? "
+                "WHERE id = 1",
+                (approval, _utc(self._now())),
+            )
+            self._event(db, "arm", source, approval=approval)
+
+    def disarm(self, source: str) -> None:
+        with self._connect() as db:
+            db.execute(
+                "UPDATE control_state SET armed = 0, updated_at_utc = ? WHERE id = 1",
+                (_utc(self._now()),),
+            )
+            self._event(db, "disarm", source)
+
+    def heartbeat(self) -> None:
+        with self._connect() as db:
+            db.execute(
+                "UPDATE control_state SET last_heartbeat_utc = ? WHERE id = 1",
+                (_utc(self._now()),),
+            )
+
+    def may_submit(self, approval: str) -> tuple[bool, str | None]:
+        """Checked again just before every submission."""
+        with self._connect() as db:
+            state = db.execute("SELECT * FROM control_state WHERE id = 1").fetchone()
+        if state["halted"]:
+            return False, "halted"
+        if not state["armed"] or state["approval_id"] != approval:
+            return False, "not_armed"
+        if self.unknown_submission_count() > 0:
+            return False, "unknown_submission_pending"
+        return True, None
+
+    def status(self) -> dict[str, Any]:
+        with self._connect() as db:
+            state = db.execute("SELECT * FROM control_state WHERE id = 1").fetchone()
+        document = {
+            "kind": "paper_runner_status",
+            "schema_version": "0.1",
+            "halted": bool(state["halted"]),
+            "halted_reason": state["halted_reason"],
+            "armed": bool(state["armed"]),
+            "approval_id": state["approval_id"],
+            "unknown_submission_count": self.unknown_submission_count(),
+            "last_heartbeat_utc": state["last_heartbeat_utc"],
+            "updated_at_utc": state["updated_at_utc"],
+        }
+        validate_document(document)
+        return document
