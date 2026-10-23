@@ -1865,6 +1865,7 @@
             "kiwoom",
             "meritz",
             "finra",
+            "ecos",
             "anthropic"
           ]
         },
@@ -1995,6 +1996,7 @@
                   "kiwoom",
                   "meritz",
                   "finra",
+                  "ecos",
                   "anthropic"
                 ]
               },
@@ -7140,6 +7142,7 @@
         "market_buffer_bps",
         "fee_rate",
         "fx",
+        "fx_source",
         "equity_basis",
         "max_signal_age_seconds"
       ],
@@ -7239,6 +7242,10 @@
               "type": "null"
             }
           ]
+        },
+        "fx_source": {
+          "enum": ["fixed", "bok_ecos"],
+          "description": "fixed: `fx` confirmed at approval; bok_ecos: the runner reads the Bank of Korea ECOS USD/KRW rate each day"
         },
         "equity_basis": {
           "anyOf": [

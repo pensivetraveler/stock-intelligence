@@ -263,3 +263,19 @@ def test_plan_for_another_account_is_refused(tmp_path: Path) -> None:
     runner, _, _, store = _setup(tmp_path)
     with pytest.raises(ValueError):
         PaperRunner(store, runner.broker, runner.feed, replace(runner.plan, broker_account_ref="x"))
+
+
+def test_ecos_rate_is_used_and_missing_rate_blocks(tmp_path: Path) -> None:
+    runner, fake, feed, store = _setup(tmp_path, fx=None, fx_source="bok_ecos")
+    feed.bars = _bars(99, 101)
+    report = runner.step(_end(feed))  # no ECOS reader: the amount limit cannot be checked
+    assert report.blocked == 1 and fake.orders == []
+
+    ecos = FxRate(Decimal("1385.2"), "BOK ECOS 731Y001/0000001 for 2026-10-22", START)
+    runner2, fake2, feed2, store2 = _setup(tmp_path / "b", fx=None, fx_source="bok_ecos")
+    runner2._fx_rate = lambda: ecos  # noqa: SLF001
+    feed2.bars = _bars(99, 101)
+    assert runner2.step(_end(feed2)).submitted == 1
+    intent = store2.intents(1)[0]["intent"]
+    assert intent["fx"]["krw_per_usd"] == "1385.2"
+    assert intent["fx"]["source"].startswith("BOK ECOS")

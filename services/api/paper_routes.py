@@ -15,7 +15,7 @@ import re
 from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -56,6 +56,8 @@ class ApprovalRequest(BaseModel):
     fee_rate: str = "0"
     krw_per_usd: str | None = None
     fx_source: str | None = Field(default=None, max_length=200)
+    # "fixed": krw_per_usd above; "bok_ecos": the runner reads the Bank of Korea rate daily.
+    fx_mode: Literal["fixed", "bok_ecos"] = "fixed"
     equity_basis: str | None = None
     max_signal_age_seconds: int = Field(default=300, ge=10, le=86_400)
 
@@ -202,6 +204,15 @@ def register_paper_routes(
             account_ref = kiwoom_account_ref(keys.secrets(record)["app_key"])
         except SecretStorageError as exc:
             return error_response(request, 422, "key_unreadable", str(exc))
+        if body.fx_mode == "bok_ecos":
+            if body.krw_per_usd is not None:
+                return error_response(
+                    request, 422, "invalid_approval", "ECOS rates replace krw_per_usd; omit it"
+                )
+            if not any(r.enabled for r in keys.list("ecos")):
+                return error_response(
+                    request, 422, "ecos_key_missing", "Register an ECOS key on the Keys screen"
+                )
         try:
             krw_per_usd = _decimal(body.krw_per_usd, "krw_per_usd")
             plan = RunPlan(
@@ -232,6 +243,7 @@ def register_paper_routes(
                 fx=None
                 if krw_per_usd is None
                 else FxRate(krw_per_usd, body.fx_source or "confirmed at approval", now()),
+                fx_source=body.fx_mode,
                 equity_basis=_decimal(body.equity_basis, "equity_basis"),
                 max_signal_age_seconds=body.max_signal_age_seconds,
             )

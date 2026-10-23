@@ -54,6 +54,7 @@ const APPROVAL: PaperApproval = {
   market_buffer_bps: "50",
   fee_rate: "0",
   fx: null,
+  fx_source: "fixed",
   equity_basis: null,
   max_signal_age_seconds: 300,
 };

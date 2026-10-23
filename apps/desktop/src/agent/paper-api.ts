@@ -20,6 +20,8 @@ export interface ApprovalRequest {
   market_buffer_bps: string;
   krw_per_usd: string | null;
   fx_source: string | null;
+  /** fixed: krw_per_usd; bok_ecos: the runner reads the Bank of Korea rate each day. */
+  fx_mode: "fixed" | "bok_ecos";
   equity_basis: string | null;
 }
 

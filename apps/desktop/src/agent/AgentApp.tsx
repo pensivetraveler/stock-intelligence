@@ -314,6 +314,7 @@ function ApprovalSection({
   const [instruments, setInstruments] = useState("us:aapl:xnas:2026 AAPL");
   const [amount, setAmount] = useState("1000000");
   const [rate, setRate] = useState("");
+  const [fxMode, setFxMode] = useState<"fixed" | "bok_ecos">("bok_ecos");
   const [equity, setEquity] = useState("");
   const [buffer, setBuffer] = useState("50");
   const [formError, setFormError] = useState<string | null>(null);
@@ -361,8 +362,13 @@ function ApprovalSection({
         credential_id: credentialId,
         max_order_amount_krw: amount.trim() === "" ? null : amount.trim(),
         market_buffer_bps: buffer.trim() || "50",
-        krw_per_usd: rate.trim() === "" ? null : rate.trim(),
-        fx_source: rate.trim() === "" ? null : "entered in SIW Agent",
+        krw_per_usd:
+          fxMode === "bok_ecos" || rate.trim() === "" ? null : rate.trim(),
+        fx_source:
+          fxMode === "bok_ecos" || rate.trim() === ""
+            ? null
+            : "entered in SIW Agent",
+        fx_mode: fxMode,
         equity_basis: equity.trim() === "" ? null : equity.trim(),
       });
       setFormError(null);
@@ -447,12 +453,26 @@ function ApprovalSection({
           />
         </label>
         <label>
-          {t("paper.approve.rate")}
-          <input
-            value={rate}
-            onChange={(event) => setRate(event.target.value)}
-          />
+          {t("paper.approve.fxMode")}
+          <select
+            value={fxMode}
+            onChange={(event) =>
+              setFxMode(event.target.value as "fixed" | "bok_ecos")
+            }
+          >
+            <option value="bok_ecos">{t("paper.approve.fxEcos")}</option>
+            <option value="fixed">{t("paper.approve.fxFixed")}</option>
+          </select>
         </label>
+        {fxMode === "fixed" && (
+          <label>
+            {t("paper.approve.rate")}
+            <input
+              value={rate}
+              onChange={(event) => setRate(event.target.value)}
+            />
+          </label>
+        )}
         <label>
           {t("paper.approve.buffer")}
           <input
