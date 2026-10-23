@@ -248,6 +248,30 @@ class JournalStore:
     def broker_fee_lines(self, instrument_id: str | None = None) -> list[dict[str, Any]]:
         return self._documents("broker_fee_lines", "settlement_date, line_id", instrument_id)
 
+    def broker_fee_amounts(self, instrument_id: str | None = None) -> list[dict[str, Any]]:
+        """Only the fields positions need from each fee line (`account_positions`), read
+        without parsing whole documents. Amounts stay decimal text."""
+        statement = (
+            "SELECT broker_account_ref, instrument_id, "
+            "json_extract(document_json, '$.commission'), json_extract(document_json, '$.tax') "
+            "FROM broker_fee_lines"
+        )
+        parameters: tuple[object, ...] = ()
+        if instrument_id is not None:
+            statement += " WHERE instrument_id = ?"
+            parameters = (instrument_id,)
+        with self._connect() as connection:
+            rows = connection.execute(statement, parameters).fetchall()
+        return [
+            {
+                "broker_account_ref": row[0],
+                "instrument_id": row[1],
+                "commission": row[2],
+                "tax": row[3],
+            }
+            for row in rows
+        ]
+
     def broker_executions(self, instrument_id: str | None = None) -> list[dict[str, Any]]:
         return self._documents(
             "broker_order_executions", "executed_at_utc, execution_id", instrument_id
