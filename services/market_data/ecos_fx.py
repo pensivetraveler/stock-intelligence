@@ -2,8 +2,9 @@
 
 Series 731Y001 (주요국 통화의 대원화환율), item 0000001 (원/미국달러 매매기준율), daily.
 Request: GET https://ecos.bok.or.kr/api/StatisticSearch/{key}/json/kr/1/{n}/731Y001/D/
-{start YYYYMMDD}/{end YYYYMMDD}/0000001. Shapes below follow the ECOS developer guide; they
-were not checked with a real key (no key is registered yet).
+{start YYYYMMDD}/{end YYYYMMDD}/0000001. Shapes below follow the ECOS developer guide and were
+confirmed with one real call on 2026-10-23 (1325.5 for 2026-10-22). Error codes other than
+INFO-200 were not seen live.
 
 - The key sits in the URL path, so no URL is ever logged or put in an error message, and
   httpx's own request log is turned down for this module's client.
