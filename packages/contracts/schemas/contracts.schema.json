@@ -164,6 +164,18 @@
     },
     {
       "$ref": "#/$defs/PaperRunnerStatus"
+    },
+    {
+      "$ref": "#/$defs/PaperApproval"
+    },
+    {
+      "$ref": "#/$defs/PaperApprovalListResponse"
+    },
+    {
+      "$ref": "#/$defs/PaperIntentListResponse"
+    },
+    {
+      "$ref": "#/$defs/PaperExecutionListResponse"
     }
   ],
   "$defs": {
@@ -7111,6 +7123,245 @@
         }
       },
       "description": "Kill-switch and arming state of the paper-order runner (ADR 0037)."
+    },
+    "PaperApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "approval_id",
+        "approved_at_utc",
+        "strategy",
+        "instruments",
+        "limits",
+        "broker_id",
+        "broker_account_ref",
+        "market_buffer_bps",
+        "fee_rate",
+        "fx",
+        "equity_basis",
+        "max_signal_age_seconds"
+      ],
+      "properties": {
+        "kind": {
+          "const": "paper_approval"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "approval_id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "approved_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "strategy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["strategy_id", "strategy_version", "definition_sha256"],
+          "properties": {
+            "strategy_id": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "strategy_version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "definition_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        },
+        "instruments": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["instrument_id", "symbol", "time_zone"],
+            "properties": {
+              "instrument_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "symbol": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              },
+              "time_zone": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            }
+          }
+        },
+        "limits": {
+          "$ref": "#/$defs/PaperOrderLimits"
+        },
+        "broker_id": {
+          "enum": ["kiwoom", "kis"]
+        },
+        "broker_account_ref": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "market_buffer_bps": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "fee_rate": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "fx": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["krw_per_usd", "source", "as_of_utc"],
+              "properties": {
+                "krw_per_usd": {
+                  "$ref": "#/$defs/NonNegativeDecimalString"
+                },
+                "source": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "as_of_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "equity_basis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_signal_age_seconds": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 86400
+        }
+      },
+      "description": "One user approval of a paper-trading plan; its ID is the SHA-256 of its content (ADR 0037)."
+    },
+    "PaperApprovalListResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "approvals"],
+      "properties": {
+        "kind": {
+          "const": "paper_approval_list_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "approvals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PaperApproval"
+          }
+        }
+      }
+    },
+    "PaperIntentListResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "intents"],
+      "properties": {
+        "kind": {
+          "const": "paper_intent_list_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "intents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["intent", "outcome", "submission"],
+            "properties": {
+              "intent": {
+                "$ref": "#/$defs/PaperOrderIntent"
+              },
+              "outcome": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["status", "reason"],
+                    "properties": {
+                      "status": {
+                        "enum": ["submitted", "blocked", "expired"]
+                      },
+                      "reason": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 400
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "submission": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/PaperOrderSubmission"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "description": "Recent paper-order intents with their outcome and submission (ADR 0037)."
+    },
+    "PaperExecutionListResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "executions"],
+      "properties": {
+        "kind": {
+          "const": "paper_execution_list_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "executions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PaperExecution"
+          }
+        }
+      },
+      "description": "Simulated paper fills; never real executions (ADR 0037)."
     }
   }
 }

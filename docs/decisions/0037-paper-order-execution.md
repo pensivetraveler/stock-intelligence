@@ -243,7 +243,7 @@ kiwoom-spec MCP 서버(공식 REST 스펙 색인, 읽기 전용)의 `spec_search
 
 ```
 launchd (사용자 LaunchAgent: com.pensivetraveler.siw.agent.runner)
- └─ 실행기 (uv run python -m services.paper_trading.runner)   ← 앱과 무관하게 상주
+ └─ 실행기 (uv run python -m services.paper_trading.service)   ← 앱과 무관하게 상주
        ├─ 봉 조회 (기존 bar service, 확정 봉만)
        ├─ 전략 평가 (기존 샌드박스)
        ├─ 의도 기록 → 한도 검사 → 증권사 모의 adapter (키움 / KIS)
@@ -388,6 +388,25 @@ Research에서 승인된 전략 버전을 "Agent에서 실행"으로 넘기는 �
   - 실행 계획(`RunPlan`)의 내용 해시가 승인 ID다. 다른 증권사 계정의 계획은 거부한다.
 - **계약 변경:** 결과 미확인(`unknown`) 제출은 응답 시각이 없을 수 있다. 응답 대기에는 응답 시각이 없고, 접수·거절에는 있다.
 - **아직 없는 것(P3):** 실제 봉 공급원 연결, 키체인에서 키 읽기, LaunchAgent·`launchctl`, API·화면, 미체결 주문 만료 취소, 일 손실 계산, 환율 출처.
+
+## P3a 구현(2026-10-23, 사용자 승인 "모두 진행")
+
+백엔드 연결이다. 실제 키움 호출은 여전히 없다: 검증된 시장이 기록되지 않으면 모든 주문이 한도 검사에서 막힌다.
+
+- **봉 공급원(`feed.py`, `ServiceBarFeed`):** 차트·백테스트와 같은 bar service를 백테스트 로더(`load_instrument`)로 읽는다. 최근 7일의 정규장을 `now`를 시점 기준(as-of)으로 읽어, 그때 공개되지 않은 봉은 보이지 않는다. 출처·feed·수정주가·리비전이 둘 이상 섞이면 거부한다.
+- **상주 실행기(`service.py`):** `uv run python -m services.paper_trading.service [--data-dir] [--interval-seconds 10] [--once]`.
+  - 미무장·정지 중에는 heartbeat만 쓴다. 봉을 읽지 않고 증권사도 부르지 않는다.
+  - 무장되면 승인 내용으로 계획을 다시 만든다(전략 정의가 승인한 SHA-256과 다르면 거부). 키 저장소에서 계획의 계좌와 맞는 **활성 키움 `demo` 키**만 메모리로 읽는다.
+  - adapter의 지원 시장은 `market_verifications` 표에 기록된 시장뿐이다(migration 0002). 기록은 P4에서 사용자 승인 아래 첫 모의 주문을 확인한 뒤에만 한다.
+  - 모의 도메인 밖이나 허용목록 밖으로 나가려는 요청이 생기면 킬 스위치를 켠다. 그 밖의 오류는 기록하고 다음 회차에 다시 시도한다.
+- **API(`services/api/paper_routes.py`):** 주문 엔드포인트는 없다.
+  - 읽기: `GET /v1/paper/status`, `/v1/paper/approvals`, `/v1/paper/intents?limit=`, `/v1/paper/executions?limit=`.
+  - 시작 쪽(`POST /v1/paper/approvals`, `/arm`, `/release`)은 Tauri 출처(`tauri://localhost`)만 받고, 다른 출처는 403이다.
+  - 멈추는 쪽(`POST /v1/paper/kill`, `/disarm`)은 어느 호출자든 받는다. 멈추는 것은 언제나 안전하기 때문이다.
+  - 승인 요청: 전략 ID·버전, 종목(키움 거래소 코드가 있는 미국 상장만), 키움 `demo` 키의 credential ID, 한도(1건 기본 100만 원, 나머지 기본 없음), 시장가 버퍼(기본 50bp), 수수료율, 환율(사용자가 입력, 출처와 승인 시각 기록), 자산 비율용 고정 자산, 신호 최대 나이. 실행기가 돌릴 수 없는 전략(Python, 손절·익절)은 승인 단계에서 거부한다. 계좌 참조는 앱 키 해시이며 키 값은 응답에 없다.
+- **계약:** `paper_approval`, `paper_approval_list_response`, `paper_intent_list_response`, `paper_execution_list_response`.
+- **환율 출처(결정):** 실행 승인 때 사용자가 입력한 고정 환율을 쓴다. 출처 문구와 승인 시각을 의도에 남긴다. 키움 `exch_rate`는 실제 응답을 확인하지 않아 쓰지 않는다.
+- **아직 없는 것(P3b):** Tauri 본체의 API 기동·LaunchAgent 설치·`launchctl` 정지, `dist-agent`/`dist-research` 빌드 분리, Agent 화면.
 
 ## Test plan
 

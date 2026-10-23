@@ -324,6 +324,19 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
         if (document["executed_at_utc"] is None) != (document["time_meaning"] == "time_unresolved"):
             errors.append("executed_at_utc is null exactly when its time is unresolved")
 
+    if kind == "paper_intent_list_response":
+        for item in document["intents"]:
+            errors.extend(semantic_errors(item["intent"]))
+            submission = item["submission"]
+            if submission is not None:
+                errors.extend(semantic_errors(submission))
+                if submission["intent_id"] != item["intent"]["intent_id"]:
+                    errors.append("a listed submission must belong to its intent")
+
+    if kind == "paper_execution_list_response":
+        for execution in document["executions"]:
+            errors.extend(semantic_errors(execution))
+
     if kind == "paper_runner_status":
         if document["armed"] and (document["halted"] or document["approval_id"] is None):
             errors.append("an armed runner must be unhalted and name its approval")

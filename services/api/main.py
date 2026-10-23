@@ -30,6 +30,7 @@ from services.api.backtest_routes import register_backtest_routes
 from services.api.credential_routes import register_credential_routes
 from services.api.indicator_routes import register_indicator_routes
 from services.api.journal_routes import register_import_routes, register_journal_routes
+from services.api.paper_routes import register_paper_routes
 from services.backtest.jobs import BacktestRunner
 from services.backtest.store import BacktestStore
 from services.credentials.catalog import adapter_settings
@@ -104,6 +105,7 @@ from services.market_data.toss_session import (
     session_for,
 )
 from services.market_data.toss_stream import Connect, RealtimeHub, default_connect
+from services.paper_trading.store import PaperOrderStore
 from services.public_sources.finra import FinraCredential
 from services.public_sources.sources import PublicSources
 
@@ -1242,6 +1244,27 @@ def create_app(
     )
 
     register_backtest_routes(application, runner=backtests.get, error_response=_error_response)
+    paper_holder: list[PaperOrderStore | None] = [None]
+
+    def paper_store() -> PaperOrderStore | None:
+        if paper_holder[0] is None:
+            configured = os.getenv("SIW_DATA_DIR", "").strip()
+            if configured:
+                paper_holder[0] = PaperOrderStore(Path(configured))
+        return paper_holder[0]
+
+    def strategy_lookup() -> Callable[[str, int], dict[str, Any]] | None:
+        jobs = backtests.get()
+        return None if jobs is None else jobs.store.strategy
+
+    register_paper_routes(
+        application,
+        store=paper_store,
+        credentials=credentials.get,
+        strategies=strategy_lookup,
+        now=clock,
+        error_response=_error_response,
+    )
     register_indicator_routes(
         application, store=custom_indicators.get, error_response=_error_response
     )
