@@ -422,6 +422,7 @@ Research에서 승인된 전략 버전을 "Agent에서 실행"으로 넘기는 �
   - 시작할 때 127.0.0.1:8765가 응답하지 않으면 저장소에서 `uv run uvicorn services.api.main:app …`(있으면 `--env-file .env`)을 띄운다. 저장소는 `SIW_REPO_DIR` → `~/Library/Application Support/com.pensivetraveler.siw.agent/settings.json`의 `repo_dir` → 앱을 빌드한 저장소 순서로 찾는다. 로그는 `~/Library/Logs/siw-agent/api.log`. 종료 때 자기가 띄운 API만 멈춘다.
   - 명령 `runner_state`, `runner_install`, `runner_stop`, `runner_uninstall`. 설치는 `~/Library/LaunchAgents/com.pensivetraveler.siw.agent.runner.plist`를 쓰고 `launchctl bootstrap gui/<uid>`로 올린다. plist에는 uv 경로, `python -m services.paper_trading.service`(`--env-file .env`), 작업 폴더, `UV_CACHE_DIR`, 로그 경로(`runner.log`)만 있고 키는 없다. 로그인 때 시작하고 비정상 종료 때 다시 띄운다(`KeepAlive.SuccessfulExit=false`, 30초 간격).
   - 앱을 꺼도 상주 실행기는 계속 돈다.
+- **실제 확인(2026-10-23):** 앱 실행 시 API 자동 기동, 앱 창의 킬 스위치·해제 요청(해제는 `tauri://localhost` 출처 전용이라 앱 출처 전달 확인), LaunchAgent 설치→`launchctl` 실행→제거를 이 Mac에서 확인했다. 자세한 기록은 PROJECT_STATE.
 - **실행기 `--env-file`:** LaunchAgent는 셸 없이 실행기를 띄우므로, 저장소 `.env`의 `KEY=VALUE`를 이미 설정되지 않은 값만 채운다. 값은 기록하지 않는다.
 
 ## 환율: 한국은행 ECOS(2026-10-23, 사용자 결정)

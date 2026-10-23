@@ -1542,7 +1542,13 @@
   - 그래서 고른 주문이 그 계좌·종목에서 앞뒤 10일 안의 유일한 주문일 때만 그 기간 정산 행 수수료를 더한다(`settlement_fees` 사실). 아니면 더하지 않고 이유를 불확실성에 적는다. Agent 버전 `chart-trade-review-3`.
 - **검증:** `verify.sh` exit 0(pytest 723개, Vitest 86개·239개). ECOS 클라이언트 8개, 정산 수수료 2개, 실행기·API의 ECOS 경로 2개를 추가했다.
 - **실수:** 확인용 `sqlite3` 조회가 `data/paper_orders.sqlite3` 빈 파일(0바이트)을 만들어 바로 지웠다.
-- **남은 일:** P3b 미검증 항목(앱 실행 시 API 자동 기동, LaunchAgent 설치→기동 확인→제거, Tauri 출처 쓰기 요청)은 메인 세션의 Tauri 빌드 준비 알림 뒤에 한다.
+- **P3b 앱 확인(2026-10-23, 사용자 승인: 8765 API 잠시 정지, LaunchAgent "시험 후 제거"):**
+  - 준비: 이 worktree에서 `tauri build --no-bundle`(1분 43초, exit 0). worktree에 시험용 `.env`(`SIW_DATA_DIR`=스크래치 폴더)를 두어 실제 데이터를 쓰지 않았고, 확인 후 지웠다. 사용자의 8765 API(메인 체크아웃)는 SIGTERM으로 멈췄다.
+  - **API 자동 기동:** 앱 바이너리를 실행하자 앱이 worktree에서 `uv run uvicorn`을 띄웠고 `/health` 200. 화면이 5초마다 `/v1/paper/status`·`approvals`·`intents`·`executions`를 읽었다.
+  - **앱 출처 쓰기 요청:** 이 세션에 화면 제어 도구가 없어 사용자가 창에서 눌렀다. 킬 스위치 `OPTIONS`·`POST /v1/paper/kill` 200(상태 "kill switch pressed in SIW Agent"). **킬 스위치 해제** `POST /v1/paper/release` 200, 기록 출처 `agent_app` — 이 엔드포인트는 `tauri://localhost` 출처만 받으므로 앱의 출처가 맞게 전달됨을 확인했다.
+  - **LaunchAgent:** "설치하고 시작" → `runner.log`에 16:53:38 "paper runner started"(스크래치 데이터), "idle", heartbeat 07:53:58Z. "제거" → 16:54:00 "paper runner stopped", plist 없음, `launchctl print`에 서비스 없음. 주문·키움 호출 없음.
+  - 정리: 앱을 닫자 앱이 띄운 API도 내려갔다(8765 비어 있음). 사용자의 API를 같은 명령(`UV_CACHE_DIR=.uv-cache uv run uvicorn services.api.main:app --host 127.0.0.1 --port 8765 --env-file .env`, 메인 체크아웃)으로 앱 Terminal 탭에서 다시 띄웠고 `/health` 200.
+  - 아직 미검증: 서명·공증된 `.app` 번들에서의 같은 동작(이번에는 서명 없는 바이너리를 직접 실행했다).
 
 ## 상태 변경 양식
 
