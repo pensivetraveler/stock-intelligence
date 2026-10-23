@@ -512,9 +512,15 @@ export function semanticErrors(document: Document): string[] {
     ) {
       errors.push("a submission cannot be answered before it was requested");
     }
-    if ((document.status === "pending_response") !== (responded === null)) {
+    if (document.status === "pending_response" && responded !== null) {
+      errors.push("a pending submission has no response time");
+    }
+    if (
+      (document.status === "accepted" || document.status === "rejected") &&
+      responded === null
+    ) {
       errors.push(
-        "responded_at_utc is null exactly while the response is pending",
+        "an accepted or rejected submission records when it was answered",
       );
     }
     if (document.status === "accepted" && document.broker_order_ref === null) {

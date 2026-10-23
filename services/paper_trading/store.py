@@ -12,6 +12,7 @@ import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -178,6 +179,57 @@ class PaperOrderStore:
                 (_utc(start), _utc(end)),
             ).fetchone()
         return int(row[0])
+
+    def approval(self, approval: str) -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT content_json FROM approvals WHERE approval_id = ?", (approval,)
+            ).fetchone()
+        return None if row is None else dict(json.loads(row["content_json"]))
+
+    def submissions(self, *statuses: str) -> list[dict[str, Any]]:
+        marks = ",".join("?" for _ in statuses)
+        with self._connect() as db:
+            rows = db.execute(
+                f"SELECT document_json FROM order_submissions WHERE status IN ({marks}) "
+                "ORDER BY requested_at_utc, submission_id",
+                statuses,
+            ).fetchall()
+        return [dict(json.loads(row["document_json"])) for row in rows]
+
+    def known_order_refs(self) -> set[str]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT json_extract(document_json, '$.broker_order_ref') FROM order_submissions"
+            ).fetchall()
+        return {str(row[0]) for row in rows if row[0] is not None}
+
+    def accepted_without_execution(self) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT s.document_json FROM order_submissions s WHERE s.status = 'accepted' "
+                "AND NOT EXISTS (SELECT 1 FROM paper_executions e WHERE "
+                "json_extract(e.document_json, '$.broker_order_ref') = "
+                "json_extract(s.document_json, '$.broker_order_ref') "
+                "AND e.broker_account_ref = json_extract(s.document_json, '$.broker_account_ref'))"
+                " ORDER BY s.requested_at_utc"
+            ).fetchall()
+        return [dict(json.loads(row["document_json"])) for row in rows]
+
+    def position_quantity(self, broker_account_ref: str, instrument_id: str) -> Decimal:
+        """Shares held from paper fills of one account (buys minus sells)."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT document_json FROM paper_executions "
+                "WHERE broker_account_ref = ? AND instrument_id = ?",
+                (broker_account_ref, instrument_id),
+            ).fetchall()
+        total = Decimal(0)
+        for row in rows:
+            document = json.loads(row["document_json"])
+            quantity = Decimal(document["quantity"])
+            total += quantity if document["side"] == "buy" else -quantity
+        return total
 
     def record_execution(self, document: dict[str, Any]) -> bool:
         validate_document(document)

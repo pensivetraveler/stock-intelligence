@@ -311,8 +311,10 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
         responded = document["responded_at_utc"]
         if responded is not None and _utc(responded) < _utc(document["requested_at_utc"]):
             errors.append("a submission cannot be answered before it was requested")
-        if (document["status"] == "pending_response") != (responded is None):
-            errors.append("responded_at_utc is null exactly while the response is pending")
+        if document["status"] == "pending_response" and responded is not None:
+            errors.append("a pending submission has no response time")
+        if document["status"] in ("accepted", "rejected") and responded is None:
+            errors.append("an accepted or rejected submission records when it was answered")
         if document["status"] == "accepted" and document["broker_order_ref"] is None:
             errors.append("an accepted submission must carry the broker's order reference")
 
