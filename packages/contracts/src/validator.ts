@@ -547,6 +547,26 @@ export function semanticErrors(document: Document): string[] {
     }
   }
 
+  if (document.kind === "paper_intent_list_response") {
+    for (const item of document.intents as Document[]) {
+      const intent = item.intent as Document;
+      errors.push(...semanticErrors(intent));
+      const submission = item.submission as Document | null;
+      if (submission !== null) {
+        errors.push(...semanticErrors(submission));
+        if (submission.intent_id !== intent.intent_id) {
+          errors.push("a listed submission must belong to its intent");
+        }
+      }
+    }
+  }
+
+  if (document.kind === "paper_execution_list_response") {
+    for (const execution of document.executions as Document[]) {
+      errors.push(...semanticErrors(execution));
+    }
+  }
+
   if (document.kind === "paper_runner_status") {
     if (
       document.armed === true &&

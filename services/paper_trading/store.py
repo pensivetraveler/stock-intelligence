@@ -247,6 +247,62 @@ class PaperOrderStore:
             )
         return cursor.rowcount == 1
 
+    def latest_approvals(self, limit: int = 20) -> list[tuple[str, str, dict[str, Any]]]:
+        """(approval ID, approved at, content), newest first."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT * FROM approvals ORDER BY approved_at_utc DESC, approval_id LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            (row["approval_id"], row["approved_at_utc"], dict(json.loads(row["content_json"])))
+            for row in rows
+        ]
+
+    def intents(self, limit: int = 100) -> list[dict[str, Any]]:
+        """Newest intents with their outcome and submission, for the Agent screen."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT i.document_json AS intent, o.status, o.reason, s.document_json AS sub "
+                "FROM order_intents i LEFT JOIN intent_outcomes o USING (intent_id) "
+                "LEFT JOIN order_submissions s USING (intent_id) "
+                "ORDER BY i.created_at_utc DESC, i.intent_id LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "intent": json.loads(row["intent"]),
+                "outcome": None
+                if row["status"] is None
+                else {"status": row["status"], "reason": row["reason"]},
+                "submission": None if row["sub"] is None else json.loads(row["sub"]),
+            }
+            for row in rows
+        ]
+
+    def executions(self, limit: int = 200) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT document_json FROM paper_executions "
+                "ORDER BY synced_at_utc DESC, execution_id LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(json.loads(row["document_json"])) for row in rows]
+
+    def verify_market(self, broker_id: str, market: str, evidence: str) -> None:
+        with self._connect() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO market_verifications VALUES (?, ?, ?, ?)",
+                (broker_id, market, evidence[:500], _utc(self._now())),
+            )
+
+    def verified_markets(self, broker_id: str) -> frozenset[str]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT market FROM market_verifications WHERE broker_id = ?", (broker_id,)
+            ).fetchall()
+        return frozenset(str(row["market"]) for row in rows)
+
     # Kill switch and arming
 
     def _event(

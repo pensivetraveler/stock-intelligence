@@ -25,6 +25,7 @@ from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo
 
 from services.backtest.data import EngineBar
+from services.backtest.strategy import fingerprint
 from services.paper_trading.brokers.base import OrderNotSupportedError, PaperBroker
 from services.paper_trading.intent import (
     FxRate,
@@ -77,7 +78,8 @@ class RunPlan:
                 "definition_sha256": self.strategy.definition_sha256,
             },
             "instruments": [
-                [item.instrument_id, item.symbol, item.time_zone] for item in self.instruments
+                {"instrument_id": i.instrument_id, "symbol": i.symbol, "time_zone": i.time_zone}
+                for i in self.instruments
             ],
             "limits": self.limits.document(),
             "broker_id": self.broker_id,
@@ -86,10 +88,60 @@ class RunPlan:
             "fee_rate": str(self.fee_rate),
             "fx": None
             if self.fx is None
-            else [str(self.fx.krw_per_usd), self.fx.source, _utc(self.fx.as_of_utc)],
+            else {
+                "krw_per_usd": str(self.fx.krw_per_usd),
+                "source": self.fx.source,
+                "as_of_utc": _utc(self.fx.as_of_utc),
+            },
             "equity_basis": None if self.equity_basis is None else str(self.equity_basis),
             "max_signal_age_seconds": self.max_signal_age_seconds,
         }
+
+
+def plan_from_approval(content: dict[str, Any], definition: dict[str, Any]) -> RunPlan:
+    """Rebuild an approved plan; the definition must hash to the approved SHA-256."""
+    strategy = content["strategy"]
+    if fingerprint(definition) != strategy["definition_sha256"]:
+        raise ValueError("the strategy definition does not match the approved SHA-256")
+    limits = content["limits"]
+
+    def number(value: str | None) -> Decimal | None:
+        return None if value is None else Decimal(value)
+
+    fx = content["fx"]
+    return RunPlan(
+        strategy=StrategyRef(
+            strategy["strategy_id"],
+            int(strategy["strategy_version"]),
+            strategy["definition_sha256"],
+            "rules",
+        ),
+        definition=definition,
+        instruments=tuple(
+            InstrumentPlan(item["instrument_id"], item["symbol"], item["time_zone"])
+            for item in content["instruments"]
+        ),
+        limits=PaperLimits(
+            allowed_instrument_ids=tuple(limits["allowed_instrument_ids"]),
+            max_order_amount_krw=number(limits["max_order_amount_krw"]),
+            max_daily_orders=limits["max_daily_orders"],
+            max_daily_loss_rate=number(limits["max_daily_loss_rate"]),
+            max_position_amount_krw=number(limits["max_position_amount_krw"]),
+        ),
+        broker_id=content["broker_id"],
+        broker_account_ref=content["broker_account_ref"],
+        market_buffer_bps=Decimal(content["market_buffer_bps"]),
+        fee_rate=Decimal(content["fee_rate"]),
+        fx=None
+        if fx is None
+        else FxRate(
+            Decimal(fx["krw_per_usd"]),
+            fx["source"],
+            datetime.fromisoformat(fx["as_of_utc"].replace("Z", "+00:00")),
+        ),
+        equity_basis=number(content["equity_basis"]),
+        max_signal_age_seconds=int(content["max_signal_age_seconds"]),
+    )
 
 
 @dataclass(frozen=True)

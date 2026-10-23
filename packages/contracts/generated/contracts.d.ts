@@ -54,7 +54,11 @@ export type StockIntelligenceWorkstationContractsV01 =
   | PaperOrderIntent
   | PaperOrderSubmission
   | PaperExecution
-  | PaperRunnerStatus;
+  | PaperRunnerStatus
+  | PaperApproval
+  | PaperApprovalListResponse
+  | PaperIntentListResponse
+  | PaperExecutionListResponse;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -3927,4 +3931,74 @@ export interface PaperRunnerStatus {
   unknown_submission_count: number;
   last_heartbeat_utc: UtcTimestamp | null;
   updated_at_utc: UtcTimestamp;
+}
+/**
+ * One user approval of a paper-trading plan; its ID is the SHA-256 of its content (ADR 0037).
+ */
+export interface PaperApproval {
+  kind: "paper_approval";
+  schema_version: SchemaVersion;
+  approval_id: string;
+  approved_at_utc: UtcTimestamp;
+  strategy: {
+    strategy_id: Identifier;
+    strategy_version: number;
+    definition_sha256: string;
+  };
+  /**
+   * @minItems 1
+   * @maxItems 50
+   */
+  instruments: [
+    {
+      instrument_id: Identifier;
+      symbol: string;
+      time_zone: string;
+    },
+    ...{
+      instrument_id: Identifier;
+      symbol: string;
+      time_zone: string;
+    }[],
+  ];
+  limits: PaperOrderLimits;
+  broker_id: "kiwoom" | "kis";
+  broker_account_ref: Identifier;
+  market_buffer_bps: NonNegativeDecimalString;
+  fee_rate: NonNegativeDecimalString;
+  fx: {
+    krw_per_usd: NonNegativeDecimalString;
+    source: string;
+    as_of_utc: UtcTimestamp;
+  } | null;
+  equity_basis: NonNegativeDecimalString | null;
+  max_signal_age_seconds: number;
+}
+export interface PaperApprovalListResponse {
+  kind: "paper_approval_list_response";
+  schema_version: SchemaVersion;
+  approvals: PaperApproval[];
+}
+/**
+ * Recent paper-order intents with their outcome and submission (ADR 0037).
+ */
+export interface PaperIntentListResponse {
+  kind: "paper_intent_list_response";
+  schema_version: SchemaVersion;
+  intents: {
+    intent: PaperOrderIntent;
+    outcome: {
+      status: "submitted" | "blocked" | "expired";
+      reason: string | null;
+    } | null;
+    submission: PaperOrderSubmission | null;
+  }[];
+}
+/**
+ * Simulated paper fills; never real executions (ADR 0037).
+ */
+export interface PaperExecutionListResponse {
+  kind: "paper_execution_list_response";
+  schema_version: SchemaVersion;
+  executions: PaperExecution[];
 }
