@@ -44,3 +44,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0028-electron-desktop-shell.md`: Electron 데스크톱 셸 — siw://app 출처로 화면 제공, 로컬 API는 저장소에서 찾거나 실행(번들 안 함), 서명 없는 x64 .app/.dmg
 - `0035-alpaca-default-us-provider.md`: Alpaca(SIP·BOATS)를 미국 시세·종목 검색·기업 행위의 기본 공급업체로 선정(사용자 결정, 코드 기본값은 합성 데이터 유지), Massive는 미검증 대체 후보
 - `0036-desktop-app-roles.md`: 데스크톱 앱 역할 분리 — Tauri(SIW Agent)는 승인된 전략 실행·단계별 주문 Gate(첫 단계 KIS 모의투자만), Electron(SIW Research)은 사용자·AI 연구·백테스트(주문 없음)
+- `0037-paper-order-execution.md`: (accepted) SIW Agent 단계 1 설계 — 모의투자 주문(키움 먼저, KIS 다음), 증권사 중립 의도 계약·adapter, 별도 모의 원장, 주문 의도 계약, 실계좌 도메인 코드 차단, 한도·킬 스위치, 별도 실행기 프로세스, 화면 빌드 분리
