@@ -36,7 +36,7 @@ The Kiwoom sync (ADR 0029) could not match 728 tickers (33,896 orders) to the sy
    - **The year:** the year it was renamed away when known, otherwise the year of its first trade seen. Later trades of the same company reuse that ID.
    - **Charts:** `asof` and the Alpaca ticker are looked up per instrument, not per ticker, so today's S keeps its own chart.
    - **Added after review:** a first version shared one ID per ticker. Today's DXF chart then took the 2023 company's `asof`.
-6. **Not resolved:** a ticker an active company uses now, which another company used at D without a recorded rename or exchange move, is not detected. It resolves as normal (rule 3). This is a known limitation.
+6. **Not resolved automatically:** a ticker an active company uses now, which another company used at D without a recorded rename or exchange move, is not detected. It resolves as normal (rule 3). A price check can find such cases, and a registry entry with `reused_on` then fixes them (follow-up 2026-10-23).
 
 ### Charts
 
@@ -65,9 +65,12 @@ The Kiwoom sync (ADR 0029) could not match 728 tickers (33,896 orders) to the sy
   - **NYSE American:** 27 tape B instruments crossed there. With the user's approval they moved from XNAS to XASE. Backups were made first: `journal-before-xase-rekey-20261023T075532Z.sqlite3` and the registry copy. Their 1,652 executions (1,629 Kiwoom, 23 Toss) and 1,014 fee lines were deleted and synced again, with the same execution and line IDs and no conflicts. Row counts are unchanged, and no row uses the old IDs.
   - **Nasdaq:** 397 tape C instruments crossed on Nasdaq. With the user's approval they are now marked verified at XNAS (registry only).
   - **Still unverified:** 10 tape B instruments without a cross, 1 that crossed on another venue, 25 tape C ones without a Nasdaq cross, and 18 without data.
-- **Ticker reuse without a record (rule 6): evaluated, not implemented.**
-  - **Method:** every stored US fill without a resolution was compared with the raw SIP 1-hour bars in the hour around it. Day-market fills were excluded.
-  - **Result:** see PROJECT_STATE. A first pass with daily bars flagged hundreds of instruments, but these were extended-hours fills outside the regular-session range, not reuse.
+- **Ticker reuse (rule 6): evaluated by price.**
+  - **Method:** every stored US fill without a resolution was compared with the raw SIP 1-hour bars in the hour around it, three hours in all. Day-market fills were excluded. A first pass with daily bars flagged hundreds of instruments, but those were extended-hours fills outside the regular-session range.
+  - **Result:** 69,855 fills were checked and 16 fell outside their bars. One instrument was a real case. STRR: 8 Kiwoom fills on 2023-05-05 at about $1, while the STRR chart showed about $22. The old Star Equity merged away on 2025-08-22, and Hudson Global renamed HSON→STRR on 2025-09-05. The trade side had no rename away, so rules 1–5 kept the fills on today's STRR. The other 3 flagged instruments had 1–2 fills each outside.
+  - **A rule from the renames alone was rejected.** It would say "a rename into S after D means S belonged to another company on D". It matched 1,336 fills on 37 tickers. Toss reports today's ticker, so its trades all match (META for FB fills). Kiwoom fills such as WORX and CXAI matched their charts by price.
+  - **Registry field `reused_on`:** a registry entry may carry the date another company took its ticker. A trade in that ticker before that date resolves to the entry (`delisted`), ahead of rule 3. With the user's approval, STRR.D23 was registered (`reused_on` 2025-09-05, `asof` 2023-05-05). Its 8 executions and 6 fee lines were re-keyed to `us:strr.d23:xnas:2026` after a backup (`journal-before-strr-rekey-20261023T084502Z.sqlite3`).
+  - **Not automated:** the price check is a manual maintenance step, because it needs bar requests for every instrument (about 2,500).
 
 ## Alternatives considered
 

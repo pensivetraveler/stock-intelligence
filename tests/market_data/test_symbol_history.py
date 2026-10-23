@@ -247,6 +247,39 @@ def test_a_reused_ticker_keeps_todays_company_apart(tmp_path: Path) -> None:
         register(None)
 
 
+def test_a_ticker_taken_over_after_a_merger_keeps_older_trades_apart(tmp_path: Path) -> None:
+    registry = tmp_path / "symbols" / "delisted-instruments.json"
+    registry.parent.mkdir(parents=True)
+    registry.write_text(
+        json.dumps(
+            {
+                "STRR.D23": {
+                    "venue": "XNAS",
+                    "venue_verified": False,
+                    "asof": "2023-05-05",
+                    "name": None,
+                    "moved_to": None,
+                    "delisted_on": None,
+                    "ticker": "STRR",
+                    "reused_on": "2025-09-05",
+                }
+            }
+        )
+    )
+    found = history(tmp_path)
+    listed = {**LISTED, "STRR": "XNAS"}.get
+    old = found.resolve("STRR", date(2023, 6, 1), listed)
+    assert (old.kind, old.symbol) == ("delisted", "STRR.D23")
+    assert found.resolve("STRR", date(2025, 10, 1), listed).kind == "listed"
+    stored = json.loads(registry.read_text())["STRR.D23"]
+    assert (stored["asof"], stored["reused_on"]) == ("2023-06-01", "2025-09-05")
+    register(found)
+    try:
+        assert (asof_for("STRR.D23"), ticker_for("STRR.D23")) == (date(2023, 6, 1), "STRR")
+    finally:
+        register(None)
+
+
 def test_a_verified_venue_in_the_registry_is_kept(tmp_path: Path) -> None:
     found = history(tmp_path)
     found.resolve("DEVS", date(2025, 1, 2), LISTED.get)
