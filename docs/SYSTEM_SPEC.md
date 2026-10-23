@@ -5,7 +5,7 @@
 
 ## 1. Mission and boundaries
 
-Build a local-first US equities desktop workstation for chart-centered trade review, hypothetical trade scenarios, indicator development, and evidence-grounded collaboration with specialized AI agents. The user retains trading decisions. Order execution was out of scope until 2026-10-23, when the user re-scoped it ([ADR 0036](decisions/0036-desktop-app-roles.md)): the Tauri app (SIW Agent) runs approved strategies and may place orders through staged gates, starting with Korea Investment (KIS) paper trading only. The Electron app (SIW Research) is for research and backtesting and places no orders.
+Build a local-first US equities desktop workstation for chart-centered trade review, hypothetical trade scenarios, indicator development, and evidence-grounded collaboration with specialized AI agents. The user retains trading decisions. Order execution was out of scope until 2026-10-23, when the user re-scoped it ([ADR 0036](decisions/0036-desktop-app-roles.md)): the Tauri app (SIW Agent) runs approved strategies and may place orders through staged gates, starting with paper trading only: Kiwoom first, then Korea Investment (KIS) once its API is registered. Code can reach only each broker's paper-trading domain. The Electron app (SIW Research) is for research and backtesting and places no orders.
 
 ## 2. Confirmed requirements
 
