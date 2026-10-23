@@ -254,6 +254,7 @@ class KiwoomPaperBroker:
             if side is None or not reference:
                 continue
             filled = _decimal(row.get("cntr_qty"))
+            original = str(row.get("orig_ord_no") or "").strip()
             orders.append(
                 BrokerOrder(
                     broker_order_ref=reference,
@@ -267,6 +268,7 @@ class KiwoomPaperBroker:
                     status_text=str(row.get("ord_stat", ""))[:40],
                     ordered_at_local=str(row.get("ord_time") or "") or None,
                     filled_at_local=str(row.get("cntr_time") or "") or None,
+                    original_order_ref=original if original.strip("0") else None,
                 )
             )
         return orders

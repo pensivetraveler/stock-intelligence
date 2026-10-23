@@ -479,6 +479,7 @@ class PaperRunner:
                 order
                 for order in orders
                 if order.broker_order_ref not in claimed
+                and order.original_order_ref is None
                 and order.symbol == intent["symbol"]
                 and order.side == intent["side"]
                 and order.order_quantity == Decimal(intent["order"]["quantity"])

@@ -48,6 +48,9 @@ class BrokerOrder:
     status_text: str
     ordered_at_local: str | None  # HH:MM:SS in the broker's clock (Seoul for Kiwoom)
     filled_at_local: str | None
+    # Set on a cancel or modify order: the order it acts on. Such a row is never matched
+    # to a submission of its own (seen live 2026-10-23: a cancel gets a new order number).
+    original_order_ref: str | None = None
 
 
 class PaperBroker(Protocol):

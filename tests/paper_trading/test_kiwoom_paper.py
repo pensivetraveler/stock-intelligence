@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -158,3 +159,13 @@ def test_cancel_names_the_original_order() -> None:
 
 def test_repr_hides_the_keys() -> None:
     assert "app-key" not in repr(_broker(FakeKiwoomPaper()))
+
+
+def test_cancel_and_modify_rows_name_their_original_order() -> None:
+    fake = FakeKiwoomPaper()
+    broker = _broker(fake)
+    broker.submit(INTENT)
+    fake.orders.append(replace(fake.orders[0], ord_no="000000448", original="000000001"))
+    orders = {o.broker_order_ref: o for o in broker.today_orders()}
+    assert orders["000000001"].original_order_ref is None
+    assert orders["000000448"].original_order_ref == "000000001"
