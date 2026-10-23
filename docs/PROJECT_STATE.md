@@ -1524,6 +1524,13 @@
 - **미검증:** 앱 실행 후 API 자동 기동, LaunchAgent 실제 설치·`launchctl` 동작(사용자 컴퓨터에 상주 설정을 만드는 일이라 실행하지 않았다), Tauri 안에서의 출처 `tauri://localhost` 쓰기 요청.
 - **다음:** P4(첫 실제 키움 모의 주문) — 미국 정규장 시간에 사용자 확인 후.
 
+## 브로커 원장 수수료 읽기·Tauri 빌드 — 2026-10-23
+
+- **수수료 행:** `GET /v1/trades/broker`의 포지션이 수수료 행 문서 전체를 읽던 것을, 계좌·종목·수수료·세금 네 값만 SQL `json_extract`로 읽게 바꿨다(`JournalStore.broker_fee_amounts`). 금액은 Decimal 문자열 그대로 더한다. 실데이터 59,085행에서 2.4초 → 0.4초였고, 두 방식의 포지션 결과는 전부 같았다. 체결 문서 로드(108,417건 5.0초)와 FIFO(2.4초)는 그대로다.
+- **Rust·Tauri:** 사용자 승인으로 공식 rustup(minimal)을 설치했다(rustc·cargo 1.99.1, `~/.cargo`). `apps/desktop`에서 `tauri build --no-bundle`가 exit 0으로 끝났다(1분 37초). 앱 실행·API 자동 기동·`tauri://localhost` 쓰기 요청은 SIW Agent 세션이 확인한다(**미검증**).
+- **OTC 시세(조사만):** Alpaca 문서에 OTC 시세는 broker partner 전용 특별 구독이라고 되어 있다. 개인 유료 플랜으로는 받을 수 없어, 2026-10-22에 받은 403과 맞다. 가격은 공개돼 있지 않다. 대안(EODHD, Quodd 등)의 OTC·상장폐지 커버리지는 확인하지 못했다. 구현하거나 구독하지 않았다.
+- **실행:** `pytest tests/market_data/test_kiwoom_fees.py`(통과), `./scripts/verify.sh`(통과). 로컬 `.claude/worktrees`의 빌드 산출물이 Prettier·ESLint 검사에 걸려, 두 도구가 `.claude`를 건너뛰게 했다.
+
 ## SIW Agent 잔여 작업: ECOS 환율·키움 정산 수수료 — 2026-10-23
 
 - **사용자 지시(메인 세션 전달):** "P4 이외 내용 모두 진행". P4(첫 실제 키움 모의 주문)는 정규장 시간에 사용자 확인을 받은 뒤 한다. 자동으로 예약해 두었던 13:35 UTC 실행은 취소했다(보낸 요청 없음).

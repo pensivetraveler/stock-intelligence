@@ -5,3 +5,4 @@ dist-research
 target
 uv.lock
 pnpm-lock.yaml
+.claude/worktrees

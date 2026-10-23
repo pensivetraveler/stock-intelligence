@@ -70,7 +70,7 @@ ADR 0030 now places orders outside 04:00–20:00 New York time in the day market
   - **Stored:** 58,499 lines with a fee. 586 lines the API returned twice were stored once, and 2 lines have unknown symbols.
   - **Positions:** 1,898 of 2,095 Kiwoom positions now include reported fees. 23 still have none.
 - **No-data reply:** ust21100 answers an empty month with return code 20 and message code 501724, which is now read as "no rows" like 571758.
-- **Cost:** the broker ledger now reads every fee line to build positions (4.3 s on this data). It can be aggregated in SQL if that grows.
+- **Cost:** the broker ledger reads every fee line to build positions. Since 2026-10-23 it reads only the account, instrument, commission and tax of each line in SQL (`broker_fee_amounts`): 0.4 s instead of 2.4 s for 59,085 lines. Loading the executions (5.0 s for 108,417) and FIFO (2.4 s) remain.
 
 ## Alternatives considered
 

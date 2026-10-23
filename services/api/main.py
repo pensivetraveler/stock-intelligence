@@ -1109,7 +1109,7 @@ def create_app(
             "ledger": "broker_api",
             "executions": executions if limit is None else executions[-limit:],
             "execution_count": len(executions),
-            "positions": account_positions(executions, store.broker_fee_lines(instrument_id)),
+            "positions": account_positions(executions, store.broker_fee_amounts(instrument_id)),
         }
         validate_document(document)
         return JSONResponse(content=document)

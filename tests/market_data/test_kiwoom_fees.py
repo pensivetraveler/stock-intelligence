@@ -107,6 +107,9 @@ def test_fee_lines_are_kept_apart_and_added_to_positions(tmp_path: Path) -> None
     assert position["fees"] == "0.11"
     assert position["realized_pnl"] == "1.89"  # 2 x (21 - 20) - 0.11
     assert position["settlement_fee_lines"] == 1
+    # The API reads only the amounts; positions come out the same.
+    assert account_positions([execution, sell], store.broker_fee_amounts()) == [position]
+    assert store.broker_fee_amounts("us:other:xnas:2026") == []
 
 
 def test_fee_sync_range_is_bounded(tmp_path: Path) -> None:
