@@ -32,6 +32,8 @@ CURRENCY_BY_MARKET_KINDS = frozenset(
         "broker_order_execution",
         "broker_confirmed_execution",
         "market_quote",
+        "paper_order_intent",
+        "paper_execution",
     }
 )
 
@@ -95,6 +97,50 @@ def _point_in_time_errors(bars: list[dict[str, Any]], coverage: dict[str, Any]) 
         previous_start = start
         if cutoff is not None and _utc(bar["available_at_utc"]) > cutoff:
             errors.append("response bar was not available at the point-in-time cutoff")
+    return errors
+
+
+def _paper_intent_errors(document: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    data = document["data"]
+    bar_start = _utc(data["signal_bar_start_utc"])
+    bar_end = _utc(data["signal_bar_end_utc"])
+    if bar_end <= bar_start:
+        errors.append("signal bar end must be after its start")
+    if _utc(data["data_as_of_utc"]) < bar_end:
+        errors.append("a signal cannot use a bar that had not ended at the data cutoff")
+    if _utc(document["created_at_utc"]) < _utc(data["data_as_of_utc"]):
+        errors.append("an intent cannot be created before its data cutoff")
+    order = document["order"]
+    if Decimal(order["quantity"]) <= 0:
+        errors.append("intent quantity must be positive")
+    if order["order_type"] == "limit" and (
+        order["limit_price"] is None
+        or Decimal(order["limit_price"]) <= 0
+        or order["estimated_max_price"] is not None
+        or order["market_buffer_bps"] is not None
+    ):
+        errors.append("a limit order has a positive limit price and no market estimate")
+    if order["order_type"] == "market" and (
+        order["limit_price"] is not None
+        or order["estimated_max_price"] is None
+        or order["market_buffer_bps"] is None
+        or Decimal(order["estimated_max_price"]) <= 0
+    ):
+        errors.append("a market order has an estimated maximum price and no limit price")
+    check = document["limit_check"]
+    if check["passed"] == bool(check["reasons"]):
+        errors.append("a limit check lists reasons exactly when it fails")
+    if check["passed"] and check["limits"]["max_order_amount_krw"] is not None:
+        if check["order_amount_krw"] is None:
+            errors.append("a passed amount limit must record the order amount in KRW")
+        if document["currency"] == "USD" and document["fx"] is None:
+            errors.append("a USD order checked against a KRW limit must record its exchange rate")
+    if (
+        check["passed"]
+        and document["instrument_id"] not in check["limits"]["allowed_instrument_ids"]
+    ):
+        errors.append("a passed intent must be for an allowed instrument")
     return errors
 
 
@@ -257,6 +303,30 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
     if kind == "scenario_ledger_response":
         for item in document["scenarios"]:
             errors.extend(semantic_errors(item["scenario"]))
+
+    if kind == "paper_order_intent":
+        errors.extend(_paper_intent_errors(document))
+
+    if kind == "paper_order_submission":
+        responded = document["responded_at_utc"]
+        if responded is not None and _utc(responded) < _utc(document["requested_at_utc"]):
+            errors.append("a submission cannot be answered before it was requested")
+        if (document["status"] == "pending_response") != (responded is None):
+            errors.append("responded_at_utc is null exactly while the response is pending")
+        if document["status"] == "accepted" and document["broker_order_ref"] is None:
+            errors.append("an accepted submission must carry the broker's order reference")
+
+    if kind == "paper_execution":
+        if Decimal(document["quantity"]) <= 0 or Decimal(document["price"]) <= 0:
+            errors.append("paper execution quantity and price must be positive")
+        if (document["executed_at_utc"] is None) != (document["time_meaning"] == "time_unresolved"):
+            errors.append("executed_at_utc is null exactly when its time is unresolved")
+
+    if kind == "paper_runner_status":
+        if document["armed"] and (document["halted"] or document["approval_id"] is None):
+            errors.append("an armed runner must be unhalted and name its approval")
+        if document["halted"] != (document["halted_reason"] is not None):
+            errors.append("halted_reason is set exactly while the runner is halted")
 
     if kind == "market_bars_response":
         bars = cast(list[dict[str, Any]], document["bars"])

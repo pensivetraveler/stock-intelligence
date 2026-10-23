@@ -1,0 +1,23 @@
+{
+  "kind": "paper_execution",
+  "schema_version": "0.1",
+  "execution_id": "pex-aaaaaaaaaaaa",
+  "broker_id": "kiwoom",
+  "broker_account_ref": "kiwoom-0123456789abcdef-demo",
+  "environment": "demo",
+  "ledger": "broker_paper",
+  "fill_origin": "broker_demo_simulated",
+  "intent_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "broker_order_ref": "000000282",
+  "instrument_id": "us:aapl:xnas:2026",
+  "symbol": "AAPL",
+  "side": "buy",
+  "quantity": "3",
+  "price": "199.95",
+  "currency": "USD",
+  "fees": null,
+  "granularity": "order_aggregate",
+  "time_meaning": "reported_fill_time",
+  "executed_at_utc": "2026-10-23T14:31:07Z",
+  "synced_at_utc": "2026-10-23T14:32:00Z"
+}

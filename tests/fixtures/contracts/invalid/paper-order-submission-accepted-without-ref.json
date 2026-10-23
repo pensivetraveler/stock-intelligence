@@ -1,0 +1,17 @@
+{
+  "kind": "paper_order_submission",
+  "schema_version": "0.1",
+  "submission_id": "sub-aaaaaaaaaaaa",
+  "intent_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "broker_id": "kiwoom",
+  "broker_account_ref": "kiwoom-0123456789abcdef-demo",
+  "environment": "demo",
+  "operation": "ust20000",
+  "broker_order_type_code": "00",
+  "requested_at_utc": "2026-10-23T14:31:06Z",
+  "responded_at_utc": "2026-10-23T14:31:06Z",
+  "broker_order_ref": null,
+  "response_code": "0",
+  "response_message": "미국 매수주문입력 완료되었습니다",
+  "status": "accepted"
+}

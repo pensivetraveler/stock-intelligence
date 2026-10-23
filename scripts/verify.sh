@@ -8,6 +8,8 @@ uv run ruff format --check .
 uv run ruff check .
 uv run mypy services packages/contracts tests/contracts
 uv run pytest
+# Paper-order code must name no live broker domain (ADR 0037).
+uv run python scripts/check_paper_only.py services/paper_trading
 
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT

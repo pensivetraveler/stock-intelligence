@@ -50,7 +50,11 @@ export type StockIntelligenceWorkstationContractsV01 =
   | CustomIndicatorResult
   | TradeReconciliationResponse
   | CustomIndicatorPreview
-  | BrokerFeeLine;
+  | BrokerFeeLine
+  | PaperOrderIntent
+  | PaperOrderSubmission
+  | PaperExecution
+  | PaperRunnerStatus;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -3570,4 +3574,357 @@ export interface BrokerFeeLine {
   tax: DecimalString;
   currency: "USD";
   synced_at_utc: UtcTimestamp;
+}
+/**
+ * One strategy signal turned into a paper order before anything is sent (ADR 0037). Append-only; its outcome is stored separately.
+ */
+export interface PaperOrderIntent {
+  kind: "paper_order_intent";
+  schema_version: SchemaVersion;
+  intent_id: string;
+  created_at_utc: UtcTimestamp;
+  broker_id: "kiwoom" | "kis";
+  broker_account_ref: Identifier;
+  environment: "demo";
+  approval_id: string;
+  strategy: {
+    strategy_id: Identifier;
+    strategy_version: number;
+    definition_sha256: string;
+    strategy_kind: "rules" | "python";
+    logs_sha256: string | null;
+  };
+  instrument_id: Identifier;
+  symbol: string;
+  side: Side;
+  currency: "USD" | "KRW";
+  data: {
+    data_as_of_utc: UtcTimestamp;
+    signal_bar_start_utc: UtcTimestamp;
+    signal_bar_end_utc: UtcTimestamp;
+    signal_bar_final: true;
+    timeframe: string;
+    source_id: Identifier;
+    feed_scope: Identifier;
+    dataset_revision: Identifier;
+    adjustment: string;
+    session: string;
+    input_bar_count: number;
+    input_bars_sha256: string;
+    calendar_id: Identifier;
+    calendar_version: Identifier;
+  };
+  signal: {
+    summary: string;
+    /**
+     * @maxItems 100
+     */
+    operands: {
+      operand: string;
+      value: DecimalString | null;
+    }[];
+  };
+  sizing: {
+    method: "shares" | "cash" | "percent_equity";
+    input: NonNegativeDecimalString;
+    equity_basis: NonNegativeDecimalString | null;
+    cash_basis: NonNegativeDecimalString | null;
+    basis_as_of_utc: UtcTimestamp | null;
+    reference_price: NonNegativeDecimalString;
+    reference_price_source: string;
+    reference_price_as_of_utc: UtcTimestamp;
+    fee_rate: NonNegativeDecimalString;
+    rounding: "floor_whole_shares";
+  };
+  order: {
+    order_type: "limit" | "market";
+    quantity: NonNegativeDecimalString;
+    limit_price: NonNegativeDecimalString | null;
+    market_buffer_bps: NonNegativeDecimalString | null;
+    estimated_max_price: NonNegativeDecimalString | null;
+  };
+  fx: {
+    krw_per_usd: NonNegativeDecimalString;
+    source: string;
+    as_of_utc: UtcTimestamp;
+  } | null;
+  limit_check: {
+    passed: boolean;
+    /**
+     * @maxItems 20
+     */
+    reasons:
+      | []
+      | [string]
+      | [string, string]
+      | [string, string, string]
+      | [string, string, string, string]
+      | [string, string, string, string, string]
+      | [string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+        ]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+        ]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+        ]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+        ]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+        ]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+        ]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+        ]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+        ]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+        ]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+        ]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+        ];
+    order_amount_krw: NonNegativeDecimalString | null;
+    limits: PaperOrderLimits;
+  };
+}
+/**
+ * Limits of one paper-trading approval (ADR 0037). null means no limit for now.
+ */
+export interface PaperOrderLimits {
+  max_order_amount_krw: NonNegativeDecimalString | null;
+  max_daily_orders: number | null;
+  max_daily_loss_rate: NonNegativeDecimalString | null;
+  max_position_amount_krw: NonNegativeDecimalString | null;
+  /**
+   * @minItems 1
+   */
+  allowed_instrument_ids: [Identifier, ...Identifier[]];
+}
+/**
+ * One attempt to send a paper order to a broker's demo domain (ADR 0037).
+ */
+export interface PaperOrderSubmission {
+  kind: "paper_order_submission";
+  schema_version: SchemaVersion;
+  submission_id: Identifier;
+  intent_id: string;
+  broker_id: "kiwoom" | "kis";
+  broker_account_ref: Identifier;
+  environment: "demo";
+  operation: string;
+  broker_order_type_code: string;
+  requested_at_utc: UtcTimestamp;
+  responded_at_utc: UtcTimestamp | null;
+  broker_order_ref: string | null;
+  response_code: string | null;
+  response_message: string | null;
+  status: "pending_response" | "accepted" | "rejected" | "unknown";
+}
+/**
+ * A fill simulated by a broker's paper-trading server. Never a market fill and never summed with real ledgers (ADR 0037).
+ */
+export interface PaperExecution {
+  kind: "paper_execution";
+  schema_version: SchemaVersion;
+  execution_id: Identifier;
+  broker_id: "kiwoom" | "kis";
+  broker_account_ref: Identifier;
+  environment: "demo";
+  ledger: "broker_paper";
+  fill_origin: "broker_demo_simulated";
+  intent_id: string | null;
+  broker_order_ref: string;
+  instrument_id: Identifier;
+  symbol: string;
+  side: Side;
+  quantity: NonNegativeDecimalString;
+  price: NonNegativeDecimalString;
+  currency: "USD" | "KRW";
+  fees: DecimalString | null;
+  granularity: "order_aggregate" | "per_fill";
+  time_meaning: "reported_fill_time" | "reported_last_fill" | "time_unresolved";
+  executed_at_utc: UtcTimestamp | null;
+  synced_at_utc: UtcTimestamp;
+}
+/**
+ * Kill-switch and arming state of the paper-order runner (ADR 0037).
+ */
+export interface PaperRunnerStatus {
+  kind: "paper_runner_status";
+  schema_version: SchemaVersion;
+  halted: boolean;
+  halted_reason: string | null;
+  armed: boolean;
+  approval_id: string | null;
+  unknown_submission_count: number;
+  last_heartbeat_utc: UtcTimestamp | null;
+  updated_at_utc: UtcTimestamp;
 }

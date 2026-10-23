@@ -152,6 +152,18 @@
     },
     {
       "$ref": "#/$defs/BrokerFeeLine"
+    },
+    {
+      "$ref": "#/$defs/PaperOrderIntent"
+    },
+    {
+      "$ref": "#/$defs/PaperOrderSubmission"
+    },
+    {
+      "$ref": "#/$defs/PaperExecution"
+    },
+    {
+      "$ref": "#/$defs/PaperRunnerStatus"
     }
   ],
   "$defs": {
@@ -6342,6 +6354,763 @@
         }
       },
       "description": "Commission and tax of one settlement line (Kiwoom US ust21100), which carries no order number. Positions add these per account and instrument; orders keep fees null."
+    },
+    "PaperOrderLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_order_amount_krw",
+        "max_daily_orders",
+        "max_daily_loss_rate",
+        "max_position_amount_krw",
+        "allowed_instrument_ids"
+      ],
+      "properties": {
+        "max_order_amount_krw": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_daily_orders": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_daily_loss_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_position_amount_krw": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "allowed_instrument_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        }
+      },
+      "description": "Limits of one paper-trading approval (ADR 0037). null means no limit for now."
+    },
+    "PaperOrderIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "intent_id",
+        "created_at_utc",
+        "broker_id",
+        "broker_account_ref",
+        "environment",
+        "approval_id",
+        "strategy",
+        "instrument_id",
+        "symbol",
+        "side",
+        "currency",
+        "data",
+        "signal",
+        "sizing",
+        "order",
+        "fx",
+        "limit_check"
+      ],
+      "properties": {
+        "kind": {
+          "const": "paper_order_intent"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "intent_id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "created_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "broker_id": {
+          "enum": ["kiwoom", "kis"]
+        },
+        "broker_account_ref": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "environment": {
+          "const": "demo"
+        },
+        "approval_id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "strategy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "strategy_id",
+            "strategy_version",
+            "definition_sha256",
+            "strategy_kind",
+            "logs_sha256"
+          ],
+          "properties": {
+            "strategy_id": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "strategy_version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "definition_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "strategy_kind": {
+              "enum": ["rules", "python"]
+            },
+            "logs_sha256": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "instrument_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "side": {
+          "$ref": "#/$defs/Side"
+        },
+        "currency": {
+          "enum": ["USD", "KRW"]
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "data_as_of_utc",
+            "signal_bar_start_utc",
+            "signal_bar_end_utc",
+            "signal_bar_final",
+            "timeframe",
+            "source_id",
+            "feed_scope",
+            "dataset_revision",
+            "adjustment",
+            "session",
+            "input_bar_count",
+            "input_bars_sha256",
+            "calendar_id",
+            "calendar_version"
+          ],
+          "properties": {
+            "data_as_of_utc": {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            "signal_bar_start_utc": {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            "signal_bar_end_utc": {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            "signal_bar_final": {
+              "const": true
+            },
+            "timeframe": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16
+            },
+            "source_id": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "feed_scope": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "dataset_revision": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "adjustment": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "session": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "input_bar_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "input_bars_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "calendar_id": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "calendar_version": {
+              "$ref": "#/$defs/Identifier"
+            }
+          }
+        },
+        "signal": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["summary", "operands"],
+          "properties": {
+            "summary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "operands": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["operand", "value"],
+                "properties": {
+                  "operand": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/DecimalString"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "sizing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "method",
+            "input",
+            "equity_basis",
+            "cash_basis",
+            "basis_as_of_utc",
+            "reference_price",
+            "reference_price_source",
+            "reference_price_as_of_utc",
+            "fee_rate",
+            "rounding"
+          ],
+          "properties": {
+            "method": {
+              "enum": ["shares", "cash", "percent_equity"]
+            },
+            "input": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "equity_basis": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NonNegativeDecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cash_basis": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NonNegativeDecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "basis_as_of_utc": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/UtcTimestamp"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "reference_price": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "reference_price_source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "reference_price_as_of_utc": {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            "fee_rate": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "rounding": {
+              "const": "floor_whole_shares"
+            }
+          }
+        },
+        "order": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "order_type",
+            "quantity",
+            "limit_price",
+            "market_buffer_bps",
+            "estimated_max_price"
+          ],
+          "properties": {
+            "order_type": {
+              "enum": ["limit", "market"]
+            },
+            "quantity": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "limit_price": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NonNegativeDecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "market_buffer_bps": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NonNegativeDecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "estimated_max_price": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NonNegativeDecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "fx": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["krw_per_usd", "source", "as_of_utc"],
+              "properties": {
+                "krw_per_usd": {
+                  "$ref": "#/$defs/NonNegativeDecimalString"
+                },
+                "source": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "as_of_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit_check": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["passed", "reasons", "order_amount_krw", "limits"],
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "reasons": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "order_amount_krw": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NonNegativeDecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "limits": {
+              "$ref": "#/$defs/PaperOrderLimits"
+            }
+          }
+        }
+      },
+      "description": "One strategy signal turned into a paper order before anything is sent (ADR 0037). Append-only; its outcome is stored separately."
+    },
+    "PaperOrderSubmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "submission_id",
+        "intent_id",
+        "broker_id",
+        "broker_account_ref",
+        "environment",
+        "operation",
+        "broker_order_type_code",
+        "requested_at_utc",
+        "responded_at_utc",
+        "broker_order_ref",
+        "response_code",
+        "response_message",
+        "status"
+      ],
+      "properties": {
+        "kind": {
+          "const": "paper_order_submission"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "submission_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "intent_id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "broker_id": {
+          "enum": ["kiwoom", "kis"]
+        },
+        "broker_account_ref": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "environment": {
+          "const": "demo"
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "broker_order_type_code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8
+        },
+        "requested_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "responded_at_utc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "broker_order_ref": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "response_code": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "response_message": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": ["pending_response", "accepted", "rejected", "unknown"]
+        }
+      },
+      "description": "One attempt to send a paper order to a broker's demo domain (ADR 0037)."
+    },
+    "PaperExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "execution_id",
+        "broker_id",
+        "broker_account_ref",
+        "environment",
+        "ledger",
+        "fill_origin",
+        "intent_id",
+        "broker_order_ref",
+        "instrument_id",
+        "symbol",
+        "side",
+        "quantity",
+        "price",
+        "currency",
+        "fees",
+        "granularity",
+        "time_meaning",
+        "executed_at_utc",
+        "synced_at_utc"
+      ],
+      "properties": {
+        "kind": {
+          "const": "paper_execution"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "execution_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "broker_id": {
+          "enum": ["kiwoom", "kis"]
+        },
+        "broker_account_ref": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "environment": {
+          "const": "demo"
+        },
+        "ledger": {
+          "const": "broker_paper"
+        },
+        "fill_origin": {
+          "const": "broker_demo_simulated"
+        },
+        "intent_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "broker_order_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "instrument_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "side": {
+          "$ref": "#/$defs/Side"
+        },
+        "quantity": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "price": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "currency": {
+          "enum": ["USD", "KRW"]
+        },
+        "fees": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "granularity": {
+          "enum": ["order_aggregate", "per_fill"]
+        },
+        "time_meaning": {
+          "enum": [
+            "reported_fill_time",
+            "reported_last_fill",
+            "time_unresolved"
+          ]
+        },
+        "executed_at_utc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "synced_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      },
+      "description": "A fill simulated by a broker's paper-trading server. Never a market fill and never summed with real ledgers (ADR 0037)."
+    },
+    "PaperRunnerStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "halted",
+        "halted_reason",
+        "armed",
+        "approval_id",
+        "unknown_submission_count",
+        "last_heartbeat_utc",
+        "updated_at_utc"
+      ],
+      "properties": {
+        "kind": {
+          "const": "paper_runner_status"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "halted": {
+          "type": "boolean"
+        },
+        "halted_reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "armed": {
+          "type": "boolean"
+        },
+        "approval_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unknown_submission_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_heartbeat_utc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      },
+      "description": "Kill-switch and arming state of the paper-order runner (ADR 0037)."
     }
   }
 }
