@@ -25,7 +25,7 @@ import os
 import re
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -64,6 +64,10 @@ class DelistedInstrument:
     moved_to: str | None
     delisted_on: date | None  # the last delisting-like corporate action, when known
     ticker: str = ""  # the ticker Alpaca knows it by (empty: the same as symbol)
+    # Set when another company took the ticker on this date without a rename away from
+    # this one (a merger, then a rename into the ticker). Trades in the ticker before it
+    # belong here; found by comparing fill prices with the bars (ADR 0033 rule 6).
+    reused_on: date | None = None
 
     @property
     def instrument_id(self) -> str:
@@ -159,6 +163,9 @@ class SymbolHistory:
                     if item.get("delisted_on") is None
                     else date.fromisoformat(item["delisted_on"]),
                     item.get("ticker") or symbol,
+                    None
+                    if item.get("reused_on") is None
+                    else date.fromisoformat(item["reused_on"]),
                 )
         return self._registry
 
@@ -167,6 +174,8 @@ class SymbolHistory:
         before = registry.get(entry.symbol)
         if before is not None and before.asof >= entry.asof:
             return  # the latest trade date seen identifies the company best
+        if before is not None and entry.reused_on is None:
+            entry = replace(entry, reused_on=before.reused_on)
         registry[entry.symbol] = entry
         _write(
             self.registry_path,
@@ -181,6 +190,7 @@ class SymbolHistory:
                     if item.delisted_on is None
                     else item.delisted_on.isoformat(),
                     "ticker": item.ticker or symbol,
+                    **({} if item.reused_on is None else {"reused_on": item.reused_on.isoformat()}),
                 }
                 for symbol, item in sorted(registry.items())
             },
@@ -204,6 +214,12 @@ class SymbolHistory:
                     break
                 renamed_on = renamed_on or later[0].on
                 current, when = later[0].new, later[0].on
+            if current == original:
+                for item in self._registered().values():
+                    if item.ticker == original and item.reused_on and on < item.reused_on:
+                        # Another company took the ticker after this trade (rule 6).
+                        self._register(replace(item, asof=on))
+                        return Resolution("delisted", item.symbol, item.venue, item.venue_verified)
             venue = listed_venue(current)
             if venue is not None:
                 kind: Literal["listed", "renamed"] = "listed" if current == original else "renamed"
