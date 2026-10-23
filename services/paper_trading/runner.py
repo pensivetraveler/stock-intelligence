@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import ROUND_DOWN, ROUND_UP, Decimal
@@ -66,6 +66,9 @@ class RunPlan:
     market_buffer_bps: Decimal = Decimal("50")
     fee_rate: Decimal = Decimal("0")
     fx: FxRate | None = None
+    # "fixed": `fx` above, confirmed at approval. "bok_ecos": the Bank of Korea's latest
+    # published USD/KRW rate, read by the runner each day (ADR 0037).
+    fx_source: Literal["fixed", "bok_ecos"] = "fixed"
     # A fixed equity for percent-of-equity sizing, confirmed at approval; None refuses it.
     equity_basis: Decimal | None = None
     max_signal_age_seconds: int = 300
@@ -93,6 +96,7 @@ class RunPlan:
                 "source": self.fx.source,
                 "as_of_utc": _utc(self.fx.as_of_utc),
             },
+            "fx_source": self.fx_source,
             "equity_basis": None if self.equity_basis is None else str(self.equity_basis),
             "max_signal_age_seconds": self.max_signal_age_seconds,
         }
@@ -139,6 +143,7 @@ def plan_from_approval(content: dict[str, Any], definition: dict[str, Any]) -> R
             fx["source"],
             datetime.fromisoformat(fx["as_of_utc"].replace("Z", "+00:00")),
         ),
+        fx_source=content.get("fx_source", "fixed"),
         equity_basis=number(content["equity_basis"]),
         max_signal_age_seconds=int(content["max_signal_age_seconds"]),
     )
@@ -199,6 +204,7 @@ class PaperRunner:
         broker: PaperBroker,
         feed: BarFeed,
         plan: RunPlan,
+        fx_rate: Callable[[], FxRate | None] | None = None,
     ) -> None:
         if plan.broker_id != broker.broker_id or plan.broker_account_ref != broker.account_ref:
             raise ValueError("the plan was approved for another broker account")
@@ -206,8 +212,15 @@ class PaperRunner:
         self.broker = broker
         self.feed = feed
         self.plan = plan
+        self._fx_rate = fx_rate
         self.approval_id = store.record_approval(plan.approval_content())
         self._seen: dict[str, int] = {}  # last signal bar shown per instrument (epoch)
+
+    def _fx(self) -> FxRate | None:
+        """The plan's fixed rate, or today's ECOS rate; None (orders blocked) if unknown."""
+        if self.plan.fx_source == "fixed":
+            return self.plan.fx
+        return None if self._fx_rate is None else self._fx_rate()
 
     # -- one step --------------------------------------------------------------------
 
@@ -350,7 +363,7 @@ class PaperRunner:
             operands=[],
             sizing=sizing,
             order=order,
-            fx=plan.fx if market_of(item.instrument_id) == "us" else None,
+            fx=self._fx() if market_of(item.instrument_id) == "us" else None,
             limits=plan.limits,
             facts=facts,
             created_at=now,

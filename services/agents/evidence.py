@@ -55,7 +55,7 @@ class Evidence:
     source_refs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     agent_id: str = "chart_trade_review"
-    agent_version: str = "chart-trade-review-2"
+    agent_version: str = "chart-trade-review-3"
     indicator_versions: dict[str, str] = field(default_factory=lambda: dict(INDICATOR_VERSIONS))
 
 
@@ -262,6 +262,42 @@ def execution_of(ledger: str, document: dict[str, Any], instrument_id: str) -> E
     )
 
 
+# Kiwoom US settlement lines (ust21100) settled 0-6 days after the order's US trade date
+# in the user's data (59,085 lines, 2026-10-23); 10 days leaves a margin.
+SETTLEMENT_LAG_DAYS = 10
+
+
+@dataclass(frozen=True)
+class SettlementFees:
+    """A broker account's fee lines for one instrument and every order of that account.
+
+    Lines carry no order number (Kiwoom ust21100, ADR 0029), so they are added to a review
+    only when the chosen orders are the account's only orders of the instrument within
+    `SETTLEMENT_LAG_DAYS` of them: then every line settling in that window is theirs.
+    """
+
+    lines: tuple[tuple[date, Decimal], ...]  # (settlement date, commission + tax)
+    orders: tuple[tuple[str, date], ...]  # (execution ref, US trade date)
+
+
+def settlement_fee_total(
+    fills: Sequence[Execution], fees: SettlementFees
+) -> tuple[Decimal, int] | str:
+    """(fee total, line count) for the chosen fills of one book, or why it cannot be told."""
+    chosen = {f.ref for f in fills}
+    first = min(f.day for f in fills) - timedelta(days=SETTLEMENT_LAG_DAYS)
+    last = max(f.day for f in fills) + timedelta(days=SETTLEMENT_LAG_DAYS)
+    others = [ref for ref, day in fees.orders if first <= day <= last and ref not in chosen]
+    if others:
+        return (
+            f"{len(others)} other order(s) of this account traded within "
+            f"{SETTLEMENT_LAG_DAYS} days of the chosen ones"
+        )
+    start = min(f.day for f in fills)
+    lines = [fee for settled, fee in fees.lines if start <= settled <= last]
+    return sum(lines, Decimal(0)), len(lines)
+
+
 def _fifo(fills: Sequence[Execution]) -> tuple[Decimal, Decimal, Decimal]:
     """Long-only FIFO over one book: (realized before fees, open quantity, unmatched sells)."""
     lots: list[list[Decimal]] = []  # [quantity, price]
@@ -288,6 +324,7 @@ def trade_review(
     instrument_id: str,
     executions: Sequence[Execution],
     now: datetime,
+    settlement_fees: dict[str, SettlementFees] | None = None,
 ) -> Evidence:
     today = _session_date(instrument_id, now)
     if not executions:
@@ -311,13 +348,36 @@ def trade_review(
         evidence.uncertainty.append(
             "Some executions have no exact time; they are placed by their date only."
         )
-    unreported = sum(1 for f in fills if not f.fees_reported)
+    facts = evidence.facts
+    # Fees a broker reports per settlement line, not per order (Kiwoom US), per book.
+    line_fees: dict[str, Decimal] = {}
+    for book, book_fills in books.items():
+        if all(f.fees_reported for f in book_fills) or book not in (settlement_fees or {}):
+            continue
+        settled = settlement_fee_total(book_fills, (settlement_fees or {})[book])
+        if isinstance(settled, str):
+            evidence.uncertainty.append(
+                "Settlement-line fees were left out: the broker reports them per settlement "
+                f"line without an order number, and {settled}."
+            )
+            continue
+        total, count = settled
+        line_fees[book] = total
+        facts.append(
+            Fact(
+                "settlement_fees",
+                _fmt(total),
+                "currency",
+                f"Fees from {count} settlement line(s) of this account in the period: "
+                f"{total:.2f} (the chosen orders are its only ones then)",
+            )
+        )
+    unreported = sum(1 for f in fills if not f.fees_reported and f.book not in line_fees)
     if unreported:
         evidence.uncertainty.append(
             f"The broker reported no fees for {unreported} execution(s); they count without "
             "fees, so realized P&L after fees is overstated by those fees."
         )
-    facts = evidence.facts
 
     results = {book: _fifo(book_fills) for book, book_fills in books.items()}
     realized = sum((r[0] for r in results.values()), Decimal(0))
@@ -330,7 +390,7 @@ def trade_review(
     )
     buys = [f for f in fills if f.side == "buy"]
     sells = [f for f in fills if f.side == "sell"]
-    fees = sum((f.fees for f in fills), Decimal(0))
+    fees = sum((f.fees for f in fills), Decimal(0)) + sum(line_fees.values(), Decimal(0))
     bought = sum((f.quantity for f in buys), Decimal(0))
     sold = sum((f.quantity for f in sells), Decimal(0))
     avg_buy = sum((f.quantity * f.price for f in buys), Decimal(0)) / bought if bought else None
@@ -376,7 +436,9 @@ def trade_review(
             )
         )
         for n, (book, (book_realized, book_open, _)) in enumerate(results.items(), start=1):
-            book_fees = sum((f.fees for f in books[book]), Decimal(0))
+            book_fees = sum((f.fees for f in books[book]), Decimal(0)) + line_fees.get(
+                book, Decimal(0)
+            )
             facts.append(
                 Fact(
                     "account_realized_pnl",

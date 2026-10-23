@@ -595,7 +595,14 @@ export interface CredentialSummary {
   schema_version: SchemaVersion;
   credential_id: string;
   provider:
-    "alpaca" | "kis" | "toss" | "kiwoom" | "meritz" | "finra" | "anthropic";
+    | "alpaca"
+    | "kis"
+    | "toss"
+    | "kiwoom"
+    | "meritz"
+    | "finra"
+    | "ecos"
+    | "anthropic";
   label: string;
   account_suffix: string | null;
   /**
@@ -623,7 +630,14 @@ export interface CredentialListResponse {
   active_provider: "fake" | "alpaca" | "kis" | "toss" | "kiwoom" | "meritz";
   providers: {
     provider:
-      "alpaca" | "kis" | "toss" | "kiwoom" | "meritz" | "finra" | "anthropic";
+      | "alpaca"
+      | "kis"
+      | "toss"
+      | "kiwoom"
+      | "meritz"
+      | "finra"
+      | "ecos"
+      | "anthropic";
     display_name: string;
     per_account: boolean;
     /**
@@ -3971,6 +3985,10 @@ export interface PaperApproval {
     source: string;
     as_of_utc: UtcTimestamp;
   } | null;
+  /**
+   * fixed: `fx` confirmed at approval; bok_ecos: the runner reads the Bank of Korea ECOS USD/KRW rate each day
+   */
+  fx_source: "fixed" | "bok_ecos";
   equity_basis: NonNegativeDecimalString | null;
   max_signal_age_seconds: number;
 }

@@ -1531,6 +1531,19 @@
 - **OTC 시세(조사만):** Alpaca 문서에 OTC 시세는 broker partner 전용 특별 구독이라고 되어 있다. 개인 유료 플랜으로는 받을 수 없어, 2026-10-22에 받은 403과 맞다. 가격은 공개돼 있지 않다. 대안(EODHD, Quodd 등)의 OTC·상장폐지 커버리지는 확인하지 못했다. 구현하거나 구독하지 않았다.
 - **실행:** `pytest tests/market_data/test_kiwoom_fees.py`(통과), `./scripts/verify.sh`(통과). 로컬 `.claude/worktrees`의 빌드 산출물이 Prettier·ESLint 검사에 걸려, 두 도구가 `.claude`를 건너뛰게 했다.
 
+## SIW Agent 잔여 작업: ECOS 환율·키움 정산 수수료 — 2026-10-23
+
+- **사용자 지시(메인 세션 전달):** "P4 이외 내용 모두 진행". P4(첫 실제 키움 모의 주문)는 정규장 시간에 사용자 확인을 받은 뒤 한다. 자동으로 예약해 두었던 13:35 UTC 실행은 취소했다(보낸 요청 없음).
+- **원화 한도 환율 — 한국은행 ECOS(사용자 결정):** [ADR 0037](decisions/0037-paper-order-execution.md) "환율: 한국은행 ECOS" 절.
+  - Keys 화면에 `ecos` 키 항목, ECOS 731Y001/0000001 클라이언트(서울 날짜 이전 최신 고시만, 키가 든 URL은 기록하지 않음), 실행 계획 `fx_source`(`bok_ecos`/`fixed`), Agent 화면의 환율 선택.
+  - 시험은 가짜 서버로만 했다. 실제 ECOS 호출은 키 등록 후 사용자 승인을 받고 한다.
+- **Agent 손익의 키움 정산 수수료:** [ADR 0022](decisions/0022-chart-trade-review-agent.md) Real trades 절.
+  - 사용자 데이터의 정산 행 59,085건을 보니 정산일이 주문 거래일보다 0~6일 뒤로 일정하지 않아 주문별로 나눌 수 없었다.
+  - 그래서 고른 주문이 그 계좌·종목에서 앞뒤 10일 안의 유일한 주문일 때만 그 기간 정산 행 수수료를 더한다(`settlement_fees` 사실). 아니면 더하지 않고 이유를 불확실성에 적는다. Agent 버전 `chart-trade-review-3`.
+- **검증:** `verify.sh` exit 0(pytest 723개, Vitest 86개·239개). ECOS 클라이언트 8개, 정산 수수료 2개, 실행기·API의 ECOS 경로 2개를 추가했다.
+- **실수:** 확인용 `sqlite3` 조회가 `data/paper_orders.sqlite3` 빈 파일(0바이트)을 만들어 바로 지웠다.
+- **남은 일:** P3b 미검증 항목(앱 실행 시 API 자동 기동, LaunchAgent 설치→기동 확인→제거, Tauri 출처 쓰기 요청)은 메인 세션의 Tauri 빌드 준비 알림 뒤에 한다.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:

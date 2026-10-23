@@ -28,7 +28,7 @@ from services.credentials.store import (
 )
 
 LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "[::1]"})
-Provider = Literal["alpaca", "kis", "toss", "kiwoom", "meritz", "finra", "anthropic"]
+Provider = Literal["alpaca", "kis", "toss", "kiwoom", "meritz", "finra", "ecos", "anthropic"]
 Label = Annotated[str, StringConstraints(min_length=1, max_length=60)]
 AccountSuffix = Annotated[str, StringConstraints(pattern=r"^[0-9]{4}$")]
 Environment = Literal["real", "demo"]

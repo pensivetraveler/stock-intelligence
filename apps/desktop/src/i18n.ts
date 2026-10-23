@@ -1020,6 +1020,10 @@ const en = {
   "paper.approve.instruments":
     "Instruments (one per line: instrument ID and symbol)",
   "paper.approve.amount": "Max amount per order (KRW, empty = no limit)",
+  "paper.approve.fxMode": "Exchange rate for the KRW amount limit",
+  "paper.approve.fxEcos":
+    "Bank of Korea ECOS rate, read daily (needs an ECOS key)",
+  "paper.approve.fxFixed": "A fixed rate I enter",
   "paper.approve.rate": "KRW per USD for the amount limit",
   "paper.approve.buffer": "Market-order price buffer (bp)",
   "paper.approve.equity": "Fixed equity for percent sizing (USD, optional)",
@@ -2040,6 +2044,9 @@ const ko: Record<MessageKey, string> = {
   "paper.approve.key": "키움 모의 키",
   "paper.approve.instruments": "종목(한 줄에 하나: 종목 ID와 티커)",
   "paper.approve.amount": "1건 최대 금액(원, 비우면 제한 없음)",
+  "paper.approve.fxMode": "원화 금액 한도용 환율",
+  "paper.approve.fxEcos": "한국은행 ECOS 고시환율, 매일 갱신(ECOS 키 필요)",
+  "paper.approve.fxFixed": "직접 입력한 고정 환율",
   "paper.approve.rate": "금액 한도용 원/달러 환율",
   "paper.approve.buffer": "시장가 가격 버퍼(bp)",
   "paper.approve.equity": "비율 수량 계산용 고정 자산(달러, 선택)",

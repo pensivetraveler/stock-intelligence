@@ -132,6 +132,7 @@ def _approval(store: PaperOrderStore, backtests: BacktestStore, account_ref: str
         "market_buffer_bps": "50",
         "fee_rate": "0",
         "fx": {"krw_per_usd": "1400", "source": "test", "as_of_utc": "2026-10-23T13:00:00Z"},
+        "fx_source": "fixed",
         "equity_basis": None,
         "max_signal_age_seconds": 300,
     }
@@ -333,3 +334,25 @@ def test_env_file_fills_only_missing_settings(
     import os
 
     assert (os.environ["SIW_KEEP"], os.environ["SIW_NEW"]) == ("mine", "data")
+
+
+def test_ecos_approval_needs_an_ecos_key(client: Any, tmp_path: Path) -> None:
+    test_client, credential_id = client
+    body = _approval_body(test_client, credential_id, krw_per_usd=None, fx_mode="bok_ecos")
+    response = test_client.post("/v1/paper/approvals", json=body, headers=AGENT)
+    assert response.json()["error"]["code"] == "ecos_key_missing"
+    added = test_client.post(
+        "/v1/credentials",
+        json={
+            "provider": "ecos",
+            "label": "ecos",
+            "account_suffix": None,
+            "environment": None,
+            "secrets": {"api_key": "ecos-test-key-not-real"},
+        },
+    )
+    assert added.status_code == 201, added.text
+    response = test_client.post("/v1/paper/approvals", json=body, headers=AGENT)
+    assert response.status_code == 201, response.text
+    assert (response.json()["fx_source"], response.json()["fx"]) == ("bok_ecos", None)
+    assert "ecos-test-key-not-real" not in response.text

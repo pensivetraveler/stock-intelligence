@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Literal
 
 from fastapi import FastAPI, Query, Request, Response
@@ -15,6 +16,7 @@ from packages.contracts.validator import validate_document
 from services.agents.commentary import DEFAULT_MODEL, CommentaryError, ask_claude, payload_for
 from services.agents.dark_pool import dark_pool_review
 from services.agents.evidence import (
+    SettlementFees,
     backtest_review,
     chart_point,
     execution_of,
@@ -69,6 +71,30 @@ class DarkPoolReviewRequest(BaseModel):
 
 class CommentaryRequest(BaseModel):
     language: Literal["en", "ko"] = "en"
+
+
+def settlement_fees(
+    broker: list[dict[str, Any]], fee_lines: list[dict[str, Any]]
+) -> dict[str, SettlementFees]:
+    """Per broker account: its fee lines and every order of the instrument (ADR 0029)."""
+    if not fee_lines:
+        return {}
+    orders: dict[str, list[tuple[str, date]]] = {}
+    for document in broker:
+        try:
+            fill = execution_of("broker", document, str(document["instrument_id"]))
+        except MarketDataError:
+            continue
+        orders.setdefault(fill.book, []).append((fill.ref, fill.day))
+    lines: dict[str, list[tuple[date, Decimal]]] = {}
+    for line in fee_lines:
+        book = f"broker:{line['broker_account_ref']}"
+        fee = Decimal(str(line["commission"])) + Decimal(str(line["tax"]))
+        lines.setdefault(book, []).append((date.fromisoformat(line["settlement_date"]), fee))
+    return {
+        book: SettlementFees(tuple(book_lines), tuple(orders.get(book, [])))
+        for book, book_lines in lines.items()
+    }
 
 
 def register_agent_routes(
@@ -132,7 +158,8 @@ def register_agent_routes(
                 )
             chosen.append(execution_of(ref.ledger, found, instrument))
         try:
-            evidence = trade_review(get_bars(), instrument, chosen, now())
+            fees = settlement_fees(documents["broker"], ledgers.broker_fee_lines(instrument))
+            evidence = trade_review(get_bars(), instrument, chosen, now(), fees)
         except MarketDataError as exc:
             return error_response(request, 422, "agent_data_unavailable", str(exc))
         return respond(agents.save(evidence), 201)

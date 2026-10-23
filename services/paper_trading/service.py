@@ -25,7 +25,9 @@ from typing import Any
 
 from services.backtest.store import BacktestStore
 from services.credentials.store import CredentialStore, KeyringSecretBackend
+from services.market_data.ecos_fx import EcosError, EcosUsdKrw
 from services.paper_trading.brokers.kiwoom_paper import KiwoomPaperBroker
+from services.paper_trading.intent import FxRate
 from services.paper_trading.paper_client import LiveDomainBlockedError, PaperOperationBlockedError
 from services.paper_trading.runner import BarFeed, PaperRunner, plan_from_approval
 from services.paper_trading.store import PaperOrderStore
@@ -52,6 +54,33 @@ def demo_kiwoom_broker(
     return None
 
 
+def ecos_fx(credentials: CredentialStore) -> Callable[[], FxRate | None]:
+    """Today's ECOS USD/KRW rate from the first enabled ECOS key; None when there is none.
+
+    The key is read once into memory. A failed read gives None, so orders are blocked by
+    the amount limit rather than checked against a stale or guessed rate.
+    """
+    holder: list[EcosUsdKrw | None] = []
+
+    def rate() -> FxRate | None:
+        if not holder:
+            record = next((r for r in credentials.list("ecos") if r.enabled), None)
+            holder.append(
+                None if record is None else EcosUsdKrw(credentials.secrets(record)["api_key"])
+            )
+        client = holder[0]
+        if client is None:
+            return None
+        try:
+            found = client.rate()
+        except EcosError as exc:
+            LOG.warning("ECOS rate unavailable: %s", exc)
+            return None
+        return FxRate(found.krw_per_usd, found.source, found.fetched_at_utc)
+
+    return rate
+
+
 def default_feed(data_dir: Path, credentials: CredentialStore) -> BarFeed:
     from services.market_data.bars_service import MarketBarsService
     from services.market_data.selection import provider_from_env
@@ -74,12 +103,14 @@ class RunnerService:
         broker_for: Callable[[str, frozenset[str]], Any],
         feed: Callable[[], BarFeed],
         now: Callable[[], datetime] | None = None,
+        fx_rate: Callable[[], FxRate | None] | None = None,
     ) -> None:
         self.store = store
         self._strategies = strategies
         self._broker_for = broker_for
         self._feed = feed
         self._now = now or (lambda: datetime.now(timezone.utc))
+        self._fx_rate = fx_rate
         self._runner: PaperRunner | None = None
         self._feed_instance: BarFeed | None = None
         self.last_error: str | None = None
@@ -101,7 +132,9 @@ class RunnerService:
             return None
         if self._feed_instance is None:
             self._feed_instance = self._feed()
-        self._runner = PaperRunner(self.store, broker, self._feed_instance, plan)
+        self._runner = PaperRunner(
+            self.store, broker, self._feed_instance, plan, fx_rate=self._fx_rate
+        )
         if self._runner.approval_id != approval_id:
             raise ValueError("the rebuilt plan does not match its approval")
         return self._runner
@@ -177,6 +210,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         strategies=backtests.strategy,
         broker_for=lambda ref, markets: demo_kiwoom_broker(credentials, ref, markets),
         feed=lambda: default_feed(data_dir, credentials),
+        fx_rate=ecos_fx(credentials),
     )
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())

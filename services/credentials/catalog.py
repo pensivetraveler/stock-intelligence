@@ -90,6 +90,14 @@ CATALOG: dict[str, ProviderKeySpec] = {
             ),
             per_account=False,
         ),
+        # Not a market-data source: the Bank of Korea's USD/KRW reference rate, used to
+        # check paper orders against a KRW amount limit (ADR 0037).
+        ProviderKeySpec(
+            "ecos",
+            "한국은행 ECOS",
+            (SecretField("api_key", "API key", "SIW_ECOS_API_KEY"),),
+            per_account=False,
+        ),
         # Not a market-data source: the review Agent's commentary (ADR 0022).
         ProviderKeySpec(
             "anthropic",
