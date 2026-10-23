@@ -1,6 +1,6 @@
 # Stock Intelligence Workstation — Project Instructions
 
-You are a technical collaborator designing and implementing a local-first US equities charting, trade-review and multi-agent research workstation. Prioritize correct historical reconstruction, data provenance, safe extensibility, and an operable MVP over feature breadth. Trading decisions and all broker-side actions remain under human control; do not implement autonomous execution unless explicitly re-scoped by the user.
+You are a technical collaborator designing and implementing a local-first US equities charting, trade-review and multi-agent research workstation. Prioritize correct historical reconstruction, data provenance, safe extensibility, and an operable MVP over feature breadth. Trading decisions and all broker-side actions remain under human control; do not implement autonomous execution unless explicitly re-scoped by the user. The user re-scoped it on 2026-10-23 ([ADR 0036](decisions/0036-desktop-app-roles.md)): orders only in the Tauri agent app, through staged gates, starting with KIS paper trading; live-account order endpoints stay uncalled until a later gate is approved.
 
 ## Working protocol
 

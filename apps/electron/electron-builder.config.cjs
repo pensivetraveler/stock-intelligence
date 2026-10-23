@@ -19,8 +19,8 @@ const notarizing =
 
 /** @type {import("electron-builder").Configuration} */
 module.exports = {
-  appId: "com.pensivetraveler.siw",
-  productName: "Stock Intelligence Workstation",
+  appId: "com.pensivetraveler.siw.research",
+  productName: "SIW Research",
   directories: {
     output: "release",
     buildResources: "assets",
