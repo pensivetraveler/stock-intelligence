@@ -6,6 +6,7 @@ import { createAgentApi } from "./agent-api";
 import { createBacktestApi } from "./backtest-api";
 import { createCredentialApi } from "./credential-api";
 import { createCustomIndicatorApi } from "./custom-indicator-api";
+import { desktopBridge } from "./desktop-bridge";
 import { AppMark } from "./icons";
 import { LANGUAGES, useI18n, type Language, type MessageKey } from "./i18n";
 import { I18nProvider } from "./I18nProvider";
@@ -51,6 +52,9 @@ function AppContent({
   const [state, setState] = useState<ApiConnectionState>("checking");
   const [message, setMessage] = useState("Checking API health");
   const [lastSuccess, setLastSuccess] = useState<string | null>(null);
+  // Only inside the Electron shell (SIW Research): a button that opens SIW Agent.
+  const desktop = useMemo(() => desktopBridge(), []);
+  const [agentProblem, setAgentProblem] = useState<string | null>(null);
   const api = useMemo(
     () => createMarketApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
@@ -170,6 +174,32 @@ function AppContent({
           {t("app.retry")}
         </button>
         <span className="tb-spacer" />
+        {desktop ? (
+          <button
+            type="button"
+            className="tb-button"
+            title={t("app.openAgentHint")}
+            onClick={() =>
+              void desktop
+                .openAgentApp()
+                .then((result) =>
+                  setAgentProblem(result.opened ? null : result.reason),
+                )
+                .catch((error: unknown) =>
+                  setAgentProblem(
+                    error instanceof Error ? error.message : String(error),
+                  ),
+                )
+            }
+          >
+            {t("app.openAgent")}
+          </button>
+        ) : null}
+        {agentProblem && agentProblem !== "not_found" ? (
+          <span className="status-item chart-error" role="alert">
+            {t("app.openAgentFailed", { reason: agentProblem })}
+          </span>
+        ) : null}
         <span className="status-item">
           {t("app.version")} {APP_VERSION}
         </span>
