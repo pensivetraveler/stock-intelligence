@@ -133,3 +133,16 @@ def test_a_failure_is_not_retried_before_its_wait(code: str, wait_minutes: int) 
     clock.at = NOW + timedelta(minutes=wait_minutes, seconds=1)
     assert client.rate().krw_per_usd == Decimal("1385.2")
     assert len(seen) == 2
+
+
+def test_waiting_error_keeps_a_short_traceback() -> None:
+    import traceback
+
+    client = _client(_error("ERROR-500"), [])
+    depths = []
+    for _ in range(5):
+        try:
+            client.rate()
+        except EcosError as error:
+            depths.append(len(traceback.extract_tb(error.__traceback__)))
+    assert len(set(depths[1:])) == 1  # does not grow with each pass

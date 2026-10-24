@@ -462,3 +462,26 @@ def test_ecos_failure_blocks_orders_and_is_asked_again_only_later(
     found = rate()
     assert found is not None and found.krw_per_usd == Decimal("1325.5")
     assert "ecos-new-key-not-real" in ecos.requests[-1].url.path
+
+
+def test_unreadable_ecos_key_is_read_again_next_time(tmp_path: Path) -> None:
+    from services.credentials.store import SecretStorageError
+    from services.paper_trading.service import ecos_fx
+
+    keys = CredentialStore(tmp_path, MemorySecretBackend())
+    keys.add("ecos", "ECOS", None, {"api_key": "ecos-test-key-not-real"})
+    ecos = FakeEcos()
+    real = keys.secrets
+    broken = [True]
+
+    def secrets(record: Any) -> dict[str, str]:
+        if broken[0]:
+            raise SecretStorageError("the keychain has no secret for key 'ECOS'")
+        return real(record)
+
+    keys.secrets = secrets  # type: ignore[method-assign]
+    rate = ecos_fx(keys, transport=ecos.transport(), now=lambda: NOW)
+    assert rate() is None and ecos.requests == []
+    broken[0] = False
+    found = rate()
+    assert found is not None and found.krw_per_usd == Decimal("1325.5")

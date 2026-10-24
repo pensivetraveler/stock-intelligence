@@ -96,6 +96,9 @@ class EcosUsdKrw:
     def __repr__(self) -> str:
         return "EcosUsdKrw()"
 
+    def close(self) -> None:
+        self._client.close()
+
     def rate(self) -> EcosRate:
         now = self._now()
         today = now.astimezone(SEOUL).date()
@@ -106,7 +109,8 @@ class EcosUsdKrw:
                 failed_at, error = self._failure
                 wait = RETRY_AFTER["permanent" if error.permanent else "transient"]
                 if now - failed_at < wait:
-                    raise error
+                    # A fresh traceback each time, so a long wait does not grow it.
+                    raise error.with_traceback(None)
             try:
                 found = self._fetch(today, now)
             except EcosError as error:
