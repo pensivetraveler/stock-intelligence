@@ -6552,7 +6552,9 @@
             "input_bar_count",
             "input_bars_sha256",
             "calendar_id",
-            "calendar_version"
+            "calendar_version",
+            "final_by",
+            "settle_seconds"
           ],
           "properties": {
             "data_as_of_utc": {
@@ -6604,6 +6606,22 @@
             },
             "calendar_version": {
               "$ref": "#/$defs/Identifier"
+            },
+            "final_by": {
+              "enum": ["source", "settle"],
+              "description": "source: the data source finalized the signal bar; settle: the plan's settle time after its end had passed"
+            },
+            "settle_seconds": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 900
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           }
         },
@@ -7144,7 +7162,8 @@
         "fx",
         "fx_source",
         "equity_basis",
-        "max_signal_age_seconds"
+        "max_signal_age_seconds",
+        "bar_settle_seconds"
       ],
       "properties": {
         "kind": {
@@ -7261,6 +7280,19 @@
           "type": "integer",
           "minimum": 10,
           "maximum": 86400
+        },
+        "bar_settle_seconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 900
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Seconds after a bar's end after which the runner treats it as final for signals; null: the source's finality only"
         }
       },
       "description": "One user approval of a paper-trading plan; its ID is the SHA-256 of its content (ADR 0037)."

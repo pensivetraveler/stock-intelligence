@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from functools import cache, lru_cache
 from pathlib import Path
@@ -109,6 +109,12 @@ def _paper_intent_errors(document: dict[str, Any]) -> list[str]:
         errors.append("signal bar end must be after its start")
     if _utc(data["data_as_of_utc"]) < bar_end:
         errors.append("a signal cannot use a bar that had not ended at the data cutoff")
+    if (data["final_by"] == "settle") != (data["settle_seconds"] is not None):
+        errors.append("settle_seconds is set exactly when the bar was final by settle time")
+    elif data["final_by"] == "settle" and bar_end + timedelta(
+        seconds=data["settle_seconds"]
+    ) > _utc(data["data_as_of_utc"]):
+        errors.append("a bar final by settle time must have settled by the data cutoff")
     if _utc(document["created_at_utc"]) < _utc(data["data_as_of_utc"]):
         errors.append("an intent cannot be created before its data cutoff")
     order = document["order"]

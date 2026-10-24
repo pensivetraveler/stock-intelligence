@@ -50,7 +50,7 @@ class Feed:
             return None
         return FeedSnapshot(
             bars=self.bars,
-            data_as_of_utc=datetime.fromtimestamp(self.bars[-1].end, timezone.utc),
+            data_as_of_utc=max(now, datetime.fromtimestamp(self.bars[-1].end, timezone.utc)),
             timeframe="1m",
             source_id="alpaca",
             feed_scope="alpaca-sip",
@@ -308,3 +308,31 @@ def test_one_order_list_read_per_step(tmp_path: Path) -> None:
     report = runner.step(_end(feed, 30))  # reconcile and fill sync in one step
     after = sum(1 for r in fake.requests if r.headers.get("api-id") == "ust21510")
     assert (report.reconciled, report.fills, after - before) == (1, 1, 1)
+
+
+def test_settle_time_lets_a_closed_bar_signal_before_the_source_finalizes_it(
+    tmp_path: Path,
+) -> None:
+    runner, fake, feed, store = _setup(tmp_path, bar_settle_seconds=60)
+    feed.bars = _bars(99, 101, final=False)  # the 101 bar is not final at the source yet
+    assert runner.step(_end(feed, 5)).intents == 0  # 5 s after its end: not settled
+    report = runner.step(_end(feed, 61))
+    assert (report.intents, report.submitted) == (1, 1)
+    data = store.intents(1)[0]["intent"]["data"]
+    assert (data["final_by"], data["settle_seconds"]) == ("settle", 60)
+
+
+def test_source_final_bars_are_recorded_as_such(tmp_path: Path) -> None:
+    runner, fake, feed, store = _setup(tmp_path, bar_settle_seconds=60)
+    feed.bars = _bars(99, 101)
+    runner.step(_end(feed))
+    data = store.intents(1)[0]["intent"]["data"]
+    assert (data["final_by"], data["settle_seconds"]) == ("source", None)
+
+
+def test_without_settle_time_the_latest_source_final_bar_is_used(tmp_path: Path) -> None:
+    runner, fake, feed, store = _setup(tmp_path)
+    feed.bars = _bars(101, 99, final=False)  # only the 101 bar is final at the source
+    report = runner.step(_end(feed, 5))
+    assert report.intents == 1  # decided on the 101 bar; the unfinished 99 bar is left out
+    assert store.intents(1)[0]["intent"]["data"]["input_bar_count"] == 1

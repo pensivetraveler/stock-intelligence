@@ -56,6 +56,10 @@ class SignalData:
     input_bars_sha256: str
     calendar_id: str
     calendar_version: str
+    # How the signal bar counted as final: the source said so, or the plan's settle time
+    # after the bar's end had passed (ADR 0037, per plan).
+    final_by: Literal["source", "settle"] = "source"
+    settle_seconds: int | None = None
 
 
 @dataclass(frozen=True)
@@ -202,6 +206,8 @@ def build_intent(
             "input_bars_sha256": data.input_bars_sha256,
             "calendar_id": data.calendar_id,
             "calendar_version": data.calendar_version,
+            "final_by": data.final_by,
+            "settle_seconds": data.settle_seconds,
         },
         "signal": {
             "summary": signal_summary,

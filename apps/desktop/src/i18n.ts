@@ -1034,6 +1034,9 @@ const en = {
   "paper.approve.rate": "KRW per USD for the amount limit",
   "paper.approve.buffer": "Market-order price buffer (bp)",
   "paper.approve.equity": "Fixed equity for percent sizing (USD, optional)",
+  "paper.approve.settle":
+    "Bar settle time (seconds after a bar ends before signals use it; empty = the data source's own, 15 minutes for Alpaca)",
+  "paper.approve.maxAge": "Max signal age (seconds)",
   "paper.approve.note":
     "Daily order count, daily loss and position limits are off for now. Orders stay blocked until the paper server is verified for the market.",
   "paper.approve.missing":
@@ -2064,6 +2067,9 @@ const ko: Record<MessageKey, string> = {
   "paper.approve.rate": "금액 한도용 원/달러 환율",
   "paper.approve.buffer": "시장가 가격 버퍼(bp)",
   "paper.approve.equity": "비율 수량 계산용 고정 자산(달러, 선택)",
+  "paper.approve.settle":
+    "봉 확정 대기(봉이 끝난 뒤 신호에 쓰기까지 초, 비우면 데이터 출처 기준 — Alpaca 15분)",
+  "paper.approve.maxAge": "신호 최대 나이(초)",
   "paper.approve.note":
     "일 주문 수·일 손실·보유 한도는 지금은 꺼져 있습니다. 해당 시장의 모의 서버 확인 전에는 주문이 막힙니다.",
   "paper.approve.missing": "전략, 모의 키, 종목을 하나 이상 고르세요.",

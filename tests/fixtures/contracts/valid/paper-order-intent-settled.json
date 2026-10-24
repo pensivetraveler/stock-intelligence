@@ -1,0 +1,88 @@
+{
+  "kind": "paper_order_intent",
+  "schema_version": "0.1",
+  "intent_id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "created_at_utc": "2026-10-23T14:31:05Z",
+  "broker_id": "kiwoom",
+  "broker_account_ref": "kiwoom-0123456789abcdef-demo",
+  "environment": "demo",
+  "approval_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "strategy": {
+    "strategy_id": "strat-sma-cross",
+    "strategy_version": 3,
+    "definition_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "strategy_kind": "rules",
+    "logs_sha256": null
+  },
+  "instrument_id": "us:aapl:xnas:2026",
+  "symbol": "AAPL",
+  "side": "buy",
+  "currency": "USD",
+  "data": {
+    "data_as_of_utc": "2026-10-23T14:31:00Z",
+    "signal_bar_start_utc": "2026-10-23T14:30:00Z",
+    "signal_bar_end_utc": "2026-10-23T14:31:00Z",
+    "signal_bar_final": true,
+    "timeframe": "1m",
+    "source_id": "alpaca",
+    "feed_scope": "alpaca-sip",
+    "dataset_revision": "alpaca-sip-r1",
+    "adjustment": "raw",
+    "session": "regular",
+    "input_bar_count": 120,
+    "input_bars_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "calendar_id": "XNYS",
+    "calendar_version": "exchange-calendars-4.13.2",
+    "final_by": "settle",
+    "settle_seconds": 0
+  },
+  "signal": {
+    "summary": "SMA(20) crossed above SMA(50) at the bar close",
+    "operands": [
+      {
+        "operand": "sma(20)",
+        "value": "199.85"
+      },
+      {
+        "operand": "sma(50)",
+        "value": "199.80"
+      }
+    ]
+  },
+  "sizing": {
+    "method": "shares",
+    "input": "3",
+    "equity_basis": null,
+    "cash_basis": null,
+    "basis_as_of_utc": null,
+    "reference_price": "199.90",
+    "reference_price_source": "signal bar close (alpaca-sip-r1)",
+    "reference_price_as_of_utc": "2026-10-23T14:31:00Z",
+    "fee_rate": "0",
+    "rounding": "floor_whole_shares"
+  },
+  "order": {
+    "order_type": "limit",
+    "quantity": "3",
+    "limit_price": "200.00",
+    "market_buffer_bps": null,
+    "estimated_max_price": null
+  },
+  "fx": {
+    "krw_per_usd": "1400",
+    "source": "fixed rate confirmed at approval",
+    "as_of_utc": "2026-10-23T13:00:00Z"
+  },
+  "limit_check": {
+    "passed": true,
+    "reasons": [],
+    "order_amount_krw": "840000",
+    "limits": {
+      "max_order_amount_krw": "1000000",
+      "max_daily_orders": null,
+      "max_daily_loss_rate": null,
+      "max_position_amount_krw": null,
+      "allowed_instrument_ids": ["us:aapl:xnas:2026"]
+    }
+  }
+}

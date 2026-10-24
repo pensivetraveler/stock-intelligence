@@ -137,6 +137,7 @@ def _approval(store: PaperOrderStore, backtests: BacktestStore, account_ref: str
         "fx_source": "fixed",
         "equity_basis": None,
         "max_signal_age_seconds": 300,
+        "bar_settle_seconds": None,
     }
     return store.record_approval(content)
 
@@ -485,3 +486,18 @@ def test_unreadable_ecos_key_is_read_again_next_time(tmp_path: Path) -> None:
     broken[0] = False
     found = rate()
     assert found is not None and found.krw_per_usd == Decimal("1325.5")
+
+
+def test_approval_keeps_the_plans_settle_time_and_signal_age(client: Any) -> None:
+    test_client, credential_id = client
+    body = _approval_body(
+        test_client, credential_id, bar_settle_seconds=60, max_signal_age_seconds=300
+    )
+    response = test_client.post("/v1/paper/approvals", json=body, headers=AGENT)
+    assert response.status_code == 201, response.text
+    assert (response.json()["bar_settle_seconds"], response.json()["max_signal_age_seconds"]) == (
+        60,
+        300,
+    )
+    too_long = _approval_body(test_client, credential_id, bar_settle_seconds=901)
+    assert test_client.post("/v1/paper/approvals", json=too_long, headers=AGENT).status_code == 422

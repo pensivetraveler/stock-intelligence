@@ -121,6 +121,20 @@ function paperIntentErrors(document: Document): string[] {
       "a signal cannot use a bar that had not ended at the data cutoff",
     );
   }
+  const settle = data.settle_seconds;
+  if ((data.final_by === "settle") !== (settle !== null)) {
+    errors.push(
+      "settle_seconds is set exactly when the bar was final by settle time",
+    );
+  } else if (
+    data.final_by === "settle" &&
+    barEnd + Number(settle) * 1000 >
+      Date.parse(asString(data, "data_as_of_utc"))
+  ) {
+    errors.push(
+      "a bar final by settle time must have settled by the data cutoff",
+    );
+  }
   if (
     Date.parse(asString(document, "created_at_utc")) <
     Date.parse(asString(data, "data_as_of_utc"))
