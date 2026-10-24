@@ -232,6 +232,14 @@ def test_pool_reports_when_every_key_is_limited(tmp_path: Path) -> None:
         pool.get_bars(QUERY)
 
 
+def test_pool_names_its_adapters_daily_revision(tmp_path: Path) -> None:
+    store, _backend = make_store(tmp_path)
+    pool, built = pool_for(store, {}, [0.0])
+    assert pool.daily_dataset_revision is None  # the stub names none
+    built["listing"].daily_dataset_revision = "stub-r2:1d-r2"  # type: ignore[attr-defined]
+    assert pool.daily_dataset_revision == "stub-r2:1d-r2"
+
+
 def test_pool_does_not_hide_auth_errors_behind_other_keys(tmp_path: Path) -> None:
     store, _backend = make_store(tmp_path)
     first = add(store, "a")

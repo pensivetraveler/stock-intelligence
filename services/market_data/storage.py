@@ -1074,8 +1074,16 @@ class CachedMarketDataProvider:
             self.store,
             self.source_id,
             self.upstream.get_daily_bars,
-            getattr(self.upstream, "daily_dataset_revision", None),
+            self._daily_revision(query),
         ).get(query)
+
+    def _daily_revision(self, query: BarsQuery) -> str | None:
+        """The upstream's current daily revision for `query`, if it names one (the
+        router asks the provider of the query's market)."""
+        per_query = getattr(self.upstream, "daily_dataset_revision_for", None)
+        if per_query is not None:
+            return cast(str | None, per_query(query))
+        return cast(str | None, getattr(self.upstream, "daily_dataset_revision", None))
 
     def get_adjusted_daily_bars(self, query: BarsQuery, adjustment: str) -> BarsResult:
         """Adjusted daily bars straight from the upstream: never cached (see daily.py)."""

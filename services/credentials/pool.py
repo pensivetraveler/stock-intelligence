@@ -75,6 +75,11 @@ class PooledProvider:
     def source_id(self) -> str:
         return self._listing.source_id
 
+    @property
+    def daily_dataset_revision(self) -> str | None:
+        """The adapter's current daily revision, for the daily cache (None if unnamed)."""
+        return cast(str | None, getattr(self._listing, "daily_dataset_revision", None))
+
     def capabilities(self) -> dict[str, Any]:
         return self._listing.capabilities()
 
