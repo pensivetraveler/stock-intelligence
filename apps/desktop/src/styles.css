@@ -2575,6 +2575,17 @@ body {
   width: min(420px, 80vw);
 }
 
+/* Pine Script indicators */
+.pine-dialog {
+  width: min(640px, 92vw);
+}
+
+.pine-text {
+  min-height: 200px;
+  tab-size: 4;
+  white-space: pre;
+}
+
 .pyind-error-line {
   margin: 4px 0 0;
   padding: 4px 6px;

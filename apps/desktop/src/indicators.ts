@@ -15,6 +15,7 @@ import {
   type HigherBars,
   type HigherTimeframe,
 } from "./higher-timeframe";
+import { MAX_PINE_LENGTH, PINE_COLORS, pineDefinition } from "./pine";
 import {
   formulaDefinition,
   formulaLookback,
@@ -246,6 +247,8 @@ export interface IndicatorInput {
   step?: number;
   /** False for settings that are not a number of bars to look back over. */
   lookback?: boolean;
+  /** Shown as a list of named choices instead of a number (Pine bool and source). */
+  options?: { value: number; label: string }[];
 }
 
 export interface IndicatorOutput {
@@ -1217,6 +1220,8 @@ export interface IndicatorInstance {
   timeframe?: HigherTimeframe;
   /** Formula indicators (type "formula"): the expression, its name and pane. */
   formula?: string;
+  /** Pine Script indicators (type "pine", ADR 0040): the script. */
+  pine?: string;
   label?: string;
   pane?: "price" | "separate";
 }
@@ -1225,6 +1230,7 @@ export interface IndicatorInstance {
 export function definitionFor(
   instance: IndicatorInstance,
 ): IndicatorDefinition | undefined {
+  if (instance.type === "pine") return pineDefinition(instance.pine ?? "");
   if (instance.type === "formula") {
     return formulaDefinition(
       instance.formula ?? "",
@@ -1372,6 +1378,28 @@ export function parseIndicators(value: unknown): IndicatorInstance[] {
       ];
     }
     if (
+      record.type === "pine" &&
+      typeof record.pine === "string" &&
+      record.pine.length <= MAX_PINE_LENGTH &&
+      typeof record.key === "string" &&
+      record.key.length > 0
+    ) {
+      const definition = pineDefinition(record.pine);
+      return [
+        {
+          key: record.key,
+          type: "pine",
+          params: cleanParams(definition, record.params),
+          pine: record.pine,
+          ...(isHigherTimeframe(record.timeframe)
+            ? { timeframe: record.timeframe }
+            : {}),
+          ...(record.hidden === true ? { hidden: true } : {}),
+          ...savedLook(record, definition),
+        },
+      ];
+    }
+    if (
       typeof record.type === "string" &&
       record.type.startsWith("py:") &&
       !INDICATOR_BY_ID.has(record.type) &&
@@ -1432,7 +1460,13 @@ export function paramsText(
   definition: IndicatorDefinition,
   params: Record<string, number>,
 ): string {
-  return definition.inputs.map((item) => params[item.key]).join(", ");
+  return definition.inputs
+    .map(
+      (item) =>
+        item.options?.find((option) => option.value === params[item.key])
+          ?.label ?? params[item.key],
+    )
+    .join(", ");
 }
 
 // ---------------------------------------------------------------------------------
@@ -1489,7 +1523,10 @@ export function instanceLookback(instance: IndicatorInstance): number {
       return 0; // an invalid formula draws nothing and needs no warm-up
     }
   }
-  const definition = INDICATOR_BY_ID.get(instance.type);
+  const definition =
+    instance.type === "pine"
+      ? definitionFor(instance)
+      : INDICATOR_BY_ID.get(instance.type);
   if (!definition) return 0;
   let longest = 0;
   let total = 0;
@@ -1590,18 +1627,22 @@ export function renderIndicators(
     } else {
       values = definition.compute(priced(bars), instance.params, context);
     }
+    const pointColors = PINE_COLORS.get(values);
     const lines = definition.outputs.map((output) => {
       const kind = output.kind ?? "line";
+      const perBar = pointColors?.[output.key];
       const signed = kind === "histogram" && output.key !== "volume";
       const data: RenderedPoint[] = [];
       values[output.key].forEach((value, i) => {
         if (value === null || i < displayFrom) return;
+        // A Pine plot's colour for this bar wins over the up/down histogram colours.
+        const color =
+          perBar?.[i] ??
+          (signed ? (value >= 0 ? HISTOGRAM_UP : HISTOGRAM_DOWN) : undefined);
         data.push({
           time: bars[i].time,
           value,
-          ...(signed
-            ? { color: value >= 0 ? HISTOGRAM_UP : HISTOGRAM_DOWN }
-            : {}),
+          ...(color ? { color } : {}),
         });
       });
       const look = instance.style?.outputs?.[output.key] ?? {};
