@@ -44,6 +44,7 @@ import {
   higherBarsOf,
   higherChoices,
   higherRange,
+  lowerChoices,
   intradaySessions,
   isHigherTimeframe,
   isIntradayHigher,
@@ -74,6 +75,7 @@ import {
   olderSessionBars,
   prependOlder,
 } from "./older-bars";
+import { IndicatorSettings } from "./IndicatorSettings";
 import { PriceChart } from "./PriceChart";
 import { TradeEntry } from "./TradeEntry";
 import { sessionRange, type ChartConfig } from "./workspace-state";
@@ -976,7 +978,8 @@ export function ChartPanel({
   // Chart's own timeframe or a larger one; Python indicators stay on the chart's bars.
   const timeframeField = (instance: IndicatorInstance) =>
     isCustomType(instance.type) ||
-    higherChoices(config.timeframe).length === 0 ? null : (
+    (higherChoices(config.timeframe).length === 0 &&
+      lowerChoices(config.timeframe).length === 0) ? null : (
       <label>
         {t("ind.timeframe")}
         <select
@@ -994,11 +997,24 @@ export function ChartPanel({
           <option value="">
             {t("ind.timeframeChart", { timeframe: config.timeframe })}
           </option>
-          {higherChoices(config.timeframe).map((choice) => (
-            <option key={choice} value={choice}>
-              {choice.toUpperCase()}
-            </option>
-          ))}
+          {lowerChoices(config.timeframe).length > 0 ? (
+            <optgroup label={t("ind.timeframeLower")}>
+              {lowerChoices(config.timeframe).map((choice) => (
+                <option key={choice} value={choice}>
+                  {choice.toUpperCase()}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
+          {higherChoices(config.timeframe).length > 0 ? (
+            <optgroup label={t("ind.timeframeHigher")}>
+              {higherChoices(config.timeframe).map((choice) => (
+                <option key={choice} value={choice}>
+                  {choice.toUpperCase()}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
         </select>
       </label>
     );
@@ -1193,10 +1209,8 @@ export function ChartPanel({
                           </b>
                         ))}
                         <span className="indicator-actions">
-                          {item.definition.inputs.length > 0 ||
-                          item.instance.type === "formula" ||
-                          (higherChoices(config.timeframe).length > 0 &&
-                            !isCustomType(item.instance.type)) ? (
+                          {/* Every indicator has a Style tab, so settings always open. */}
+                          {item.definition.outputs.length > 0 ? (
                             <button
                               type="button"
                               aria-label={t("ind.settings", {
@@ -1283,75 +1297,71 @@ export function ChartPanel({
                             ✕
                           </button>
                         </span>
-                        {editing === item.key &&
-                        item.instance.type === "formula" ? (
-                          <div
-                            className="popover indicator-settings formula-settings"
-                            role="dialog"
-                            aria-label={t("ind.settings", {
-                              name: item.definition.short,
-                            })}
-                          >
-                            {timeframeField(item.instance)}
-                            <FormulaFields
-                              initial={{
-                                label: item.instance.label ?? "",
-                                formula: item.instance.formula ?? "",
-                                pane: item.instance.pane ?? "separate",
-                              }}
-                              submitLabel={t("ind.done")}
-                              onCancel={() => setEditing(null)}
-                              onSubmit={(value) => {
-                                changeIndicator(item.key, (current) => ({
-                                  ...current,
-                                  ...value,
-                                }));
-                                setEditing(null);
-                              }}
-                            />
-                          </div>
-                        ) : null}
-                        {editing === item.key &&
-                        item.instance.type !== "formula" ? (
-                          <div
-                            className="popover indicator-settings"
-                            role="dialog"
-                            aria-label={t("ind.settings", {
-                              name: item.definition.short,
-                            })}
-                          >
-                            <strong>{item.definition.name[language]}</strong>
-                            {item.definition.inputs.map((field) => (
-                              <label key={field.key}>
-                                {field.label[language]}
-                                <input
-                                  type="number"
-                                  min={field.min}
-                                  max={field.max}
-                                  step={field.step ?? 1}
-                                  defaultValue={item.params[field.key]}
-                                  onChange={(event) => {
-                                    const value = Number(event.target.value);
-                                    changeIndicator(item.key, (current) => ({
-                                      ...current,
-                                      params: cleanParams(item.definition, {
-                                        ...current.params,
-                                        [field.key]: value,
-                                      }),
-                                    }));
-                                  }}
-                                />
-                              </label>
-                            ))}
-                            {timeframeField(item.instance)}
-                            <button
-                              type="button"
-                              className="tb-button"
-                              onClick={() => setEditing(null)}
-                            >
-                              {t("ind.done")}
-                            </button>
-                          </div>
+                        {editing === item.key ? (
+                          <IndicatorSettings
+                            definition={item.definition}
+                            instance={item.instance}
+                            onChange={(update) =>
+                              changeIndicator(item.key, update)
+                            }
+                            onClose={() => setEditing(null)}
+                            inputs={
+                              item.instance.type === "formula" ? (
+                                <>
+                                  {timeframeField(item.instance)}
+                                  <FormulaFields
+                                    initial={{
+                                      label: item.instance.label ?? "",
+                                      formula: item.instance.formula ?? "",
+                                      pane: item.instance.pane ?? "separate",
+                                    }}
+                                    submitLabel={t("ind.apply")}
+                                    onCancel={() => setEditing(null)}
+                                    onSubmit={(value) =>
+                                      changeIndicator(item.key, (current) => ({
+                                        ...current,
+                                        ...value,
+                                      }))
+                                    }
+                                  />
+                                </>
+                              ) : (
+                                <>
+                                  {item.definition.inputs.map((field) => (
+                                    <label key={field.key}>
+                                      {field.label[language]}
+                                      <input
+                                        type="number"
+                                        min={field.min}
+                                        max={field.max}
+                                        step={field.step ?? 1}
+                                        defaultValue={item.params[field.key]}
+                                        onChange={(event) => {
+                                          const value = Number(
+                                            event.target.value,
+                                          );
+                                          changeIndicator(
+                                            item.key,
+                                            (current) => ({
+                                              ...current,
+                                              params: cleanParams(
+                                                item.definition,
+                                                {
+                                                  ...current.params,
+                                                  [field.key]: value,
+                                                },
+                                              ),
+                                            }),
+                                          );
+                                        }}
+                                      />
+                                    </label>
+                                  ))}
+                                  {timeframeField(item.instance)}
+                                </>
+                              )
+                            }
+                          />
                         ) : null}
                       </li>
                     ))}

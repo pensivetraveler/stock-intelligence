@@ -266,6 +266,8 @@ export interface IndicatorDefinition {
   outputs: IndicatorOutput[];
   /** Horizontal guide levels for oscillators (e.g. RSI 30/70). */
   levels?: number[];
+  /** Reads only closes, so its source can be another price (open, hl2, …). */
+  sourceInput?: boolean;
   compute: (
     bars: OhlcvBar[],
     p: Record<string, number>,
@@ -309,6 +311,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   // --- Moving averages and trend overlays ------------------------------------------
   {
     id: "sma",
+    sourceInput: true,
     name: { en: "Moving Average Simple", ko: "단순 이동평균(SMA)" },
     short: "SMA",
     category: "trend",
@@ -319,6 +322,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   },
   {
     id: "ema",
+    sourceInput: true,
     name: { en: "Moving Average Exponential", ko: "지수 이동평균(EMA)" },
     short: "EMA",
     category: "trend",
@@ -329,6 +333,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   },
   {
     id: "wma",
+    sourceInput: true,
     name: { en: "Moving Average Weighted", ko: "가중 이동평균(WMA)" },
     short: "WMA",
     category: "trend",
@@ -358,6 +363,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   },
   {
     id: "hma",
+    sourceInput: true,
     name: { en: "Hull Moving Average", ko: "헐 이동평균(HMA)" },
     short: "HMA",
     category: "trend",
@@ -401,6 +407,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   },
   {
     id: "bb",
+    sourceInput: true,
     name: { en: "Bollinger Bands", ko: "볼린저 밴드" },
     short: "BB",
     category: "volatility",
@@ -472,6 +479,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   },
   {
     id: "env",
+    sourceInput: true,
     name: { en: "Envelope", ko: "엔벨로프" },
     short: "ENV",
     category: "trend",
@@ -630,6 +638,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   // --- Momentum oscillators ----------------------------------------------------------
   {
     id: "rsi",
+    sourceInput: true,
     name: { en: "Relative Strength Index", ko: "상대강도지수(RSI)" },
     short: "RSI",
     category: "momentum",
@@ -641,6 +650,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   },
   {
     id: "macd",
+    sourceInput: true,
     name: { en: "MACD", ko: "MACD" },
     short: "MACD",
     category: "momentum",
@@ -684,6 +694,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   },
   {
     id: "stochrsi",
+    sourceInput: true,
     name: { en: "Stochastic RSI", ko: "스토캐스틱 RSI" },
     short: "Stoch RSI",
     category: "momentum",
@@ -762,6 +773,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   },
   {
     id: "mom",
+    sourceInput: true,
     name: { en: "Momentum", ko: "모멘텀" },
     short: "MOM",
     category: "momentum",
@@ -772,6 +784,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   },
   {
     id: "roc",
+    sourceInput: true,
     name: { en: "Rate Of Change", ko: "변화율(ROC)" },
     short: "ROC",
     category: "momentum",
@@ -945,6 +958,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   },
   {
     id: "bbw",
+    sourceInput: true,
     name: { en: "Bollinger BandWidth", ko: "볼린저 밴드폭" },
     short: "BBW",
     category: "volatility",
@@ -962,6 +976,7 @@ export const INDICATORS: IndicatorDefinition[] = [
   },
   {
     id: "bbpb",
+    sourceInput: true,
     name: { en: "Bollinger Bands %B", ko: "볼린저 %B" },
     short: "%B",
     category: "volatility",
@@ -1151,11 +1166,53 @@ export const INDICATOR_BY_ID = new Map(
 );
 
 /** One indicator placed on one chart, with its own settings. */
+/** Prices an indicator can read instead of the close (TradingView's "Source"). */
+export const PRICE_SOURCES = [
+  "close",
+  "open",
+  "high",
+  "low",
+  "hl2",
+  "hlc3",
+  "ohlc4",
+] as const;
+export type PriceSource = (typeof PRICE_SOURCES)[number];
+export const LINE_STYLES = ["solid", "dashed", "dotted"] as const;
+export type LineStyleName = (typeof LINE_STYLES)[number];
+
+/** How one output is drawn; unset fields keep the definition's look. */
+export interface OutputStyle {
+  color?: string;
+  width?: number;
+  line?: LineStyleName;
+  visible?: boolean;
+}
+
+/** A horizontal guide level (e.g. RSI 70) as the user set it. */
+export interface LevelStyle {
+  value: number;
+  color: string;
+  visible: boolean;
+}
+
+export interface IndicatorStyle {
+  outputs?: Record<string, OutputStyle>;
+  /** Replaces the definition's levels when set. */
+  levels?: LevelStyle[];
+}
+
+export const DEFAULT_LEVEL_COLOR = "#4a566b";
+export const MAX_LINE_WIDTH = 4;
+
 export interface IndicatorInstance {
   key: string;
   type: string;
   params: Record<string, number>;
   hidden?: boolean;
+  /** For indicators with `sourceInput`: the price read instead of the close. */
+  source?: PriceSource;
+  /** Colours, widths, line styles, visibility and levels (TradingView's "Style"). */
+  style?: IndicatorStyle;
   /** Computed on this larger timeframe instead of the chart's (built-ins, formulas). */
   timeframe?: HigherTimeframe;
   /** Formula indicators (type "formula"): the expression, its name and pane. */
@@ -1210,6 +1267,79 @@ export function cleanParams(
   );
 }
 
+const COLOR = /^#[0-9a-fA-F]{6}$/;
+
+/** A saved style with unknown fields dropped and bad values left out. */
+export function cleanStyle(value: unknown): IndicatorStyle | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const record = value as Record<string, unknown>;
+  const style: IndicatorStyle = {};
+  if (typeof record.outputs === "object" && record.outputs !== null) {
+    const outputs: Record<string, OutputStyle> = {};
+    for (const [key, raw] of Object.entries(
+      record.outputs as Record<string, unknown>,
+    )) {
+      if (typeof raw !== "object" || raw === null || key.length > 40) continue;
+      const item = raw as Record<string, unknown>;
+      const out: OutputStyle = {};
+      if (typeof item.color === "string" && COLOR.test(item.color)) {
+        out.color = item.color;
+      }
+      if (
+        typeof item.width === "number" &&
+        Number.isInteger(item.width) &&
+        item.width >= 1 &&
+        item.width <= MAX_LINE_WIDTH
+      ) {
+        out.width = item.width;
+      }
+      if ((LINE_STYLES as readonly unknown[]).includes(item.line)) {
+        out.line = item.line as LineStyleName;
+      }
+      if (typeof item.visible === "boolean") out.visible = item.visible;
+      if (Object.keys(out).length > 0) outputs[key] = out;
+    }
+    if (Object.keys(outputs).length > 0) style.outputs = outputs;
+  }
+  if (Array.isArray(record.levels)) {
+    style.levels = record.levels.slice(0, 10).flatMap((raw): LevelStyle[] => {
+      if (typeof raw !== "object" || raw === null) return [];
+      const item = raw as Record<string, unknown>;
+      return typeof item.value === "number" && Number.isFinite(item.value)
+        ? [
+            {
+              value: item.value,
+              color:
+                typeof item.color === "string" && COLOR.test(item.color)
+                  ? item.color
+                  : DEFAULT_LEVEL_COLOR,
+              visible: item.visible !== false,
+            },
+          ]
+        : [];
+    });
+  }
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
+/** Source and style kept from storage (shared by every kind of indicator). */
+function savedLook(
+  record: Record<string, unknown>,
+  definition?: IndicatorDefinition,
+): Pick<IndicatorInstance, "source" | "style"> {
+  const style = cleanStyle(record.style);
+  const source =
+    definition?.sourceInput &&
+    (PRICE_SOURCES as readonly unknown[]).includes(record.source) &&
+    record.source !== "close"
+      ? (record.source as PriceSource)
+      : undefined;
+  return {
+    ...(source ? { source } : {}),
+    ...(style ? { style } : {}),
+  };
+}
+
 export function parseIndicators(value: unknown): IndicatorInstance[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item): IndicatorInstance[] => {
@@ -1237,6 +1367,7 @@ export function parseIndicators(value: unknown): IndicatorInstance[] {
             ? { timeframe: record.timeframe }
             : {}),
           ...(record.hidden === true ? { hidden: true } : {}),
+          ...savedLook(record),
         },
       ];
     }
@@ -1264,6 +1395,7 @@ export function parseIndicators(value: unknown): IndicatorInstance[] {
           type: record.type,
           params,
           ...(record.hidden === true ? { hidden: true } : {}),
+          ...savedLook(record),
         },
       ];
     }
@@ -1289,6 +1421,7 @@ export function parseIndicators(value: unknown): IndicatorInstance[] {
           ? { timeframe: record.timeframe }
           : {}),
         ...(record.hidden === true ? { hidden: true } : {}),
+        ...savedLook(record, definition),
       },
     ];
   });
@@ -1318,6 +1451,9 @@ export interface RenderedLine {
   color: string;
   kind: "line" | "histogram";
   data: RenderedPoint[];
+  width: number;
+  line: LineStyleName;
+  visible: boolean;
 }
 
 export interface RenderedIndicator {
@@ -1327,6 +1463,8 @@ export interface RenderedIndicator {
   params: Record<string, number>;
   hidden: boolean;
   lines: RenderedLine[];
+  /** Guide levels to draw (the user's, else the definition's). */
+  levels: LevelStyle[];
   /** Value of each output at every bar index, for the legend under the crosshair. */
   values: Record<string, Series>;
 }
@@ -1381,6 +1519,43 @@ export function warmupBars(instances: IndicatorInstance[]): number {
  * Chart series for each indicator. `displayFrom` is the index of the first bar to
  * draw: bars before it only warm the formulas up and are never drawn.
  */
+/** Bars whose close is replaced by `source`, for indicators that read closes only. */
+export function withSource(bars: OhlcvBar[], source?: PriceSource): OhlcvBar[] {
+  if (!source || source === "close") return bars;
+  const price = (bar: OhlcvBar): number => {
+    switch (source) {
+      case "open":
+        return bar.open;
+      case "high":
+        return bar.high;
+      case "low":
+        return bar.low;
+      case "hl2":
+        return (bar.high + bar.low) / 2;
+      case "hlc3":
+        return (bar.high + bar.low + bar.close) / 3;
+      case "ohlc4":
+        return (bar.open + bar.high + bar.low + bar.close) / 4;
+    }
+  };
+  return bars.map((bar) => ({ ...bar, close: price(bar) }));
+}
+
+/** The levels an indicator draws: the user's when set, else the definition's. */
+export function levelsOf(
+  definition: IndicatorDefinition,
+  instance: IndicatorInstance,
+): LevelStyle[] {
+  return (
+    instance.style?.levels ??
+    (definition.levels ?? []).map((value) => ({
+      value,
+      color: DEFAULT_LEVEL_COLOR,
+      visible: true,
+    }))
+  );
+}
+
 export function renderIndicators(
   bars: OhlcvBar[],
   instances: IndicatorInstance[],
@@ -1396,11 +1571,13 @@ export function renderIndicators(
     const definition = definitionFor(instance);
     if (!definition) return [];
     let values: Record<string, Series>;
+    const priced = (input: OhlcvBar[]) =>
+      definition.sourceInput ? withSource(input, instance.source) : input;
     if (instance.timeframe) {
       const source = higher?.bars[instance.timeframe];
       values = source
         ? alignToChart(
-            definition.compute(source.bars, instance.params, context),
+            definition.compute(priced(source.bars), instance.params, context),
             source.availableAt,
             higher!.ends,
           )
@@ -1411,7 +1588,7 @@ export function renderIndicators(
             ]),
           );
     } else {
-      values = definition.compute(bars, instance.params, context);
+      values = definition.compute(priced(bars), instance.params, context);
     }
     const lines = definition.outputs.map((output) => {
       const kind = output.kind ?? "line";
@@ -1427,12 +1604,16 @@ export function renderIndicators(
             : {}),
         });
       });
+      const look = instance.style?.outputs?.[output.key] ?? {};
       return {
         id: `${instance.key}:${output.key}`,
         label: output.label,
-        color: output.color,
+        color: look.color ?? output.color,
         kind,
         data,
+        width: look.width ?? 1,
+        line: look.line ?? "solid",
+        visible: look.visible ?? true,
       };
     });
     return [
@@ -1443,6 +1624,7 @@ export function renderIndicators(
         params: instance.params,
         hidden: instance.hidden === true,
         lines,
+        levels: levelsOf(definition, instance),
         values,
       },
     ];

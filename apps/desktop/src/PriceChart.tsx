@@ -8,6 +8,7 @@ import {
   HistogramSeries,
   LineSeries,
   LineStyle,
+  type LineWidth,
   type IChartApi,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
@@ -23,7 +24,7 @@ import { zoneFormat, zoneOf } from "./market-zone";
 import type { ChartSyncGroup } from "./chart-sync";
 import { DrawingLayer, type Projection } from "./DrawingLayer";
 import { snapPrice, type Drawing, type DrawingTool } from "./drawings";
-import type { RenderedIndicator } from "./indicators";
+import type { LineStyleName, RenderedIndicator } from "./indicators";
 import { thinLabels, type ChartMarker } from "./journal-markers";
 import { OLDER_TRIGGER_BARS, USER_MOVE_MS } from "./older-bars";
 
@@ -90,6 +91,12 @@ function nearestCandle(points: CandlePoint[], time: number): CandlePoint {
     ? before
     : after;
 }
+
+const LINE_STYLE: Record<LineStyleName, LineStyle> = {
+  solid: LineStyle.Solid,
+  dashed: LineStyle.Dashed,
+  dotted: LineStyle.Dotted,
+};
 
 function timeOf(value: Time): number {
   return typeof value === "number" ? value : 0;
@@ -418,7 +425,10 @@ export function PriceChart({
     for (const indicator of indicators) {
       if (indicator.hidden) continue;
       const pane = indicator.definition.pane === "price" ? 0 : nextPane++;
-      indicator.lines.forEach((line, index) => {
+      // Levels go on the first output drawn, even when an earlier one is hidden.
+      let levelsPlaced = false;
+      indicator.lines.forEach((line) => {
+        if (!line.visible) return;
         const series =
           line.kind === "histogram"
             ? instance.addSeries(
@@ -434,7 +444,8 @@ export function PriceChart({
                 LineSeries,
                 {
                   color: line.color,
-                  lineWidth: 1,
+                  lineWidth: line.width as LineWidth,
+                  lineStyle: LINE_STYLE[line.line],
                   priceLineVisible: false,
                   lastValueVisible: pane > 0,
                   crosshairMarkerVisible: false,
@@ -447,11 +458,13 @@ export function PriceChart({
             time: point.time as UTCTimestamp,
           })),
         );
-        if (index === 0) {
-          for (const level of indicator.definition.levels ?? []) {
+        if (!levelsPlaced) {
+          levelsPlaced = true;
+          for (const level of indicator.levels) {
+            if (!level.visible) continue;
             series.createPriceLine({
-              price: level,
-              color: "#4a566b",
+              price: level.value,
+              color: level.color,
               lineWidth: 1,
               lineStyle: LineStyle.Dashed,
               axisLabelVisible: false,

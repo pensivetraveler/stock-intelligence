@@ -1593,6 +1593,68 @@ describe("indicators", () => {
     ).toBeDisabled();
   });
 
+  it("styles an indicator like TradingView and computes it on 1m bars", async () => {
+    const api = fakeApi({ history: true });
+    const storage = memoryStorage();
+    render(<Workspace api={api} storage={storage} newId={sequence()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    fireEvent.change(within(dialog).getByRole("textbox"), {
+      target: { value: "exponential" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: /Moving Average Exponential/,
+      }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Close indicators" }),
+    );
+    const legend = screen.getByRole("list", {
+      name: "Indicators on this chart",
+    });
+    fireEvent.click(
+      within(legend).getByRole("button", { name: "EMA settings" }),
+    );
+    const settings = screen.getByRole("dialog", { name: "EMA settings" });
+    // Inputs: source and a smaller timeframe.
+    fireEvent.change(within(settings).getByLabelText("Source"), {
+      target: { value: "hl2" },
+    });
+    fireEvent.change(within(settings).getByLabelText("Timeframe"), {
+      target: { value: "1m" },
+    });
+    await waitFor(() =>
+      expect(api.barsCalls.some((call) => call.timeframe === "1m")).toBe(true),
+    );
+    // Style: colour, width and line style of the line.
+    fireEvent.click(within(settings).getByRole("tab", { name: "Style" }));
+    fireEvent.change(within(settings).getByLabelText("EMA colour"), {
+      target: { value: "#ff0000" },
+    });
+    fireEvent.change(within(settings).getByLabelText("EMA width"), {
+      target: { value: "3" },
+    });
+    fireEvent.change(within(settings).getByLabelText("EMA line style"), {
+      target: { value: "dashed" },
+    });
+    const [saved] = savedLayout(storage).charts[0].indicators;
+    expect(saved).toMatchObject({
+      type: "ema",
+      source: "hl2",
+      timeframe: "1m",
+      style: {
+        outputs: { value: { color: "#ff0000", width: 3, line: "dashed" } },
+      },
+    });
+    expect(legend).toHaveTextContent("EMA 9 · 1M");
+    fireEvent.click(
+      within(settings).getByRole("button", { name: "Reset style" }),
+    );
+    expect(savedLayout(storage).charts[0].indicators[0].style).toBeUndefined();
+  });
+
   it("fetches larger intraday bars session by session for a 60m indicator", async () => {
     const api = fakeApi({ history: true });
     render(
@@ -1618,12 +1680,12 @@ describe("indicators", () => {
     );
     const settings = screen.getByRole("dialog", { name: "SMA settings" });
     const timeframe = within(settings).getByLabelText("Timeframe");
-    // A 5m chart offers 15m to 240m as well as daily and weekly.
+    // A 5m chart offers 1m below it, and 15m to 240m, daily and weekly above.
     expect(
       within(timeframe)
         .getAllByRole("option")
         .map((option) => option.getAttribute("value")),
-    ).toEqual(["", "15m", "30m", "60m", "120m", "240m", "1d", "1w"]);
+    ).toEqual(["", "1m", "15m", "30m", "60m", "120m", "240m", "1d", "1w"]);
     fireEvent.change(timeframe, { target: { value: "60m" } });
     await waitFor(() =>
       expect(
@@ -1793,7 +1855,7 @@ describe("indicators", () => {
     fireEvent.change(within(settings).getByLabelText("Formula"), {
       target: { value: "close - sma(close, 5)" },
     });
-    fireEvent.click(within(settings).getByRole("button", { name: "Done" }));
+    fireEvent.click(within(settings).getByRole("button", { name: "Apply" }));
     expect(legend).toHaveTextContent("Gap 5");
     expect(savedLayout(storage).charts[0].indicators[0].formula).toBe(
       "close - sma(close, 5)",

@@ -884,7 +884,8 @@ button:disabled {
 
 .chart-legend {
   position: absolute;
-  z-index: 2;
+  /* Above the drawing layer (3), so indicator settings open over drawings. */
+  z-index: 4;
   top: 6px;
   left: 8px;
   display: flex;
@@ -1660,6 +1661,86 @@ body {
   padding: 0 8px;
   color: var(--term-text);
   background: var(--term-bg);
+}
+
+.indicator-settings {
+  min-width: 280px;
+}
+
+.indicator-settings select {
+  height: 28px;
+  border: 1px solid var(--term-line);
+  border-radius: 4px;
+  color: var(--term-text);
+  background: var(--term-bg);
+}
+
+.ind-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--term-line);
+}
+
+.ind-tab {
+  padding: 6px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--term-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.ind-tab.active {
+  border-bottom-color: var(--term-accent);
+  color: var(--term-text);
+  font-weight: 600;
+}
+
+.ind-tab-body {
+  display: grid;
+  gap: 8px;
+}
+
+.ind-style-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ind-style-row .ind-style-name {
+  flex: 1;
+  min-width: 48px;
+  font-size: 12px;
+}
+
+.indicator-settings .ind-style-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+}
+
+.indicator-settings .ind-style-row input[type="color"] {
+  width: 32px;
+  padding: 2px;
+}
+
+.indicator-settings .ind-style-row input[type="number"] {
+  width: 72px;
+}
+
+.ind-levels {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--term-line);
+  border-radius: 4px;
+}
+
+.ind-levels legend {
+  padding: 0 4px;
+  color: var(--term-muted);
+  font-size: 12px;
 }
 
 .modal-backdrop {

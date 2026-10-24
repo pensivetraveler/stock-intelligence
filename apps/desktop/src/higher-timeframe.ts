@@ -10,9 +10,23 @@ import type { OhlcvBar, Series } from "./indicators";
  */
 /** Larger intraday timeframes: session buckets, like the chart's own (ADR 0034). */
 export const INTRADAY_HIGHER = ["15m", "30m", "60m", "120m", "240m"] as const;
-export const HIGHER_TIMEFRAMES = [...INTRADAY_HIGHER, "1d", "1w"] as const;
+/**
+ * Smaller intraday timeframes (ADR 0039), e.g. a 1-minute EMA on a 5-minute chart:
+ * each chart bar shows the value of the last smaller bar inside it.
+ */
+export const INTRADAY_LOWER = ["1m", "2m", "3m", "5m", "10m"] as const;
+/** Smaller bars per chart bar at most (a 1-minute indicator up to a 60-minute chart). */
+export const MAX_LOWER_RATIO = 60;
+export const HIGHER_TIMEFRAMES = [
+  ...INTRADAY_LOWER,
+  ...INTRADAY_HIGHER,
+  "1d",
+  "1w",
+] as const;
+/** A timeframe an indicator can be computed on other than the chart's own. */
 export type HigherTimeframe = (typeof HIGHER_TIMEFRAMES)[number];
-export type IntradayHigher = (typeof INTRADAY_HIGHER)[number];
+export type IntradayHigher =
+  (typeof INTRADAY_HIGHER)[number] | (typeof INTRADAY_LOWER)[number];
 
 /** Minutes of an intraday timeframe such as "5m"; null for daily and weekly. */
 export function minutesOf(timeframe: string): number | null {
@@ -29,6 +43,20 @@ export function higherChoices(chartTimeframe: string): HigherTimeframe[] {
     "1d",
     "1w",
   ];
+}
+
+/** Smaller timeframes that divide the chart's evenly, for intraday charts only. */
+export function lowerChoices(chartTimeframe: string): HigherTimeframe[] {
+  const chart = minutesOf(chartTimeframe);
+  if (chart === null) return []; // daily and weekly: too many minute bars
+  return INTRADAY_LOWER.filter((choice) => {
+    const minutes = minutesOf(choice) ?? chart;
+    return (
+      minutes < chart &&
+      chart % minutes === 0 &&
+      chart / minutes <= MAX_LOWER_RATIO
+    );
+  });
 }
 
 export const isHigherTimeframe = (value: unknown): value is HigherTimeframe =>

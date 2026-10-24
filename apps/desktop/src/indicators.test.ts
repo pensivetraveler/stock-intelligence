@@ -7,6 +7,7 @@ import {
   INDICATORS,
   parseIndicators,
   renderIndicators,
+  withSource,
   rma,
   sma,
   stdev,
@@ -236,5 +237,50 @@ describe("warm-up", () => {
     expect(rendered.values.value[30]).toBeCloseTo(
       bars.slice(26, 31).reduce((total, bar) => total + bar.close, 0) / 5,
     );
+  });
+
+  it("reads another price as the source and keeps a clean style", () => {
+    const bars = [
+      { time: 1, open: 1, high: 4, low: 2, close: 3, volume: 1 },
+      { time: 2, open: 2, high: 6, low: 4, close: 5, volume: 1 },
+    ];
+    expect(withSource(bars, "hl2").map((bar) => bar.close)).toEqual([3, 5]);
+    expect(withSource(bars, "open").map((bar) => bar.close)).toEqual([1, 2]);
+    expect(withSource(bars)).toBe(bars);
+    const [instance] = parseIndicators([
+      {
+        key: "a",
+        type: "rsi",
+        params: { length: 14 },
+        source: "hlc3",
+        style: {
+          outputs: {
+            value: { color: "#00ff00", width: 9, line: "wavy", visible: false },
+          },
+          levels: [{ value: 80, color: "red" }, { value: "x" }],
+        },
+      },
+      { key: "b", type: "atr", params: { length: 14 }, source: "open" },
+    ]);
+    expect(instance.source).toBe("hlc3");
+    expect(instance.style).toEqual({
+      outputs: { value: { color: "#00ff00", visible: false } },
+      levels: [{ value: 80, color: "#4a566b", visible: true }],
+    });
+    // ATR reads highs and lows: no source to choose.
+    expect(
+      parseIndicators([
+        { key: "b", type: "atr", params: { length: 14 }, source: "open" },
+      ])[0].source,
+    ).toBeUndefined();
+    const [rendered] = renderIndicators(bars, [instance]);
+    expect(rendered.levels).toEqual([
+      { value: 80, color: "#4a566b", visible: true },
+    ]);
+    expect(rendered.lines[0]).toMatchObject({
+      color: "#00ff00",
+      visible: false,
+      width: 1,
+    });
   });
 });
