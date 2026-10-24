@@ -3631,6 +3631,11 @@ export interface PaperOrderIntent {
     input_bars_sha256: string;
     calendar_id: Identifier;
     calendar_version: Identifier;
+    /**
+     * source: the data source finalized the signal bar; settle: the plan's settle time after its end had passed
+     */
+    final_by: "source" | "settle";
+    settle_seconds: number | null;
   };
   signal: {
     summary: string;
@@ -3991,6 +3996,10 @@ export interface PaperApproval {
   fx_source: "fixed" | "bok_ecos";
   equity_basis: NonNegativeDecimalString | null;
   max_signal_age_seconds: number;
+  /**
+   * Seconds after a bar's end after which the runner treats it as final for signals; null: the source's finality only
+   */
+  bar_settle_seconds: number | null;
 }
 export interface PaperApprovalListResponse {
   kind: "paper_approval_list_response";

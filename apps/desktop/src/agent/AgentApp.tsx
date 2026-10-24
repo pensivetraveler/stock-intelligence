@@ -317,6 +317,8 @@ function ApprovalSection({
   const [fxMode, setFxMode] = useState<"fixed" | "bok_ecos">("bok_ecos");
   const [equity, setEquity] = useState("");
   const [buffer, setBuffer] = useState("50");
+  const [settle, setSettle] = useState("60");
+  const [maxAge, setMaxAge] = useState("300");
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -370,6 +372,8 @@ function ApprovalSection({
             : "entered in SIW Agent",
         fx_mode: fxMode,
         equity_basis: equity.trim() === "" ? null : equity.trim(),
+        bar_settle_seconds: settle.trim() === "" ? null : Number(settle.trim()),
+        max_signal_age_seconds: Number(maxAge.trim() || "300"),
       });
       setFormError(null);
       onApproved();
@@ -485,6 +489,20 @@ function ApprovalSection({
           <input
             value={equity}
             onChange={(event) => setEquity(event.target.value)}
+          />
+        </label>
+        <label>
+          {t("paper.approve.settle")}
+          <input
+            value={settle}
+            onChange={(event) => setSettle(event.target.value)}
+          />
+        </label>
+        <label>
+          {t("paper.approve.maxAge")}
+          <input
+            value={maxAge}
+            onChange={(event) => setMaxAge(event.target.value)}
           />
         </label>
         <p className="agent-muted">{t("paper.approve.note")}</p>

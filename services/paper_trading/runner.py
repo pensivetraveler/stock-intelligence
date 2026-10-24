@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from decimal import ROUND_DOWN, ROUND_UP, Decimal
 from typing import Any, Literal, Protocol
@@ -72,6 +72,11 @@ class RunPlan:
     # A fixed equity for percent-of-equity sizing, confirmed at approval; None refuses it.
     equity_basis: Decimal | None = None
     max_signal_age_seconds: int = 300
+    # Seconds after a bar's end after which the runner treats it as final for signals even
+    # when the source has not finalized it yet (realtime SIP bars settle quickly; the
+    # source's own finality, 15 minutes for Alpaca, stays for charts and caches). None:
+    # only the source's finality. A choice per strategy and plan (ADR 0037).
+    bar_settle_seconds: int | None = None
 
     def approval_content(self) -> dict[str, Any]:
         return {
@@ -99,6 +104,7 @@ class RunPlan:
             "fx_source": self.fx_source,
             "equity_basis": None if self.equity_basis is None else str(self.equity_basis),
             "max_signal_age_seconds": self.max_signal_age_seconds,
+            "bar_settle_seconds": self.bar_settle_seconds,
         }
 
 
@@ -146,6 +152,7 @@ def plan_from_approval(content: dict[str, Any], definition: dict[str, Any]) -> R
         fx_source=content.get("fx_source", "fixed"),
         equity_basis=number(content["equity_basis"]),
         max_signal_age_seconds=int(content["max_signal_age_seconds"]),
+        bar_settle_seconds=content.get("bar_settle_seconds"),
     )
 
 
@@ -247,8 +254,19 @@ class PaperRunner:
             return report
         for item in self.plan.instruments:
             snapshot = self.feed.snapshot(item.instrument_id, now)
-            if snapshot is None or not snapshot.bars or not snapshot.bars[-1].final:
+            if snapshot is None or not snapshot.bars:
                 continue
+            settled = self._settled(snapshot.bars, now)
+            # Bars not final yet (the latest minutes) are left out: the strategy sees the
+            # bars up to the latest final one, as in a backtest.
+            while settled and not settled[-1].final:
+                settled.pop()
+            if not settled:
+                continue
+            final_by: Literal["source", "settle"] = (
+                "source" if snapshot.bars[len(settled) - 1].final else "settle"
+            )
+            snapshot = replace(snapshot, bars=settled)
             last = snapshot.bars[-1]
             if self._seen.get(item.instrument_id, -1) >= last.time:
                 continue
@@ -257,8 +275,20 @@ class PaperRunner:
             for signal in rule_signals(
                 self.plan.definition, item.instrument_id, item.time_zone, snapshot.bars, holding
             ):
-                self._act(item, snapshot, signal, now, report)
+                self._act(item, snapshot, signal, now, report, final_by)
         return report
+
+    def _settled(self, bars: Sequence[EngineBar], now: datetime) -> list[EngineBar]:
+        """Bars with those past the plan's settle time marked final; the source's own
+        final bars are kept as they are. A bar still in progress is never final."""
+        settle = self.plan.bar_settle_seconds
+        if settle is None:
+            return list(bars)
+        cutoff = now - timedelta(seconds=settle)
+        return [
+            bar if bar.final or _epoch(bar.end) > cutoff else replace(bar, final=True)
+            for bar in bars
+        ]
 
     # -- signals → orders ------------------------------------------------------------
 
@@ -313,6 +343,7 @@ class PaperRunner:
         signal: dict[str, Any],
         now: datetime,
         report: StepReport,
+        final_by: Literal["source", "settle"] = "source",
     ) -> None:
         plan = self.plan
         bar = snapshot.bars[-1]
@@ -360,6 +391,8 @@ class PaperRunner:
             input_bars_sha256=bars_sha256(snapshot.bars),
             calendar_id=snapshot.calendar_id,
             calendar_version=snapshot.calendar_version,
+            final_by=final_by,
+            settle_seconds=plan.bar_settle_seconds if final_by == "settle" else None,
         )
         intent, result = build_intent(
             broker_id=plan.broker_id,

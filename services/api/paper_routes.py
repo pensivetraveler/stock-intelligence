@@ -60,6 +60,9 @@ class ApprovalRequest(BaseModel):
     fx_mode: Literal["fixed", "bok_ecos"] = "fixed"
     equity_basis: str | None = None
     max_signal_age_seconds: int = Field(default=300, ge=10, le=86_400)
+    # Per strategy: seconds after a bar's end before it counts as final for signals; None
+    # keeps the data source's own finality (15 minutes for Alpaca).
+    bar_settle_seconds: int | None = Field(default=None, ge=0, le=900)
 
 
 class ArmRequest(BaseModel):
@@ -246,6 +249,7 @@ def register_paper_routes(
                 fx_source=body.fx_mode,
                 equity_basis=_decimal(body.equity_basis, "equity_basis"),
                 max_signal_age_seconds=body.max_signal_age_seconds,
+                bar_settle_seconds=body.bar_settle_seconds,
             )
         except ValueError as exc:
             return error_response(request, 422, "invalid_approval", str(exc))

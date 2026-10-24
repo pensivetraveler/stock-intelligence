@@ -32,7 +32,9 @@
     "input_bar_count": 120,
     "input_bars_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
     "calendar_id": "XNYS",
-    "calendar_version": "exchange-calendars-4.13.2"
+    "calendar_version": "exchange-calendars-4.13.2",
+    "final_by": "source",
+    "settle_seconds": null
   },
   "signal": {
     "summary": "SMA(20) crossed above SMA(50) at the bar close",

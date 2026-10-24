@@ -57,6 +57,7 @@ const APPROVAL: PaperApproval = {
   fx_source: "fixed",
   equity_basis: null,
   max_signal_age_seconds: 300,
+  bar_settle_seconds: null,
 };
 
 function fakeApi(changes: Partial<PaperApi> = {}): PaperApi {

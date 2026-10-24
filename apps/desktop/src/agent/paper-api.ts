@@ -23,6 +23,9 @@ export interface ApprovalRequest {
   /** fixed: krw_per_usd; bok_ecos: the runner reads the Bank of Korea rate each day. */
   fx_mode: "fixed" | "bok_ecos";
   equity_basis: string | null;
+  max_signal_age_seconds: number;
+  /** Seconds after a bar's end before it counts as final; null keeps the source's own. */
+  bar_settle_seconds: number | null;
 }
 
 /**
