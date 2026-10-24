@@ -3,11 +3,13 @@
 //
 // The screen is the SIW Research build (apps/desktop/dist-research), served from a
 // custom "siw://app" origin, which the local API allows. Read-only like the web app:
-// the shell adds no trading, keys or file access.
+// the shell adds no trading, keys or file access. Its one bridge (preload.cjs) opens
+// SIW Agent, the separate app where paper orders are made.
 const {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
   Menu,
   MenuItem,
   net,
@@ -18,6 +20,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
+const { findAgentApp } = require("./agent-app.cjs");
 const { ensureApi, healthy } = require("./api-process.cjs");
 const {
   findRepoDir,
@@ -86,6 +89,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: path.join(__dirname, "preload.cjs"),
     },
   });
   // Keep the app's own title (SIW Research) instead of the shared page title.
@@ -158,6 +162,35 @@ async function startApi() {
   }
 }
 
+/** Opens SIW Agent (Tauri, ADR 0036): an app of its own, never a window of this one. */
+async function openAgentApp() {
+  const repoDir = findRepoDir({
+    envDir: process.env.SIW_REPO_DIR,
+    userDataDir: app.getPath("userData"),
+    configDir: CONFIG.repoDir,
+  }).repoDir;
+  const found = findAgentApp({ envPath: process.env.SIW_AGENT_APP, repoDir });
+  if (found === null) {
+    await dialog.showMessageBox({
+      type: "info",
+      message: "SIW Agent 앱을 찾지 못했습니다.",
+      detail:
+        "/Applications에 설치하거나 저장소에서 빌드하세요:\n" +
+        "cd apps/desktop && corepack pnpm exec tauri build\n\n" +
+        "다른 위치라면 SIW_AGENT_APP 환경변수로 알려 주세요.",
+    });
+    return { opened: false, reason: "not_found" };
+  }
+  if (found.kind === "app") {
+    const problem = await shell.openPath(found.path);
+    if (problem) return { opened: false, reason: problem };
+  } else {
+    const { spawn } = require("node:child_process");
+    spawn(found.path, [], { detached: true, stdio: "ignore" }).unref();
+  }
+  return { opened: true, reason: null };
+}
+
 /** Adds "저장소 폴더 변경…" to the app menu; the new folder is used from the next launch. */
 function addRepoMenuItem() {
   const menu = Menu.getApplicationMenu();
@@ -185,6 +218,7 @@ function addRepoMenuItem() {
 
 app.whenReady().then(async () => {
   serveUi();
+  ipcMain.handle("siw:open-agent-app", () => openAgentApp());
   addRepoMenuItem();
   await startApi();
   createWindow();

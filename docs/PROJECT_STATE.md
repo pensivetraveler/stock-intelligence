@@ -1766,6 +1766,15 @@
   - 브라우저(Agent 개발 서버, 실데이터)에서 요약 카드와 마법사 1~4단계를 확인했다. "apple" 검색에 AAPL 애플이 나왔다. 승인은 누르지 않았다(승인된 계획 0건). 콘솔 오류는 없었다.
   - Tauri 창 안에서의 모습은 사용자가 확인한다.
 
+## SIW Research에 "SIW Agent 열기" 버튼 — 2026-10-24
+
+- **사용자 요청:** SIW 안에 Tauri 앱을 실행할 수 있는 버튼.
+- **변경:**
+  - Electron에 `preload.cjs`(함수 하나 노출)와 `agent-app.cjs`(앱 위치 찾기)를 추가했다. `main.cjs`에서 IPC `siw:open-agent-app`을 처리하고, 패키징 목록에도 넣었다.
+  - 화면에서는 `desktop-bridge.ts`를 쓰고, `App.tsx` 상태 표시줄에 버튼을 둔다. Electron 안에서만 보인다.
+  - [ADR 0036](decisions/0036-desktop-app-roles.md)에 보충 절을 추가했다.
+- **검증:** Electron 테스트 2개(찾는 순서, 첫 존재 경로)와 화면 테스트 1개(브라우저에서는 숨김, Electron에서 호출)를 추가했다.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:

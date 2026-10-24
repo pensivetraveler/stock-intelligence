@@ -88,3 +88,15 @@
 - **첫 시장(사용자 결정):** 미국 주식("첫 시장 미국").
 - **미검증:** 키움 모의 서버가 미국 주식 주문을 받는지는 문서만으로 알 수 없다. 구현 첫 단계에서 사용자 승인 아래 조회 1회로 확인한다(ADR 0037 P0).
 - **설계:** [ADR 0037](0037-paper-order-execution.md)(accepted).
+
+## Amendment 2026-10-24 — SIW Research가 SIW Agent를 연다
+
+- **사용자 요청:** SIW 안에 Tauri 앱을 실행하는 버튼.
+- **결정:** SIW Research(Electron) 상태 표시줄에 "SIW Agent 열기" 버튼을 둔다. 버튼은 SIW Agent를 별도 앱으로 실행할 뿐이다. Research 창 안에 주문 화면을 띄우지 않으므로 역할 분리는 그대로다.
+- **브리지:** `apps/electron/preload.cjs`가 화면에 함수 하나(`siwDesktop.openAgentApp`)만 노출한다. 인자가 없어 화면이 실행할 대상을 고를 수 없다.
+- **찾는 위치:** 메인 프로세스(`agent-app.cjs`)가 정해진 순서로 찾는다.
+  1. `SIW_AGENT_APP`
+  2. `/Applications/SIW Agent.app`, `~/Applications/SIW Agent.app`
+  3. 저장소의 `tauri build` 결과(`bundle/macos/SIW Agent.app`, 그다음 바이너리)
+  - 없으면 빌드 방법을 안내한다.
+- **웹:** 브라우저에서 연 화면에는 버튼이 없다.

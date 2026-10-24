@@ -26,6 +26,24 @@ describe("API connection state", () => {
     expect(screen.getByText("API is available")).toBeInTheDocument();
   });
 
+  it("offers to open SIW Agent only inside the desktop shell", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(healthResponse());
+    const { unmount } = render(<App fetcher={fetcher} retryMs={60_000} />);
+    expect(
+      screen.queryByRole("button", { name: /SIW Agent/ }),
+    ).not.toBeInTheDocument();
+    unmount();
+    const openAgentApp = vi.fn(async () => ({ opened: true, reason: null }));
+    (window as { siwDesktop?: unknown }).siwDesktop = { openAgentApp };
+    try {
+      render(<App fetcher={fetcher} retryMs={60_000} />);
+      fireEvent.click(screen.getByRole("button", { name: /SIW Agent/ }));
+      expect(openAgentApp).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (window as { siwDesktop?: unknown }).siwDesktop;
+    }
+  });
+
   it("shows disconnected for a non-2xx response", async () => {
     const fetcher = vi
       .fn<typeof fetch>()

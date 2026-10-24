@@ -29,6 +29,8 @@ module.exports = {
     "main.cjs",
     "api-process.cjs",
     "repo-location.cjs",
+    "agent-app.cjs",
+    "preload.cjs",
     "ui/**/*",
     "siw-config.json",
   ],
