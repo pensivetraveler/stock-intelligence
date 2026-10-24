@@ -1456,16 +1456,16 @@ export function Workspace({
             </button>
           </div>
           <div className="tb-group" role="group" aria-label={t("chart.hours")}>
-            {(
-              (activeConfig.instrumentId.startsWith("us:")
-                ? ["regular", "extended", "overnight"]
-                : ["regular", "extended"]) as SessionScope[]
-            ).map((value) => (
+            {(["regular", "extended"] as SessionScope[]).map((value) => (
               <button
                 key={value}
                 type="button"
                 className="tb-button"
-                aria-pressed={value === activeConfig.sessionScope}
+                aria-pressed={
+                  value === activeConfig.sessionScope ||
+                  (value === "extended" &&
+                    activeConfig.sessionScope === "overnight")
+                }
                 // Daily and weekly bars always cover the regular session.
                 disabled={isDailyTimeframe(activeConfig.timeframe)}
                 title={
@@ -1478,9 +1478,9 @@ export function Workspace({
                 {t(
                   value === "regular"
                     ? "chart.regular"
-                    : value === "extended"
-                      ? "chart.extended"
-                      : "chart.dayMarket",
+                    : activeConfig.instrumentId.startsWith("us:")
+                      ? "chart.extendedUs"
+                      : "chart.extended",
                 )}
               </button>
             ))}

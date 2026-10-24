@@ -654,7 +654,8 @@ export function ChartPanel({
   // The US day market (ADR 0030): its own request and series, never mixed into `bars`,
   // so indicators, markers and candle clicks keep using the main bars only.
   const dayMarketWanted =
-    sessionScope === "overnight" &&
+    // On by default: extended hours always include the US day market (ADR 0030).
+    sessionScope !== "regular" &&
     !isDailyTimeframe(timeframe) &&
     instrumentId.startsWith("us:");
   const [dayMarket, setDayMarket] = useState<{

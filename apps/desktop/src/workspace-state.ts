@@ -5,7 +5,8 @@ import { parseIndicators, type IndicatorInstance } from "./indicators";
 import type { Timeframe } from "./market-api";
 import { isTimeframe } from "./timeframes";
 
-/** "overnight": extended hours plus the US day market drawn as its own series (ADR 0030). */
+/** "extended" shows the US day market too (its own series, ADR 0030). "overnight" is
+ * how layouts saved before that named the same view. */
 export type SessionScope = "regular" | "extended" | "overnight";
 
 /** One chart's own settings. Charts never share or propagate these implicitly. */

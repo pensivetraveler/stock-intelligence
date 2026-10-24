@@ -344,7 +344,13 @@ function fakeApi(
           : session,
       );
     },
-    overnightBars: () => Promise.reject(new Error("no day market here")),
+    // An Alpaca key answers with an empty night unless a test sets bars.
+    overnightBars: () => {
+      const response = fixture<MarketBarsResponse>(
+        "market-bars-response-aggregated.json",
+      );
+      return Promise.resolve({ ...response, bars: [] });
+    },
     bars: (request) => {
       barsCalls.push(request);
       const response = fixture<MarketBarsResponse>(
@@ -659,7 +665,7 @@ describe("chart workspace", () => {
     expect(within(first).getByText(/early close/)).toBeInTheDocument();
   });
 
-  it("draws the US day market as its own series, from its own request", async () => {
+  it("draws the US day market by default with extended hours, from its own request", async () => {
     const api = fakeApi();
     const response = fixture<MarketBarsResponse>(
       "market-bars-response-aggregated.json",
@@ -674,8 +680,10 @@ describe("chart workspace", () => {
     api.overnightBars = overnight;
     render(<Workspace api={api} storage={splitStorage()} />);
     await screen.findByTestId("chart-chart-2");
-    const before = api.barsCalls.length;
-    fireEvent.click(screen.getByRole("button", { name: "+ Day market" }));
+    // No separate switch: chart 1 shows extended hours, so the day market comes too.
+    expect(
+      screen.getByRole("button", { name: "Extended + day market" }),
+    ).toHaveAttribute("aria-pressed", "true");
 
     const chart = screen.getByRole("region", { name: /Chart 1/ });
     expect(
@@ -690,10 +698,8 @@ describe("chart workspace", () => {
         toDate: "2026-10-09",
       }),
     );
-    // The main bars are still the extended-hours ones, requested as before.
-    expect(
-      api.barsCalls.slice(before).every((call) => call.timeframe === "5m"),
-    ).toBe(true);
+    // The main bars are still the extended-hours ones, from the usual request.
+    expect(api.barsCalls.some((call) => call.timeframe === "5m")).toBe(true);
   });
 
   it("changes one chart without touching the other and saves the layout", async () => {
