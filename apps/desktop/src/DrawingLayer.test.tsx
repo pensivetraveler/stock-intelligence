@@ -92,6 +92,22 @@ describe("DrawingLayer", () => {
     ).toBeTruthy();
   });
 
+  it("removes a measurement on Escape or on the next click", async () => {
+    const { click } = setup("measure");
+    click(0, 100);
+    click(300, 90);
+    const label = /\+10\.00 \(\+10\.00%\)/;
+    expect(screen.getByText(label)).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByText(label)).toBeNull();
+    click(0, 100);
+    click(300, 90);
+    expect(screen.getByText(label)).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireEvent.pointerDown(window);
+    expect(screen.queryByText(label)).toBeNull();
+  });
+
   it("zooms to the dragged time range", () => {
     const { click, onZoom } = setup("zoom");
     click(240, 10);

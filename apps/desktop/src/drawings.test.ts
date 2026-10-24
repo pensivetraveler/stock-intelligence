@@ -110,10 +110,10 @@ describe("drawings", () => {
     ]);
   });
 
-  it("keeps the old look for retracements saved before the options existed", () => {
+  it("keeps the levels of retracements saved before the options existed, now shaded", () => {
     const legacy = fibSettingsOf({ kind: "fib" });
     expect(legacy.levels).toEqual([0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]);
-    expect(legacy).toMatchObject({ extendRight: true, background: false });
+    expect(legacy).toMatchObject({ extendRight: true, background: true });
     expect(fibSettingsOf({ kind: "fibext" })).toEqual(defaultFibSettings());
   });
 

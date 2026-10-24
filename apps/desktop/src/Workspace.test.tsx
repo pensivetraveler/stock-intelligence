@@ -38,6 +38,7 @@ import {
 import type { AgentApi } from "./agent-api";
 import type { BacktestApi } from "./backtest-api";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
+import { todayIn, US_ZONE } from "./market-zone";
 import { Workspace } from "./Workspace";
 import { LIBRARY_STORAGE_KEY } from "./workspace-library";
 import { DEFAULT_WORKSPACE, WORKSPACE_STORAGE_KEY } from "./workspace-state";
@@ -343,7 +344,13 @@ function fakeApi(
           : session,
       );
     },
-    overnightBars: () => Promise.reject(new Error("no day market here")),
+    // An Alpaca key answers with an empty night unless a test sets bars.
+    overnightBars: () => {
+      const response = fixture<MarketBarsResponse>(
+        "market-bars-response-aggregated.json",
+      );
+      return Promise.resolve({ ...response, bars: [] });
+    },
     bars: (request) => {
       barsCalls.push(request);
       const response = fixture<MarketBarsResponse>(
@@ -658,7 +665,7 @@ describe("chart workspace", () => {
     expect(within(first).getByText(/early close/)).toBeInTheDocument();
   });
 
-  it("draws the US day market as its own series, from its own request", async () => {
+  it("draws the US day market by default with extended hours, from its own request", async () => {
     const api = fakeApi();
     const response = fixture<MarketBarsResponse>(
       "market-bars-response-aggregated.json",
@@ -673,8 +680,10 @@ describe("chart workspace", () => {
     api.overnightBars = overnight;
     render(<Workspace api={api} storage={splitStorage()} />);
     await screen.findByTestId("chart-chart-2");
-    const before = api.barsCalls.length;
-    fireEvent.click(screen.getByRole("button", { name: "+ Day market" }));
+    // No separate switch: chart 1 shows extended hours, so the day market comes too.
+    expect(
+      screen.getByRole("button", { name: "Extended + day market" }),
+    ).toHaveAttribute("aria-pressed", "true");
 
     const chart = screen.getByRole("region", { name: /Chart 1/ });
     expect(
@@ -689,10 +698,8 @@ describe("chart workspace", () => {
         toDate: "2026-10-09",
       }),
     );
-    // The main bars are still the extended-hours ones, requested as before.
-    expect(
-      api.barsCalls.slice(before).every((call) => call.timeframe === "5m"),
-    ).toBe(true);
+    // The main bars are still the extended-hours ones, from the usual request.
+    expect(api.barsCalls.some((call) => call.timeframe === "5m")).toBe(true);
   });
 
   it("changes one chart without touching the other and saves the layout", async () => {
@@ -1000,6 +1007,49 @@ describe("chart workspace", () => {
     expect(savedLayout(storage).charts[0].instrumentId).toBe(
       "us:synth:xnas:2026",
     );
+  });
+
+  it("opens the symbol search when a letter is typed or on Ctrl+K", async () => {
+    render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.keyDown(document.body, { key: "a" });
+    const search = within(
+      screen.getByRole("dialog", { name: "Search symbol" }),
+    ).getByRole("textbox", { name: "Search symbol" });
+    expect(search).toHaveValue("A");
+    // Typing into the search box itself is not taken as a shortcut.
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(
+      screen.queryByRole("dialog", { name: "Search symbol" }),
+    ).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    expect(
+      within(screen.getByRole("dialog", { name: "Search symbol" })).getByRole(
+        "textbox",
+      ),
+    ).toHaveValue("");
+  });
+
+  it("opens on today at the exchange, or its last session when closed", async () => {
+    const api = fakeApi();
+    const today = todayIn(US_ZONE);
+    const storage = memoryStorage();
+    api.sessions = vi.fn(async (endDate: string) =>
+      endDate === today
+        ? [
+            {
+              ...fixture<SessionWindow>("session-window-early-close.json"),
+              session_date: "2026-10-23",
+            },
+          ]
+        : [],
+    );
+    render(<Workspace api={api} storage={storage} openOnToday />);
+    await screen.findByTestId("chart-chart-1");
+    await waitFor(() =>
+      expect(savedLayout(storage).charts[0].sessionDate).toBe("2026-10-23"),
+    );
+    expect(api.sessions).toHaveBeenCalledWith(today, 1, "XNAS");
   });
 
   it("searches symbols and steps the session date", async () => {

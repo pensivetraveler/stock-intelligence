@@ -137,6 +137,7 @@ function AppContent({
             backtestApi={backtestApi}
             agentApi={agentApi}
             customApi={customApi}
+            openOnToday
           />
         ) : (
           <div className="connect-screen">

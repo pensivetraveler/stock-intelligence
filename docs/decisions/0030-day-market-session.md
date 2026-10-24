@@ -43,7 +43,7 @@ Until now:
 
 ### Chart
 
-- **Session option:** a third choice, "+ Day market", next to "Regular / Extended" (US charts only). The main bars load as for Extended. The day market of each shown session date (up to the newest 14) is drawn as a second candle series in its own colors.
+- **Session option:** at first a third choice, "+ Day market", next to "Regular / Extended" (US charts only). Since 2026-10-24, at the user's request, the day market is on by default. Extended hours on a US chart always include it, and the choice reads "Extended + day market". "Regular" shows the regular session only. Layouts saved with "+ Day market" open the same view. The main bars load as for Extended. The day market of each shown session date (up to the newest 14) is drawn as a second candle series in its own colors.
 - **Indicators, markers and backtests:** they keep using the main bars only. Mixing venues inside one indicator series is the merging this ADR avoids.
 - **Replay:** day-market candles are cut at the replay time like the others.
 

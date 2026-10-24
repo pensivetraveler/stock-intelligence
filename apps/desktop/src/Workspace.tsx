@@ -81,7 +81,14 @@ import {
   saveAddedInstruments,
 } from "./added-instruments";
 import { ImportPanel } from "./ImportPanel";
-import { zoneFormat, zoneOf, type MarketZone } from "./market-zone";
+import {
+  KR_ZONE,
+  todayIn,
+  US_ZONE,
+  zoneFormat,
+  zoneOf,
+  type MarketZone,
+} from "./market-zone";
 import { QuotePanel } from "./QuotePanel";
 import { applyLive, type LiveSymbol, type RealtimeSocket } from "./realtime";
 import { AccountPanel } from "./AccountPanel";
@@ -130,6 +137,8 @@ import {
 
 interface WorkspaceProps {
   api: MarketApi;
+  /** Open every chart on today at its exchange, or the last trading day before it. */
+  openOnToday?: boolean;
   storage?: Storage | null;
   newId?: () => string;
   /** The key management screen, shown in the right panel when given. */
@@ -277,11 +286,27 @@ export function Workspace({
   backtestApi,
   agentApi,
   customApi,
+  openOnToday = false,
 }: WorkspaceProps) {
   const { t } = useI18n();
-  const [library, setLibrary] = useState<WorkspaceLibrary>(() =>
-    loadLibrary(storage, newId),
-  );
+  const [library, setLibrary] = useState<WorkspaceLibrary>(() => {
+    const loaded = loadLibrary(storage, newId);
+    if (!openOnToday) return loaded;
+    // Every chart opens on today at its own exchange (New York for US listings).
+    return {
+      ...loaded,
+      workspaces: loaded.workspaces.map((item) => ({
+        ...item,
+        layout: {
+          ...item.layout,
+          charts: item.layout.charts.map((chart) => ({
+            ...chart,
+            sessionDate: todayIn(zoneOf(chart.instrumentId)),
+          })),
+        },
+      })),
+    };
+  });
   // Layouts replaced by a template or reset in this workspace, newest last.
   const [undoStack, setUndoStack] = useState<WorkspaceState[]>([]);
   const [templateId, setTemplateId] = useState(LAYOUT_TEMPLATES[0].id);
@@ -606,6 +631,71 @@ export function Workspace({
     setLibrary((previous) =>
       updateActiveLayout(previous, update(activeWorkspace(previous).layout)),
     );
+
+  // Opened on today: a chart whose exchange is closed today moves to its last session.
+  const rolledToSession = useRef(false);
+  useEffect(() => {
+    if (!openOnToday || rolledToSession.current) return;
+    rolledToSession.current = true;
+    const zones = [US_ZONE, KR_ZONE];
+    void Promise.all(
+      zones.map(async (zone) => {
+        const today = todayIn(zone);
+        try {
+          const [last] = await api.sessions(today, 1, zone.calendarId);
+          return { zone, today, last: last?.session_date ?? today };
+        } catch {
+          return { zone, today, last: today };
+        }
+      }),
+    ).then((found) => {
+      const moves = found.filter((item) => item.last !== item.today);
+      if (moves.length === 0) return;
+      setLibrary((previous) => {
+        const current = activeWorkspace(previous).layout;
+        return updateActiveLayout(previous, {
+          ...current,
+          charts: current.charts.map((chart) => {
+            const move = moves.find(
+              (item) =>
+                item.zone === zoneOf(chart.instrumentId) &&
+                chart.sessionDate === item.today,
+            );
+            return move ? { ...chart, sessionDate: move.last } : chart;
+          }),
+        });
+      });
+    });
+  }, [api, openOnToday]);
+
+  // Typing a letter or digit on the chart opens the symbol search with it, as in
+  // TradingView; Ctrl/⌘+K opens it empty. Keys typed into fields are left alone.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearch("");
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (/^[a-z0-9]$/i.test(event.key)) {
+        event.preventDefault();
+        setSearch((current) =>
+          current === null ? event.key.toUpperCase() : current,
+        );
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const replaceLayout = (next: WorkspaceState) => {
     setUndoStack((stack) => [...stack, layout].slice(-UNDO_LIMIT));
@@ -1366,16 +1456,16 @@ export function Workspace({
             </button>
           </div>
           <div className="tb-group" role="group" aria-label={t("chart.hours")}>
-            {(
-              (activeConfig.instrumentId.startsWith("us:")
-                ? ["regular", "extended", "overnight"]
-                : ["regular", "extended"]) as SessionScope[]
-            ).map((value) => (
+            {(["regular", "extended"] as SessionScope[]).map((value) => (
               <button
                 key={value}
                 type="button"
                 className="tb-button"
-                aria-pressed={value === activeConfig.sessionScope}
+                aria-pressed={
+                  value === activeConfig.sessionScope ||
+                  (value === "extended" &&
+                    activeConfig.sessionScope === "overnight")
+                }
                 // Daily and weekly bars always cover the regular session.
                 disabled={isDailyTimeframe(activeConfig.timeframe)}
                 title={
@@ -1388,9 +1478,9 @@ export function Workspace({
                 {t(
                   value === "regular"
                     ? "chart.regular"
-                    : value === "extended"
-                      ? "chart.extended"
-                      : "chart.dayMarket",
+                    : activeConfig.instrumentId.startsWith("us:")
+                      ? "chart.extendedUs"
+                      : "chart.extended",
                 )}
               </button>
             ))}
