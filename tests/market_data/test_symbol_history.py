@@ -311,3 +311,23 @@ def test_hyphenated_broker_symbols_name_a_preferred_or_a_class_share() -> None:
     assert pick_share_class(["SI.PRA", "SI.A"], listed, None) is None
     assert pick_share_class(["SI.PRA", "SI.A"], listed, lambda _t: True) is None  # both
     assert pick_share_class(["X.PRA", "X.A"], lambda _t: True, None) is None  # both listed
+
+
+def test_local_renames_fill_gaps_in_the_source(tmp_path: Path) -> None:
+    local = tmp_path / "symbols" / "renames-local.json"
+    local.parent.mkdir(parents=True)
+    local.write_text(
+        json.dumps(
+            [
+                {"old": "TSP", "new": "TSPH", "on": "2024-02-07", "evidence": "fill prices"},
+                {"old": "FB", "new": "META", "on": "2022-06-09", "evidence": "duplicate"},
+            ]
+        )
+    )
+    found = history(tmp_path)
+    # Toss reports today's OTC ticker; the trade was made as TSP on Nasdaq.
+    assert found.traded_as("TSPH", date(2023, 1, 3)) == "TSP"
+    old = found.resolve("TSP", date(2023, 1, 3), LISTED.get)
+    assert (old.kind, old.symbol, old.moved_to) == ("delisted", "TSP", "TSPH")
+    # A rename the source records is not counted twice.
+    assert found.renamed_to("FB") == "META"
