@@ -140,6 +140,18 @@ def test_settled_years_of_an_older_revision_are_fetched_again(
     assert again.bars == first.bars and len(revised.queries) == 1
 
 
+def test_the_revision_is_found_through_the_market_router(
+    store: LocalMarketDataStore,
+) -> None:
+    from services.market_data.market_router import MarketRouter
+
+    past = BarsQuery(AAPL, "1d", utc(2024, 1, 1), utc(2025, 1, 1))
+    CachedMarketDataProvider(RevisedDailyProvider(), store).get_daily_bars(past)
+    revised = RevisedDailyProvider("fake-daily-r2")
+    routed = CachedMarketDataProvider(MarketRouter(revised, lambda: None), store)
+    assert routed.get_daily_bars(past).coverage["dataset_revision"] == "fake-daily-r2"
+
+
 def test_point_in_time_requests_reuse_only_what_was_known(
     store: LocalMarketDataStore,
 ) -> None:

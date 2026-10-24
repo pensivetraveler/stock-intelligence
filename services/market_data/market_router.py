@@ -8,7 +8,7 @@ directory, key status) is the US provider's, unchanged.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from services.market_data.daily import AdjustedDailyProvider, DailyBarsProvider
 from services.market_data.instruments import market_of
@@ -66,6 +66,12 @@ class MarketRouter:
                 f"from {provider.source_id}; use raw prices"
             )
         return provider.get_adjusted_daily_bars(query, adjustment)
+
+    def daily_dataset_revision_for(self, query: BarsQuery) -> str | None:
+        """The daily revision of the provider serving `query`, when it names one."""
+        if market_of(query.instrument_id) == "KR":
+            return None  # Korean daily bars are not cached under a named revision
+        return cast(str | None, getattr(self.us, "daily_dataset_revision", None))
 
     def _for(self, query: BarsQuery) -> MarketDataProvider:
         if market_of(query.instrument_id) != "KR":
