@@ -63,10 +63,14 @@ class DailyBarsCache:
         store: LocalMarketDataStore,
         source_id: str,
         fetch: Callable[[BarsQuery], BarsResult],
+        revision: str | None = None,
     ) -> None:
+        """`revision`: the upstream's current daily revision; stored years of another
+        revision are fetched again instead of served."""
         self.store = store
         self.source_id = source_id
         self.fetch = fetch
+        self.revision = revision
 
     def get(self, query: BarsQuery) -> BarsResult:
         last_year = (query.end_utc - timedelta(microseconds=1)).year
@@ -117,7 +121,9 @@ class DailyBarsCache:
         from services.market_data.storage import AmbiguousRevisionError
 
         try:
-            chunk = self.store.read_exact(self._year_query(query, year), self.source_id)
+            chunk = self.store.read_exact(
+                self._year_query(query, year), self.source_id, self.revision
+            )
         except AmbiguousRevisionError:
             return None
         if chunk is None or not _is_settled(chunk):

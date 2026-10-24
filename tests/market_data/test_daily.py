@@ -87,6 +87,22 @@ def test_daily_bars_cover_regular_sessions_with_exact_prices() -> None:
     assert result.coverage["expected_interval_count"] == 4
 
 
+def test_zero_volume_days_are_not_bars() -> None:
+    # After a delisting Alpaca repeats the last price with no volume; no trade happened.
+    flat = day("2026-11-27", "602.00", "602.00", "602.00", "602.00", 0)
+    adapter, _ = alpaca(page(*DAYS[:3], flat))
+    result = adapter.get_daily_bars(WEEK)
+
+    validate_document(result.to_document())
+    assert [bar["interval_start_utc"][:10] for bar in result.bars] == [
+        "2026-11-23",
+        "2026-11-24",
+        "2026-11-25",
+    ]
+    (gap,) = result.coverage["missing_intervals"]
+    assert (gap["start_utc"][:10], gap["reason"]) == ("2026-11-27", "provider_no_bar")
+
+
 def test_daily_bars_respect_the_point_in_time_cutoff() -> None:
     adapter, _ = alpaca(page(*DAYS))
     # 11-25 closes at 21:00Z and is published 15 minutes later on the free SIP feed.

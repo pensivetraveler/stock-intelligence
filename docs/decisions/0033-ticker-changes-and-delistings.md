@@ -72,6 +72,21 @@ The Kiwoom sync (ADR 0029) could not match 728 tickers (33,896 orders) to the sy
   - **Registry field `reused_on`:** a registry entry may carry the date another company took its ticker. A trade in that ticker before that date resolves to the entry (`delisted`), ahead of rule 3. With the user's approval, STRR.D23 was registered (`reused_on` 2025-09-05, `asof` 2023-05-05). Its 8 executions and 6 fee lines were re-keyed to `us:strr.d23:xnas:2026` after a backup (`journal-before-strr-rekey-20261023T084502Z.sqlite3`).
   - **Not automated:** the price check is a manual maintenance step, because it needs bar requests for every instrument (about 2,500).
 
+### Follow-up (2026-10-24)
+
+- **Zero-volume daily bars after a delisting:** for 40 of the delisted instruments, Alpaca's daily bars continue after the last exchange trade. They repeat the last price with zero volume, for up to hundreds of days. For example, 421 of ARDS's 453 daily bars from 2023-06 to 2025-03 were such bars. Minute bars do not have them.
+  - **Fix:** the adapter now drops daily and minute bars with zero volume. A day without trades has no bar, and coverage reports `provider_no_bar`.
+  - **Cache:** the daily revision became `…:1d-r2`. The daily cache reads stored years of the current revision only, so years cached with the filler bars are fetched again.
+- **Venue, second pass:** the closing-cross check was repeated for the 68 instruments still unverified. It skipped zero-volume days and tried up to 8 of each instrument's last exchange days.
+  - **Re-keyed, with the user's approval:** 13 instruments moved, after a backup (`journal-before-venue-rekey2-20261024T022421Z.sqlite3`).
+    - XNYS (tape A): BIG, LICY, SIX, UPH.
+    - XASE (tape B): ID, RHE, RMED, SCPX, SGE, SNMP, SSY, TELL, TPHS.
+    - Their 69 executions and 54 fee lines were stored again with no conflicts.
+  - **Marked verified:** 34 tape C instruments with a Nasdaq cross, at XNAS.
+  - **Left unverified:** LYT, whose cross was on NYSE Arca although its tape is C, and the instruments without any exchange trade in SIP. Among the latter, XTKGF and EMWPF have SIP bars under no ticker. Their Toss fills were most likely OTC trades, and their charts stay empty.
+- **Kiwoom's last unresolved orders:** 2 orders in `SI-A`, a preferred share. Instrument IDs cannot express a hyphenated class, so these are not stored.
+- **Ticker reuse check as a script:** `scripts/check_ticker_reuse.py` runs the price check (read-only; it prints instrument IDs and counts only).
+
 ## Alternatives considered
 
 - **Instrument IDs per company instead of per ticker:** the right long-term identity, but every stored bar, drawing and layout keys on ticker IDs today.

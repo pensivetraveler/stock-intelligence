@@ -110,6 +110,12 @@ def test_blue_oceans_closed_evenings_have_no_session(evening: str) -> None:
     assert overnight_window(CALENDAR, date.fromisoformat(evening) + timedelta(days=1)) is None
 
 
+def test_the_nyse_day_of_mourning_had_no_session() -> None:
+    # 2025-01-09 is not in Blue Ocean's notice, but BOATS printed no AAPL, TSLA or NVDA
+    # trade in the session into it (checked 2026-10-24), while the nights around did.
+    assert overnight_window(CALENDAR, date(2025, 1, 9)) is None
+
+
 def minute(stamp: str, o: str, h: str, low: str, c: str, v: int) -> str:
     return f'{{"t":"2026-10-22T{stamp}:00Z","o":{o},"h":{h},"l":{low},"c":{c},"v":{v}}}'
 

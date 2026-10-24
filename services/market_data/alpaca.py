@@ -209,6 +209,12 @@ class AlpacaMarketDataProvider:
         # disagreeing overlaps fail loudly in the cache, so one revision per feed holds.
         return f"alpaca-{self.config.feed}-raw-r1"
 
+    @property
+    def daily_dataset_revision(self) -> str:
+        # r2 (2026-10-24): zero-volume days (filled in after a delisting) are no bars.
+        # Daily years cached under the earlier revision are fetched again.
+        return f"{self.dataset_revision}:1d-r2"
+
     def capabilities(self) -> dict[str, Any]:
         return {
             "kind": "source_capabilities",
@@ -480,6 +486,10 @@ class AlpacaMarketDataProvider:
                     values = {key: Decimal(str(item[key])) for key in ("o", "h", "l", "c", "v")}
                 except (KeyError, ValueError, ArithmeticError) as exc:
                     raise ProviderDataError("Alpaca returned a malformed daily bar") from exc
+                if values["v"] == 0:
+                    # Alpaca fills days after a delisting with flat, zero-volume bars
+                    # (ADR 0033). No trade happened: the day has no bar.
+                    continue
                 if day in raw:
                     raise ProviderDataError("Alpaca returned two daily bars for one session")
                 raw[day] = RawDay(
@@ -488,7 +498,7 @@ class AlpacaMarketDataProvider:
         source = DailySource(
             source_id=self.source_id,
             feed_scope=f"alpaca-{self.config.feed}",
-            dataset_revision=f"{self.dataset_revision}:1d"
+            dataset_revision=self.daily_dataset_revision
             if adjustment == "raw"
             else f"{self.dataset_revision}:1d:{ALPACA_ADJUSTMENTS[adjustment]}:asof-{now.date()}",
             adjustment=adjustment,
@@ -776,6 +786,8 @@ class AlpacaMarketDataProvider:
             values = {key: Decimal(str(item[key])) for key in ("o", "h", "l", "c", "v")}
         except (KeyError, ValueError, ArithmeticError) as exc:
             raise ProviderDataError("Alpaca returned a malformed bar") from exc
+        if values["v"] == 0:
+            return None  # a filled-in bar without trades, never a real one
         end = start + timedelta(minutes=1)
         session = self._calendar.classify_interval(start, end)
         if session not in ("pre", "regular", "post"):
