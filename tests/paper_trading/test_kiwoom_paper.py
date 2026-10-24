@@ -19,9 +19,14 @@ INTENT = json.loads(
 )
 
 
-def _broker(fake: FakeKiwoomPaper) -> KiwoomPaperBroker:
+def _broker(fake: FakeKiwoomPaper, slept: list[float] | None = None) -> KiwoomPaperBroker:
     return KiwoomPaperBroker(
-        "app-key", "secret-key", "demo", markets=frozenset({"us"}), transport=fake.transport()
+        "app-key",
+        "secret-key",
+        "demo",
+        markets=frozenset({"us"}),
+        transport=fake.transport(),
+        sleep=(slept if slept is not None else []).append,
     )
 
 
@@ -52,16 +57,56 @@ def test_limit_buy_is_sent_to_the_paper_host() -> None:
     assert all("acnt" not in json.dumps(json.loads(r.content or b"{}")) for r in fake.requests)
 
 
-def test_market_sell_sends_no_price() -> None:
-    fake = FakeKiwoomPaper()
-    intent = {
-        **INTENT,
-        "side": "sell",
-        "order": {**INTENT["order"], "order_type": "market", "limit_price": None},
+def _market(side: str) -> dict[str, Any]:
+    order = {
+        **INTENT["order"],
+        "order_type": "market",
+        "limit_price": None,
+        "market_buffer_bps": "50",
+        "estimated_max_price": "200.8995",
     }
-    _broker(fake).submit(intent)
-    assert _bodies(fake, "ust20001")[0]["ord_uv"] == ""
-    assert _bodies(fake, "ust20001")[0]["trde_tp"] == "03"
+    return {**INTENT, "side": side, "order": order}
+
+
+@pytest.mark.parametrize(
+    ("side", "api_id", "price"),
+    [("buy", "ust20000", "200.9"), ("sell", "ust20001", "198.9")],  # 199.90 ± 0.5%
+)
+def test_market_orders_go_as_marketable_limits(side: str, api_id: str, price: str) -> None:
+    fake = FakeKiwoomPaper()
+    result = _broker(fake).submit(_market(side))
+    assert result.status == "accepted"
+    body = _bodies(fake, api_id)[0]
+    assert (body["trde_tp"], body["ord_uv"]) == ("00", price)
+
+
+def test_paper_server_refuses_market_codes() -> None:
+    fake = FakeKiwoomPaper()
+    response = fake.handle(
+        httpx.Request(
+            "POST",
+            "https://mockapi.kiwoom.com/api/us/ordr",
+            headers={"api-id": "ust20000"},
+            json={"stk_cd": "AAPL", "ord_qty": "1", "ord_uv": "", "trde_tp": "03"},
+        )
+    )
+    assert "RC4065" in response.json()["return_msg"]
+
+
+def test_calls_of_one_api_id_are_spaced() -> None:
+    fake = FakeKiwoomPaper()
+    slept: list[float] = []
+    broker = _broker(fake, slept)
+    broker.today_orders()
+    broker.today_orders()
+    assert slept and max(slept) > 1.0
+
+
+def test_rate_limited_query_is_tried_once_more() -> None:
+    fake = FakeKiwoomPaper(rate_limit_next_query=True)
+    broker = _broker(fake)
+    broker.submit(INTENT)
+    assert [o.broker_order_ref for o in broker.today_orders()] == ["000000001"]
 
 
 def test_rejected_order_keeps_the_code_and_message() -> None:

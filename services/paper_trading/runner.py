@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 
 from services.backtest.data import EngineBar
 from services.backtest.strategy import fingerprint
-from services.paper_trading.brokers.base import OrderNotSupportedError, PaperBroker
+from services.paper_trading.brokers.base import BrokerOrder, OrderNotSupportedError, PaperBroker
 from services.paper_trading.intent import (
     FxRate,
     OrderSpec,
@@ -227,9 +227,20 @@ class PaperRunner:
     def step(self, now: datetime) -> StepReport:
         report = StepReport()
         self.store.heartbeat()
+        # One read of today's orders per step: the paper server allows about one call
+        # per second per api-id.
+        today: list[BrokerOrder] | None = None
+
+        def orders() -> list[BrokerOrder]:
+            nonlocal today
+            if today is None:
+                today = self.broker.today_orders()
+            return today
+
         if self.store.submissions("pending_response", "unknown"):
-            report.reconciled = self._reconcile(now)
-        report.fills = self._sync_fills(now)
+            report.reconciled = self._reconcile(now, orders())
+        if self.store.accepted_without_execution():
+            report.fills = self._sync_fills(now, orders())
         status = self.store.status()
         if status["halted"]:
             report.halted = True
@@ -454,7 +465,7 @@ class PaperRunner:
     def _broker_day(self, moment: datetime) -> Any:
         return moment.astimezone(ZoneInfo(self.broker.time_zone)).date()
 
-    def _reconcile(self, now: datetime) -> int:
+    def _reconcile(self, now: datetime, orders: list[BrokerOrder]) -> int:
         """Settle pending or unknown submissions from today's order list, or halt.
 
         A submission matches an order nobody else claimed with the same symbol, side,
@@ -462,7 +473,6 @@ class PaperRunner:
         or a submission from an earlier broker day (today's list cannot show it): the
         kill switch goes on and the user decides.
         """
-        orders = self.broker.today_orders()
         claimed = self.store.known_order_refs()
         settled = 0
         for submission in self.store.submissions("pending_response", "unknown"):
@@ -525,12 +535,12 @@ class PaperRunner:
             moment -= timedelta(days=1)
         return moment.astimezone(timezone.utc)
 
-    def _sync_fills(self, now: datetime) -> int:
+    def _sync_fills(self, now: datetime, orders: list[BrokerOrder]) -> int:
         """Store each closed paper order with fills as one `order_aggregate` execution."""
         waiting = self.store.accepted_without_execution()
         if not waiting:
             return 0
-        by_ref = {order.broker_order_ref: order for order in self.broker.today_orders()}
+        by_ref = {order.broker_order_ref: order for order in orders}
         stored = 0
         for submission in waiting:
             order = by_ref.get(str(submission["broker_order_ref"]))

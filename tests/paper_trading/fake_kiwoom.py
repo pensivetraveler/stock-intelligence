@@ -40,6 +40,7 @@ class FakeKiwoomPaper:
     drop_next_order: bool = False  # take the order, then lose the connection
     invalidate_next_token: bool = False
     pages: int = 1
+    rate_limit_next_query: bool = False
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
@@ -70,6 +71,14 @@ class FakeKiwoomPaper:
                 200, json={"return_code": 3, "return_msg": "[8005:Token이 유효하지 않습니다]"}
             )
         if api_id in ("ust20000", "ust20001"):
+            if body["trde_tp"] == "03":  # as the paper server answered on 2026-10-23
+                return httpx.Response(
+                    200,
+                    json={
+                        "return_code": 20,
+                        "return_msg": "[2000](RC4065:모의투자 지정가 매매만 가능합니다.)",
+                    },
+                )
             if self.reject_orders:
                 return httpx.Response(200, json={"return_code": 20, "return_msg": "주문 불가"})
             order = FakeOrder(
@@ -93,6 +102,15 @@ class FakeKiwoomPaper:
             order.cancelled = True
             return httpx.Response(200, json={"ord_no": "000000999", "return_code": 0})
         if api_id == "ust21510":
+            if self.rate_limit_next_query:
+                self.rate_limit_next_query = False
+                return httpx.Response(
+                    429,
+                    json={
+                        "return_code": 5,
+                        "return_msg": "요청 개수 초과[1700:유량=1, API ID=ust21510]",
+                    },
+                )
             return self._today(request)
         return httpx.Response(200, json={"return_code": 20, "return_msg": "unexpected request"})
 

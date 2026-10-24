@@ -75,7 +75,12 @@ def _setup(
 ) -> tuple[PaperRunner, FakeKiwoomPaper, Feed, PaperOrderStore]:
     fake = fake or FakeKiwoomPaper()
     broker = KiwoomPaperBroker(
-        "app-key", "secret-key", "demo", markets=markets, transport=fake.transport()
+        "app-key",
+        "secret-key",
+        "demo",
+        markets=markets,
+        transport=fake.transport(),
+        sleep=lambda _seconds: None,
     )
     plan = RunPlan(
         strategy=StrategyRef("strat-above-100", 1, "c" * 64, "rules"),
@@ -103,7 +108,7 @@ def test_signal_becomes_a_paper_order_then_a_fill_then_an_exit(tmp_path: Path) -
     feed.bars = _bars(99, 101)
     report = runner.step(_end(feed))
     assert (report.intents, report.submitted) == (1, 1)
-    assert fake.orders[0].stk_cd == "AAPL" and fake.orders[0].trde_tp == "03"
+    assert fake.orders[0].stk_cd == "AAPL" and fake.orders[0].trde_tp == "00"
 
     fake.fill("000000001", "101.05", at="23:01:30")
     report = runner.step(_end(feed, 30))
@@ -291,3 +296,15 @@ def test_cancel_rows_are_never_matched_to_an_unknown_submission(tmp_path: Path) 
     fake.orders.append(replace(lost, ord_no="000000448", original="000000436"))
     runner.step(_end(feed, 10))
     assert [s["response_code"] for s in store.submissions("rejected")] == ["not_found_on_reconcile"]
+
+
+def test_one_order_list_read_per_step(tmp_path: Path) -> None:
+    fake = FakeKiwoomPaper(drop_next_order=True)
+    runner, fake, feed, store = _setup(tmp_path, fake=fake)
+    feed.bars = _bars(99, 101)
+    runner.step(_end(feed))  # the reply is lost: one unknown submission
+    fake.fill("000000001", "101.05", at="23:01:30")
+    before = sum(1 for r in fake.requests if r.headers.get("api-id") == "ust21510")
+    report = runner.step(_end(feed, 30))  # reconcile and fill sync in one step
+    after = sum(1 for r in fake.requests if r.headers.get("api-id") == "ust21510")
+    assert (report.reconciled, report.fills, after - before) == (1, 1, 1)

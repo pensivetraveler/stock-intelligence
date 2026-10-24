@@ -8,16 +8,20 @@ number: the token decides the account.
 Checked on the paper server (2026-10-23, read-only): a token is issued and `ust21070`
 answers; `ust31490` (orderable quantity) is "not offered in paper trading" (RC9000), so it
 is not on the allowlist. Whether the paper server takes US orders and answers `ust21510`
-is unverified; until the first approved paper order (P4) the adapter offers no market,
-so the runner's limit check blocks every order.
+was confirmed in the regular session on 2026-10-23 (P4): a limit order was taken,
+listed, cancelled, and marketable limits filled. Pre-market orders are refused (RC4058)
+and market orders too (RC4065). The adapter offers only the markets the user recorded
+as verified.
 """
 
 from __future__ import annotations
 
 import hashlib
+import threading
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_DOWN, ROUND_UP, Decimal, InvalidOperation
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -41,7 +45,15 @@ TODAY_ORDERS = ("POST", "/api/us/acnt", "ust21510")
 ALLOWED = (TOKEN, BUY, SELL, CANCEL, TODAY_ORDERS)
 # Kiwoom `stex_tp`: NA AMEX, ND NASDAQ, NY NYSE. NYSE Arca (ARCX) and BATS have no code.
 EXCHANGE_CODES = {"xnas": "ND", "xnys": "NY", "xase": "NA"}
-ORDER_TYPE_CODES = {"limit": "00", "market": "03"}
+# Paper trading takes limit orders only (RC4065 "모의투자 지정가 매매만 가능합니다", seen
+# 2026-10-23), so a market intent is sent as a marketable limit: `00` at the reference
+# price moved by the plan's buffer in the order's direction (ADR 0037).
+ORDER_TYPE_CODES = {"limit": "00", "market": "00"}
+# The paper server allows about one call per second per api-id (1700 "유량=1" on
+# ust21510, seen 2026-10-23); calls of one api-id are spaced at least this far apart.
+MIN_CALL_INTERVAL_SECONDS = 1.1
+RATE_LIMITED = "1700"
+BPS = Decimal(10_000)
 TOKEN_INVALID_CODE = 3
 NOT_OFFERED_IN_PAPER = "RC9000"
 MAX_PAGES = 50
@@ -76,8 +88,14 @@ class KiwoomPaperBroker:
         markets: frozenset[str] = frozenset(),
         transport: httpx.BaseTransport | None = None,
         now: Callable[[], datetime] | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         require_paper_environment(environment)
+        self._sleep = sleep
+        self._monotonic = monotonic
+        self._last_call: dict[str, float] = {}
+        self._pace_lock = threading.Lock()
         self._app_key = app_key
         self._secret_key = secret_key
         self._markets = markets
@@ -137,6 +155,7 @@ class KiwoomPaperBroker:
     ) -> tuple[httpx.Response, dict[str, Any]]:
         """One request; a token replaced by another client (3 / 8005) is reissued once."""
         for attempt in range(2):
+            self._pace(endpoint[2])
             headers = {
                 "api-id": endpoint[2],
                 "authorization": f"Bearer {self._token.get(refresh=attempt > 0)}",
@@ -156,7 +175,34 @@ class KiwoomPaperBroker:
             return response, payload
         return response, payload
 
+    def _pace(self, api_id: str) -> None:
+        """Wait so that calls of one api-id are at least MIN_CALL_INTERVAL_SECONDS apart."""
+        with self._pace_lock:
+            last = self._last_call.get(api_id)
+            if last is not None:
+                wait = MIN_CALL_INTERVAL_SECONDS - (self._monotonic() - last)
+                if wait > 0:
+                    self._sleep(wait)
+            self._last_call[api_id] = self._monotonic()
+
     # -- orders ----------------------------------------------------------------------
+
+    @staticmethod
+    def _limit_price(intent: dict[str, Any]) -> Decimal:
+        order = intent["order"]
+        if order["order_type"] == "limit":
+            return Decimal(order["limit_price"])
+        # Market: the plan's buffer above the reference for a buy (the amount limit was
+        # checked at this price) and below it for a sell, on the US tick.
+        reference = Decimal(intent["sizing"]["reference_price"])
+        buffer = Decimal(order["market_buffer_bps"]) / BPS
+        buying = intent["side"] == "buy"
+        raw = reference * (1 + buffer) if buying else reference * (1 - buffer)
+        tick = Decimal("0.01") if raw >= 1 else Decimal("0.0001")
+        price = raw.quantize(tick, rounding=ROUND_UP if buying else ROUND_DOWN)
+        if price <= 0:
+            raise OrderNotSupportedError("the market order's limit price is not positive")
+        return price
 
     def _venue(self, instrument_id: str) -> str:
         parts = instrument_id.split(":")
@@ -175,7 +221,7 @@ class KiwoomPaperBroker:
             "stex_tp": self._venue(intent["instrument_id"]),
             "stk_cd": intent["symbol"],
             "ord_qty": _price_text(Decimal(order["quantity"])),
-            "ord_uv": "" if order_type == "market" else _price_text(Decimal(order["limit_price"])),
+            "ord_uv": _price_text(self._limit_price(intent)),
             "trde_tp": code,
         }
         return self._send(endpoint, body, code, reference_field="ord_no")
@@ -231,6 +277,11 @@ class KiwoomPaperBroker:
         for _page in range(MAX_PAGES):
             response, payload = self._post(endpoint, body, continuation)
             message = str(payload.get("return_msg", ""))
+            if response.status_code == 429 or RATE_LIMITED in message:
+                # A query changes nothing, so one more try after a pause is safe.
+                self._sleep(MIN_CALL_INTERVAL_SECONDS)
+                response, payload = self._post(endpoint, body, continuation)
+                message = str(payload.get("return_msg", ""))
             if NOT_OFFERED_IN_PAPER in message:
                 raise KiwoomPaperError(f"{endpoint[2]} is not offered in paper trading")
             if response.status_code >= 400 or str(payload.get("return_code", "")) != "0":
