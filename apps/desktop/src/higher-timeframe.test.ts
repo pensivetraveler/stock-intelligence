@@ -5,6 +5,7 @@ import {
   alignToChart,
   higherBarsOf,
   higherChoices,
+  lowerChoices,
   intradaySessions,
   higherRange,
 } from "./higher-timeframe";
@@ -44,6 +45,13 @@ describe("larger-timeframe indicators", () => {
     expect(higherChoices("60m")).toEqual(["120m", "240m", "1d", "1w"]);
     expect(higherChoices("1d")).toEqual(["1w"]);
     expect(higherChoices("1w")).toEqual([]);
+    // Smaller ones divide the chart's evenly, at most 60 per chart bar.
+    expect(lowerChoices("5m")).toEqual(["1m"]);
+    expect(lowerChoices("15m")).toEqual(["1m", "3m", "5m"]);
+    expect(lowerChoices("60m")).toEqual(["1m", "2m", "3m", "5m", "10m"]);
+    expect(lowerChoices("120m")).toEqual(["2m", "3m", "5m", "10m"]);
+    expect(lowerChoices("1m")).toEqual([]);
+    expect(lowerChoices("1d")).toEqual([]);
   });
 
   it("fetch the chart's sessions plus warm-up sessions for larger intraday bars", () => {
