@@ -93,6 +93,21 @@ The Kiwoom sync (ADR 0029) could not match 728 tickers (33,896 orders) to the sy
   - **Result (2026-10-24):** the 2 orders were stored as `us:si.pra:xnys:2026` (delisted). The venue was verified by its NYSE closing cross. Kiwoom has no unresolved orders left.
 - **Ticker reuse check as a script:** `scripts/check_ticker_reuse.py` runs the price check (read-only; it prints instrument IDs and counts only).
 
+### Follow-up (2026-10-24, later): local renames and the last venues
+
+- **Alpaca's asset list as another venue source:** the remaining unverified instruments were read from `GET /v2/assets/{symbol}` (read-only, paper host) and checked again against SIP over their whole history.
+  - Zero-volume filler days had hidden the real last trading days of some instruments.
+  - **XNAS:** LYT, LGHLW and SYTAW (asset list), ARDS, KSPN, ONCR and UNAM (Nasdaq closing cross), and COMSW, OCEAW and PRSTW (tape C; warrants have no cross).
+  - **XASE:** ADRT and GRFX (tape B, and AMEX in the asset list).
+  - **Still unverified:** IMH (tape B, no other source).
+  - **OTC fills:** the Kiwoom fills in CGBSF, IOBTQ, MEHCQ and PETXQ were made under these OTC tickers. Kiwoom reports the ticker of the trade date, so they have no SIP bars.
+- **Renames Alpaca does not record:** `SIW_DATA_DIR/symbols/renames-local.json` adds renames, each with its evidence. They are merged into the source's renames (a pair the source has is not added twice).
+  - TSP→TSPH (2024-02-07): TuSimple's last Nasdaq trade was 2024-02-06.
+  - XTKG→XTKGF (2026-04-02): PBTS→XTKG is already recorded.
+  - **Evidence:** Toss reports today's tickers TSPH and XTKGF for 2 and 23 fills of 2022–2023. Every one of those prices fits the daily range of TSP or PBTS on its day.
+  - **EMWPF:** no candidate ticker had bars, so it is left as is.
+- **Applied with the user's approval:** after a backup (`journal-before-venue-rekey3-20261024T110339Z.sqlite3`), 47 executions (Kiwoom 22, Toss 25) and 16 fee lines were stored again with no conflicts. The Toss PBTS fills now share the chart of Kiwoom's 28 PBTS fills.
+
 ## Alternatives considered
 
 - **Instrument IDs per company instead of per ticker:** the right long-term identity, but every stored bar, drawing and layout keys on ticker IDs today.

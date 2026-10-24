@@ -3,6 +3,9 @@
 From Alpaca: name changes (old ticker, new ticker, process date), delisting-like corporate
 actions and the inactive asset list, kept in `SIW_DATA_DIR/symbols/history-<source>.json`
 and refreshed when more than a day old (a failed refresh keeps the previous copy).
+Renames Alpaca does not record (a delisting to an OTC ticker, found by matching fill
+prices with the old ticker's bars) can be added in `symbols/renames-local.json` as
+[{old, new, on, evidence}]; they count like recorded ones.
 
 A broker trade in ticker S on date D resolves to:
 
@@ -94,6 +97,8 @@ class SymbolHistory:
         venue, on, reason}]} (Alpaca: `AlpacaMarketDataProvider.symbol_history`)."""
         self.path = root / "symbols" / f"history-{source_id}.json"
         self.registry_path = root / "symbols" / "delisted-instruments.json"
+        # Renames the source does not record, each with its evidence (ADR 0033).
+        self.local_renames_path = root / "symbols" / "renames-local.json"
         self._fetch = fetch
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._lock = threading.RLock()
@@ -131,9 +136,18 @@ class SymbolHistory:
         except (OSError, ValueError, KeyError, TypeError):
             return
 
+    def _local_renames(self) -> list[dict[str, Any]]:
+        try:
+            stored = json.loads(self.local_renames_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        return [item for item in stored if isinstance(item, dict)]
+
     def _set(self, document: dict[str, Any], fetched_at: datetime) -> None:
         renames: dict[str, list[Rename]] = {}
-        for item in document["renames"]:
+        seen = {(item["old"], item["new"]) for item in document["renames"]}
+        local = [item for item in self._local_renames() if (item["old"], item["new"]) not in seen]
+        for item in [*document["renames"], *local]:
             rename = Rename(item["old"], item["new"], date.fromisoformat(item["on"]))
             renames.setdefault(rename.old, []).append(rename)
         for items in renames.values():
