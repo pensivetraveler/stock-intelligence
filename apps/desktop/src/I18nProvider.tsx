@@ -19,12 +19,15 @@ function browserStorage(): Storage | null {
 export function I18nProvider({
   children,
   storage = browserStorage(),
+  fallback,
 }: {
   children: ReactNode;
   storage?: Storage | null;
+  /** The language when none was chosen before (else the browser's). */
+  fallback?: Language;
 }) {
   const [language, setLanguage] = useState<Language>(() =>
-    detectLanguage(storage),
+    detectLanguage(storage, fallback),
   );
   useEffect(() => {
     document.documentElement.lang = language;

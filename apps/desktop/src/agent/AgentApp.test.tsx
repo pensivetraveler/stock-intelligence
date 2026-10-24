@@ -91,7 +91,27 @@ function fakeApi(changes: Partial<PaperApi> = {}): PaperApi {
       active_provider: "fake",
       credentials: [],
     })) as unknown as PaperApi["credentials"],
-    approve: vi.fn(),
+    searchSymbols: vi.fn(async () => ({
+      kind: "symbol_search_response" as const,
+      schema_version: "0.1" as const,
+      query: "app",
+      results: [
+        {
+          listing: {
+            instrument: {
+              instrument_id: "us:aapl:xnas:2026",
+              symbol: "AAPL",
+            },
+            source_id: "alpaca-sip",
+            dataset_revision: "assets",
+            session_dates: [],
+          },
+          name: "Apple Inc.",
+          local_name: "애플",
+        },
+      ],
+    })) as unknown as PaperApi["searchSymbols"],
+    approve: vi.fn(async () => APPROVAL),
     arm: vi.fn(async () =>
       status({ armed: true, approval_id: APPROVAL.approval_id }),
     ),
@@ -112,6 +132,7 @@ describe("AgentApp", () => {
         paperApi={api}
         runnerControl={noControl}
         languageStorage={null}
+        defaultLanguage="en"
       />,
     );
     expect(await screen.findByRole("note")).toHaveTextContent(/paper trading/i);
@@ -126,6 +147,7 @@ describe("AgentApp", () => {
         paperApi={api}
         runnerControl={noControl}
         languageStorage={null}
+        defaultLanguage="en"
       />,
     );
     fireEvent.click(await screen.findByRole("button", { name: "Arm" }));
@@ -145,6 +167,7 @@ describe("AgentApp", () => {
         paperApi={api}
         runnerControl={noControl}
         languageStorage={null}
+        defaultLanguage="en"
       />,
     );
     expect(await screen.findByTestId("runner-state")).toHaveTextContent(
@@ -182,6 +205,7 @@ describe("AgentApp", () => {
         paperApi={api}
         runnerControl={control}
         languageStorage={null}
+        defaultLanguage="en"
       />,
     );
     fireEvent.click(
@@ -204,6 +228,7 @@ describe("AgentApp", () => {
         paperApi={api}
         runnerControl={noControl}
         languageStorage={null}
+        defaultLanguage="en"
       />,
     );
     fireEvent.click(await screen.findByRole("button", { name: /release/i }));
@@ -214,12 +239,104 @@ describe("AgentApp", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
+  it("opens in Korean and summarises the runner", async () => {
+    render(
+      <AgentApp
+        paperApi={fakeApi({
+          status: vi.fn(async () =>
+            status({ armed: true, approval_id: APPROVAL.approval_id }),
+          ),
+        })}
+        runnerControl={noControl}
+        languageStorage={null}
+        now={() => new Date("2026-10-23T14:34:10Z")}
+      />,
+    );
+    expect(await screen.findByText("꺼짐")).toBeInTheDocument();
+    expect(screen.getByTestId("runner-state")).toHaveTextContent("무장됨");
+    expect(screen.getByText("마지막 응답: 3분 전")).toBeInTheDocument();
+    expect(screen.getByText("무장: strat-1@2")).toBeInTheDocument();
+    // Armed and silent for over two minutes: a warning.
+    expect(screen.getByText(/3분째 응답이 없습니다/)).toBeInTheDocument();
+    expect(document.title).toBe("SIW Agent");
+  });
+
+  it("approves a plan step by step with a searched instrument", async () => {
+    const api = fakeApi({
+      strategies: vi.fn(async () => ({
+        kind: "backtest_strategy_list_response" as const,
+        schema_version: "0.1" as const,
+        strategies: [{ strategy_id: "strat-1", name: "Flow", version: 2 }],
+      })) as unknown as PaperApi["strategies"],
+      credentials: vi.fn(async () => ({
+        kind: "credential_list_response" as const,
+        schema_version: "0.1" as const,
+        storage: "keychain",
+        active_provider: "fake",
+        credentials: [
+          {
+            credential_id: "key-1",
+            provider: "kiwoom",
+            environment: "demo",
+            enabled: true,
+            label: "Kiwoom demo",
+          },
+        ],
+      })) as unknown as PaperApi["credentials"],
+    });
+    render(
+      <AgentApp
+        paperApi={api}
+        runnerControl={noControl}
+        languageStorage={null}
+        defaultLanguage="en"
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "New plan" }));
+    // Step 1 refuses to go on without a strategy and a key.
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/strategy/);
+    await screen.findByRole("option", { name: "Flow (v2)" });
+    fireEvent.change(screen.getByLabelText(/Strategy/), {
+      target: { value: "strat-1" },
+    });
+    fireEvent.change(screen.getByLabelText(/Kiwoom demo key/), {
+      target: { value: "key-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Step 2: search and pick.
+    fireEvent.change(screen.getByLabelText("Search by ticker or name"), {
+      target: { value: "app" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /AAPL/ }));
+    expect(
+      screen.getByRole("button", { name: "Remove AAPL" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Step 4 reviews, then approves.
+    expect(screen.getByText("1,000,000 KRW")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() =>
+      expect(api.approve).toHaveBeenCalledWith(
+        expect.objectContaining({
+          strategy_id: "strat-1",
+          strategy_version: 2,
+          credential_id: "key-1",
+          instruments: [{ instrument_id: "us:aapl:xnas:2026", symbol: "AAPL" }],
+          fx_mode: "bok_ecos",
+        }),
+      ),
+    );
+  });
+
   it("says runner control needs the Agent app outside Tauri", async () => {
     render(
       <AgentApp
         paperApi={fakeApi()}
         runnerControl={noControl}
         languageStorage={null}
+        defaultLanguage="en"
       />,
     );
     expect(
