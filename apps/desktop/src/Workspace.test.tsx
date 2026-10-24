@@ -1653,6 +1653,27 @@ describe("indicators", () => {
       within(settings).getByRole("button", { name: "Reset style" }),
     );
     expect(savedLayout(storage).charts[0].indicators[0].style).toBeUndefined();
+    // Opacity and precision, then hide it on minute charts (this chart is 5m).
+    fireEvent.change(within(settings).getByLabelText("EMA opacity"), {
+      target: { value: "50" },
+    });
+    fireEvent.change(within(settings).getByLabelText("Precision"), {
+      target: { value: "3" },
+    });
+    expect(savedLayout(storage).charts[0].indicators[0].style).toEqual({
+      outputs: { value: { opacity: 50 } },
+      precision: 3,
+    });
+    fireEvent.click(within(settings).getByRole("tab", { name: "Visibility" }));
+    fireEvent.click(within(settings).getByLabelText("Minutes"));
+    expect(savedLayout(storage).charts[0].indicators[0].visibility).toEqual({
+      minutes: false,
+    });
+    expect(legend).toHaveTextContent("hidden on this timeframe");
+    fireEvent.click(within(settings).getByLabelText("Minutes"));
+    expect(
+      savedLayout(storage).charts[0].indicators[0].visibility,
+    ).toBeUndefined();
   });
 
   it("fetches larger intraday bars session by session for a 60m indicator", async () => {

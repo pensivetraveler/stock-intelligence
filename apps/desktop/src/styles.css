@@ -1728,6 +1728,16 @@ body {
   width: 72px;
 }
 
+.indicator-settings .ind-opacity {
+  width: 64px;
+  height: auto;
+  padding: 0;
+}
+
+.indicator-settings .ind-style-row input:disabled {
+  opacity: 0.4;
+}
+
 .ind-levels {
   display: grid;
   gap: 6px;

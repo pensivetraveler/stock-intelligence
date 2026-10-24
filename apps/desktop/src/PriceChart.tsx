@@ -452,6 +452,15 @@ export function PriceChart({
                 },
                 pane,
               );
+        if (indicator.precision !== undefined) {
+          series.applyOptions({
+            priceFormat: {
+              type: "price",
+              precision: indicator.precision,
+              minMove: 10 ** -indicator.precision,
+            },
+          });
+        }
         series.setData(
           line.data.map((point) => ({
             ...point,
