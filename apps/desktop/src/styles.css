@@ -863,6 +863,25 @@ button:disabled {
   height: 420px;
 }
 
+.chart-older {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 8px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chart-older button {
+  padding: 2px 8px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
 .chart-legend {
   position: absolute;
   z-index: 2;

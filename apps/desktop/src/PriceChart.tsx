@@ -25,6 +25,7 @@ import { DrawingLayer, type Projection } from "./DrawingLayer";
 import { snapPrice, type Drawing, type DrawingTool } from "./drawings";
 import type { RenderedIndicator } from "./indicators";
 import { thinLabels, type ChartMarker } from "./journal-markers";
+import { OLDER_TRIGGER_BARS, USER_MOVE_MS } from "./older-bars";
 
 interface PriceChartProps {
   chartId: string;
@@ -60,6 +61,8 @@ interface PriceChartProps {
   onToolDone?: () => void;
   /** False while clicks must reach the candles (e.g. picking a replay start). */
   drawingsSelectable?: boolean;
+  /** Called when the view is scrolled or zoomed out past the first bar. */
+  onReachStart?: () => void;
 }
 
 const DAY_TICK: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
@@ -88,6 +91,7 @@ export function PriceChart({
   sync,
   markers = [],
   onCandleClick,
+  onReachStart,
   onHover,
   magnet = false,
   logScale = false,
@@ -125,11 +129,14 @@ export function PriceChart({
   magnetRef.current = magnet;
   const clickHandler = useRef(onCandleClick);
   const hoverHandler = useRef(onHover);
+  const reachStartHandler = useRef(onReachStart);
+  const lastUserMove = useRef(-Infinity);
 
   useEffect(() => {
     clickHandler.current = onCandleClick;
     hoverHandler.current = onHover;
-  }, [onCandleClick, onHover]);
+    reachStartHandler.current = onReachStart;
+  }, [onCandleClick, onHover, onReachStart]);
 
   useEffect(() => {
     if (!container.current) {
@@ -217,6 +224,25 @@ export function PriceChart({
     const onZoom = () => {
       bump();
       setBarSpacing(Math.round(instance.timeScale().options().barSpacing));
+      // The user scrolled or zoomed out until less than one screen of bars is left
+      // before the view: they want to see further back. Zooming out stops at a
+      // minimum bar width, so waiting for the very first bar would never ask. Views
+      // set by the chart itself (fitting new data) never ask.
+      const range = instance.timeScale().getVisibleLogicalRange();
+      if (
+        range !== null &&
+        range.from < Math.max(OLDER_TRIGGER_BARS, range.to - range.from) &&
+        performance.now() - lastUserMove.current < USER_MOVE_MS
+      ) {
+        reachStartHandler.current?.();
+      }
+    };
+    const onUserMove = (event: Event) => {
+      // A plain hover moves nothing; a drag (a button held) or a wheel does.
+      if (event instanceof PointerEvent && event.type === "pointermove") {
+        if (event.buttons === 0) return;
+      }
+      lastUserMove.current = performance.now();
     };
     const onMoveAndRedraw = (param: MouseEventParams<Time>) => {
       onMove(param);
@@ -227,6 +253,9 @@ export function PriceChart({
     instance.subscribeClick(onClick);
     instance.subscribeCrosshairMove(onMoveAndRedraw);
     const element = container.current;
+    for (const name of ["wheel", "pointerdown", "pointermove", "touchmove"]) {
+      element.addEventListener(name, onUserMove, { passive: true });
+    }
     const observer =
       typeof ResizeObserver === "undefined"
         ? null
@@ -256,6 +285,9 @@ export function PriceChart({
     return () => {
       unregister();
       observer?.disconnect();
+      for (const name of ["wheel", "pointerdown", "pointermove", "touchmove"]) {
+        element.removeEventListener(name, onUserMove);
+      }
       setReady(false);
       instance.timeScale().unsubscribeVisibleLogicalRangeChange(onZoom);
       instance.unsubscribeCrosshairMove(onMoveAndRedraw);

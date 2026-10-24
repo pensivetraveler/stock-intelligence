@@ -1521,6 +1521,28 @@ describe("indicators", () => {
     });
   });
 
+  it("loads the sessions before the shown history on request", async () => {
+    const api = fakeApi({ history: true });
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    const chart = screen.getByRole("region", { name: /Chart 1/ });
+    const button = within(chart).getByRole("button", { name: "◀ Older bars" });
+    await waitFor(() => expect(button).toBeEnabled());
+    const before = api.sessionsCalls.length;
+    fireEvent.click(button);
+    // The next batch ends the day before the earliest history session shown.
+    await waitFor(() =>
+      expect(api.sessionsCalls.slice(before)).toContainEqual(
+        expect.objectContaining({ endDate: "2026-08-31" }),
+      ),
+    );
+    // The fake API answers every session with the same bar: nothing is earlier, so
+    // nothing is added twice and the chart says there is no more.
+    expect(
+      await within(chart).findByRole("button", { name: "No older bars" }),
+    ).toBeDisabled();
+  });
+
   it("fetches larger intraday bars session by session for a 60m indicator", async () => {
     const api = fakeApi({ history: true });
     render(
