@@ -100,6 +100,8 @@ import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { latestCustom, registerCustom } from "./custom-indicators";
 import { CustomIndicatorEditor } from "./CustomIndicatorEditor";
 import { FormulaDialog } from "./FormulaEditor";
+import { PineDialog } from "./PineEditor";
+import { pineDefinition, pineWidths } from "./pine";
 import type { BacktestApi } from "./backtest-api";
 import { StockInfoPanel } from "./StockInfoPanel";
 import { JournalPanel } from "./JournalPanel";
@@ -538,6 +540,7 @@ export function Workspace({
   // Python indicators: every saved version is registered so pinned ones still draw.
   const [customVersion, setCustomVersion] = useState(0);
   const [formulaOpen, setFormulaOpen] = useState(false);
+  const [pineOpen, setPineOpen] = useState(false);
   // The bars each chart computes indicators on, for Python indicator previews.
   const chartBars = useRef<OhlcvBar[][]>([]);
   const onChartBars = useMemo(
@@ -1809,6 +1812,7 @@ export function Workspace({
           custom={customApi ? latestCustom() : undefined}
           onEditCustom={(initial) => setCustomEditor({ initial })}
           onNewFormula={() => setFormulaOpen(true)}
+          onNewPine={() => setPineOpen(true)}
         />
       ) : null}
 
@@ -1823,6 +1827,38 @@ export function Workspace({
               indicators: [
                 ...(activeConfig.indicators ?? []),
                 { key: newId(), type: "formula", params: {}, ...value },
+              ],
+            });
+          }}
+        />
+      ) : null}
+
+      {pineOpen ? (
+        <PineDialog
+          target={`${activeSymbol} · ${activeConfig.timeframe}`}
+          onClose={() => setPineOpen(false)}
+          onAdd={(source) => {
+            setPineOpen(false);
+            setIndicatorsOpen(false);
+            const widths = Object.entries(pineWidths(source));
+            updateActive({
+              indicators: [
+                ...(activeConfig.indicators ?? []),
+                {
+                  key: newId(),
+                  type: "pine",
+                  params: defaultParams(pineDefinition(source)),
+                  pine: source,
+                  ...(widths.length > 0
+                    ? {
+                        style: {
+                          outputs: Object.fromEntries(
+                            widths.map(([key, width]) => [key, { width }]),
+                          ),
+                        },
+                      }
+                    : {}),
+                },
               ],
             });
           }}

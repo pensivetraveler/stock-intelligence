@@ -21,15 +21,20 @@ interface IndicatorDialogProps {
   onEditCustom?: (item: CustomIndicator | null) => void;
   /** Open the formula editor for a new formula indicator. */
   onNewFormula?: () => void;
+  /** Open the Pine Script editor for a new Pine indicator. */
+  onNewPine?: () => void;
 }
 
-const CATEGORIES: (IndicatorCategory | "all" | "formula")[] = [
+type Category = IndicatorCategory | "all" | "formula" | "pine";
+
+const CATEGORIES: Category[] = [
   "all",
   "trend",
   "momentum",
   "volatility",
   "volume",
   "formula",
+  "pine",
   "custom",
 ];
 
@@ -41,12 +46,11 @@ export function IndicatorDialog({
   custom,
   onEditCustom,
   onNewFormula,
+  onNewPine,
 }: IndicatorDialogProps) {
   const { t, language } = useI18n();
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<
-    IndicatorCategory | "all" | "formula"
-  >("all");
+  const [category, setCategory] = useState<Category>("all");
   const needle = query.trim().toLowerCase();
   const customDefinitions = (custom ?? []).flatMap((item) => {
     const definition = INDICATOR_BY_ID.get(item.type);
@@ -107,7 +111,8 @@ export function IndicatorDialog({
             {CATEGORIES.filter(
               (item) =>
                 (item !== "custom" || custom) &&
-                (item !== "formula" || onNewFormula),
+                (item !== "formula" || onNewFormula) &&
+                (item !== "pine" || onNewPine),
             ).map((item) => (
               <button
                 key={item}
@@ -126,6 +131,14 @@ export function IndicatorDialog({
                 <button type="button" onClick={onNewFormula}>
                   <span>{t("formula.newButton")}</span>
                   <small>{t("formula.newHint")}</small>
+                </button>
+              </li>
+            ) : null}
+            {onNewPine && category === "pine" ? (
+              <li>
+                <button type="button" onClick={onNewPine}>
+                  <span>{t("pine.newButton")}</span>
+                  <small>{t("pine.newHint")}</small>
                 </button>
               </li>
             ) : null}

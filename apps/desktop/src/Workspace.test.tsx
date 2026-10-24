@@ -1883,6 +1883,75 @@ describe("indicators", () => {
     );
   });
 
+  it("adds a Pine Script indicator, points at errors and edits it from the legend", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Pine Script" }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /New Pine Script indicator/ }),
+    );
+    const editor = screen.getByRole("dialog", {
+      name: "Pine Script indicator",
+    });
+    const code = within(editor).getByLabelText("Pine Script code");
+    const example = (code as HTMLTextAreaElement).value;
+    expect(
+      within(editor).getByText(/EMA Cross — on the price chart/),
+    ).toBeInTheDocument();
+    fireEvent.change(code, {
+      target: { value: 'indicator("X")\nplot(nope)' },
+    });
+    expect(within(editor).getByRole("alert")).toHaveTextContent("Line 2");
+    expect(
+      within(editor).getByRole("button", { name: "Add to chart" }),
+    ).toBeDisabled();
+    fireEvent.change(code, { target: { value: example } });
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Add to chart" }),
+    );
+
+    const legend = await screen.findByRole("list", {
+      name: "Indicators on this chart",
+    });
+    expect(legend).toHaveTextContent("EMA Cross 9, 21, close");
+    expect(savedLayout(storage).charts[0].indicators).toEqual([
+      {
+        key: expect.any(String),
+        type: "pine",
+        params: { fast_length: 9, slow_length: 21, source: 0 },
+        pine: example,
+        style: { outputs: { plot1: { width: 2 } } },
+      },
+    ]);
+    fireEvent.click(
+      within(legend).getByRole("button", { name: "EMA Cross settings" }),
+    );
+    const settings = screen.getByRole("dialog", {
+      name: "EMA Cross settings",
+    });
+    fireEvent.change(within(settings).getByLabelText("Source"), {
+      target: { value: "1" },
+    });
+    expect(legend).toHaveTextContent("EMA Cross 9, 21, open");
+    fireEvent.change(within(settings).getByLabelText("Pine Script code"), {
+      target: { value: example.replace("input.int(9", "input.int(5") },
+    });
+    fireEvent.click(within(settings).getByRole("button", { name: "Apply" }));
+    const saved = savedLayout(storage).charts[0].indicators[0];
+    expect(saved.pine).toContain("input.int(5");
+    // Values the user set survive an edit of the code.
+    expect(saved.params).toEqual({
+      fast_length: 9,
+      slow_length: 21,
+      source: 1,
+    });
+  });
+
   it("writes a Python indicator, adds it and draws the API's values", async () => {
     const saved = fixture<CustomIndicator>("custom-indicator.json");
     const computed: { version: number; bars: number; params: object }[] = [];

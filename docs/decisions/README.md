@@ -47,3 +47,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0037-paper-order-execution.md`: (accepted) SIW Agent 단계 1 설계 — 모의투자 주문(키움 먼저, KIS 다음), 증권사 중립 의도 계약·adapter, 별도 모의 원장, 주문 의도 계약, 실계좌 도메인 코드 차단, 한도·킬 스위치, 별도 실행기 프로세스, 화면 빌드 분리
 - `0038-price-level-strategies.md`: (proposed) 가격대 진입형 전략 — 미리 걸어 두는 지정가(증권사 체결)와 실시간 감시 돌파(키움 모의는 지정가만), `levels` 규칙, 백테스트 대응, 킬 스위치·실시간 출처 미결
 - `0039-indicator-style-and-lower-timeframes.md`: (accepted) 보조지표 설정을 TradingView식 입력·스타일 탭으로(소스, 선별 색·굵기·선 모양·표시, 기준선), 더 작은 시간대 지표(각 차트 봉의 마지막 작은 봉 값, 미래 값 없음)
+- `0040-pine-script-indicators.md`: (accepted) Pine Script 지표 — 앱 안의 인터프리터(eval 없음, 봉 단위 실행, 미래 값 없음, 실행 한도), v5/v6 indicator 일부(입력·plot·hline·ta._·math._), strategy·request.*·그리기는 거부
