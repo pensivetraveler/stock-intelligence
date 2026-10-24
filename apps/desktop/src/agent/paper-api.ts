@@ -6,6 +6,7 @@ import type {
   PaperExecutionListResponse,
   PaperIntentListResponse,
   PaperRunnerStatus,
+  SymbolSearchResponse,
 } from "@siw/contracts/types";
 
 import { callForKind, type ApiTarget } from "../market-api";
@@ -39,6 +40,8 @@ export interface PaperApi {
   executions(limit?: number): Promise<PaperExecutionListResponse>;
   strategies(): Promise<BacktestStrategyListResponse>;
   credentials(): Promise<CredentialListResponse>;
+  /** Listings by ticker or name, for choosing a plan's instruments (read-only). */
+  searchSymbols(query: string): Promise<SymbolSearchResponse>;
   approve(request: ApprovalRequest): Promise<PaperApproval>;
   arm(approvalId: string): Promise<PaperRunnerStatus>;
   disarm(): Promise<PaperRunnerStatus>;
@@ -93,6 +96,12 @@ export function createPaperApi(
         target,
         "/v1/credentials",
         "credential_list_response",
+      ),
+    searchSymbols: (query) =>
+      callForKind<SymbolSearchResponse>(
+        target,
+        `/v1/market/symbols?${new URLSearchParams({ q: query, limit: "10" }).toString()}`,
+        "symbol_search_response",
       ),
     approve: (request) =>
       callForKind<PaperApproval>(

@@ -26,12 +26,21 @@ interface AgentAppProps {
   runnerControl?: RunnerControl;
   pollMs?: number;
   languageStorage?: Storage | null;
+  /** The language until the user picks one; SIW Agent opens in Korean. */
+  defaultLanguage?: Language;
+  /** For tests: the current time. */
+  now?: () => Date;
 }
 
 /** SIW Agent: paper-trading status, kill switch, approvals and the paper ledger. */
-export function AgentApp({ languageStorage, ...props }: AgentAppProps) {
+export function AgentApp({
+  languageStorage,
+  defaultLanguage = "ko",
+  ...props
+}: AgentAppProps) {
   return (
     <I18nProvider
+      fallback={defaultLanguage}
       {...(languageStorage === undefined ? {} : { storage: languageStorage })}
     >
       <AgentScreen {...props} />
@@ -48,8 +57,12 @@ function AgentScreen({
   paperApi,
   runnerControl,
   pollMs = 5_000,
-}: Omit<AgentAppProps, "languageStorage">) {
+  now = () => new Date(),
+}: Omit<AgentAppProps, "languageStorage" | "defaultLanguage">) {
   const { t, language, setLanguage } = useI18n();
+  useEffect(() => {
+    document.title = t("paper.windowTitle");
+  }, [t]);
   const api = useMemo(
     () => paperApi ?? createPaperApi(apiBaseUrl),
     [paperApi, apiBaseUrl],
@@ -165,9 +178,13 @@ function AgentScreen({
             </p>
           ),
       )}
-      <StatusCard
+      <SummaryCards
         status={status}
+        approvals={approvals}
+        intents={intents}
+        executions={executions}
         busy={busy}
+        now={now}
         onRelease={() => act(() => api.release())}
         onDisarm={() => act(() => api.disarm())}
       />
@@ -195,14 +212,69 @@ function AgentScreen({
   );
 }
 
-function StatusCard({
+type Translate = ReturnType<typeof useI18n>["t"];
+
+// A runner that is armed checks in every few seconds; this long a silence is a warning.
+const STALE_HEARTBEAT_MS = 2 * 60_000;
+
+/** "just now", "5 min ago", "3 h ago" or the local date and time. */
+function ago(t: Translate, iso: string | null, now: Date): string {
+  if (iso === null) return t("paper.never");
+  const elapsed = now.getTime() - new Date(iso).getTime();
+  if (elapsed < 60_000) return t("paper.ago.now");
+  if (elapsed < 3_600_000) {
+    return t("paper.ago.minutes", { n: Math.floor(elapsed / 60_000) });
+  }
+  if (elapsed < 86_400_000) {
+    return t("paper.ago.hours", { n: Math.floor(elapsed / 3_600_000) });
+  }
+  return localTime(iso);
+}
+
+/** A UTC timestamp in the viewer's time zone, to the second. */
+function localTime(iso: string): string {
+  const at = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ` +
+    `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`
+  );
+}
+
+/** A decimal amount with thousands separators ("1000000" -> "1,000,000"). */
+function grouped(amount: string): string {
+  const [whole, fraction] = amount.split(".");
+  if (!/^\d+$/.test(whole ?? "")) return amount;
+  const withCommas = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return fraction === undefined ? withCommas : `${withCommas}.${fraction}`;
+}
+
+function sameLocalDay(iso: string | null, now: Date): boolean {
+  if (iso === null) return false;
+  const at = new Date(iso);
+  return (
+    at.getFullYear() === now.getFullYear() &&
+    at.getMonth() === now.getMonth() &&
+    at.getDate() === now.getDate()
+  );
+}
+
+function SummaryCards({
   status,
+  approvals,
+  intents,
+  executions,
   busy,
+  now,
   onRelease,
   onDisarm,
 }: {
   status: PaperRunnerStatus | null;
+  approvals: PaperApproval[];
+  intents: IntentRow[];
+  executions: PaperExecution[];
   busy: boolean;
+  now: () => Date;
   onRelease: () => void;
   onDisarm: () => void;
 }) {
@@ -210,34 +282,96 @@ function StatusCard({
   if (status === null) {
     return <section className="agent-card">{t("paper.loading")}</section>;
   }
+  const at = now();
   const state = status.halted
     ? t("paper.state.halted", { reason: status.halted_reason ?? "" })
     : status.armed
       ? t("paper.state.armed")
       : t("paper.state.disarmed");
+  const stale =
+    status.armed &&
+    status.last_heartbeat_utc !== null &&
+    at.getTime() - new Date(status.last_heartbeat_utc).getTime() >
+      STALE_HEARTBEAT_MS;
+  const armedPlan = approvals.find(
+    (item) => status.armed && item.approval_id === status.approval_id,
+  );
+  const todayIntents = intents.filter((row) =>
+    sameLocalDay(row.intent.created_at_utc, at),
+  ).length;
+  const todayFills = executions.filter((row) =>
+    sameLocalDay(row.executed_at_utc, at),
+  ).length;
   return (
-    <section className="agent-card" aria-label={t("paper.status")}>
-      <h2>{t("paper.status")}</h2>
-      <p data-testid="runner-state">{state}</p>
-      <p>
-        {t("paper.heartbeat", {
-          time: status.last_heartbeat_utc ?? t("paper.never"),
-        })}
-      </p>
+    <section className="agent-summary" aria-label={t("paper.status")}>
+      <div
+        className={`agent-tile ${status.halted ? "agent-tile-danger" : "agent-tile-ok"}`}
+      >
+        <span className="agent-tile-label">{t("paper.summary.kill")}</span>
+        <strong>
+          {status.halted
+            ? t("paper.summary.killOn")
+            : t("paper.summary.killOff")}
+        </strong>
+        {status.halted && (
+          <button type="button" onClick={onRelease} disabled={busy}>
+            {t("paper.release")}
+          </button>
+        )}
+      </div>
+      <div
+        className={`agent-tile ${stale ? "agent-tile-warning" : status.armed ? "agent-tile-active" : ""}`}
+      >
+        <span className="agent-tile-label">{t("paper.status")}</span>
+        <strong data-testid="runner-state">{state}</strong>
+        <span className="agent-muted">
+          {t("paper.heartbeat", {
+            time: ago(t, status.last_heartbeat_utc, at),
+          })}
+        </span>
+        {stale && (
+          <span className="agent-warning">
+            {t("paper.stale", {
+              minutes: Math.floor(
+                (at.getTime() -
+                  new Date(status.last_heartbeat_utc ?? 0).getTime()) /
+                  60_000,
+              ),
+            })}
+          </span>
+        )}
+        {status.armed && (
+          <button type="button" onClick={onDisarm} disabled={busy}>
+            {t("paper.disarm")}
+          </button>
+        )}
+      </div>
+      <div className="agent-tile">
+        <span className="agent-tile-label">{t("paper.approvals")}</span>
+        <strong>
+          {t("paper.summary.plansValue", { count: approvals.length })}
+        </strong>
+        <span className="agent-muted">
+          {armedPlan
+            ? t("paper.summary.armedPlan", {
+                name: `${armedPlan.strategy.strategy_id}@${armedPlan.strategy.strategy_version}`,
+              })
+            : t("paper.summary.noneArmed")}
+        </span>
+      </div>
+      <div className="agent-tile">
+        <span className="agent-tile-label">{t("paper.summary.today")}</span>
+        <strong>
+          {t("paper.summary.todayValue", {
+            intents: todayIntents,
+            fills: todayFills,
+          })}
+        </strong>
+      </div>
       {status.unknown_submission_count > 0 && (
-        <p className="agent-warning">
+        <p className="agent-warning agent-summary-note">
           {t("paper.unknownOrders", { count: status.unknown_submission_count })}
         </p>
-      )}
-      {status.halted && (
-        <button type="button" onClick={onRelease} disabled={busy}>
-          {t("paper.release")}
-        </button>
-      )}
-      {status.armed && (
-        <button type="button" onClick={onDisarm} disabled={busy}>
-          {t("paper.disarm")}
-        </button>
       )}
     </section>
   );
@@ -291,6 +425,12 @@ function ServiceCard({
   );
 }
 
+interface ChosenInstrument {
+  instrument_id: string;
+  symbol: string;
+  name: string;
+}
+
 function ApprovalSection({
   api,
   approvals,
@@ -307,11 +447,86 @@ function ApprovalSection({
   onApproved: () => void;
 }) {
   const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="agent-card" aria-label={t("paper.approvals")}>
+      <div className="agent-card-head">
+        <h2>{t("paper.approvals")}</h2>
+        {!open && (
+          <button type="button" onClick={() => setOpen(true)}>
+            {t("paper.wizard.open")}
+          </button>
+        )}
+      </div>
+      {approvals.length === 0 ? (
+        <p className="agent-muted">{t("paper.approvals.empty")}</p>
+      ) : (
+        <ul className="agent-list">
+          {approvals.map((approval) => (
+            <li key={approval.approval_id}>
+              <span>
+                <strong>
+                  {approval.strategy.strategy_id}@
+                  {approval.strategy.strategy_version}
+                </strong>{" "}
+                · {approval.instruments.map((item) => item.symbol).join(", ")} ·{" "}
+                {t("paper.limitAmount", {
+                  amount:
+                    approval.limits.max_order_amount_krw === null
+                      ? t("paper.noLimit")
+                      : grouped(approval.limits.max_order_amount_krw),
+                })}
+              </span>
+              {status?.approval_id === approval.approval_id && status.armed ? (
+                <strong className="agent-armed">{t("paper.armedHere")}</strong>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onArm(approval.approval_id)}
+                  disabled={busy || status?.halted === true}
+                >
+                  {t("paper.arm")}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && (
+        <PlanWizard
+          api={api}
+          busy={busy}
+          onCancel={() => setOpen(false)}
+          onApproved={() => {
+            setOpen(false);
+            onApproved();
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+const STEPS = 4;
+
+function PlanWizard({
+  api,
+  busy,
+  onCancel,
+  onApproved,
+}: {
+  api: PaperApi;
+  busy: boolean;
+  onCancel: () => void;
+  onApproved: () => void;
+}) {
+  const { t } = useI18n();
+  const [step, setStep] = useState(1);
   const [strategies, setStrategies] = useState<BacktestStrategy[]>([]);
   const [keys, setKeys] = useState<CredentialSummary[]>([]);
   const [strategyId, setStrategyId] = useState("");
   const [credentialId, setCredentialId] = useState("");
-  const [instruments, setInstruments] = useState("us:aapl:xnas:2026 AAPL");
+  const [chosen, setChosen] = useState<ChosenInstrument[]>([]);
   const [amount, setAmount] = useState("1000000");
   const [rate, setRate] = useState("");
   const [fxMode, setFxMode] = useState<"fixed" | "bok_ecos">("bok_ecos");
@@ -343,13 +558,24 @@ function ApprovalSection({
     })();
   }, [api]);
 
+  const strategy = strategies.find((item) => item.strategy_id === strategyId);
+  const key = keys.find((item) => item.credential_id === credentialId);
+  const problem = (at: number): string | null => {
+    if (at === 1 && (!strategy || !key)) return t("paper.wizard.missing1");
+    if (at === 2 && chosen.length === 0) return t("paper.wizard.missing2");
+    if (at === 3 && fxMode === "fixed" && rate.trim() === "") {
+      return t("paper.wizard.missing3");
+    }
+    return null;
+  };
+  const next = () => {
+    const found = problem(step);
+    setFormError(found);
+    if (found === null) setStep(step + 1);
+  };
+
   const submit = async () => {
-    const strategy = strategies.find((item) => item.strategy_id === strategyId);
-    const pairs = instruments
-      .split(/[\n,]+/)
-      .map((line) => line.trim().split(/\s+/))
-      .filter((parts) => parts.length === 2 && parts[0] !== "");
-    if (!strategy || !credentialId || pairs.length === 0) {
+    if (!strategy || !key || chosen.length === 0) {
       setFormError(t("paper.approve.missing"));
       return;
     }
@@ -357,11 +583,11 @@ function ApprovalSection({
       await api.approve({
         strategy_id: strategy.strategy_id,
         strategy_version: strategy.version,
-        instruments: pairs.map(([instrument_id, symbol]) => ({
+        instruments: chosen.map(({ instrument_id, symbol }) => ({
           instrument_id,
           symbol,
         })),
-        credential_id: credentialId,
+        credential_id: key.credential_id,
         max_order_amount_krw: amount.trim() === "" ? null : amount.trim(),
         market_buffer_bps: buffer.trim() || "50",
         krw_per_usd:
@@ -382,141 +608,316 @@ function ApprovalSection({
     }
   };
 
+  const titles = [
+    t("paper.wizard.s1"),
+    t("paper.wizard.s2"),
+    t("paper.wizard.s3"),
+    t("paper.wizard.s4"),
+  ];
   return (
-    <section className="agent-card" aria-label={t("paper.approvals")}>
-      <h2>{t("paper.approvals")}</h2>
-      <ul className="agent-list">
-        {approvals.map((approval) => (
-          <li key={approval.approval_id}>
-            <span>
-              {approval.strategy.strategy_id}@
-              {approval.strategy.strategy_version} ·{" "}
-              {approval.instruments.map((item) => item.symbol).join(", ")} ·{" "}
-              {t("paper.limitAmount", {
-                amount:
-                  approval.limits.max_order_amount_krw ?? t("paper.noLimit"),
-              })}
-            </span>
-            {status?.approval_id === approval.approval_id && status.armed ? (
-              <strong>{t("paper.armedHere")}</strong>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onArm(approval.approval_id)}
-                disabled={busy || status?.halted === true}
-              >
-                {t("paper.arm")}
-              </button>
-            )}
+    <div
+      className="agent-wizard"
+      role="group"
+      aria-label={t("paper.approve.title")}
+    >
+      <ol className="agent-steps">
+        {titles.map((title, index) => (
+          <li
+            key={title}
+            className={
+              index + 1 === step
+                ? "agent-step-current"
+                : index + 1 < step
+                  ? "agent-step-done"
+                  : ""
+            }
+            aria-current={index + 1 === step ? "step" : undefined}
+          >
+            {index + 1}. {title}
           </li>
         ))}
-      </ul>
-      <fieldset className="agent-form">
-        <legend>{t("paper.approve.title")}</legend>
-        <label>
-          {t("paper.approve.strategy")}
-          <select
-            value={strategyId}
-            onChange={(event) => setStrategyId(event.target.value)}
-          >
-            <option value="">—</option>
-            {strategies.map((item) => (
-              <option key={item.strategy_id} value={item.strategy_id}>
-                {item.name} (v{item.version})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {t("paper.approve.key")}
-          <select
-            value={credentialId}
-            onChange={(event) => setCredentialId(event.target.value)}
-          >
-            <option value="">—</option>
-            {keys.map((key) => (
-              <option key={key.credential_id} value={key.credential_id}>
-                {key.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {t("paper.approve.instruments")}
-          <textarea
-            value={instruments}
-            onChange={(event) => setInstruments(event.target.value)}
-            rows={2}
-          />
-        </label>
-        <label>
-          {t("paper.approve.amount")}
-          <input
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-          />
-        </label>
-        <label>
-          {t("paper.approve.fxMode")}
-          <select
-            value={fxMode}
-            onChange={(event) =>
-              setFxMode(event.target.value as "fixed" | "bok_ecos")
-            }
-          >
-            <option value="bok_ecos">{t("paper.approve.fxEcos")}</option>
-            <option value="fixed">{t("paper.approve.fxFixed")}</option>
-          </select>
-        </label>
-        {fxMode === "fixed" && (
+      </ol>
+      {step === 1 && (
+        <div className="agent-form">
           <label>
-            {t("paper.approve.rate")}
+            {t("paper.approve.strategy")}
+            <select
+              value={strategyId}
+              onChange={(event) => setStrategyId(event.target.value)}
+            >
+              <option value="">{t("paper.wizard.choose")}</option>
+              {strategies.map((item) => (
+                <option key={item.strategy_id} value={item.strategy_id}>
+                  {item.name} (v{item.version})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            {t("paper.approve.key")}
+            <select
+              value={credentialId}
+              onChange={(event) => setCredentialId(event.target.value)}
+            >
+              <option value="">{t("paper.wizard.choose")}</option>
+              {keys.map((item) => (
+                <option key={item.credential_id} value={item.credential_id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+      {step === 2 && (
+        <SymbolPicker api={api} chosen={chosen} onChange={setChosen} />
+      )}
+      {step === 3 && (
+        <div className="agent-form">
+          <label>
+            {t("paper.approve.amount")}
             <input
-              value={rate}
-              onChange={(event) => setRate(event.target.value)}
+              value={amount}
+              inputMode="numeric"
+              onChange={(event) => setAmount(event.target.value)}
             />
           </label>
-        )}
-        <label>
-          {t("paper.approve.buffer")}
-          <input
-            value={buffer}
-            onChange={(event) => setBuffer(event.target.value)}
-          />
-        </label>
-        <label>
-          {t("paper.approve.equity")}
-          <input
-            value={equity}
-            onChange={(event) => setEquity(event.target.value)}
-          />
-        </label>
-        <label>
-          {t("paper.approve.settle")}
-          <input
-            value={settle}
-            onChange={(event) => setSettle(event.target.value)}
-          />
-        </label>
-        <label>
-          {t("paper.approve.maxAge")}
-          <input
-            value={maxAge}
-            onChange={(event) => setMaxAge(event.target.value)}
-          />
-        </label>
-        <p className="agent-muted">{t("paper.approve.note")}</p>
-        {formError && (
-          <p className="agent-error" role="alert">
-            {formError}
-          </p>
-        )}
-        <button type="button" onClick={() => void submit()} disabled={busy}>
-          {t("paper.approve.submit")}
+          <label>
+            {t("paper.approve.fxMode")}
+            <select
+              value={fxMode}
+              onChange={(event) =>
+                setFxMode(event.target.value as "fixed" | "bok_ecos")
+              }
+            >
+              <option value="bok_ecos">{t("paper.approve.fxEcos")}</option>
+              <option value="fixed">{t("paper.approve.fxFixed")}</option>
+            </select>
+          </label>
+          {fxMode === "fixed" && (
+            <label>
+              {t("paper.approve.rate")}
+              <input
+                value={rate}
+                inputMode="decimal"
+                onChange={(event) => setRate(event.target.value)}
+              />
+            </label>
+          )}
+          <details className="agent-advanced">
+            <summary>{t("paper.wizard.advanced")}</summary>
+            <label>
+              {t("paper.approve.buffer")}
+              <input
+                value={buffer}
+                onChange={(event) => setBuffer(event.target.value)}
+              />
+            </label>
+            <label>
+              {t("paper.approve.equity")}
+              <input
+                value={equity}
+                onChange={(event) => setEquity(event.target.value)}
+              />
+            </label>
+            <label>
+              {t("paper.approve.settle")}
+              <input
+                value={settle}
+                onChange={(event) => setSettle(event.target.value)}
+              />
+            </label>
+            <label>
+              {t("paper.approve.maxAge")}
+              <input
+                value={maxAge}
+                onChange={(event) => setMaxAge(event.target.value)}
+              />
+            </label>
+          </details>
+          <p className="agent-muted">{t("paper.approve.note")}</p>
+        </div>
+      )}
+      {step === 4 && (
+        <dl className="agent-review">
+          <dt>{t("paper.approve.strategy")}</dt>
+          <dd>
+            {strategy?.name} (v{strategy?.version})
+          </dd>
+          <dt>{t("paper.approve.key")}</dt>
+          <dd>{key?.label}</dd>
+          <dt>{t("paper.wizard.s2")}</dt>
+          <dd>{chosen.map((item) => item.symbol).join(", ")}</dd>
+          <dt>{t("paper.approve.amount")}</dt>
+          <dd>
+            {amount.trim() === ""
+              ? t("paper.noLimit")
+              : t("paper.wizard.won", { amount: grouped(amount.trim()) })}
+          </dd>
+          <dt>{t("paper.approve.fxMode")}</dt>
+          <dd>
+            {fxMode === "bok_ecos"
+              ? t("paper.approve.fxEcos")
+              : t("paper.wizard.fixedRate", { rate: rate.trim() })}
+          </dd>
+          <dt>{t("paper.wizard.advanced")}</dt>
+          <dd>
+            {t("paper.wizard.advancedSummary", {
+              buffer: buffer.trim() || "50",
+              settle: settle.trim() || "—",
+              age: maxAge.trim() || "300",
+            })}
+          </dd>
+        </dl>
+      )}
+      {formError && (
+        <p className="agent-error" role="alert">
+          {formError}
+        </p>
+      )}
+      <div className="agent-wizard-actions">
+        <button type="button" onClick={onCancel}>
+          {t("paper.wizard.cancel")}
         </button>
-      </fieldset>
-    </section>
+        {step > 1 && (
+          <button
+            type="button"
+            onClick={() => {
+              setFormError(null);
+              setStep(step - 1);
+            }}
+          >
+            {t("paper.wizard.back")}
+          </button>
+        )}
+        {step < STEPS ? (
+          <button type="button" className="agent-primary" onClick={next}>
+            {t("paper.wizard.next")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="agent-primary"
+            onClick={() => void submit()}
+            disabled={busy}
+          >
+            {t("paper.approve.submit")}
+          </button>
+        )}
+      </div>
+    </div>
   );
+}
+
+/** Search listings by ticker or name and keep the chosen ones (a plan's instruments). */
+function SymbolPicker({
+  api,
+  chosen,
+  onChange,
+}: {
+  api: PaperApi;
+  chosen: ChosenInstrument[];
+  onChange: (chosen: ChosenInstrument[]) => void;
+}) {
+  const { t, language } = useI18n();
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<ChosenInstrument[] | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  useEffect(() => {
+    const text = query.trim();
+    if (text === "") {
+      setResults(null);
+      return;
+    }
+    let current = true;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const found = await api.searchSymbols(text);
+          if (!current) return;
+          setResults(
+            found.results.map((item) => ({
+              instrument_id: item.listing.instrument.instrument_id,
+              symbol: item.listing.instrument.symbol,
+              name: (language === "ko" ? item.local_name : null) ?? item.name,
+            })),
+          );
+          setSearchError(null);
+        } catch (caught) {
+          if (current) setSearchError(message(caught));
+        }
+      })();
+    }, 250);
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [api, query, language]);
+  const has = (id: string) => chosen.some((item) => item.instrument_id === id);
+  return (
+    <div className="agent-form">
+      <label>
+        {t("paper.symbols.search")}
+        <input
+          type="search"
+          value={query}
+          placeholder="AAPL, Apple, 애플"
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
+      {searchError && <p className="agent-error">{searchError}</p>}
+      {results !== null &&
+        (results.length === 0 ? (
+          <p className="agent-muted">{t("paper.symbols.none")}</p>
+        ) : (
+          <ul className="agent-results" aria-label={t("paper.symbols.results")}>
+            {results.map((item) => (
+              <li key={item.instrument_id}>
+                <button
+                  type="button"
+                  disabled={has(item.instrument_id)}
+                  onClick={() => onChange([...chosen, item])}
+                >
+                  <strong>{item.symbol}</strong> {item.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ))}
+      <div className="agent-chips" aria-label={t("paper.symbols.chosen")}>
+        {chosen.length === 0 ? (
+          <span className="agent-muted">{t("paper.symbols.empty")}</span>
+        ) : (
+          chosen.map((item) => (
+            <span key={item.instrument_id} className="agent-chip">
+              {item.symbol}
+              <button
+                type="button"
+                aria-label={t("paper.symbols.remove", { symbol: item.symbol })}
+                onClick={() =>
+                  onChange(
+                    chosen.filter(
+                      (other) => other.instrument_id !== item.instrument_id,
+                    ),
+                  )
+                }
+              >
+                ×
+              </button>
+            </span>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function sideLabel(t: Translate, side: string): string {
+  return side === "buy"
+    ? t("paper.side.buy")
+    : side === "sell"
+      ? t("paper.side.sell")
+      : side;
 }
 
 function IntentTable({ rows }: { rows: IntentRow[] }) {
@@ -525,7 +926,7 @@ function IntentTable({ rows }: { rows: IntentRow[] }) {
     <section className="agent-card" aria-label={t("paper.intents")}>
       <h2>{t("paper.intents")}</h2>
       {rows.length === 0 ? (
-        <p>{t("paper.none")}</p>
+        <p className="agent-muted">{t("paper.intents.empty")}</p>
       ) : (
         <table className="agent-table">
           <thead>
@@ -541,9 +942,9 @@ function IntentTable({ rows }: { rows: IntentRow[] }) {
           <tbody>
             {rows.map(({ intent, outcome, submission }) => (
               <tr key={intent.intent_id}>
-                <td>{intent.created_at_utc}</td>
+                <td>{localTime(intent.created_at_utc)}</td>
                 <td>{intent.symbol}</td>
-                <td>{intent.side}</td>
+                <td>{sideLabel(t, intent.side)}</td>
                 <td>
                   {intent.order.order_type} {intent.order.quantity} @{" "}
                   {intent.order.limit_price ??
@@ -576,7 +977,7 @@ function ExecutionTable({ rows }: { rows: PaperExecution[] }) {
       <h2>{t("paper.executions")}</h2>
       <p className="agent-muted">{t("paper.executions.note")}</p>
       {rows.length === 0 ? (
-        <p>{t("paper.none")}</p>
+        <p className="agent-muted">{t("paper.executions.empty")}</p>
       ) : (
         <table className="agent-table">
           <thead>
@@ -590,9 +991,13 @@ function ExecutionTable({ rows }: { rows: PaperExecution[] }) {
           <tbody>
             {rows.map((row) => (
               <tr key={row.execution_id}>
-                <td>{row.executed_at_utc ?? t("paper.timeUnresolved")}</td>
+                <td>
+                  {row.executed_at_utc
+                    ? localTime(row.executed_at_utc)
+                    : t("paper.timeUnresolved")}
+                </td>
                 <td>{row.symbol}</td>
-                <td>{row.side}</td>
+                <td>{sideLabel(t, row.side)}</td>
                 <td>
                   {row.quantity} @ {row.price} {row.currency}
                 </td>

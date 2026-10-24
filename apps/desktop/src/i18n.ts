@@ -993,6 +993,49 @@ const en = {
   "keyState.error": "Error",
 
   "paper.title": "SIW Agent — paper trading",
+  "paper.windowTitle": "SIW Agent",
+  "paper.summary.kill": "Kill switch",
+  "paper.summary.killOn": "On — no new orders",
+  "paper.summary.killOff": "Off",
+  "paper.summary.plansValue": "{count}",
+  "paper.summary.armedPlan": "Armed: {name}",
+  "paper.summary.noneArmed": "None armed",
+  "paper.summary.today": "Today",
+  "paper.summary.todayValue": "{intents} intents · {fills} fills",
+  "paper.ago.now": "just now",
+  "paper.ago.minutes": "{n} min ago",
+  "paper.ago.hours": "{n} h ago",
+  "paper.stale": "No check-in for {minutes} min while armed",
+  "paper.approvals.empty":
+    "No plan approved yet. Use “New plan” to approve one.",
+  "paper.wizard.open": "New plan",
+  "paper.wizard.s1": "Strategy and account",
+  "paper.wizard.s2": "Instruments",
+  "paper.wizard.s3": "Limits",
+  "paper.wizard.s4": "Review",
+  "paper.wizard.choose": "Choose…",
+  "paper.wizard.next": "Next",
+  "paper.wizard.back": "Back",
+  "paper.wizard.cancel": "Cancel",
+  "paper.wizard.advanced": "Advanced settings",
+  "paper.wizard.advancedSummary":
+    "price buffer {buffer} bp · bar settle {settle} s · signal age ≤ {age} s",
+  "paper.wizard.missing1": "Choose a strategy and a Kiwoom demo key.",
+  "paper.wizard.missing2": "Choose at least one instrument.",
+  "paper.wizard.missing3": "Enter the exchange rate, or use the ECOS rate.",
+  "paper.wizard.won": "{amount} KRW",
+  "paper.wizard.fixedRate": "Fixed: {rate} KRW per USD",
+  "paper.symbols.search": "Search by ticker or name",
+  "paper.symbols.results": "Search results",
+  "paper.symbols.none": "No matches.",
+  "paper.symbols.chosen": "Chosen instruments",
+  "paper.symbols.empty": "No instrument chosen yet.",
+  "paper.symbols.remove": "Remove {symbol}",
+  "paper.intents.empty":
+    "No order intents yet. They appear when an armed plan's strategy signals.",
+  "paper.executions.empty": "No paper fills yet.",
+  "paper.side.buy": "Buy",
+  "paper.side.sell": "Sell",
   "paper.banner":
     "Paper trading (모의투자) only — no real orders. Orders go to the broker's paper server.",
   "paper.kill": "Kill switch: stop new orders",
@@ -1002,8 +1045,8 @@ const en = {
   "paper.state.halted": "Halted: {reason}",
   "paper.state.armed": "Armed: paper orders may be sent",
   "paper.state.disarmed": "Disarmed: no orders are sent",
-  "paper.heartbeat": "Last heartbeat: {time}",
-  "paper.never": "never",
+  "paper.heartbeat": "Last check-in: {time}",
+  "paper.never": "not yet",
   "paper.unknownOrders":
     "{count} paper order(s) with an unknown outcome: no new orders until they are settled.",
   "paper.release": "Release the kill switch (stays disarmed)",
@@ -1044,7 +1087,7 @@ const en = {
   "paper.approve.submit": "Approve",
   "paper.intents": "Order intents",
   "paper.none": "Nothing yet.",
-  "paper.col.time": "Time (UTC)",
+  "paper.col.time": "Time (local)",
   "paper.col.symbol": "Symbol",
   "paper.col.side": "Side",
   "paper.col.order": "Order",
@@ -2028,6 +2071,49 @@ const ko: Record<MessageKey, string> = {
   "keyState.error": "오류",
 
   "paper.title": "SIW Agent — 모의투자",
+  "paper.windowTitle": "SIW Agent",
+  "paper.summary.kill": "킬 스위치",
+  "paper.summary.killOn": "켜짐 — 신규 주문 중지",
+  "paper.summary.killOff": "꺼짐",
+  "paper.summary.plansValue": "{count}개",
+  "paper.summary.armedPlan": "무장: {name}",
+  "paper.summary.noneArmed": "무장한 계획 없음",
+  "paper.summary.today": "오늘",
+  "paper.summary.todayValue": "주문 의도 {intents} · 체결 {fills}",
+  "paper.ago.now": "방금",
+  "paper.ago.minutes": "{n}분 전",
+  "paper.ago.hours": "{n}시간 전",
+  "paper.stale": "무장 중인데 {minutes}분째 응답이 없습니다",
+  "paper.approvals.empty":
+    "아직 승인한 계획이 없습니다. “새 계획 만들기”로 승인하세요.",
+  "paper.wizard.open": "새 계획 만들기",
+  "paper.wizard.s1": "전략·계좌",
+  "paper.wizard.s2": "종목",
+  "paper.wizard.s3": "한도",
+  "paper.wizard.s4": "확인",
+  "paper.wizard.choose": "선택하세요",
+  "paper.wizard.next": "다음",
+  "paper.wizard.back": "이전",
+  "paper.wizard.cancel": "취소",
+  "paper.wizard.advanced": "고급 설정",
+  "paper.wizard.advancedSummary":
+    "가격 버퍼 {buffer}bp · 봉 확정 대기 {settle}초 · 신호 나이 ≤ {age}초",
+  "paper.wizard.missing1": "전략과 키움 모의 키를 고르세요.",
+  "paper.wizard.missing2": "종목을 하나 이상 고르세요.",
+  "paper.wizard.missing3": "환율을 입력하거나 ECOS 환율을 쓰세요.",
+  "paper.wizard.won": "{amount}원",
+  "paper.wizard.fixedRate": "고정: 1달러당 {rate}원",
+  "paper.symbols.search": "티커나 이름으로 검색",
+  "paper.symbols.results": "검색 결과",
+  "paper.symbols.none": "검색 결과가 없습니다.",
+  "paper.symbols.chosen": "고른 종목",
+  "paper.symbols.empty": "아직 고른 종목이 없습니다.",
+  "paper.symbols.remove": "{symbol} 빼기",
+  "paper.intents.empty":
+    "아직 주문 의도가 없습니다. 무장한 계획의 전략이 신호를 내면 여기에 나옵니다.",
+  "paper.executions.empty": "아직 모의 체결이 없습니다.",
+  "paper.side.buy": "매수",
+  "paper.side.sell": "매도",
   "paper.banner":
     "모의투자 전용 — 실제 주문이 아닙니다. 주문은 증권사 모의투자 서버로만 갑니다.",
   "paper.kill": "킬 스위치: 신규 주문 중지",
@@ -2037,8 +2123,8 @@ const ko: Record<MessageKey, string> = {
   "paper.state.halted": "정지됨: {reason}",
   "paper.state.armed": "무장됨: 모의 주문을 보낼 수 있음",
   "paper.state.disarmed": "무장 해제: 주문을 보내지 않음",
-  "paper.heartbeat": "마지막 heartbeat: {time}",
-  "paper.never": "없음",
+  "paper.heartbeat": "마지막 응답: {time}",
+  "paper.never": "아직 없음",
   "paper.unknownOrders":
     "결과를 모르는 모의 주문 {count}건: 맞추기 전까지 새 주문을 내지 않습니다.",
   "paper.release": "킬 스위치 해제(무장 해제 상태 유지)",
@@ -2076,7 +2162,7 @@ const ko: Record<MessageKey, string> = {
   "paper.approve.submit": "승인",
   "paper.intents": "주문 의도",
   "paper.none": "아직 없음.",
-  "paper.col.time": "시각(UTC)",
+  "paper.col.time": "시각(내 시간대)",
   "paper.col.symbol": "종목",
   "paper.col.side": "방향",
   "paper.col.order": "주문",
@@ -2118,13 +2204,17 @@ export function translateDynamic(
   return key in en ? t(key as MessageKey) : fallback;
 }
 
-export function detectLanguage(storage: Storage | null): Language {
+export function detectLanguage(
+  storage: Storage | null,
+  fallback?: Language,
+): Language {
   try {
     const saved = storage?.getItem(LANGUAGE_STORAGE_KEY);
     if (saved === "en" || saved === "ko") return saved;
   } catch {
     // Storage can be unavailable (private mode); fall back to the browser language.
   }
+  if (fallback) return fallback; // an app's own default (SIW Agent: Korean)
   return typeof navigator !== "undefined" &&
     navigator.language.toLowerCase().startsWith("ko")
     ? "ko"

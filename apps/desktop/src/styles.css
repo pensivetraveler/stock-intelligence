@@ -2642,7 +2642,8 @@ body {
 
 .agent-form {
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  padding: 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
 }
@@ -2656,6 +2657,203 @@ body {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9em;
+}
+
+.agent-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.agent-tile {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.agent-tile strong {
+  font-size: 1.05rem;
+}
+
+.agent-tile button {
+  justify-self: start;
+}
+
+.agent-tile-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+}
+
+.agent-tile-ok {
+  border-left-color: #3fb27f;
+}
+
+.agent-tile-danger {
+  border-left-color: #ff6b6b;
+  background: #2a1517;
+}
+
+.agent-tile-active {
+  border-left-color: var(--accent);
+}
+
+.agent-tile-warning {
+  border-left-color: #e0a63a;
+}
+
+.agent-summary-note {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.agent-card-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.agent-armed {
+  color: var(--accent);
+}
+
+.agent-wizard {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.agent-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-steps li {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.agent-steps .agent-step-current {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.agent-steps .agent-step-done {
+  color: inherit;
+}
+
+.agent-wizard-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.agent-primary {
+  font-weight: 600;
+}
+
+/* Cancel and Back are secondary: outlined, so Next and Approve stand out. */
+.agent-wizard-actions button:not(.agent-primary) {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+}
+
+.agent-advanced {
+  display: grid;
+  gap: 8px;
+}
+
+.agent-advanced summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.agent-review {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  margin: 0;
+}
+
+.agent-review dt {
+  color: var(--muted);
+}
+
+.agent-review dd {
+  margin: 0;
+}
+
+.agent-results {
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.agent-results button {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.agent-results button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #1b2738;
+}
+
+.agent-results button:disabled {
+  opacity: 0.5;
+}
+
+.agent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-chip {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+}
+
+.agent-chip button {
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.agent-chip button:hover {
+  color: #ff9a9a;
 }
 
 .agent-table th,
