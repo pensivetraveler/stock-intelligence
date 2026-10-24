@@ -69,9 +69,9 @@ import {
   type MarketApi,
 } from "./market-api";
 import {
-  contiguousFromNewest,
   MAX_OLDER_BARS,
   olderDailyRange,
+  olderSessionBars,
   prependOlder,
 } from "./older-bars";
 import { PriceChart } from "./PriceChart";
@@ -91,6 +91,8 @@ const NOT_OFFERED = Symbol("not offered");
 const WARMUP_SESSIONS = 10;
 /** Earlier sessions requested at the same time while history loads. */
 const HISTORY_REQUESTS = 4;
+// How far back a halt is searched for the last trading day (daily bars).
+const HALT_LOOKBACK_DAYS = 1_460;
 
 function shiftDays(date: string, days: number): string {
   const value = new Date(`${date}T00:00:00Z`);
@@ -440,13 +442,13 @@ export function ChartPanel({
           bars = (await api.bars({ instrumentId, timeframe, ...range })).bars;
           from = range.startUtc.slice(0, 10);
         } else {
-          const sessions = await api.sessions(
-            previousDay(before),
+          // Sessions without trades (a halt) are skipped, not taken for the start.
+          const found = await olderSessionBars(
+            before,
             sessionsForCandles(timeframe, sessionScope),
-            zoneOf(instrumentId).calendarId,
-          );
-          const answers = await Promise.all(
-            sessions.map(async (item) => {
+            (endDate, count) =>
+              api.sessions(endDate, count, zoneOf(instrumentId).calendarId),
+            async (item) => {
               const range = sessionRange(item, sessionScope);
               if (range === null) return [];
               try {
@@ -455,16 +457,20 @@ export function ChartPanel({
               } catch {
                 return null;
               }
-            }),
+            },
+            // One daily request finds the last trading day before a long halt.
+            async (date) => {
+              const daily = await api.bars({
+                instrumentId,
+                timeframe: "1d",
+                startUtc: `${shiftDays(date, -HALT_LOOKBACK_DAYS)}T00:00:00Z`,
+                endUtc: `${date}T00:00:00Z`,
+              });
+              const last = daily.bars[daily.bars.length - 1];
+              return last ? last.interval_start_utc.slice(0, 10) : null;
+            },
           );
-          const run = contiguousFromNewest(answers);
-          bars = run.bars;
-          from =
-            run.sessions > 0
-              ? sessions[sessions.length - run.sessions].session_date
-              : null;
-          failed = run.sessions < sessions.length;
-          if (sessions.length === 0) from = null;
+          ({ bars, from, failed } = found);
         }
       } catch {
         failed = true;
