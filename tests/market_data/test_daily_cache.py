@@ -117,6 +117,29 @@ def test_a_new_revision_is_never_mixed_with_stored_years(store: LocalMarketDataS
     )
 
 
+class RevisedDailyProvider(FakeDailyProvider):
+    """Names its current daily revision, as the Alpaca adapter does."""
+
+    @property
+    def daily_dataset_revision(self) -> str:
+        return self.revision
+
+
+def test_settled_years_of_an_older_revision_are_fetched_again(
+    store: LocalMarketDataStore,
+) -> None:
+    past = BarsQuery(AAPL, "1d", utc(2024, 1, 1), utc(2025, 1, 1))  # settled only
+    CachedMarketDataProvider(RevisedDailyProvider(), store).get_daily_bars(past)
+
+    revised = RevisedDailyProvider("fake-daily-r2")
+    first = CachedMarketDataProvider(revised, store).get_daily_bars(past)
+    assert first.coverage["dataset_revision"] == "fake-daily-r2"
+    assert len(revised.queries) == 1
+    # Stored under the new revision, the year is then reused despite the old copy.
+    again = CachedMarketDataProvider(revised, store).get_daily_bars(past)
+    assert again.bars == first.bars and len(revised.queries) == 1
+
+
 def test_point_in_time_requests_reuse_only_what_was_known(
     store: LocalMarketDataStore,
 ) -> None:

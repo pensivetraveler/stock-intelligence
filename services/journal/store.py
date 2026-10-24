@@ -277,6 +277,54 @@ class JournalStore:
             "broker_order_executions", "executed_at_utc, execution_id", instrument_id
         )
 
+    def broker_position_fields(self, instrument_id: str | None = None) -> list[dict[str, Any]]:
+        """Only the fields broker positions need (`account_positions`), in ledger order,
+        read without parsing whole documents. Amounts stay decimal text."""
+        statement = (
+            "SELECT execution_id, broker_account_ref, instrument_id, executed_at_utc, "
+            "json_extract(document_json, '$.side'), json_extract(document_json, '$.quantity'), "
+            "json_extract(document_json, '$.price'), json_extract(document_json, '$.fees') "
+            "FROM broker_order_executions"
+        )
+        parameters: tuple[object, ...] = ()
+        if instrument_id is not None:
+            statement += " WHERE instrument_id = ?"
+            parameters = (instrument_id,)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"{statement} ORDER BY executed_at_utc, execution_id", parameters
+            ).fetchall()
+        keys = (
+            "execution_id",
+            "broker_account_ref",
+            "instrument_id",
+            "executed_at_utc",
+            "side",
+            "quantity",
+            "price",
+            "fees",
+        )
+        return [dict(zip(keys, row, strict=True)) for row in rows]
+
+    def latest_broker_executions(
+        self, limit: int, instrument_id: str | None = None
+    ) -> tuple[list[dict[str, Any]], int]:
+        """The newest `limit` executions in ledger order, and how many there are."""
+        where, parameters = "", cast(tuple[object, ...], ())
+        if instrument_id is not None:
+            where, parameters = " WHERE instrument_id = ?", (instrument_id,)
+        with self._connect() as connection:
+            total = connection.execute(
+                f"SELECT count(*) FROM broker_order_executions{where}", parameters
+            ).fetchone()[0]
+            rows = connection.execute(
+                f"SELECT document_json FROM broker_order_executions{where} "
+                "ORDER BY executed_at_utc DESC, execution_id DESC LIMIT ?",
+                (*parameters, limit),
+            ).fetchall()
+        documents = [cast(dict[str, Any], json.loads(cast(str, row[0]))) for row in rows]
+        return documents[::-1], cast(int, total)
+
     def batch_for_file(self, sha256: str) -> dict[str, Any] | None:
         with self._connect() as connection:
             row = connection.execute(

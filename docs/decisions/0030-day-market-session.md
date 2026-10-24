@@ -27,7 +27,7 @@ Until now:
 - **Policy version:** `us-overnight-boats-v1-2026-10-22`.
 - **Holidays and early closes (checked 2026-10-22):** Toss's market calendar (`GET /v1/market/broker-calendar`, its `dayMarket` sessions) agreed with this policy on all 86 dates read around the holidays and early closes of 2025–2026 and both DST changes. Examples: no session into Thanksgiving, Christmas or 2026-07-03; a normal 20:00–04:00 session into the day after Thanksgiving (an early close); the session after an early close starts at the usual 20:00 of the evening before the next trading day. The policy version stays `v1`.
 - **Blue Ocean's own calendar (checked 2026-10-23):** Blue Ocean's holiday notice (blueocean-tech.io/trading-updates) lists the evenings it is closed for 2025–2027. All 30 closed evenings agree with this policy: each one starts the session into a US holiday. The dates are fixed as regression tests. Blue Ocean lists no early closes.
-- **One date the notice does not list:** 2025-01-09, the national day of mourning on which NYSE closed. The policy has no session into it. Whether Blue Ocean closed that night is not verified.
+- **One date the notice does not list:** 2025-01-09, the national day of mourning on which NYSE closed. The policy has no session into it. Checked on 2026-10-24: BOATS printed no AAPL, TSLA or NVDA minute bar in that session, but hundreds on the nights before and after. So Blue Ocean was closed too, and a regression test fixes it.
 
 ### A separate data stream, not merged into the existing bars
 

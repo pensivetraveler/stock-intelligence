@@ -1070,7 +1070,12 @@ class CachedMarketDataProvider:
         if not isinstance(self.upstream, DailyBarsProvider):
             raise InvalidBarsQueryError("this data provider does not offer daily bars yet")
         validate_daily_query(query, "1d", _utc_now())
-        return DailyBarsCache(self.store, self.source_id, self.upstream.get_daily_bars).get(query)
+        return DailyBarsCache(
+            self.store,
+            self.source_id,
+            self.upstream.get_daily_bars,
+            getattr(self.upstream, "daily_dataset_revision", None),
+        ).get(query)
 
     def get_adjusted_daily_bars(self, query: BarsQuery, adjustment: str) -> BarsResult:
         """Adjusted daily bars straight from the upstream: never cached (see daily.py)."""

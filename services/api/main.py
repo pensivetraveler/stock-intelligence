@@ -1119,14 +1119,20 @@ def create_app(
                 "journal_storage_unconfigured",
                 "set SIW_DATA_DIR to keep the broker ledger",
             )
-        executions = store.broker_executions(instrument_id)
+        if limit is None:
+            executions = store.broker_executions(instrument_id)
+            shown, count, fields = executions, len(executions), executions
+        else:
+            # Positions need a few fields of every execution, not whole documents.
+            shown, count = store.latest_broker_executions(limit, instrument_id)
+            fields = store.broker_position_fields(instrument_id)
         document = {
             "kind": "broker_ledger_response",
             "schema_version": "0.1",
             "ledger": "broker_api",
-            "executions": executions if limit is None else executions[-limit:],
-            "execution_count": len(executions),
-            "positions": account_positions(executions, store.broker_fee_amounts(instrument_id)),
+            "executions": shown,
+            "execution_count": count,
+            "positions": account_positions(fields, store.broker_fee_amounts(instrument_id)),
         }
         validate_document(document)
         return JSONResponse(content=document)

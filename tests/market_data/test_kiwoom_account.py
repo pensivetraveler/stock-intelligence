@@ -201,6 +201,12 @@ def test_kiwoom_sync_api(tmp_path: Path) -> None:
         ledger = client.get("/v1/trades/broker").json()
         validate_document(ledger)
         assert all(item["broker_id"] == "kiwoom" for item in ledger["executions"])
+        # With a limit, the newest executions only, and the same positions and count.
+        newest = client.get("/v1/trades/broker", params={"limit": 1}).json()
+        validate_document(newest)
+        assert newest["executions"] == ledger["executions"][-1:]
+        assert newest["execution_count"] == ledger["execution_count"]
+        assert newest["positions"] == ledger["positions"]
         missing = create_app(
             FakeMarketDataProvider.from_path(),
             journal_store=JournalStore(tmp_path),
