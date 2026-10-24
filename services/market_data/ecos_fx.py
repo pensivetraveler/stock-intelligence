@@ -4,7 +4,11 @@ Series 731Y001 (주요국 통화의 대원화환율), item 0000001 (원/미국�
 Request: GET https://ecos.bok.or.kr/api/StatisticSearch/{key}/json/kr/1/{n}/731Y001/D/
 {start YYYYMMDD}/{end YYYYMMDD}/0000001. Shapes below follow the ECOS developer guide and were
 confirmed with one real call on 2026-10-23 (1325.5 for 2026-10-22). Error codes other than
-INFO-200 were not seen live.
+INFO-200 were not seen live; they are handled by the guide's list (see `PERMANENT_CODES`).
+
+- Failures are remembered: the next call waits `RETRY_AFTER` (a few minutes for an outage or
+  rate limit, an hour for a request ECOS will keep refusing, such as an invalid key), so a
+  runner that asks every few seconds never hammers ECOS.
 
 - The key sits in the URL path, so no URL is ever logged or put in an error message, and
   httpx's own request log is turned down for this module's client.
@@ -30,12 +34,25 @@ SERIES = "731Y001"
 ITEM_USD = "0000001"
 LOOKBACK_DAYS = 14  # weekends and Korean holidays have no observation
 NO_DATA = "INFO-200"
+# ECOS guide error codes that the same request will keep getting: invalid key, missing or
+# malformed values, wrong file type, unknown service. Anything else (search-range or
+# server timeouts ERROR-400/500, database errors ERROR-600/601, too many calls ERROR-602,
+# HTTP or network failures) may pass on a later try.
+PERMANENT_CODES = frozenset(
+    {"INFO-100", "ERROR-100", "ERROR-101", "ERROR-200", "ERROR-300", "ERROR-301"}
+)
+RETRY_AFTER = {"transient": timedelta(minutes=5), "permanent": timedelta(hours=1)}
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 class EcosError(RuntimeError):
     """ECOS could not give a rate. Messages never contain the key or the URL."""
+
+    def __init__(self, message: str, *, code: str | None = None, permanent: bool = False):
+        super().__init__(message)
+        self.code = code
+        self.permanent = permanent
 
 
 @dataclass(frozen=True)
@@ -73,6 +90,7 @@ class EcosUsdKrw:
         )
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._cache: tuple[date, EcosRate] | None = None
+        self._failure: tuple[datetime, EcosError] | None = None
         self._lock = threading.Lock()
 
     def __repr__(self) -> str:
@@ -84,7 +102,17 @@ class EcosUsdKrw:
         with self._lock:
             if self._cache is not None and self._cache[0] == today:
                 return self._cache[1]
-            found = self._fetch(today, now)
+            if self._failure is not None:
+                failed_at, error = self._failure
+                wait = RETRY_AFTER["permanent" if error.permanent else "transient"]
+                if now - failed_at < wait:
+                    raise error
+            try:
+                found = self._fetch(today, now)
+            except EcosError as error:
+                self._failure = (now, error)
+                raise
+            self._failure = None
             self._cache = (today, found)
             return found
 
@@ -105,12 +133,19 @@ class EcosUsdKrw:
             payload = response.json()
         except ValueError:
             raise EcosError("ECOS answered with something that is not JSON") from None
-        result = payload.get("RESULT")
-        if isinstance(result, dict):
-            code = str(result.get("CODE", ""))
+        if not isinstance(payload, dict):
+            raise EcosError("ECOS answered with an unexpected document")
+        # The guide shows RESULT at the top level; accept it inside the service too.
+        result = payload.get("RESULT") or (payload.get("StatisticSearch") or {}).get("RESULT")
+        if isinstance(result, dict) and str(result.get("CODE", "")) not in ("", "INFO-000"):
+            code = str(result.get("CODE", ""))[:20]
             if code == NO_DATA:
-                raise EcosError(f"ECOS has no USD/KRW rate from {start} to {end}")
-            raise EcosError(f"ECOS refused the request ({code})")
+                raise EcosError(f"ECOS has no USD/KRW rate from {start} to {end}", code=code)
+            raise EcosError(
+                f"ECOS refused the request ({code})",
+                code=code,
+                permanent=code in PERMANENT_CODES,
+            )
         rows = (payload.get("StatisticSearch") or {}).get("row") or []
         best: tuple[date, Decimal] | None = None
         for row in rows:

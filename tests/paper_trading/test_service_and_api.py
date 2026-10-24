@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -361,3 +363,102 @@ def test_ecos_approval_needs_an_ecos_key(client: Any, tmp_path: Path) -> None:
     assert response.status_code == 201, response.text
     assert (response.json()["fx_source"], response.json()["fx"]) == ("bok_ecos", None)
     assert "ecos-test-key-not-real" not in response.text
+
+
+# -- bok_ecos through the runner's own wiring ------------------------------------------------
+
+
+class FakeEcos:
+    """ECOS StatisticSearch with a fixed USD/KRW history; counts requests."""
+
+    def __init__(self) -> None:
+        self.requests: list[httpx.Request] = []
+        self.fail_with: str | None = None
+
+    def transport(self) -> httpx.MockTransport:
+        return httpx.MockTransport(self.handle)
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self.fail_with:
+            return httpx.Response(200, json={"RESULT": {"CODE": self.fail_with}})
+        rows = [
+            {"ITEM_CODE1": "0000001", "TIME": "20261022", "DATA_VALUE": "1325.5"},
+            {"ITEM_CODE1": "0000001", "TIME": "20261023", "DATA_VALUE": "1330.0"},
+        ]
+        return httpx.Response(200, json={"StatisticSearch": {"list_total_count": 2, "row": rows}})
+
+
+def _ecos_setup(
+    tmp_path: Path,
+) -> tuple[RunnerService, PaperOrderStore, FakeKiwoomPaper, FakeEcos, CredentialStore, str]:
+    from services.paper_trading.service import ecos_fx
+
+    keys = CredentialStore(tmp_path / "keys", MemorySecretBackend())
+    ecos_key = keys.add("ecos", "ECOS", None, {"api_key": "ecos-test-key-not-real"})
+    fake, ecos = FakeKiwoomPaper(), FakeEcos()
+    store = PaperOrderStore(tmp_path)
+    backtests = BacktestStore(tmp_path / "backtests.sqlite3", lambda: NOW)
+    approval = _approval(store, backtests, kiwoom_account_ref("app-key"))
+    content = store.approval(approval)
+    assert content is not None
+    approval = store.record_approval({**content, "fx": None, "fx_source": "bok_ecos"})
+    store.verify_market("kiwoom", "us", "test fixture")
+    store.arm(approval, source="test")
+    service = RunnerService(
+        store,
+        backtests.strategy,
+        lambda _ref, markets: KiwoomPaperBroker(
+            "app-key",
+            "secret-key",
+            "demo",
+            markets=markets,
+            transport=fake.transport(),
+        ),
+        StaticFeed,
+        now=lambda: NOW,
+        fx_rate=ecos_fx(keys, transport=ecos.transport(), now=lambda: NOW),
+    )
+    return service, store, fake, ecos, keys, ecos_key.credential_id
+
+
+def test_bok_ecos_plan_checks_the_order_at_the_ecos_rate(tmp_path: Path) -> None:
+    service, store, fake, ecos, _keys, _ = _ecos_setup(tmp_path)
+    assert "submitted=1" in service.tick()
+    intent = store.intents(1)[0]["intent"]
+    # 23:02 Seoul on 2026-10-23: the 10-22 rate, never the same-day one.
+    assert intent["fx"]["krw_per_usd"] == "1325.5"
+    assert intent["fx"]["source"].endswith("for 2026-10-22")
+    # 3 shares × 101.505 (close 101 + 50 bp market buffer) × 1325.5
+    assert intent["limit_check"]["order_amount_krw"] == "403634.6325"
+    assert len(ecos.requests) == 1
+    assert [o.stk_cd for o in fake.orders] == ["AAPL"]
+    assert "ecos-test-key-not-real" not in json.dumps(intent)
+
+
+def test_ecos_failure_blocks_orders_and_is_asked_again_only_later(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    from services.paper_trading.service import ecos_fx
+
+    service, store, fake, ecos, keys, credential_id = _ecos_setup(tmp_path)
+    ecos.fail_with = "ERROR-500"
+    assert "blocked=1" in service.tick()
+    assert store.intents(1)[0]["intent"]["limit_check"]["reasons"] == ["fx_unavailable"]
+    assert fake.orders == []
+
+    rate = ecos_fx(keys, transport=ecos.transport(), now=lambda: NOW)
+    caplog.clear()
+    with caplog.at_level("WARNING", logger="siw.paper_runner"):
+        assert rate() is None
+        assert rate() is None
+    assert len(ecos.requests) == 2  # one per client: the second call waits out the error
+    assert len([r for r in caplog.records if "ECOS rate unavailable" in r.message]) == 1
+    assert "ecos-test-key-not-real" not in caplog.text
+
+    # A replaced key builds a new client at once.
+    keys.replace_secrets(credential_id, {"api_key": "ecos-new-key-not-real"})
+    ecos.fail_with = None
+    found = rate()
+    assert found is not None and found.krw_per_usd == Decimal("1325.5")
+    assert "ecos-new-key-not-real" in ecos.requests[-1].url.path
