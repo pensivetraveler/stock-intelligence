@@ -151,7 +151,12 @@ def service(
     def broker_for(ref: str, markets: frozenset[str]) -> KiwoomPaperBroker:
         calls.append((ref, markets))
         return KiwoomPaperBroker(
-            "app-key", "secret-key", "demo", markets=markets, transport=fake.transport()
+            "app-key",
+            "secret-key",
+            "demo",
+            markets=markets,
+            transport=fake.transport(),
+            sleep=lambda _seconds: None,
         )
 
     def feed() -> StaticFeed:
