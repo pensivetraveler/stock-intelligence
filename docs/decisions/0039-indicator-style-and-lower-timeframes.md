@@ -42,6 +42,17 @@ The user asked for two changes.
 
 The indicator settings opened under the drawing layer, so drawings showed through them. The legend (and its popovers) now sits above the drawing layer. The legend lets pointer events through, so drawing is unaffected.
 
+### Amendment 2026-10-24: visibility, opacity, precision
+
+At the user's request, the parts first left out were added.
+
+- **"Visibility" tab:** minutes (1–59), hours (1–24), days (1–366) and weeks (1–52), each on or off with a range.
+  - A chart timeframe falls in one group: 45m in minutes, 120m in hours 2, 1d in days, 1w in weeks.
+  - An indicator outside its range is not drawn, and its legend says "hidden on this timeframe".
+  - Only groups that differ from "all" are stored (`visibility`).
+- **Opacity:** a 0–100 % slider beside each output's colour. The colour is drawn as rgba.
+- **Precision:** default, or 0 to 8 decimals, for the legend and the indicator's price scale.
+
 ## Alternatives considered
 
 - **A full copy of TradingView's indicator engine (Pine-like inputs and plots):** much larger than asked. The catalog and the formula indicators already cover the inputs.

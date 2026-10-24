@@ -7,6 +7,11 @@ import {
   INDICATORS,
   parseIndicators,
   renderIndicators,
+  cleanStyle,
+  cleanVisibility,
+  timeframeGroup,
+  visibleOn,
+  withOpacity,
   withSource,
   rma,
   sma,
@@ -282,5 +287,45 @@ describe("warm-up", () => {
       visible: false,
       width: 1,
     });
+  });
+
+  it("shows an indicator only on the chart timeframes its visibility allows", () => {
+    expect(timeframeGroup("45m")).toEqual({ group: "minutes", count: 45 });
+    expect(timeframeGroup("120m")).toEqual({ group: "hours", count: 2 });
+    expect(timeframeGroup("1d")).toEqual({ group: "days", count: 1 });
+    const visibility = cleanVisibility({
+      minutes: { from: 5, to: 30 },
+      hours: false,
+      days: { from: 9, to: 3 }, // reversed: dropped
+      months: false, // unknown group: dropped
+    });
+    expect(visibility).toEqual({ minutes: { from: 5, to: 30 }, hours: false });
+    const instance = { visibility };
+    expect(visibleOn(instance, "1m")).toBe(false);
+    expect(visibleOn(instance, "15m")).toBe(true);
+    expect(visibleOn(instance, "60m")).toBe(false);
+    expect(visibleOn(instance, "1d")).toBe(true);
+    expect(visibleOn({}, "1m")).toBe(true);
+  });
+
+  it("applies opacity and precision from the style", () => {
+    expect(withOpacity("#ff8000", 50)).toBe("rgba(255, 128, 0, 0.5)");
+    expect(withOpacity("#ff8000")).toBe("#ff8000");
+    const [instance] = parseIndicators([
+      {
+        key: "a",
+        type: "ema",
+        params: { length: 9 },
+        style: {
+          precision: 3,
+          outputs: { value: { color: "#000000", opacity: 40 } },
+        },
+      },
+    ]);
+    const bars = [{ time: 1, open: 1, high: 1, low: 1, close: 1, volume: 1 }];
+    const [rendered] = renderIndicators(bars, [instance]);
+    expect(rendered.precision).toBe(3);
+    expect(rendered.lines[0].color).toBe("rgba(0, 0, 0, 0.4)");
+    expect(cleanStyle({ precision: 12 })).toBeUndefined();
   });
 });

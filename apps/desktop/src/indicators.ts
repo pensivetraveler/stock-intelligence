@@ -1183,6 +1183,8 @@ export type LineStyleName = (typeof LINE_STYLES)[number];
 /** How one output is drawn; unset fields keep the definition's look. */
 export interface OutputStyle {
   color?: string;
+  /** 0–100 percent; 100 when unset. */
+  opacity?: number;
   width?: number;
   line?: LineStyleName;
   visible?: boolean;
@@ -1199,6 +1201,68 @@ export interface IndicatorStyle {
   outputs?: Record<string, OutputStyle>;
   /** Replaces the definition's levels when set. */
   levels?: LevelStyle[];
+  /** Decimals in the legend and on the price scale; automatic when unset. */
+  precision?: number;
+}
+
+export const MAX_PRECISION = 8;
+
+/**
+ * Chart timeframes an indicator shows on (TradingView's "Visibility"). A group left
+ * out shows on all of its timeframes; `false` hides the indicator there.
+ */
+export const VISIBILITY_GROUPS = {
+  minutes: { min: 1, max: 59 },
+  hours: { min: 1, max: 24 },
+  days: { min: 1, max: 366 },
+  weeks: { min: 1, max: 52 },
+} as const;
+export type VisibilityGroup = keyof typeof VISIBILITY_GROUPS;
+export type VisibilityRange = { from: number; to: number } | false;
+export type IndicatorVisibility = Partial<
+  Record<VisibilityGroup, VisibilityRange>
+>;
+
+/** The group and count a chart timeframe falls in: "45m" → minutes 45, "120m" → hours 2. */
+export function timeframeGroup(
+  timeframe: string,
+): { group: VisibilityGroup; count: number } | null {
+  if (timeframe === "1d") return { group: "days", count: 1 };
+  if (timeframe === "1w") return { group: "weeks", count: 1 };
+  const match = /^(\d+)m$/.exec(timeframe);
+  if (!match) return null;
+  const minutes = Number(match[1]);
+  return minutes < 60 || minutes % 60 !== 0
+    ? { group: "minutes", count: minutes }
+    : { group: "hours", count: minutes / 60 };
+}
+
+/** Whether an indicator's visibility settings let it show on this chart timeframe. */
+export function visibleOn(
+  instance: Pick<IndicatorInstance, "visibility">,
+  timeframe: string,
+): boolean {
+  const place = timeframeGroup(timeframe);
+  if (!place || !instance.visibility) return true;
+  const range = instance.visibility[place.group];
+  if (range === undefined) return true;
+  return (
+    range !== false && place.count >= range.from && place.count <= range.to
+  );
+}
+
+/** A colour with an opacity, for the chart ("#rrggbb" stays as it is at 100). */
+export function withOpacity(color: string, opacity?: number): string {
+  if (
+    opacity === undefined ||
+    opacity >= 100 ||
+    !/^#[0-9a-fA-F]{6}$/.test(color)
+  ) {
+    return color;
+  }
+  const value = (offset: number) =>
+    parseInt(color.slice(offset, offset + 2), 16);
+  return `rgba(${value(1)}, ${value(3)}, ${value(5)}, ${Math.max(0, opacity) / 100})`;
 }
 
 export const DEFAULT_LEVEL_COLOR = "#4a566b";
@@ -1213,6 +1277,8 @@ export interface IndicatorInstance {
   source?: PriceSource;
   /** Colours, widths, line styles, visibility and levels (TradingView's "Style"). */
   style?: IndicatorStyle;
+  /** Chart timeframes it shows on (TradingView's "Visibility"); all when unset. */
+  visibility?: IndicatorVisibility;
   /** Computed on this larger timeframe instead of the chart's (built-ins, formulas). */
   timeframe?: HigherTimeframe;
   /** Formula indicators (type "formula"): the expression, its name and pane. */
@@ -1286,6 +1352,14 @@ export function cleanStyle(value: unknown): IndicatorStyle | undefined {
         out.color = item.color;
       }
       if (
+        typeof item.opacity === "number" &&
+        Number.isInteger(item.opacity) &&
+        item.opacity >= 0 &&
+        item.opacity <= 100
+      ) {
+        out.opacity = item.opacity;
+      }
+      if (
         typeof item.width === "number" &&
         Number.isInteger(item.width) &&
         item.width >= 1 &&
@@ -1319,15 +1393,53 @@ export function cleanStyle(value: unknown): IndicatorStyle | undefined {
         : [];
     });
   }
+  if (
+    typeof record.precision === "number" &&
+    Number.isInteger(record.precision) &&
+    record.precision >= 0 &&
+    record.precision <= MAX_PRECISION
+  ) {
+    style.precision = record.precision;
+  }
   return Object.keys(style).length > 0 ? style : undefined;
+}
+
+/** Saved visibility with unknown groups dropped and ranges kept inside their limits. */
+export function cleanVisibility(
+  value: unknown,
+): IndicatorVisibility | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const record = value as Record<string, unknown>;
+  const out: IndicatorVisibility = {};
+  for (const [group, limits] of Object.entries(VISIBILITY_GROUPS) as [
+    VisibilityGroup,
+    { min: number; max: number },
+  ][]) {
+    const raw = record[group];
+    if (raw === false) {
+      out[group] = false;
+      continue;
+    }
+    if (typeof raw !== "object" || raw === null) continue;
+    const item = raw as Record<string, unknown>;
+    const clamp = (n: unknown, fallback: number) =>
+      typeof n === "number" && Number.isInteger(n)
+        ? Math.min(limits.max, Math.max(limits.min, n))
+        : fallback;
+    const from = clamp(item.from, limits.min);
+    const to = clamp(item.to, limits.max);
+    if (from <= to) out[group] = { from, to };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** Source and style kept from storage (shared by every kind of indicator). */
 function savedLook(
   record: Record<string, unknown>,
   definition?: IndicatorDefinition,
-): Pick<IndicatorInstance, "source" | "style"> {
+): Pick<IndicatorInstance, "source" | "style" | "visibility"> {
   const style = cleanStyle(record.style);
+  const visibility = cleanVisibility(record.visibility);
   const source =
     definition?.sourceInput &&
     (PRICE_SOURCES as readonly unknown[]).includes(record.source) &&
@@ -1337,6 +1449,7 @@ function savedLook(
   return {
     ...(source ? { source } : {}),
     ...(style ? { style } : {}),
+    ...(visibility ? { visibility } : {}),
   };
 }
 
@@ -1465,6 +1578,8 @@ export interface RenderedIndicator {
   lines: RenderedLine[];
   /** Guide levels to draw (the user's, else the definition's). */
   levels: LevelStyle[];
+  /** Decimals chosen in the style; automatic when undefined. */
+  precision?: number;
   /** Value of each output at every bar index, for the legend under the crosshair. */
   values: Record<string, Series>;
 }
@@ -1608,7 +1723,7 @@ export function renderIndicators(
       return {
         id: `${instance.key}:${output.key}`,
         label: output.label,
-        color: look.color ?? output.color,
+        color: withOpacity(look.color ?? output.color, look.opacity),
         kind,
         data,
         width: look.width ?? 1,
@@ -1625,6 +1740,9 @@ export function renderIndicators(
         hidden: instance.hidden === true,
         lines,
         levels: levelsOf(definition, instance),
+        ...(instance.style?.precision === undefined
+          ? {}
+          : { precision: instance.style.precision }),
         values,
       },
     ];
