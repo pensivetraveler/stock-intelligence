@@ -24,7 +24,11 @@ from pathlib import Path
 from typing import Any
 
 from services.backtest.store import BacktestStore
-from services.credentials.store import CredentialStore, KeyringSecretBackend
+from services.credentials.store import (
+    CredentialStore,
+    KeyringSecretBackend,
+    SecretStorageError,
+)
 from services.market_data.ecos_fx import EcosError, EcosUsdKrw
 from services.paper_trading.brokers.kiwoom_paper import KiwoomPaperBroker
 from services.paper_trading.intent import FxRate
@@ -54,28 +58,54 @@ def demo_kiwoom_broker(
     return None
 
 
-def ecos_fx(credentials: CredentialStore) -> Callable[[], FxRate | None]:
+def ecos_fx(
+    credentials: CredentialStore,
+    *,
+    transport: Any = None,
+    now: Callable[[], datetime] | None = None,
+) -> Callable[[], FxRate | None]:
     """Today's ECOS USD/KRW rate from the first enabled ECOS key; None when there is none.
 
-    The key is read once into memory. A failed read gives None, so orders are blocked by
-    the amount limit rather than checked against a stale or guessed rate.
+    The key is read into memory once per key version: replacing or switching the key on the
+    Keys screen takes effect without restarting the runner. A failed read gives None, so
+    orders are blocked by the amount limit rather than checked against a stale or guessed
+    rate; the client waits before asking ECOS again, and the same failure is logged once.
     """
-    holder: list[EcosUsdKrw | None] = []
+    current: dict[str, Any] = {"version": None, "client": None, "logged": None}
 
     def rate() -> FxRate | None:
-        if not holder:
-            record = next((r for r in credentials.list("ecos") if r.enabled), None)
-            holder.append(
-                None if record is None else EcosUsdKrw(credentials.secrets(record)["api_key"])
-            )
-        client = holder[0]
+        def warn_once(message: str) -> None:
+            if message != current["logged"]:
+                LOG.warning("ECOS rate unavailable: %s", message)
+                current["logged"] = message
+
+        record = next((r for r in credentials.list("ecos") if r.enabled), None)
+        version = None if record is None else (record.credential_id, record.secret_revision)
+        if version != current["version"]:
+            try:
+                client = (
+                    None
+                    if record is None
+                    else EcosUsdKrw(
+                        credentials.secrets(record)["api_key"], transport=transport, now=now
+                    )
+                )
+            except (SecretStorageError, EcosError) as exc:
+                # The version is kept unchanged, so the key is read again next time.
+                warn_once(f"the ECOS key could not be used: {exc}")
+                return None
+            if current["client"] is not None:
+                current["client"].close()
+            current.update(version=version, client=client, logged=None)
+        client = current["client"]
         if client is None:
             return None
         try:
             found = client.rate()
         except EcosError as exc:
-            LOG.warning("ECOS rate unavailable: %s", exc)
+            warn_once(str(exc))
             return None
+        current["logged"] = None
         return FxRate(found.krw_per_usd, found.source, found.fetched_at_utc)
 
     return rate

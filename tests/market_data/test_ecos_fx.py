@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import httpx
@@ -75,3 +75,74 @@ def test_failures_never_show_the_key(reply: httpx.Response | Exception) -> None:
 
 def test_repr_hides_the_key() -> None:
     assert KEY not in repr(EcosUsdKrw(KEY))
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.at = NOW
+
+    def __call__(self) -> datetime:
+        return self.at
+
+
+def _error(code: str) -> httpx.Response:
+    return httpx.Response(200, json={"RESULT": {"CODE": code, "MESSAGE": "메시지"}})
+
+
+@pytest.mark.parametrize(
+    ("code", "permanent"),
+    [
+        ("INFO-100", True),  # invalid key
+        ("ERROR-101", True),  # malformed date
+        ("ERROR-400", False),  # search timeout
+        ("ERROR-500", False),  # server error
+        ("ERROR-602", False),  # too many calls
+    ],
+)
+def test_error_codes_are_classified(code: str, permanent: bool) -> None:
+    with pytest.raises(EcosError) as raised:
+        _client(_error(code), []).rate()
+    assert (raised.value.code, raised.value.permanent) == (code, permanent)
+    assert code in str(raised.value)
+
+
+def test_result_inside_the_service_is_read_too() -> None:
+    reply = httpx.Response(
+        200, json={"StatisticSearch": {"RESULT": {"CODE": "ERROR-602", "MESSAGE": "제한"}}}
+    )
+    with pytest.raises(EcosError) as raised:
+        _client(reply, []).rate()
+    assert raised.value.code == "ERROR-602"
+
+
+@pytest.mark.parametrize(("code", "wait_minutes"), [("ERROR-500", 5), ("INFO-100", 60)])
+def test_a_failure_is_not_retried_before_its_wait(code: str, wait_minutes: int) -> None:
+    seen: list[httpx.Request] = []
+    replies = [_error(code), _rows(("20261022", "1385.2"))]
+    clock = Clock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return replies[min(len(seen), len(replies)) - 1]
+
+    client = EcosUsdKrw(KEY, transport=httpx.MockTransport(handler), now=clock)
+    for _ in range(3):
+        with pytest.raises(EcosError):
+            client.rate()
+    assert len(seen) == 1
+    clock.at = NOW + timedelta(minutes=wait_minutes, seconds=1)
+    assert client.rate().krw_per_usd == Decimal("1385.2")
+    assert len(seen) == 2
+
+
+def test_waiting_error_keeps_a_short_traceback() -> None:
+    import traceback
+
+    client = _client(_error("ERROR-500"), [])
+    depths = []
+    for _ in range(5):
+        try:
+            client.rate()
+        except EcosError as error:
+            depths.append(len(traceback.extract_tb(error.__traceback__)))
+    assert len(set(depths[1:])) == 1  # does not grow with each pass
