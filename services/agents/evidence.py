@@ -55,7 +55,7 @@ class Evidence:
     source_refs: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     agent_id: str = "chart_trade_review"
-    agent_version: str = "chart-trade-review-3"
+    agent_version: str = "chart-trade-review-4"
     indicator_versions: dict[str, str] = field(default_factory=lambda: dict(INDICATOR_VERSIONS))
 
 
@@ -226,6 +226,12 @@ class Execution:
     # one per imported statement label, one for manual records. Kept locally, never sent.
     book: str = "manual"
     fees_reported: bool = True
+    currency: str = "USD"
+
+
+def instrument_currency(instrument_id: str) -> str:
+    """The currency a listing trades in: KRW for Korean (kr:) listings, else USD."""
+    return "KRW" if instrument_id.startswith("kr:") else "USD"
 
 
 def _book(ledger: str, document: dict[str, Any]) -> str:
@@ -248,6 +254,15 @@ def execution_of(ledger: str, document: dict[str, Any], instrument_id: str) -> E
     # `fees` is the total; a broker's `commission` and `tax` are its parts, not extra.
     reported = document.get("fees") not in (None, "")
     fees = Decimal(str(document["fees"])) if reported else Decimal(0)
+    # Every write path sets the currency from the listing; a record that disagrees would
+    # add won and dollars together, so it is refused instead.
+    expected = instrument_currency(instrument_id)
+    currency = str(document.get("currency") or expected)
+    if currency != expected:
+        raise InvalidBarsQueryError(
+            f"execution {document['execution_id']} is in {currency}, but {instrument_id} "
+            f"trades in {expected}; P&L never mixes currencies"
+        )
     return Execution(
         f"{ledger}:{document['execution_id']}",
         str(document["side"]),
@@ -259,6 +274,7 @@ def execution_of(ledger: str, document: dict[str, Any], instrument_id: str) -> E
         precise,
         _book(ledger, document),
         reported,
+        currency,
     )
 
 
@@ -333,6 +349,13 @@ def trade_review(
         executions, key=lambda e: (e.day, e.at or datetime.min.replace(tzinfo=timezone.utc))
     )
     first_day, last_day = fills[0].day, fills[-1].day
+    currencies = {f.currency for f in fills}
+    if len(currencies) > 1:
+        raise InvalidBarsQueryError(
+            f"the chosen executions are in {len(currencies)} currencies "
+            f"({', '.join(sorted(currencies))}); review one currency at a time"
+        )
+    (currency,) = currencies
     evidence = Evidence(
         {"type": "trades", "instrument_id": instrument_id, "execution_count": len(fills)},
         _utc(now),
@@ -369,7 +392,7 @@ def trade_review(
                 _fmt(total),
                 "currency",
                 f"Fees from {count} settlement line(s) of this account in the period: "
-                f"{total:.2f} (the chosen orders are its only ones then)",
+                f"{total:.2f} {currency} (the chosen orders are its only ones then)",
             )
         )
     unreported = sum(1 for f in fills if not f.fees_reported and f.book not in line_fees)
@@ -423,7 +446,8 @@ def trade_review(
             "realized_pnl",
             _fmt(realized - fees),
             "currency",
-            f"Realized P&L after fees {realized - fees:.2f} ({matching}, fees {fees:.2f})",
+            f"Realized P&L after fees {realized - fees:.2f} {currency} "
+            f"({matching}, fees {fees:.2f} {currency})",
         )
     )
     if len(books) > 1:
@@ -444,7 +468,8 @@ def trade_review(
                     "account_realized_pnl",
                     _fmt(book_realized - book_fees),
                     "currency",
-                    f"Account {n}: realized P&L after fees {book_realized - book_fees:.2f}, "
+                    f"Account {n}: realized P&L after fees "
+                    f"{book_realized - book_fees:.2f} {currency}, "
                     f"{book_open:f} shares open",
                     subject=f"account {n}",
                 )
