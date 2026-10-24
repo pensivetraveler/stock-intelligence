@@ -19,8 +19,10 @@ from services.market_data.provider import BarsQuery
 from services.market_data.symbol_history import (
     SymbolHistory,
     asof_for,
+    pick_share_class,
     register,
     resolution_of,
+    share_class_candidates,
     ticker_for,
 )
 from services.market_data.toss_account import sync_executions as toss_sync
@@ -292,3 +294,20 @@ def test_a_verified_venue_in_the_registry_is_kept(tmp_path: Path) -> None:
     later = again.resolve("DEVS", date(2025, 5, 2), LISTED.get)
     assert (later.venue, later.venue_verified) == ("XNYS", True)
     assert json.loads(path.read_text())["DEVS"]["venue"] == "XNYS"
+
+
+def test_hyphenated_broker_symbols_name_a_preferred_or_a_class_share() -> None:
+    assert share_class_candidates("SI-A") == ["SI.PRA", "SI.A"]
+    assert share_class_candidates("brk-b") == ["BRK.PRB", "BRK.B"]
+    assert share_class_candidates("AAPL") == []
+    assert share_class_candidates("SI-") == []
+    listed = {"BRK.B", "ABR.PRD"}.__contains__
+    # Listed now: the one listed candidate wins, without asking about trades.
+    assert pick_share_class(["BRK.PRB", "BRK.B"], listed, None) == "BRK.B"
+    assert pick_share_class(["ABR.PRD", "ABR.D"], listed, None) == "ABR.PRD"
+    # Delisted: only a candidate with exchange trades on the trade date.
+    traded = {"SI.PRA"}.__contains__
+    assert pick_share_class(["SI.PRA", "SI.A"], listed, traded) == "SI.PRA"
+    assert pick_share_class(["SI.PRA", "SI.A"], listed, None) is None
+    assert pick_share_class(["SI.PRA", "SI.A"], listed, lambda _t: True) is None  # both
+    assert pick_share_class(["X.PRA", "X.A"], lambda _t: True, None) is None  # both listed

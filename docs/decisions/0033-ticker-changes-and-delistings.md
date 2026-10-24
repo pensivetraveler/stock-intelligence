@@ -84,7 +84,13 @@ The Kiwoom sync (ADR 0029) could not match 728 tickers (33,896 orders) to the sy
     - Their 69 executions and 54 fee lines were stored again with no conflicts.
   - **Marked verified:** 34 tape C instruments with a Nasdaq cross, at XNAS.
   - **Left unverified:** LYT, whose cross was on NYSE Arca although its tape is C, and the instruments without any exchange trade in SIP. Among the latter, XTKGF and EMWPF have SIP bars under no ticker. Their Toss fills were most likely OTC trades, and their charts stay empty.
-- **Kiwoom's last unresolved orders:** 2 orders in `SI-A`, a preferred share. Instrument IDs cannot express a hyphenated class, so these are not stored.
+- **Kiwoom's last unresolved orders:** 2 orders in `SI-A`, a preferred share.
+  - **How they are resolved now:** Kiwoom writes a share class with a hyphen. Alpaca writes a preferred as `SI.PRA` and a class share as `BRK.B`, and the directory lists both forms (513 dotted symbols). Instrument IDs already allow the dot.
+  - **Rule:** a hyphenated US symbol `ROOT-X` has two candidates, `ROOT.PRX` and `ROOT.X`.
+    - The one listed now is used.
+    - If neither is listed, the one with a SIP daily bar on the trade date is used.
+    - Otherwise the order stays unresolved. Nothing is guessed.
+  - **Result (2026-10-24):** the 2 orders were stored as `us:si.pra:xnys:2026` (delisted). The venue was verified by its NYSE closing cross. Kiwoom has no unresolved orders left.
 - **Ticker reuse check as a script:** `scripts/check_ticker_reuse.py` runs the price check (read-only; it prints instrument IDs and counts only).
 
 ## Alternatives considered

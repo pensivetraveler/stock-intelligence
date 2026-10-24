@@ -297,6 +297,36 @@ class SymbolHistory:
             return None if current == symbol.upper() else current
 
 
+HYPHEN_CLASS = re.compile(r"^([A-Z][A-Z0-9]{0,5})-([A-Z]{1,2})$")
+
+
+def share_class_candidates(symbol: str) -> list[str]:
+    """Alpaca tickers a broker's hyphenated symbol may mean: Kiwoom writes SI-A for
+    Silvergate's series A preferred (Alpaca SI.PRA), and the same form could name a
+    class share (Alpaca BRK.B). Empty when the symbol has no such form."""
+    match = HYPHEN_CLASS.fullmatch(symbol.upper())
+    if match is None:
+        return []
+    root, share = match.groups()
+    return [f"{root}.PR{share}", f"{root}.{share}"]
+
+
+def pick_share_class(
+    candidates: list[str],
+    listed: Callable[[str], bool],
+    traded: Callable[[str], bool] | None,
+) -> str | None:
+    """The one candidate that is listed now; else, when none is, the one with exchange
+    trades on the trade date (`traded`). None when it cannot be told: never a guess."""
+    now_listed = [ticker for ticker in candidates if listed(ticker)]
+    if len(now_listed) == 1:
+        return now_listed[0]
+    if now_listed or traded is None:
+        return None
+    with_trades = [ticker for ticker in candidates if traded(ticker)]
+    return with_trades[0] if len(with_trades) == 1 else None
+
+
 # Bars of a delisted instrument are read as the company that was traded (Alpaca `asof`),
 # so a later company reusing the ticker is never mixed in. The API registers the history.
 _REGISTERED: list[SymbolHistory] = []
