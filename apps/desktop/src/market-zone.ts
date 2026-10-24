@@ -54,3 +54,13 @@ export function zoneFormat(
   }
   return format;
 }
+
+/** Today's date (YYYY-MM-DD) at the zone's exchange: New York for US listings. */
+export function todayIn(zone: MarketZone, now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone.timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}

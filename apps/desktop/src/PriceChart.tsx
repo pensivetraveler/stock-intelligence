@@ -75,6 +75,22 @@ const DAY_LABEL: Intl.DateTimeFormatOptions = {
 /** Bars in view when a chart first loads; the rest of the history is scrollable. */
 const INITIAL_VISIBLE_BARS = 150;
 
+/** The candle at `time`, or the nearest one (for magnet snapping). */
+function nearestCandle(points: CandlePoint[], time: number): CandlePoint {
+  let low = 0;
+  let high = points.length - 1;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (points[middle].time < time) low = middle + 1;
+    else high = middle;
+  }
+  const after = points[low];
+  const before = points[Math.max(0, low - 1)];
+  return Math.abs(before.time - time) < Math.abs(after.time - time)
+    ? before
+    : after;
+}
+
 function timeOf(value: Time): number {
   return typeof value === "number" ? value : 0;
 }
@@ -478,16 +494,23 @@ export function PriceChart({
         const series = candleSeries.current;
         const points = candlesRef.current;
         if (!instance || !series || points.length === 0) return null;
-        const logical = instance.timeScale().coordinateToLogical(x);
         const price = series.coordinateToPrice(y);
-        if (logical === null || price === null) return null;
-        const index = Math.min(
-          points.length - 1,
-          Math.max(0, Math.round(logical)),
-        );
-        const bar = points[index];
+        if (price === null) return null;
+        // The time axis also holds the day-market series' times, so a logical index is
+        // not an index into these candles: ask the axis for the time under the pointer.
+        const scaleTime = instance.timeScale().coordinateToTime(x);
+        let time: number;
+        if (scaleTime !== null) {
+          time = timeOf(scaleTime);
+        } else {
+          // Past either end of the data: the first or the last candle.
+          const logical = instance.timeScale().coordinateToLogical(x);
+          if (logical === null) return null;
+          time = (logical < 0 ? points[0] : points[points.length - 1]).time;
+        }
+        const bar = nearestCandle(points, time);
         return {
-          time: bar.time,
+          time,
           price: magnetRef.current ? snapPrice(price, bar) : price,
         };
       },

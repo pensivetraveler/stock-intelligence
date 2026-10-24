@@ -38,6 +38,7 @@ import {
 import type { AgentApi } from "./agent-api";
 import type { BacktestApi } from "./backtest-api";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
+import { todayIn, US_ZONE } from "./market-zone";
 import { Workspace } from "./Workspace";
 import { LIBRARY_STORAGE_KEY } from "./workspace-library";
 import { DEFAULT_WORKSPACE, WORKSPACE_STORAGE_KEY } from "./workspace-state";
@@ -1000,6 +1001,49 @@ describe("chart workspace", () => {
     expect(savedLayout(storage).charts[0].instrumentId).toBe(
       "us:synth:xnas:2026",
     );
+  });
+
+  it("opens the symbol search when a letter is typed or on Ctrl+K", async () => {
+    render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.keyDown(document.body, { key: "a" });
+    const search = within(
+      screen.getByRole("dialog", { name: "Search symbol" }),
+    ).getByRole("textbox", { name: "Search symbol" });
+    expect(search).toHaveValue("A");
+    // Typing into the search box itself is not taken as a shortcut.
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(
+      screen.queryByRole("dialog", { name: "Search symbol" }),
+    ).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    expect(
+      within(screen.getByRole("dialog", { name: "Search symbol" })).getByRole(
+        "textbox",
+      ),
+    ).toHaveValue("");
+  });
+
+  it("opens on today at the exchange, or its last session when closed", async () => {
+    const api = fakeApi();
+    const today = todayIn(US_ZONE);
+    const storage = memoryStorage();
+    api.sessions = vi.fn(async (endDate: string) =>
+      endDate === today
+        ? [
+            {
+              ...fixture<SessionWindow>("session-window-early-close.json"),
+              session_date: "2026-10-23",
+            },
+          ]
+        : [],
+    );
+    render(<Workspace api={api} storage={storage} openOnToday />);
+    await screen.findByTestId("chart-chart-1");
+    await waitFor(() =>
+      expect(savedLayout(storage).charts[0].sessionDate).toBe("2026-10-23"),
+    );
+    expect(api.sessions).toHaveBeenCalledWith(today, 1, "XNAS");
   });
 
   it("searches symbols and steps the session date", async () => {

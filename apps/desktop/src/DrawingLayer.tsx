@@ -113,6 +113,25 @@ export function DrawingLayer({
     if (tool !== "cursor") setMeasured(null);
   }, [tool]);
 
+  // A measurement is temporary: the next click, Escape or Delete removes it.
+  useEffect(() => {
+    if (measured === null) return;
+    const clear = () => setMeasured(null);
+    const onKey = (event: KeyboardEvent) => {
+      if (["Escape", "Delete", "Backspace"].includes(event.key)) clear();
+    };
+    // Registered after the click that finished the measurement has passed.
+    const timer = window.setTimeout(() => {
+      window.addEventListener("pointerdown", clear);
+    }, 0);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pointerdown", clear);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [measured]);
+
   useEffect(() => {
     if (selected === null) return;
     const onKey = (event: KeyboardEvent) => {
@@ -256,7 +275,7 @@ export function DrawingLayer({
                   width={Math.max(0, right - left)}
                   height={Math.abs(level.y - placed[i].y)}
                   fill={fibColor(level.ratio)}
-                  fillOpacity={0.08}
+                  fillOpacity={FIB_BAND_OPACITY}
                 />
               ))
           : null}
@@ -496,6 +515,9 @@ export function DrawingLayer({
 }
 
 const formatRatio = (ratio: number) => String(Number(ratio.toFixed(3)));
+
+/** Shading between neighbouring levels, close to TradingView's default look. */
+const FIB_BAND_OPACITY = 0.18;
 
 /** Colours per level, close to TradingView's palette. */
 function fibColor(ratio: number): string {

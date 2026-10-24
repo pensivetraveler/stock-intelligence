@@ -74,7 +74,8 @@ export function defaultFibSettings(): FibSettings {
 }
 
 /** A drawing's Fibonacci options; retracements saved before options existed keep
- * their look (seven levels, drawn to the right edge, no shading). */
+ * their seven levels drawn to the right edge, now shaded between levels as in
+ * TradingView. */
 export function fibSettingsOf(
   drawing: Pick<Drawing, "kind" | "fib">,
 ): FibSettings {
@@ -84,7 +85,6 @@ export function fibSettingsOf(
         ...defaultFibSettings(),
         levels: [...LEGACY_FIB_LEVELS],
         extendRight: true,
-        background: false,
       }
     : defaultFibSettings();
 }
