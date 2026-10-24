@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,12 +15,13 @@ from fastapi.testclient import TestClient
 
 from packages.contracts.validator import validate_document
 from services.agents.commentary import CommentaryError, ask_claude, payload_for
-from services.agents.evidence import chart_point
+from services.agents.evidence import chart_point, execution_of, trade_review
 from services.agents.store import AgentStore
 from services.api.main import create_app
 from services.backtest.jobs import BacktestRunner
 from services.backtest.store import BacktestStore
 from services.journal.store import JournalStore
+from services.market_data.provider import InvalidBarsQueryError
 from tests.backtest.test_backtest_api import CONFIG, RULES, synthetic_bars
 
 NOW = datetime(2026, 10, 21, 12, 0, tzinfo=timezone.utc)
@@ -199,6 +201,7 @@ def test_trade_review_matches_fifo_and_flags_hindsight(setup: Any) -> None:
     facts = {f["code"]: f for f in analysis["facts"]}
     # FIFO: the sell of 10 closes the first buy at 100: +200, less 3.00 fees.
     assert facts["realized_pnl"]["value"] == "197.00"
+    assert "197.00 USD" in facts["realized_pnl"]["text"]
     assert facts["open_quantity"]["value"] == "10"
     assert facts["average_buy"]["value"] == "105.0000"
     assert facts["mfe_pct"]["hindsight"] and facts["mae_pct"]["hindsight"]
@@ -214,6 +217,25 @@ def test_trade_review_matches_fifo_and_flags_hindsight(setup: Any) -> None:
         json={"instrument_id": AAPL, "executions": [{"ledger": "broker", "execution_id": "x"}]},
     )
     assert missing.status_code == 404
+
+
+def test_trade_review_never_adds_two_currencies(setup: Any) -> None:
+    _client, journal, _runner, _asked = setup
+    # A record in another currency than its listing's is refused when stored ...
+    won = {**manual("sell-1", "sell", "150000", "2026-03-10T15:00:00Z"), "currency": "KRW"}
+    with pytest.raises(ValueError, match="trades in USD"):
+        journal.record_manual(won, "sell-1")
+    # ... and the review refuses one too, should it come from elsewhere.
+    with pytest.raises(InvalidBarsQueryError, match="never mixes currencies"):
+        execution_of("manual", won, AAPL)
+    fill = execution_of("manual", manual("b", "buy", "1", "2026-03-02T15:00:00Z"), AAPL)
+    with pytest.raises(InvalidBarsQueryError, match="2 currencies"):
+        trade_review(
+            lambda query: None,  # type: ignore[arg-type,return-value]
+            AAPL,
+            [fill, replace(fill, ref="manual:k", currency="KRW")],
+            datetime(2026, 10, 21, tzinfo=timezone.utc),
+        )
 
 
 def test_trade_review_matches_each_account_on_its_own(setup: Any) -> None:
