@@ -78,7 +78,11 @@ from services.market_data.symbol_directory import (
     SymbolEntry,
     search_all,
 )
-from services.market_data.symbol_history import SymbolHistory
+from services.market_data.symbol_history import (
+    SymbolHistory,
+    pick_share_class,
+    share_class_candidates,
+)
 from services.market_data.symbol_history import register as register_symbol_history
 from services.market_data.tick_store import TickStore
 from services.market_data.toss import TossConfig, TossMarketDataProvider
@@ -598,6 +602,21 @@ def create_app(
             listed_cache.update(at=time.monotonic(), us=us, kr=kr)
         return listed_cache["us"], listed_cache["kr"]
 
+    def traded_on(ticker: str, on: date) -> bool:
+        """Whether SIP has a daily bar (exchange trades) for `ticker` on `on`."""
+        try:
+            adapter = boats()
+        except SecretStorageError:
+            return False
+        if adapter is None:
+            return False
+        start = datetime(on.year, on.month, on.day, tzinfo=timezone.utc)
+        query = BarsQuery(f"us:{ticker.lower()}:xnas:2026", "1d", start, start + timedelta(days=1))
+        try:
+            return bool(adapter.get_daily_bars(query).bars)
+        except (MarketDataError, ValueError):
+            return False
+
     def instrument_for(symbol: str, currency: str = "USD", on: date | None = None) -> str | None:
         """Instrument ID of a US ticker (USD) or Korean code (KRW).
 
@@ -607,6 +626,17 @@ def create_app(
         us, kr = listed()
         if currency == "KRW":
             return kr.get(symbol)
+        candidates = share_class_candidates(symbol)
+        if candidates:
+            # Kiwoom's SI-A: Alpaca's SI.PRA (preferred) or SI.A (class); never guessed.
+            chosen = pick_share_class(
+                candidates,
+                lambda ticker: ticker in us,
+                None if on is None else (lambda ticker: traded_on(ticker, on)),
+            )
+            if chosen is None:
+                return None
+            symbol = chosen
         found = history() if on is not None else None
         if found is None or on is None:
             return us[symbol][0] if symbol in us else None
