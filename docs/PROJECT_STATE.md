@@ -1899,3 +1899,20 @@
 - **보류 유지(사용자 결정):** News·News Cycle·DART Agent와 Claude 코멘터리 확장은 구현하지 않았다.
 - **포트 확인:** API(8765)로 "WORX" 검색이 SCWorx 1건을 돌려줬다. 8000·3000 포트에는 수신 중인 프로세스가 없었다.
 - **Alpaca 기본 공급업체 선정(사용자 결정):** 근거(유료 SIP·BOATS·기업 행위 사용·실패 사례)를 보고 사용자가 선정을 승인했다. [ADR 0035](decisions/0035-alpaca-default-us-provider.md)를 쓰고 AGENTS.md·PROJECT_INSTRUCTIONS·SYSTEM_SPEC의 "미선정" 문구를 고쳤다. 코드 기본값은 바꾸지 않았다.
+
+## SIW Agent 종료 시 API 프로세스 트리 정리 — 2026-10-25
+
+- **결함(수정):** SIW Agent를 종료해도 Agent가 띄운 API가 남았다. `lib.rs`는 `uv` 프로세스만 `kill`했고, `uv run`이 자식으로 띄운 uvicorn(Python)은 부모가 1로 바뀐 채 8765에서 계속 응답했다(2026-10-25 실측, PID 39055).
+- **변경:** `apps/desktop/src-tauri/src/lib.rs`
+  - API를 새 프로세스 그룹의 리더로 띄운다(`process_group(0)`). uv와 uvicorn이 같은 그룹에 든다.
+  - 종료할 때 그 그룹에만 SIGTERM을 보내고, 5초 안에 그룹이 비지 않으면 SIGKILL을 보낸다. 앱이 띄우지 않은 API와 상주 실행기 LaunchAgent는 신호를 받지 않는다.
+  - API 기동 뒤 60초 동안 health를 기다리던 반복을 없앴다. 기다린 결과를 쓰는 곳이 없었고, 그 사이에 앱을 끄면 자식을 아직 저장하지 않아 정리하지 못했다.
+  - `libc`(이미 Tauri의 간접 의존성)를 직접 의존성으로 추가했다.
+- **대안:** `.venv`의 uvicorn을 직접 실행하면 프로세스가 하나가 되지만, `uv run`이 하던 환경 동기화가 빠지고 uvicorn이 reloader·worker를 띄우면 같은 문제가 다시 생긴다. 그룹 신호는 실행 명령과 무관하게 트리 전체를 정리한다.
+- **검증:**
+  - `cargo test` 4개 통과. 새 테스트 2개: 손자 프로세스까지 종료되는지, SIGTERM을 무시하면 유예 뒤 SIGKILL로 정리되는지. 첫 테스트는 예전 `child.kill()`로 되돌리면 실패한다(`grandchild … survived`).
+  - `corepack pnpm exec tauri build --bundles app` exit 0 → `SIW Agent.app`.
+  - 이미 실행 중인 API(PID 39055)가 있을 때: 앱을 열고 닫아도 39055는 그대로 8765에서 `/health` 200.
+  - 사용자 승인으로 39055를 끈 뒤: 앱이 uv(12416)·uvicorn(12427)을 그룹 12416으로 띄움 → 8765 응답. 앱 종료 후 두 PID 모두 없음, `lsof -iTCP:8765` 결과 없음, api.log에 uvicorn 정상 종료(`Application shutdown complete`).
+- **미검증:** 상주 실행기 LaunchAgent는 이 Mac에 설치돼 있지 않아 종료 시 그대로 도는지 실제로 보지 못했다(코드상 그룹 밖 프로세스에는 신호를 보내지 않는다). 앱이 강제 종료(SIGKILL·크래시)되면 `RunEvent::Exit`가 오지 않아 API가 남는다.
+- **남은 위험:** SIW Research(`apps/electron/api-process.cjs`, `main.cjs`)도 `uv` 프로세스에만 신호를 보내 같은 결함이 있을 수 있다(미확인, 이 작업 범위 밖).

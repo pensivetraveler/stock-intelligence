@@ -1,7 +1,8 @@
 //! SIW Agent shell (ADR 0036, ADR 0037 §6).
 //!
 //! - Starts the local API from this repository when nothing answers on 127.0.0.1:8765,
-//!   and stops only an API it started itself.
+//!   and stops only an API it started itself. `uv run` keeps uvicorn as a child process,
+//!   so the API runs in its own process group and quitting stops the whole group.
 //! - Installs, stops and removes the resident paper-order runner as a user LaunchAgent.
 //!   The plist names the repository and the runner command only; no keys are written.
 //!
@@ -11,6 +12,7 @@
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
+use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -21,7 +23,7 @@ use tauri::{Manager, RunEvent};
 const API_ADDR: &str = "127.0.0.1:8765";
 pub const RUNNER_LABEL: &str = "com.pensivetraveler.siw.agent.runner";
 
-/// The API process this shell started, if any.
+/// The API process group this shell started, if any; the child is the group leader.
 struct ApiChild(Mutex<Option<Child>>);
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -86,7 +88,7 @@ fn api_healthy() -> bool {
 }
 
 /// Starts the API from the repository unless one already answers. Never fatal: the
-/// screen shows the connection error if the API cannot be started.
+/// screen shows the connection error if the API cannot be started, and keeps retrying.
 fn ensure_api() -> Option<Child> {
     if api_healthy() {
         return None;
@@ -107,12 +109,41 @@ fn ensure_api() -> Option<Child> {
     if repo.join(".env").is_file() {
         command.args(["--env-file", ".env"]);
     }
-    let child = command.spawn().ok()?;
-    let deadline = Instant::now() + Duration::from_secs(60);
-    while Instant::now() < deadline && !api_healthy() {
-        std::thread::sleep(Duration::from_millis(500));
+    spawn_group(&mut command).ok()
+}
+
+/// Spawns `command` as the leader of a new process group. Everything it starts (uv's
+/// uvicorn child, any reloader or worker) joins that group unless it leaves on purpose.
+fn spawn_group(command: &mut Command) -> std::io::Result<Child> {
+    command.process_group(0).spawn()
+}
+
+/// Stops the process group led by `child`: SIGTERM so uvicorn shuts down cleanly, then
+/// SIGKILL for whatever is left after `grace`. Only that group is signalled, so an API
+/// the shell did not start and the resident runner LaunchAgent are never touched.
+fn stop_group(child: &mut Child, grace: Duration) {
+    let Ok(pgid) = libc::pid_t::try_from(child.id()) else {
+        return;
+    };
+    if pgid <= 1 {
+        return;
     }
-    Some(child)
+    // SAFETY: killpg only sends a signal; pgid is our own child's group (> 1).
+    unsafe { libc::killpg(pgid, libc::SIGTERM) };
+    let deadline = Instant::now() + grace;
+    loop {
+        // Reap the leader so an empty group reads as gone.
+        let _ = child.try_wait();
+        if unsafe { libc::killpg(pgid, 0) } != 0 {
+            return;
+        }
+        if Instant::now() >= deadline {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    unsafe { libc::killpg(pgid, libc::SIGKILL) };
+    let _ = child.wait();
 }
 
 fn plist_path() -> PathBuf {
@@ -277,7 +308,7 @@ pub fn run() {
         if let RunEvent::Exit = event {
             // Only the API this shell started; the resident runner keeps running.
             if let Some(mut child) = handle.state::<ApiChild>().0.lock().expect("lock").take() {
-                let _ = child.kill();
+                stop_group(&mut child, Duration::from_secs(5));
             }
         }
     });
@@ -298,6 +329,57 @@ mod tests {
         for secret in ["APP_KEY", "SECRET", "app_key", "secretkey"] {
             assert!(!text.contains(secret), "{secret}");
         }
+    }
+
+    fn alive(pid: libc::pid_t) -> bool {
+        unsafe { libc::kill(pid, 0) == 0 }
+    }
+
+    /// The defect: killing only the leader left its child running with PPID 1.
+    #[test]
+    fn stopping_the_group_stops_grandchildren() {
+        use std::io::BufRead;
+        let mut command = Command::new("/bin/sh");
+        command
+            .args(["-c", "sleep 60 & echo $!; wait"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped());
+        let mut child = spawn_group(&mut command).expect("spawn");
+        let mut line = String::new();
+        std::io::BufReader::new(child.stdout.take().expect("stdout"))
+            .read_line(&mut line)
+            .expect("read");
+        let grandchild: libc::pid_t = line.trim().parse().expect("pid");
+        assert!(alive(grandchild));
+        assert_eq!(unsafe { libc::getpgid(grandchild) }, child.id() as libc::pid_t);
+
+        stop_group(&mut child, Duration::from_secs(5));
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while alive(grandchild) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(!alive(grandchild), "grandchild {grandchild} survived");
+        assert!(child.try_wait().expect("wait").is_some());
+    }
+
+    /// A child that ignores SIGTERM is killed once the grace period ends.
+    #[test]
+    fn stopping_the_group_kills_after_grace() {
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "trap '' TERM; sleep 60 & wait"]).stdin(Stdio::null());
+        let mut child = spawn_group(&mut command).expect("spawn");
+        std::thread::sleep(Duration::from_millis(200));
+        let pgid = child.id() as libc::pid_t;
+        let started = Instant::now();
+        stop_group(&mut child, Duration::from_millis(500));
+        assert!(started.elapsed() >= Duration::from_millis(500));
+        assert!(child.try_wait().expect("wait").is_some());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while unsafe { libc::killpg(pgid, 0) } == 0 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_ne!(unsafe { libc::killpg(pgid, 0) }, 0, "group {pgid} survived");
     }
 
     #[test]
