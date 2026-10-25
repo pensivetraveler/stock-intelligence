@@ -1425,6 +1425,14 @@
   - 단계 1(KIS 모의투자 주문)은 사용자가 별도로 승인해야 착수한다.
   - 기존에 설치한 `/Applications/Stock Intelligence Workstation.app`(이전 이름의 Tauri 빌드)은 사용자가 지운다.
 
+## 프로그램 이름 확정 — 2026-10-25
+
+- **사용자 결정:** 프로그램은 **SIW Research**(Electron, 연구·백테스트)와 **SIW Agent**(Tauri, 전략 실행) 두 개다([ADR 0036](decisions/0036-desktop-app-roles.md) 개정). "Stock Intelligence Workstation"은 프로젝트·저장소 이름으로만 남긴다.
+- **변경:** Research 화면의 연결 대기 제목·상태 표시줄·상단 로고 툴팁을 "SIW Research"로 바꿨다. 공용 `index.html`의 `<title>`은 빌드 모드에 따라 `src/main.tsx`에서 "SIW Research" 또는 "SIW Agent"로 정한다. 창 제목(Electron `main.cjs`, Tauri `tauri.conf.json`)과 번들 이름은 이미 두 이름이었다.
+- **설치 정리:** `/Applications/Stock Intelligence Workstation.app`(API 자동 실행 이전의 2026-10-23 Tauri 빌드)은 로컬 API를 띄우지 않아 "로컬 API에 연결하는 중…"에서 멈췄다. 휴지통으로 옮기고 main에서 빌드한 `SIW Agent.app`과 `SIW Research.app`을 설치했다.
+- **알려진 동작:** 두 앱은 8765 API 하나를 같이 쓴다. API는 먼저 실행한 앱이 띄우고, 나중에 연 앱은 그것을 그대로 쓴다.
+- **발견한 결함(미수정):** SIW Agent를 종료해도 Agent가 띄운 API가 남는다. `lib.rs`는 `uv` 프로세스만 종료하고 그 아래 uvicorn(Python)은 부모가 1로 바뀐 채 계속 돈다(2026-10-25 실측, 종료 후에도 8765 응답).
+
 ## SIW Agent 단계 1 설계: 모의투자 주문(키움 먼저) — 2026-10-23
 
 - **범위:** 설계. [ADR 0037](decisions/0037-paper-order-execution.md)은 사용자 답변을 반영해 accepted다. 구현 단위마다 사용자의 별도 명시 승인이 있어야 착수한다(P0는 승인됨).

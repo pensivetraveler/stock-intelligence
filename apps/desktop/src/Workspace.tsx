@@ -926,7 +926,7 @@ export function Workspace({
   return (
     <div className={`terminal-shell${panel ? " with-panel" : ""}`}>
       <header className="top-bar" role="toolbar" aria-label={t("tb.label")}>
-        <span className="brand" title="Stock Intelligence Workstation">
+        <span className="brand" title="SIW Research">
           <AppMark />
         </span>
         <div className="symbol-search">
