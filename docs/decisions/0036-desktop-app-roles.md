@@ -3,6 +3,7 @@
 - **Status:** accepted
 - **Date:** 2026-10-23
 - **Amended:** 2026-10-23 — 첫 주문 증권사를 키움 모의투자로 바꾸고 한국투자(KIS)를 두 번째로 둔다(아래 개정 절, 설계는 [ADR 0037](0037-paper-order-execution.md)).
+- **Amended:** 2026-10-25 — 사용자 결정으로 프로그램 이름을 **SIW Research**(Electron)와 **SIW Agent**(Tauri) 두 개로 확정한다. "Stock Intelligence Workstation"은 프로젝트·저장소 이름으로만 쓰고 앱 이름이나 화면 제목으로 쓰지 않는다.
 - **Supersedes in part:** SYSTEM_SPEC의 "No autonomous order execution is in scope"와 PROJECT_INSTRUCTIONS의 "do not implement autonomous execution unless explicitly re-scoped by the user" — 이 ADR이 그 사용자 재범위 지정이다. 범위는 아래 Gate로 제한한다.
 - **Related:** [ADR 0028](0028-electron-desktop-shell.md)(Electron 셸), [ADR 0021](0021-backtest-engine.md)(백테스트), [ADR 0018](0018-broker-api-execution-ledger.md)(증권사 API 원장)
 
@@ -70,7 +71,7 @@
 
 - **화면 분리:** 이후 화면을 앱별로 나눠야 한다. 예를 들어 실행 앱에는 전략 실행 상태·주문 원장·킬 스위치를, 연구 앱에는 백테스트·AI 논의를 둔다. 방법(빌드 분리 또는 셸 감지)은 단계 1 설계에서 정한다.
 - **Tauri 앱의 API:** Tauri 앱도 API를 직접 띄우거나 상주 실행기를 갖춰야 한다. 지금은 API가 먼저 실행 중이어야 한다.
-- **기존 설치:** 이름이 바뀌어 기존 `Stock Intelligence Workstation.app`과 따로 설치된다. 이전 앱은 사용자가 지운다.
+- **기존 설치:** 이름이 바뀌어 기존 `Stock Intelligence Workstation.app`과 따로 설치된다. 이전 앱은 사용자가 지운다. (2026-10-25 정리됨: 이전 앱은 휴지통으로 옮겼고, `/Applications`에는 `SIW Research.app`과 `SIW Agent.app`만 둔다.)
 
 ## Revisit when
 
