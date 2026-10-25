@@ -81,3 +81,103 @@ Pine scripts are run bar by bar. They keep state across bars (`var`), read earli
 - Users need drawings, `fill`/`bgcolor`, `plotshape` or arrays.
 - Scripts become slow on long charts. The interpreter could be compiled to a faster form or moved to a worker.
 - Pine strategies should feed the backtester.
+
+## Amendment — 2026-10-25: strategies, requests, drawings and arrays
+
+The user asked for the parts refused above to be implemented as well. The interpreter stays the same: no `eval`, one bar at a time, loop and size limits. What changes:
+
+### Language
+
+- **Types:** `float[]`, `array<line>`, `line`, `label`, `box`, `table` and `chart.point` declarations. They change nothing at run time.
+- **Statements:**
+  - `switch` (with or without a subject, as a statement or a value);
+  - `for x in xs` and `for [i, x] in xs`;
+  - `method` definitions and method calls (`xs.push(1)`, `l.set_x2(…)`);
+  - default parameter values and named arguments for user functions.
+- **Continuation lines:** a line indented by other than a multiple of 4 continues the line before it, as in Pine.
+- **Limits:** scripts may now be 50,000 characters long, with 30,000 parts.
+- **Still refused:** user-defined types (`type`), libraries (`import`/`export`), `matrix`, `map` and `polyline`.
+
+### Values and functions
+
+- **Arrays** (`array.*`):
+  - a reference type, as in Pine;
+  - negative indexes count from the end;
+  - an index outside the array stops the script with an error at its line;
+  - at most 100,000 items per array;
+  - `array.slice` returns a copy, not a view.
+- **Strings:** `str.*`, `+` concatenation, and `str.tostring` formats (`#.##`, `format.mintick`, `format.percent`, `format.volume`).
+- **Time:**
+  - `time`, `time_close`, `year` … `second`, and `timestamp()`, all in the exchange's time zone;
+  - `barstate.*`, `syminfo.*` and `timeframe.*`.
+  - `barstate.islast` is the last bar loaded. In replay that is the replay's bar, so it does not reveal later bars.
+- **New `ta.*` functions:**
+  - pivots, supertrend, DMI, SAR, KC, ALMA, SWMA, linreg, correlation, percentrank, MFI, WPR;
+  - highest/lowest bars, rising/falling, OBV and A/D.
+  - A test checks that none of them reads a later bar. A pivot is reported on the bar that confirms it.
+- **Inputs:**
+  - `input.string(options=[…])` and `input.timeframe` become choice lists in the settings;
+  - `input.symbol` and `input.session` stay at their defaults.
+- **No-ops:** `alert`, `alertcondition` and `log.*` are accepted and do nothing. The app does not send alerts.
+
+### What scripts draw
+
+- **Shapes and colours:**
+  - `plotshape`, `plotchar` and `plotarrow`;
+  - `bgcolor`, and `barcolor` (price-pane scripts recolour those candles);
+  - `fill` between two plots or two hlines, with a per-bar colour.
+- **Hidden plots:** `display=display.none` plots are computed but hidden until shown in the Style tab.
+- **Drawings:** `line.*`, `label.*`, `box.*`, `table.*` and `linefill.*`.
+  - The chart draws their state after the last bar, as TradingView does.
+  - `max_lines_count`, `max_labels_count` and `max_boxes_count` apply (default 50, at most 500). The oldest are deleted first.
+  - Coordinates may be bar indexes or times. A bar index past the last bar is placed by bar length.
+- **Rendering:** a lightweight-charts series primitive (`pine-graphics.ts`) draws all of this in the script's pane:
+  - backgrounds and fills under the plots;
+  - lines, boxes, labels, shapes, tables and strategy fills above them.
+
+### request.security
+
+- **Fixed symbol and timeframe:** both must be fixed when the script runs. Each may be a text, an input, `syminfo.tickerid` or `timeframe.period`, so the app knows what to fetch.
+- **Timeframes:** 1, 2, 3, 5, 10, 15, 30, 60, 120, 240 minutes, D, W and M.
+  - M is built from daily bars by calendar month in the exchange's time zone.
+  - Minute bars are fetched on intraday charts only.
+- **Other symbols:** found by ticker in the instrument list, then by the symbol search (exact ticker). A ticker that is not found is reported under the chart.
+- **Values:**
+  - The whole script runs on the other bars, and the expression's value is taken from that run.
+  - A chart bar gets the value of the last other bar that was final by the chart bar's end, as for larger-timeframe indicators (ADR 0027). No value appears early.
+  - `gaps_on` shows a value only on the bar where it became final.
+- **lookahead_on:** allowed only when the expression reads earlier bars (`close[1]` or further back). It then gives the containing larger bar's earlier values. Other `lookahead_on` uses are refused, because they would show values before they were known.
+- **request.security_lower_tf:** returns, for each chart bar, an array of the smaller bars that were final by the chart bar's end.
+- **Other `request.*`:** financials, earnings, dividends, economic data and the like are refused. SIW has no such data.
+
+### Strategies as chart backtests
+
+`strategy()` scripts run in a broker emulator (`pine-strategy.ts`). Its fills are **backtest fills only**:
+
+- they are kept in memory for the chart;
+- they are shown with markers and a results panel under the chart;
+- they are never sent to a broker and never written to any ledger.
+
+This keeps the separation of real, manual, scenario and backtest fills (AGENTS.md), and ADR 0036's rule that orders are only placed from SIW Agent.
+
+- **Supported calls:**
+  - `strategy.entry`, `order`, `exit` (limit/stop, profit/loss in ticks, trailing stop), `close`, `close_all` and `cancel`;
+  - the `strategy.*` variables and `strategy.closedtrades.*` / `opentrades.*`.
+  - `strategy.risk.*` is refused.
+- **Settings read:**
+  - initial capital;
+  - default quantity (fixed, cash, or percent of equity in whole shares);
+  - commission (percent, per contract, per order);
+  - slippage in ticks;
+  - pyramiding;
+  - `process_orders_on_close`;
+  - `close_entries_rule`.
+- **When orders fill:** an order placed on a bar fills from the next bar on. Market orders fill at the next bar's open. Limit and stop orders fill when the bar's range reaches their price (or at the open, if it opens past it). With `process_orders_on_close` or `immediately=true`, market orders fill at the close of the bar that placed them. An entry against the position closes it first.
+- **Order inside a bar:** prices are assumed to go open → the nearer of high/low → the other → close (TradingView's assumption). OHLC bars do not record this. When two or more fills inside one bar depend on it, those fills are marked (`*`) and counted in the panel, so they are not taken as known.
+- **Money and quantities:** fixed-point decimals with 10 digits (bigint), not floating point. Prices come from the bars, which the chart already holds as numbers.
+
+## Revisit when (amendment)
+
+- Users need user-defined types, `matrix`, `map`, `polyline`, `plotcandle` or `plotbar`.
+- A strategy's chart backtest should be saved or compared with the backtest engine (ADR 0021). That needs a contract for its fills, not memory only.
+- Minute bars for `request.security` are wanted on daily charts.

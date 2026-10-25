@@ -137,8 +137,15 @@ plot(h, style=plot.style_histogram)`);
     expect(values.plot1[18]).toBeNull();
   });
 
-  it("refuses strategies, unknown names and runaway loops with a line", () => {
-    expect(() => compilePine(`strategy("S")\nplot(close)`)).toThrow(/strategy/);
+  it("refuses unsupported functions, unknown names and runaway loops with a line", () => {
+    expect(() =>
+      compilePine(
+        `indicator("S")\nx = request.financial("AAPL", "EPS", "FQ")\nplot(x)`,
+      ),
+    ).toThrow(/request.financial/);
+    expect(() =>
+      compilePine(`indicator("S")\nplotcandle(open, high, low, close)`),
+    ).toThrow(/plotcandle/);
     expect(() => compilePine("plot(close)")).toThrow(/indicator/);
     try {
       run(`indicator("X")\nplot(foo)`);

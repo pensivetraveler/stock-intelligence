@@ -1836,6 +1836,45 @@
   - 브라우저(실데이터, WORX 5분봉)에서 예제(EMA Cross)를 추가했다. 두 선이 그려지고 설정 창에 입력·코드가 보였다.
 - **남은 위험:** 그리기 객체·`fill`·`bgcolor`·`plotshape`·배열은 지원하지 않는다. 긴 차트에서 복잡한 스크립트의 속도는 재지 않았다.
 
+## Pine Script 나머지 기능: strategy·request.security·그리기·배열 — 2026-10-25
+
+- **사용자 요청:** 아직 안 되는 Pine 기능(strategy, request.*, 그리기, fill, bgcolor, plotshape, 배열)을 구현해 달라.
+- **결정:** [ADR 0040 보충](decisions/0040-pine-script-indicators.md).
+- **변경:**
+  - **언어(`pine-parser.ts`):**
+    - 타입 표기(`float[]`, `array<line>`, `line` 등);
+    - `switch`, `for … in`, `method`, 기본 인자, 이어지는 줄.
+    - 길이 한도를 50,000자로 늘렸다.
+  - **값(`pine-objects.ts`):** 배열(`array.*`, 참조형, 음수 인덱스, 10만 개 한도), 문자열(`str.*`, `+` 연결, `str.tostring` 형식), 시간·`barstate`·`syminfo`·`timeframe`.
+  - **ta 함수 추가:** pivot, supertrend, dmi, sar, kc, alma, linreg, correlation, mfi 등.
+  - **그리기(`pine-drawings.ts`, `pine-graphics.ts`):**
+    - `plotshape`·`plotchar`·`plotarrow`·`bgcolor`·`barcolor`·`fill`;
+    - `line`·`label`·`box`·`table`·`linefill`(개수 한도 적용).
+    - 차트 시리즈 primitive로 그 지표의 창에 그린다.
+  - **request.security:**
+    - 다른 시간대·종목 봉을 받아 스크립트 전체를 그 봉으로 실행한다.
+    - 각 차트 봉에는 그 봉이 끝날 때까지 확정된 값만 넣는다.
+    - `lookahead_on`은 `x[1]` 같은 이전 값 식에만 허용한다.
+    - `security_lower_tf`, 월봉(일봉을 달별로 묶음)을 지원한다.
+    - 다른 종목은 종목 목록과 검색에서 정확히 같은 티커로 찾는다. 분 단위 요청은 분봉 차트에서만 받는다.
+  - **strategy(`pine-strategy.ts`, `PineStrategyReport.tsx`):**
+    - 차트 위 백테스트로만 실행한다. 체결은 메모리에만 두고, 주문하지 않으며 원장에 기록하지 않는다.
+    - 다음 봉 시가 체결과 지정가·손절을 지원한다. 손익은 10자리 고정소수점(bigint)으로 계산한다.
+    - 봉 안 가격 순서를 가정한 체결은 `*`로 표시하고 건수를 보인다.
+    - 결과(순손익, 승률, 손익비, 최대 낙폭, 거래 목록)는 차트 아래에 표시한다.
+  - **편집기:** "지표 예제"와 "전략 예제" 버튼을 두었다. 실행 오류는 차트 아래에 줄 번호와 함께 보인다.
+- **검증:**
+  - `pine-more.test.ts` 16개를 추가했다: 언어, 배열·문자열 오류 줄, 그리기 한도·시각, shape·fill·bgcolor·barcolor, request 정렬·gaps·lookahead·lower_tf·누락 보고·월봉, strategy 체결 시점·10진 손익·봉 안 가정 표시·종가 체결·반전·자본 비율 수량, 새 ta 함수의 미래 값 없음.
+  - 화면 테스트 1개(전략 예제 → 백테스트 결과 표시)를 추가했다.
+  - 브라우저(실데이터, WORX 5분봉)에서 확인했다:
+    - 전략 예제는 거래 32건으로 결과와 진입·청산 표시가 그려졌다.
+    - 그리기 테스트 스크립트는 일봉 종가 계단선(그날이 확정된 뒤에 바뀜), 배경색, `Up` 도형, 마지막 봉의 라벨·박스·점선, 우측 표가 그려졌다.
+- **남은 위험:**
+  - 사용자 정의 타입·`matrix`·`map`·`polyline`·`plotcandle`·`plotbar`는 지원하지 않는다.
+  - 전략 결과는 저장하거나 백테스트 엔진(ADR 0021)과 비교하지 않는다.
+  - TradingView와 결과가 완전히 같은지는 같은 데이터로 대조하지 않았다.
+  - `request.security`용 일봉은 약 4년 범위를 받는다.
+
 ## 상태 변경 양식
 
 - 날짜 / 작업 번호 / 변경 파일:

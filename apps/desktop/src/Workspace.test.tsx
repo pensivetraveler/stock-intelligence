@@ -1952,6 +1952,41 @@ describe("indicators", () => {
     });
   });
 
+  it("runs a Pine strategy as a backtest under the chart", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Pine Script" }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /New Pine Script indicator/ }),
+    );
+    const editor = screen.getByRole("dialog", {
+      name: "Pine Script indicator",
+    });
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Strategy example" }),
+    );
+    expect(
+      within(editor).getByText(/its backtest shows under the chart/),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Add to chart" }),
+    );
+    const report = await screen.findByRole("region", {
+      name: "Strategy backtest · EMA Cross Strategy",
+    });
+    expect(report).toHaveTextContent("not orders, and not saved to any ledger");
+    expect(report).toHaveTextContent("Net profit");
+    expect(savedLayout(storage).charts[0].indicators[0]).toMatchObject({
+      type: "pine",
+      pine: expect.stringContaining("strategy.entry"),
+    });
+  });
+
   it("writes a Python indicator, adds it and draws the API's values", async () => {
     const saved = fixture<CustomIndicator>("custom-indicator.json");
     const computed: { version: number; bars: number; params: object }[] = [];

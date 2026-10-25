@@ -2585,9 +2585,67 @@ body {
   width: min(420px, 80vw);
 }
 
+/* Pine strategies: backtest results under the chart */
+.pine-strategy {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--term-line);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.pine-strategy header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.pine-strategy-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+}
+
+.pine-strategy .up {
+  color: #3fb68b;
+}
+
+.pine-strategy .down {
+  color: #e5566b;
+}
+
+.pine-strategy-trades {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.pine-strategy-trades table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.pine-strategy-trades th,
+.pine-strategy-trades td {
+  padding: 2px 6px;
+  border-bottom: 1px solid var(--term-line);
+  text-align: left;
+  white-space: nowrap;
+}
+
 /* Pine Script indicators */
 .pine-dialog {
   width: min(640px, 92vw);
+}
+
+.pine-examples {
+  display: flex;
+  gap: 6px;
+  margin: 0;
 }
 
 .pine-text {

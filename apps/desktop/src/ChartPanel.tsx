@@ -42,7 +42,13 @@ import type { ChartSyncGroup } from "./chart-sync";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { FormulaFields } from "./FormulaEditor";
 import { PineFields } from "./PineEditor";
-import { pineDefinition } from "./pine";
+import {
+  monthlyBars,
+  pineDefinition,
+  pineRequests,
+  type PineRequestData,
+} from "./pine";
+import { PineStrategyReport } from "./PineStrategyReport";
 import {
   higherBarsOf,
   higherChoices,
@@ -51,6 +57,7 @@ import {
   intradaySessions,
   isHigherTimeframe,
   isIntradayHigher,
+  minutesOf,
   type HigherBars,
   type HigherTimeframe,
 } from "./higher-timeframe";
@@ -915,6 +922,181 @@ export function ChartPanel({
       ) as Partial<Record<HigherTimeframe, HigherBars>>,
     [higherRequests, higherCache],
   );
+  // Pine request.security (ADR 0040): other timeframes and symbols a script asks for.
+  const pineWanted = useMemo(
+    () =>
+      indicatorList.flatMap((instance) =>
+        instance.type === "pine" && !instance.hidden
+          ? pineRequests(instance.pine ?? "", instance.params, {
+              symbol,
+              timeframe: config.timeframe,
+            })
+          : [],
+      ),
+    // The list is replaced (never mutated) whenever settings change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [config.indicators, symbol, config.timeframe],
+  );
+  // Other tickers a script names, as instrument ids (null: not found).
+  const [pineSymbols, setPineSymbols] = useState<Record<string, string | null>>(
+    {},
+  );
+  const pineLookups = useRef(new Set<string>());
+  useEffect(() => {
+    for (const { symbol: ticker } of pineWanted) {
+      if (
+        ticker === "" ||
+        ticker in pineSymbols ||
+        pineLookups.current.has(ticker)
+      ) {
+        continue;
+      }
+      const known = instruments.find(
+        (item) => item.instrument.symbol.toUpperCase() === ticker,
+      );
+      if (known) {
+        setPineSymbols((found) => ({
+          ...found,
+          [ticker]: known.instrument.instrument_id,
+        }));
+        continue;
+      }
+      pineLookups.current.add(ticker);
+      api
+        .searchSymbols(ticker, 5)
+        .then((response) => {
+          const match = response.results.find(
+            (item) => item.listing.instrument.symbol.toUpperCase() === ticker,
+          );
+          setPineSymbols((found) => ({
+            ...found,
+            [ticker]: match ? match.listing.instrument.instrument_id : null,
+          }));
+        })
+        .catch(() => setPineSymbols((found) => ({ ...found, [ticker]: null })))
+        .finally(() => pineLookups.current.delete(ticker));
+    }
+  }, [api, instruments, pineWanted, pineSymbols]);
+  const intradayChart = minutesOf(config.timeframe) !== null;
+  type PineFetch = {
+    dataKey: string;
+    monthly: boolean;
+    request: (typeof higherRequests)[number];
+  };
+  const pineFetches = useMemo(() => {
+    if (ohlcv.length === 0) return [];
+    return pineWanted.flatMap((want): PineFetch[] => {
+      const instrument =
+        want.symbol === "" ? instrumentId : pineSymbols[want.symbol];
+      if (!instrument) return [];
+      // Months are built from daily bars.
+      const monthly = want.timeframe === "1M";
+      const timeframe = monthly ? "1d" : want.timeframe;
+      if (!isHigherTimeframe(timeframe)) return [];
+      if (isIntradayHigher(timeframe)) {
+        if (!intradayChart) return [];
+        const count = intradaySessions(
+          timeframe,
+          300,
+          history.sessions.length + 1,
+          sessionScope !== "regular",
+        );
+        return [
+          {
+            dataKey: want.key,
+            monthly,
+            request: {
+              timeframe,
+              sessions: count,
+              key: `${instrument}|${timeframe}|${sessionScope}|${sessionDate}|${count}`,
+            },
+          },
+        ];
+      }
+      const range = higherRange(
+        ohlcv[0].time,
+        ohlcvEnds[ohlcvEnds.length - 1],
+        monthly ? 400 : 300,
+        timeframe,
+      );
+      return [
+        {
+          dataKey: want.key,
+          monthly,
+          request: {
+            timeframe,
+            range,
+            key: `${instrument}|${timeframe}|${range.startUtc}|${range.endUtc.slice(0, 10)}`,
+          },
+        },
+      ];
+    });
+  }, [
+    pineWanted,
+    pineSymbols,
+    instrumentId,
+    ohlcv,
+    ohlcvEnds,
+    intradayChart,
+    history.sessions.length,
+    sessionScope,
+    sessionDate,
+  ]);
+  const [pineErrors, setPineErrors] = useState<Record<string, string>>({});
+  useEffect(() => {
+    for (const { request, dataKey } of pineFetches) {
+      const { key } = request;
+      if (higherCache[key] || higherPending.current.has(key)) continue;
+      higherPending.current.add(key);
+      loadHigher(request)
+        .then((loaded) => {
+          setHigherCache((cache) => ({
+            ...cache,
+            [key]: higherBarsOf(loaded),
+          }));
+          setPineErrors((errors) => {
+            const rest = { ...errors };
+            delete rest[dataKey];
+            return rest;
+          });
+        })
+        .catch((error: unknown) =>
+          setPineErrors((errors) => ({
+            ...errors,
+            [dataKey]: t("pine.requestFailed", {
+              request: dataKey.replace("|", " "),
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          })),
+        )
+        .finally(() => higherPending.current.delete(key));
+    }
+  }, [loadHigher, pineFetches, higherCache, t]);
+  const pineData = useMemo(() => {
+    const data: Record<string, PineRequestData> = {};
+    for (const { dataKey, monthly, request } of pineFetches) {
+      const bars = higherCache[request.key];
+      if (!bars) continue;
+      data[dataKey] = monthly
+        ? monthlyBars(bars, zoneOf(instrumentId).timeZone)
+        : bars;
+    }
+    return data;
+  }, [pineFetches, higherCache, instrumentId]);
+  const pineProblems = [
+    ...new Set(
+      pineWanted.flatMap((want) => {
+        if (want.symbol !== "" && pineSymbols[want.symbol] === null) {
+          return [t("pine.symbolMissing", { symbol: want.symbol })];
+        }
+        const timeframe = want.timeframe === "1M" ? "1d" : want.timeframe;
+        if (!intradayChart && minutesOf(timeframe) !== null) {
+          return [t("pine.intradayOnDaily", { timeframe })];
+        }
+        return pineErrors[want.key] ? [pineErrors[want.key]] : [];
+      }),
+    ),
+  ];
   // Python indicators: computed by the API for exactly these bars and settings.
   const [customTick, setCustomTick] = useState(0);
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({});
@@ -962,7 +1144,14 @@ export function ChartPanel({
         ohlcv,
         indicatorList,
         warmupCount,
-        { timeZone: zoneOf(instrumentId).timeZone },
+        {
+          timeZone: zoneOf(instrumentId).timeZone,
+          symbol,
+          timeframe: config.timeframe,
+          priceDecimals: zoneOf(instrumentId).priceDecimals,
+          ends: ohlcvEnds,
+          requests: pineData,
+        },
         { bars: higher, ends: ohlcvEnds },
       ).map((item) =>
         // Visibility settings hide an indicator on some chart timeframes.
@@ -982,6 +1171,8 @@ export function ChartPanel({
       higher,
       ohlcvEnds,
       config.timeframe,
+      pineData,
+      symbol,
     ],
   );
   // Chart's own timeframe or a larger one; Python indicators stay on the chart's bars.
@@ -1475,6 +1666,39 @@ export function ChartPanel({
           {message}
         </p>
       ))}
+      {rendered.flatMap((item) =>
+        item.pineError
+          ? [
+              <p
+                key={`pine-${item.key}`}
+                className="bt-problem chart-custom-error"
+                role="alert"
+              >
+                {t("pine.runError", {
+                  name: item.definition.short,
+                  error: item.pineError,
+                })}
+              </p>,
+            ]
+          : [],
+      )}
+      {pineProblems.map((message) => (
+        <p key={message} className="bt-problem chart-custom-error" role="alert">
+          {message}
+        </p>
+      ))}
+      {rendered.flatMap((item) =>
+        item.strategy && !item.hidden
+          ? [
+              <PineStrategyReport
+                key={`strategy-${item.key}`}
+                name={item.definition.short}
+                report={item.strategy}
+                zone={zoneOf(instrumentId)}
+              />,
+            ]
+          : [],
+      )}
       {dayMarketWanted && dayMarket ? (
         <p
           className={dayMarket.error ? "chart-error" : "workspace-note"}

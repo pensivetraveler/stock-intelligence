@@ -13,6 +13,7 @@ import {
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
   type MouseEventParams,
+  type SeriesType,
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
@@ -26,6 +27,8 @@ import { DrawingLayer, type Projection } from "./DrawingLayer";
 import { snapPrice, type Drawing, type DrawingTool } from "./drawings";
 import type { LineStyleName, RenderedIndicator } from "./indicators";
 import { thinLabels, type ChartMarker } from "./journal-markers";
+import { hasGraphics } from "./pine-drawings";
+import { PineGraphicsPrimitive } from "./pine-graphics";
 import { OLDER_TRIGGER_BARS, USER_MOVE_MS } from "./older-bars";
 
 interface PriceChartProps {
@@ -140,6 +143,10 @@ export function PriceChart({
   const markerLayer = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const applyingSyncedRange = useRef(false);
   const indicatorSeries = useRef<ISeriesApi<"Line" | "Histogram">[]>([]);
+  // Pine drawings (ADR 0040), each attached to a series in its indicator's pane.
+  const pineLayers = useRef<
+    { series: ISeriesApi<SeriesType>; primitive: PineGraphicsPrimitive }[]
+  >([]);
   const fittedKey = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -318,6 +325,7 @@ export function PriceChart({
       instance.timeScale().unsubscribeVisibleTimeRangeChange(onRange);
       instance.remove();
       indicatorSeries.current = [];
+      pineLayers.current = [];
       chart.current = null;
       markerLayer.current = null;
     };
@@ -385,6 +393,33 @@ export function PriceChart({
     shownFirst.current = candles[0]?.time ?? null;
   }, [candles, volume, fitKey]);
 
+  // Pine `barcolor()` on price-pane scripts recolours those candles.
+  const barColors = useMemo(() => {
+    const colors = new Map<number, string>();
+    for (const indicator of indicators) {
+      if (indicator.hidden || indicator.definition.pane !== "price") continue;
+      for (const item of indicator.graphics?.barColors ?? []) {
+        colors.set(item.time, item.color);
+      }
+    }
+    return colors;
+  }, [indicators]);
+  const coloredCandles = useRef(false);
+  useEffect(() => {
+    if (barColors.size === 0 && !coloredCandles.current) return;
+    coloredCandles.current = barColors.size > 0;
+    candleSeries.current?.setData(
+      candles.map((point) => {
+        const color = barColors.get(point.time);
+        return {
+          ...point,
+          time: point.time as UTCTimestamp,
+          ...(color ? { color, wickColor: color, borderColor: color } : {}),
+        };
+      }),
+    );
+  }, [candles, barColors]);
+
   useEffect(() => {
     dayMarketSeries.current?.setData(
       dayMarket.map((point) => ({
@@ -414,6 +449,12 @@ export function PriceChart({
   useEffect(() => {
     const instance = chart.current;
     if (!instance) return;
+    for (const layer of pineLayers.current) {
+      if (layer.series === candleSeries.current) {
+        layer.series.detachPrimitive(layer.primitive);
+      }
+    }
+    pineLayers.current = [];
     for (const series of indicatorSeries.current) {
       instance.removeSeries(series);
     }
@@ -424,7 +465,14 @@ export function PriceChart({
     let nextPane = 1;
     for (const indicator of indicators) {
       if (indicator.hidden) continue;
+      const graphics =
+        indicator.graphics && hasGraphics(indicator.graphics)
+          ? indicator.graphics
+          : null;
+      if (!graphics && !indicator.lines.some((line) => line.visible)) continue;
       const pane = indicator.definition.pane === "price" ? 0 : nextPane++;
+      let host: ISeriesApi<SeriesType> | null =
+        pane === 0 ? candleSeries.current : null;
       // Levels go on the first output drawn, even when an earlier one is hidden.
       let levelsPlaced = false;
       indicator.lines.forEach((line) => {
@@ -481,7 +529,39 @@ export function PriceChart({
           }
         }
         indicatorSeries.current.push(series);
+        host ??= series;
       });
+      if (graphics) {
+        let autoscale = false;
+        if (!host) {
+          // Drawings only: an empty series gives the pane its price scale.
+          const empty = instance.addSeries(
+            LineSeries,
+            {
+              color: "rgba(0, 0, 0, 0)",
+              priceLineVisible: false,
+              lastValueVisible: false,
+              crosshairMarkerVisible: false,
+            },
+            pane,
+          );
+          empty.setData(
+            candlesRef.current.map((point) => ({
+              time: point.time as UTCTimestamp,
+            })),
+          );
+          indicatorSeries.current.push(empty);
+          host = empty;
+          autoscale = true;
+        }
+        const primitive = new PineGraphicsPrimitive(
+          graphics,
+          () => candlesRef.current.map((point) => point.time),
+          autoscale,
+        );
+        host.attachPrimitive(primitive);
+        pineLayers.current.push({ series: host, primitive });
+      }
     }
   }, [indicators]);
 
