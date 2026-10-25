@@ -142,13 +142,13 @@ function AppContent({
         ) : (
           <div className="connect-screen">
             <AppMark />
-            <h1 id="app-title">Stock Intelligence Workstation</h1>
+            <h1 id="app-title">SIW Research</h1>
             <p className="subtitle">{t("app.connecting")}</p>
           </div>
         )}
       </div>
       <footer className="status-bar" aria-label={t("status.label")}>
-        <strong className="status-title">Stock Intelligence Workstation</strong>
+        <strong className="status-title">SIW Research</strong>
         <span className="status-item">
           {t("app.subtitle", { provider: provider ?? "…" })}
         </span>
