@@ -4,8 +4,8 @@
  * Nothing here evaluates code; parsing only.
  */
 
-export const MAX_PINE_LENGTH = 20_000;
-const MAX_NODES = 5_000;
+export const MAX_PINE_LENGTH = 50_000;
+const MAX_NODES = 30_000;
 
 export class PineError extends Error {
   constructor(
@@ -39,6 +39,7 @@ const KEYWORDS = new Set([
   "to",
   "by",
   "while",
+  "switch",
   "break",
   "continue",
   "and",
@@ -55,10 +56,25 @@ const TYPE_WORDS = new Set([
   "bool",
   "color",
   "string",
-  "series",
-  "simple",
-  "const",
+  "line",
+  "label",
+  "box",
+  "table",
+  "linefill",
+  "chart.point",
 ]);
+/** Qualifiers before a type (`simple int`); they change nothing either. */
+const QUALIFIERS = new Set(["series", "simple", "const"]);
+/** Generic collection types: `array<float>`. */
+const GENERICS = new Set(["array", "matrix", "map"]);
+/** Script kinds and statements SIW does not run, with the reason shown. */
+const UNSUPPORTED_STATEMENTS: Record<string, string> = {
+  import: "libraries (import) are not supported",
+  export: "libraries (export) are not supported",
+  type: "user-defined types (type) are not supported",
+  enum: "enums are not supported",
+  library: "libraries are not supported",
+};
 const OPERATORS = [
   ":=",
   "+=",
@@ -107,7 +123,6 @@ const CONTINUES = new Set([
   ",",
   "=",
   ":=",
-  "=>",
   "(",
   "[",
 ]);
@@ -188,10 +203,14 @@ export function tokenize(source: string): Token[] {
     const line = index + 1;
     const tokens = lineTokens(raw, line);
     if (tokens.length === 0) return;
+    const spaces = /^[ \t]*/.exec(raw)![0].replace(/\t/g, "    ").length;
     if (pending) {
       pending.push(...tokens);
+    } else if (spaces % 4 !== 0 && out[out.length - 1]?.kind === "newline") {
+      // A line indented by other than a multiple of 4 continues the line before it.
+      out.pop();
+      pending = [...tokens];
     } else {
-      const spaces = /^[ \t]*/.exec(raw)![0].replace(/\t/g, "    ").length;
       const level = Math.floor(spaces / 4);
       if (level > indents.length - 1 + 1) {
         throw new PineError("unexpected indentation", line, 1);
@@ -287,10 +306,23 @@ export type Stmt = Position &
         step: Expr | null;
         body: Stmt[];
       }
+    | { kind: "forin"; names: string[]; source: Expr; body: Stmt[] }
     | { kind: "while"; test: Expr; body: Stmt[] }
+    | {
+        kind: "switch";
+        subject: Expr | null;
+        cases: { test: Expr | null; body: Stmt[] }[];
+      }
     | { kind: "break" }
     | { kind: "continue" }
-    | { kind: "function"; name: string; params: string[]; body: Stmt[] }
+    | {
+        kind: "function";
+        name: string;
+        params: string[];
+        defaults: (Expr | null)[];
+        method: boolean;
+        body: Stmt[];
+      }
     | { kind: "expr"; value: Expr }
   );
 
@@ -399,9 +431,23 @@ class Parser {
   private statement(): Stmt {
     const token = this.peek();
     if (token.kind === "name") {
+      const unsupported = UNSUPPORTED_STATEMENTS[token.text];
+      if (unsupported && this.peek(1).kind === "name") {
+        throw this.error(unsupported, token);
+      }
+      if (
+        token.text === "method" &&
+        this.peek(1).kind === "name" &&
+        this.is("(", 2)
+      ) {
+        this.next();
+        return this.functionDef(true);
+      }
       switch (token.text) {
         case "if":
           return this.ifStatement();
+        case "switch":
+          return this.switchStatement();
         case "for":
           return this.forStatement();
         case "while": {
@@ -422,12 +468,8 @@ class Parser {
         case "var":
         case "varip": {
           this.next();
-          if (
-            TYPE_WORDS.has(this.peek().text) &&
-            this.peek(1).kind === "name"
-          ) {
-            this.next();
-          }
+          const typed = this.typeLength(0);
+          if (typed > 0 && this.peek(typed).kind === "name") this.at += typed;
           const name = this.name();
           this.expect("=");
           const value = this.value();
@@ -442,13 +484,14 @@ class Parser {
       }
       // Function definition: name(params) =>
       if (this.is("(", 1) && this.isFunctionHead()) return this.functionDef();
-      // Typed declaration: float x = …
+      // Typed declaration: float x = …, float[] xs = …, array<line> ls = …
+      const typed = this.typeLength(0);
       if (
-        TYPE_WORDS.has(token.text) &&
-        this.peek(1).kind === "name" &&
-        this.is("=", 2)
+        typed > 0 &&
+        this.peek(typed).kind === "name" &&
+        this.is("=", typed + 1)
       ) {
-        this.next();
+        this.at += typed;
       }
       const head = this.peek();
       if (head.kind === "name" && !KEYWORDS.has(head.text)) {
@@ -508,6 +551,31 @@ class Parser {
     return { ...this.node(token), kind: "expr", value };
   }
 
+  /** How many tokens a type takes at `offset` (`simple int`, `float[]`, `array<box>`), or 0. */
+  private typeLength(offset: number): number {
+    const token = this.peek(offset);
+    if (token.kind !== "name") return 0;
+    if (QUALIFIERS.has(token.text)) {
+      const inner = this.typeLength(offset + 1);
+      return inner > 0 ? inner + 1 : 0;
+    }
+    if (GENERICS.has(token.text) && this.is("<", offset + 1)) {
+      let k = offset + 2;
+      for (;;) {
+        const inner = this.typeLength(k);
+        if (inner === 0) return 0;
+        k += inner;
+        if (this.is(",", k)) {
+          k += 1;
+          continue;
+        }
+        return this.is(">", k) ? k + 1 - offset : 0;
+      }
+    }
+    if (!TYPE_WORDS.has(token.text)) return 0;
+    return this.is("[", offset + 1) && this.is("]", offset + 2) ? 3 : 1;
+  }
+
   private isFunctionHead(): boolean {
     let depth = 0;
     for (let k = 1; this.at + k < this.tokens.length; k += 1) {
@@ -531,16 +599,21 @@ class Parser {
     return false;
   }
 
-  private functionDef(): Stmt {
+  private functionDef(method = false): Stmt {
     const token = this.next();
     const params: string[] = [];
+    const defaults: (Expr | null)[] = [];
     this.expect("(");
     while (!this.is(")")) {
-      if (TYPE_WORDS.has(this.peek().text) && this.peek(1).kind === "name") {
-        this.next();
-      }
+      const typed = this.typeLength(0);
+      if (typed > 0 && this.peek(typed).kind === "name") this.at += typed;
       params.push(this.name());
-      if (this.is("=")) throw this.error("default values are not supported");
+      if (this.is("=")) {
+        this.next();
+        defaults.push(this.expression());
+      } else {
+        defaults.push(null);
+      }
       if (!this.is(")")) this.expect(",");
     }
     this.expect(")");
@@ -559,6 +632,8 @@ class Parser {
       kind: "function",
       name: token.text,
       params,
+      defaults,
+      method,
       body,
     };
   }
@@ -576,9 +651,68 @@ class Parser {
     return { ...this.node(token), kind: "if", test, body, otherwise };
   }
 
+  /** `switch [subject]` with `test => …` arms and a `=> …` default. */
+  private switchStatement(): Stmt {
+    const token = this.expect("switch");
+    const subject = this.peek().kind === "newline" ? null : this.expression();
+    if (this.peek().kind !== "newline") throw this.error("expected a new line");
+    this.next();
+    if (this.peek().kind !== "indent") {
+      throw this.error("expected the switch's indented cases");
+    }
+    this.next();
+    const cases: { test: Expr | null; body: Stmt[] }[] = [];
+    while (this.peek().kind !== "dedent" && this.peek().kind !== "end") {
+      if (this.peek().kind === "newline") {
+        this.next();
+        continue;
+      }
+      const test = this.is("=>") ? null : this.expression();
+      this.expect("=>");
+      let body: Stmt[];
+      if (this.peek().kind === "newline") {
+        body = this.block();
+      } else {
+        const start = this.peek();
+        body = [{ ...this.node(start), kind: "expr", value: this.value() }];
+      }
+      cases.push({ test, body });
+    }
+    if (this.peek().kind === "dedent") this.next();
+    return { ...this.node(token), kind: "switch", subject, cases };
+  }
+
   private forStatement(): Stmt {
     const token = this.expect("for");
+    if (this.is("[")) {
+      // for [index, item] in items
+      this.next();
+      const names = [this.name()];
+      this.expect(",");
+      names.push(this.name());
+      this.expect("]");
+      this.expect("in");
+      const source = this.expression();
+      return {
+        ...this.node(token),
+        kind: "forin",
+        names,
+        source,
+        body: this.block(),
+      };
+    }
     const name = this.name();
+    if (this.is("in")) {
+      this.next();
+      const source = this.expression();
+      return {
+        ...this.node(token),
+        kind: "forin",
+        names: [name],
+        source,
+        body: this.block(),
+      };
+    }
     this.expect("=");
     const from = this.expression();
     this.expect("to");
@@ -609,9 +743,11 @@ class Parser {
 
   /** The right side of `=` or `:=`: an expression, or an `if` whose branch gives it. */
   private value(): Expr {
-    if (this.is("if")) {
+    if (this.is("if") || this.is("switch")) {
       const token = this.peek();
-      const statement = this.ifStatement();
+      const statement = this.is("if")
+        ? this.ifStatement()
+        : this.switchStatement();
       return { ...this.node(token), kind: "block", statement };
     }
     const value = this.expression();
@@ -700,6 +836,20 @@ class Parser {
         }
         if (KEYWORDS.has(token.text) && token.text !== "na") {
           throw this.error(`unexpected "${token.text}"`, token);
+        }
+        if (
+          (token.text === "array.new" || token.text === "matrix.new") &&
+          this.is("<")
+        ) {
+          // array.new<float>(…) is array.new_float(…); the type changes nothing else.
+          this.next();
+          const type = this.next();
+          while (!this.is(">")) this.next();
+          this.next();
+          return this.call({
+            ...token,
+            text: `${token.text}_${type.text.replace("chart.point", "point")}`,
+          });
         }
         if (this.is("(")) return this.call(token);
         return { ...this.node(token), kind: "name", name: token.text };

@@ -15,7 +15,15 @@ import {
   type HigherBars,
   type HigherTimeframe,
 } from "./higher-timeframe";
-import { MAX_PINE_LENGTH, PINE_COLORS, pineDefinition } from "./pine";
+import {
+  MAX_PINE_LENGTH,
+  PINE_COLORS,
+  PINE_EXTRAS,
+  pineDefinition,
+  type PineRequestData,
+} from "./pine";
+import { mapGraphicsTimes, type PineGraphics } from "./pine-drawings";
+import type { StrategyReport } from "./pine-strategy";
 import {
   formulaDefinition,
   formulaLookback,
@@ -214,6 +222,14 @@ export function shift(values: Series, by: number): Series {
 /** What some formulas need besides bars: VWAP restarts each exchange-local day. */
 export interface IndicatorContext {
   timeZone: string;
+  /** For Pine scripts (ADR 0040): the chart's ticker and timeframe ("5m", "1d"). */
+  symbol?: string;
+  timeframe?: string;
+  priceDecimals?: number;
+  /** Each bar's end (epoch seconds), aligned with the bars. */
+  ends?: number[];
+  /** Other timeframes and symbols for Pine's request.security, by request key. */
+  requests?: Record<string, PineRequestData>;
 }
 
 const dayFormats = new Map<string, Intl.DateTimeFormat>();
@@ -256,6 +272,8 @@ export interface IndicatorOutput {
   label: string;
   color: string;
   kind?: "line" | "histogram";
+  /** Not drawn until shown in the style (Pine `display=display.none`). */
+  hidden?: boolean;
 }
 
 export interface IndicatorDefinition {
@@ -1616,6 +1634,11 @@ export interface RenderedIndicator {
   precision?: number;
   /** Value of each output at every bar index, for the legend under the crosshair. */
   values: Record<string, Series>;
+  /** Pine scripts: drawings, a strategy's backtest results, a run error, data still missing. */
+  graphics?: PineGraphics;
+  strategy?: StrategyReport | null;
+  pineError?: string;
+  missing?: string[];
 }
 
 const HISTOGRAM_UP = "rgba(63, 182, 139, 0.6)";
@@ -1723,26 +1746,69 @@ export function renderIndicators(
     const definition = definitionFor(instance);
     if (!definition) return [];
     let values: Record<string, Series>;
+    let raw: Record<string, Series> | null = null;
+    let graphics: PineGraphics | undefined;
     const priced = (input: OhlcvBar[]) =>
       definition.sourceInput ? withSource(input, instance.source) : input;
     if (instance.timeframe) {
       const source = higher?.bars[instance.timeframe];
-      values = source
-        ? alignToChart(
-            definition.compute(priced(source.bars), instance.params, context),
-            source.availableAt,
-            higher!.ends,
-          )
-        : Object.fromEntries(
-            definition.outputs.map((output) => [
-              output.key,
-              bars.map(() => null),
-            ]),
-          );
+      if (source) {
+        raw = definition.compute(priced(source.bars), instance.params, {
+          timeZone: context?.timeZone ?? "America/New_York",
+          symbol: context?.symbol,
+          timeframe: instance.timeframe,
+          priceDecimals: context?.priceDecimals,
+          ends: source.availableAt,
+        });
+        values = alignToChart(raw, source.availableAt, higher!.ends);
+        const drawn = PINE_EXTRAS.get(raw)?.graphics;
+        if (drawn) {
+          // A larger bar's drawings show from the chart bar where that bar was final.
+          const starts = source.bars.map((bar) => bar.time);
+          graphics = mapGraphicsTimes(drawn, (time) => {
+            const index = starts.indexOf(time);
+            if (index < 0) return time;
+            const final = source.availableAt[index];
+            const j = higher!.ends.findIndex((end) => end >= final);
+            return j < 0 ? time : bars[j].time;
+          });
+        }
+      } else {
+        values = Object.fromEntries(
+          definition.outputs.map((output) => [
+            output.key,
+            bars.map(() => null),
+          ]),
+        );
+      }
     } else {
       values = definition.compute(priced(bars), instance.params, context);
+      raw = values;
+      graphics = PINE_EXTRAS.get(values)?.graphics;
     }
-    const pointColors = PINE_COLORS.get(values);
+    const extras = raw ? PINE_EXTRAS.get(raw) : undefined;
+    if (graphics && displayFrom > 0 && bars[displayFrom]) {
+      // Warm-up bars are not on the chart; nor is what was drawn on them per bar.
+      const first = bars[displayFrom].time;
+      graphics = {
+        ...graphics,
+        backgrounds: graphics.backgrounds.filter((item) => item.time >= first),
+        barColors: graphics.barColors.filter((item) => item.time >= first),
+        shapes: graphics.shapes.filter((item) => item.time >= first),
+        trades: graphics.trades.filter((item) => item.time >= first),
+        fills: graphics.fills.map((fill) =>
+          fill.kind === "series"
+            ? {
+                ...fill,
+                points: fill.points.filter((point) => point.time >= first),
+              }
+            : fill,
+        ),
+      };
+    }
+    const pointColors = instance.timeframe
+      ? undefined
+      : PINE_COLORS.get(values);
     const lines = definition.outputs.map((output) => {
       const kind = output.kind ?? "line";
       const perBar = pointColors?.[output.key];
@@ -1769,7 +1835,7 @@ export function renderIndicators(
         data,
         width: look.width ?? 1,
         line: look.line ?? "solid",
-        visible: look.visible ?? true,
+        visible: look.visible ?? !output.hidden,
       };
     });
     return [
@@ -1785,6 +1851,14 @@ export function renderIndicators(
           ? {}
           : { precision: instance.style.precision }),
         values,
+        ...(extras
+          ? {
+              graphics,
+              strategy: extras.strategy,
+              missing: extras.missing,
+              ...(extras.error ? { pineError: extras.error } : {}),
+            }
+          : {}),
       },
     ];
   });

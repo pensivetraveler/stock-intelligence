@@ -6,6 +6,7 @@ import {
   MAX_PINE_LENGTH,
   PINE_EXAMPLE,
   PINE_FUNCTIONS,
+  PINE_STRATEGY_EXAMPLE,
   PineError,
   type PineProgram,
   runPine,
@@ -30,11 +31,14 @@ export function PineFields({
   submitLabel,
   onSubmit,
   onCancel,
+  examples = false,
 }: {
   initial: string;
   submitLabel: string;
   onSubmit: (source: string) => void;
   onCancel: () => void;
+  /** Offer the indicator and strategy examples (new scripts only). */
+  examples?: boolean;
 }) {
   const { t } = useI18n();
   const [source, setSource] = useState(initial);
@@ -88,10 +92,29 @@ export function PineFields({
             title: checked.title,
             pane: t(checked.overlay ? "pine.overlay" : "pine.pane"),
             inputs: checked.inputs.length,
-            plots: checked.plots.map((plot) => plot.title).join(", "),
+            plots: checked.plots.map((plot) => plot.title).join(", ") || "—",
           })}
+          {checked.strategy ? ` ${t("pine.summaryStrategy")}` : ""}
         </p>
       )}
+      {examples ? (
+        <p className="pine-examples">
+          <button
+            type="button"
+            className="tb-button"
+            onClick={() => setSource(PINE_EXAMPLE)}
+          >
+            {t("pine.exampleIndicator")}
+          </button>
+          <button
+            type="button"
+            className="tb-button"
+            onClick={() => setSource(PINE_STRATEGY_EXAMPLE)}
+          >
+            {t("pine.exampleStrategy")}
+          </button>
+        </p>
+      ) : null}
       <details>
         <summary>{t("formula.help")}</summary>
         <p className="workspace-note">
@@ -148,6 +171,7 @@ export function PineDialog({
         <p className="workspace-note">{t("pine.note")}</p>
         <PineFields
           initial={PINE_EXAMPLE}
+          examples
           submitLabel={t("formula.add")}
           onSubmit={onAdd}
           onCancel={onClose}
