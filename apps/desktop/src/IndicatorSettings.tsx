@@ -63,14 +63,20 @@ export function IndicatorSettings({
 
   return (
     <div
-      className="popover indicator-settings"
+      className={
+        instance.type === "formula" || instance.type === "pine"
+          ? "popover indicator-settings formula-settings"
+          : "popover indicator-settings"
+      }
       role="dialog"
       aria-label={t("ind.settings", { name: definition.short })}
     >
       <strong>
         {instance.type === "formula"
           ? (instance.label ?? definition.short)
-          : definition.name[language]}
+          : instance.type === "pine"
+            ? definition.short
+            : definition.name[language]}
       </strong>
       <div className="ind-tabs" role="tablist">
         {(["inputs", "style", "visibility"] as const).map((item) => (

@@ -41,6 +41,8 @@ import { useI18n, type Translate } from "./i18n";
 import type { ChartSyncGroup } from "./chart-sync";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { FormulaFields } from "./FormulaEditor";
+import { PineFields } from "./PineEditor";
+import { pineDefinition } from "./pine";
 import {
   higherBarsOf,
   higherChoices,
@@ -1340,37 +1342,77 @@ export function ChartPanel({
                                 </>
                               ) : (
                                 <>
-                                  {item.definition.inputs.map((field) => (
-                                    <label key={field.key}>
-                                      {field.label[language]}
-                                      <input
-                                        type="number"
-                                        min={field.min}
-                                        max={field.max}
-                                        step={field.step ?? 1}
-                                        defaultValue={item.params[field.key]}
-                                        onChange={(event) => {
-                                          const value = Number(
-                                            event.target.value,
-                                          );
-                                          changeIndicator(
-                                            item.key,
-                                            (current) => ({
-                                              ...current,
-                                              params: cleanParams(
-                                                item.definition,
-                                                {
-                                                  ...current.params,
-                                                  [field.key]: value,
-                                                },
-                                              ),
-                                            }),
-                                          );
-                                        }}
-                                      />
-                                    </label>
-                                  ))}
+                                  {item.definition.inputs.map((field) => {
+                                    const setParam = (value: number) =>
+                                      changeIndicator(item.key, (current) => ({
+                                        ...current,
+                                        params: cleanParams(item.definition, {
+                                          ...current.params,
+                                          [field.key]: value,
+                                        }),
+                                      }));
+                                    return (
+                                      <label key={field.key}>
+                                        {field.label[language]}
+                                        {field.options ? (
+                                          <select
+                                            value={item.params[field.key]}
+                                            onChange={(event) =>
+                                              setParam(
+                                                Number(event.target.value),
+                                              )
+                                            }
+                                          >
+                                            {field.options.map((option) => (
+                                              <option
+                                                key={option.value}
+                                                value={option.value}
+                                              >
+                                                {option.label}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        ) : (
+                                          <input
+                                            type="number"
+                                            min={field.min}
+                                            max={field.max}
+                                            step={field.step ?? 1}
+                                            defaultValue={
+                                              item.params[field.key]
+                                            }
+                                            onChange={(event) =>
+                                              setParam(
+                                                Number(event.target.value),
+                                              )
+                                            }
+                                          />
+                                        )}
+                                      </label>
+                                    );
+                                  })}
                                   {timeframeField(item.instance)}
+                                  {item.instance.type === "pine" ? (
+                                    <PineFields
+                                      initial={item.instance.pine ?? ""}
+                                      submitLabel={t("ind.apply")}
+                                      onCancel={() => setEditing(null)}
+                                      onSubmit={(source) =>
+                                        changeIndicator(
+                                          item.key,
+                                          (current) => ({
+                                            ...current,
+                                            pine: source,
+                                            // Inputs that no longer exist drop; new ones take their defaults.
+                                            params: cleanParams(
+                                              pineDefinition(source),
+                                              current.params,
+                                            ),
+                                          }),
+                                        )
+                                      }
+                                    />
+                                  ) : null}
                                 </>
                               )
                             }
