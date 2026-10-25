@@ -32,6 +32,7 @@ import {
   instanceLookback,
   paramsText,
   renderIndicators,
+  visibleOn,
   warmupBars,
   type IndicatorInstance,
   type OhlcvBar,
@@ -961,6 +962,11 @@ export function ChartPanel({
         warmupCount,
         { timeZone: zoneOf(instrumentId).timeZone },
         { bars: higher, ends: ohlcvEnds },
+      ).map((item) =>
+        // Visibility settings hide an indicator on some chart timeframes.
+        visibleOn(item.instance, config.timeframe)
+          ? item
+          : { ...item, hidden: true },
       ),
     // The list is replaced (never mutated) whenever settings change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -973,6 +979,7 @@ export function ChartPanel({
       customVersion,
       higher,
       ohlcvEnds,
+      config.timeframe,
     ],
   );
   // Chart's own timeframe or a larger one; Python indicators stay on the chart's bars.
@@ -1061,12 +1068,14 @@ export function ChartPanel({
           Math.floor(Date.parse(legendBar.interval_start_utc) / 1000),
       )
     : -1;
-  const formatValue = (value: number | null | undefined) =>
+  const formatValue = (value: number | null | undefined, precision?: number) =>
     value === null || value === undefined
       ? "—"
-      : Math.abs(value) >= 1000
-        ? value.toFixed(0)
-        : value.toFixed(Math.abs(value) >= 10 ? 2 : 4);
+      : precision !== undefined
+        ? value.toFixed(precision)
+        : Math.abs(value) >= 1000
+          ? value.toFixed(0)
+          : value.toFixed(Math.abs(value) >= 10 ? 2 : 4);
   return (
     <section
       className={active ? "chart-panel active" : "chart-panel"}
@@ -1196,6 +1205,9 @@ export function ChartPanel({
                           {item.instance.timeframe
                             ? ` · ${item.instance.timeframe.toUpperCase()}`
                             : ""}
+                          {visibleOn(item.instance, config.timeframe)
+                            ? ""
+                            : ` · ${t("ind.hiddenHere")}`}
                         </span>
                         {item.lines.map((line) => (
                           <b key={line.id} style={{ color: line.color }}>
@@ -1205,6 +1217,7 @@ export function ChartPanel({
                                     legendIndex
                                   ]
                                 : null,
+                              item.precision,
                             )}
                           </b>
                         ))}
