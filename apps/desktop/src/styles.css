@@ -916,6 +916,10 @@ button:disabled {
   color: #e5566b;
 }
 
+.legend-premarket b {
+  color: #f0b429;
+}
+
 .legend-provisional {
   color: #f5d76e;
 }

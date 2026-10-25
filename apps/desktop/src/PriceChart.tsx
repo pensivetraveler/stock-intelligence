@@ -11,6 +11,7 @@ import {
   type LineWidth,
   type IChartApi,
   type ISeriesApi,
+  type IPriceLine,
   type ISeriesMarkersPluginApi,
   type MouseEventParams,
   type SeriesType,
@@ -29,6 +30,8 @@ import type { LineStyleName, RenderedIndicator } from "./indicators";
 import { thinLabels, type ChartMarker } from "./journal-markers";
 import { hasGraphics } from "./pine-drawings";
 import { PineGraphicsPrimitive } from "./pine-graphics";
+import type { PremarketHigh } from "./premarket-high";
+import { PREMARKET_COLOR, PremarketHighPrimitive } from "./premarket-primitive";
 import { OLDER_TRIGGER_BARS, USER_MOVE_MS } from "./older-bars";
 
 interface PriceChartProps {
@@ -37,6 +40,10 @@ interface PriceChartProps {
   volume: VolumePoint[];
   /** US day-market candles, drawn as their own series in their own colors (ADR 0030). */
   dayMarket?: CandlePoint[];
+  /** Pre-market highs on daily candles (ADR 0041); the newest also gets a price line. */
+  premarketHighs?: PremarketHigh[];
+  /** Price-line title for the newest pre-market high. */
+  premarketLabel?: string;
   sync: ChartSyncGroup;
   markers?: ChartMarker[];
   /** Called with the start time (epoch seconds) of the clicked candle. */
@@ -114,6 +121,8 @@ export function PriceChart({
   candles,
   volume,
   dayMarket = [],
+  premarketHighs = [],
+  premarketLabel = "PM High",
   sync,
   markers = [],
   onCandleClick,
@@ -141,6 +150,8 @@ export function PriceChart({
   const dayMarketSeries = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeries = useRef<ISeriesApi<"Histogram"> | null>(null);
   const markerLayer = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const premarketLayer = useRef<PremarketHighPrimitive | null>(null);
+  const premarketLine = useRef<IPriceLine | null>(null);
   const applyingSyncedRange = useRef(false);
   const indicatorSeries = useRef<ISeriesApi<"Line" | "Histogram">[]>([]);
   // Pine drawings (ADR 0040), each attached to a series in its indicator's pane.
@@ -225,6 +236,10 @@ export function PriceChart({
       lastValueVisible: false,
     });
     markerLayer.current = createSeriesMarkers(candlesApi, []);
+    premarketLayer.current = new PremarketHighPrimitive([], () =>
+      candlesRef.current.map((point) => point.time),
+    );
+    candlesApi.attachPrimitive(premarketLayer.current);
     volumeSeries.current = instance.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "",
@@ -328,6 +343,8 @@ export function PriceChart({
       pineLayers.current = [];
       chart.current = null;
       markerLayer.current = null;
+      premarketLayer.current = null;
+      premarketLine.current = null;
     };
   }, [chartId, sync]);
 
@@ -428,6 +445,27 @@ export function PriceChart({
       })),
     );
   }, [dayMarket]);
+
+  useEffect(() => {
+    premarketLayer.current?.update(premarketHighs);
+    const series = candleSeries.current;
+    if (!series) return;
+    if (premarketLine.current) {
+      series.removePriceLine(premarketLine.current);
+      premarketLine.current = null;
+    }
+    // The price line marks the newest daily candle's pre-market high only.
+    const newest = premarketHighs.at(-1);
+    if (!newest || newest.time !== candles.at(-1)?.time) return;
+    premarketLine.current = series.createPriceLine({
+      price: newest.high,
+      color: PREMARKET_COLOR,
+      lineWidth: 1,
+      lineStyle: newest.final ? LineStyle.Solid : LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: premarketLabel,
+    });
+  }, [premarketHighs, premarketLabel, candles]);
 
   useEffect(() => {
     chart.current?.applyOptions({

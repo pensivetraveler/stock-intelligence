@@ -48,3 +48,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0038-price-level-strategies.md`: (proposed) 가격대 진입형 전략 — 미리 걸어 두는 지정가(증권사 체결)와 실시간 감시 돌파(키움 모의는 지정가만), `levels` 규칙, 백테스트 대응, 킬 스위치·실시간 출처 미결
 - `0039-indicator-style-and-lower-timeframes.md`: (accepted) 보조지표 설정을 TradingView식 입력·스타일 탭으로(소스, 선별 색·굵기·선 모양·표시, 기준선), 더 작은 시간대 지표(각 차트 봉의 마지막 작은 봉 값, 미래 값 없음)
 - `0040-pine-script-indicators.md`: (accepted, 보충 2026-10-25) Pine Script — 앱 안의 인터프리터(eval 없음, 봉 단위 실행, 미래 값 없음, 실행 한도). 입력·plot·plotshape·bgcolor·fill·그리기(line/label/box/table)·배열·문자열·switch·메서드, request.security(확정 시점 정렬, lookahead는 x[1]만), strategy는 차트 백테스트 체결만(주문·원장 없음, 봉 안 순서 가정 표시)
+- `0041-premarket-high-on-daily-charts.md`: (accepted) 미국 일봉 차트의 프리마켓 고가 — 세션마다 장전 구간 `960m` 봉 하나를 따로 받아(최근 60세션) 일봉에 섞지 않고 봉별 짧은 선·최신 가격선으로 표시, 미확정은 점선, 리플레이는 장전 봉이 닫힌 뒤에만
