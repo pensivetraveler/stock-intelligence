@@ -120,6 +120,7 @@ from services.market_data.toss_stream import Connect, RealtimeHub, default_conne
 from services.paper_trading.store import PaperOrderStore
 from services.public_sources.finra import FinraCredential
 from services.public_sources.sources import PublicSources
+from services.review.claude import ask_for_report
 from services.review.store import ReviewStore
 
 LOG = logging.getLogger("siw.api")
@@ -593,6 +594,7 @@ def create_app(
     agent_store: AgentStore | None = None,
     review_store: ReviewStore | None = None,
     agent_ask: Callable[..., dict[str, Any]] = ask_claude,
+    review_ask: Callable[..., dict[str, Any]] = ask_for_report,
     indicator_store: CustomIndicatorStore | None = None,
     public_sources: PublicSources | None = None,
     clock: Callable[[], datetime] = _utc_now,
@@ -1432,6 +1434,10 @@ def create_app(
         store=review.get,
         strategies=strategy_list,
         error_response=_error_response,
+        get_bars=lambda: MarketBarsService(provider.get()).get_bars,
+        api_key=lambda: _claude_key(credentials.get()),
+        now=clock,
+        ask=review_ask,
     )
     register_agent_routes(
         application,

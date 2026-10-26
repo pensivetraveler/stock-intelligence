@@ -1,9 +1,14 @@
 import type {
+  ReviewAccountCapitalList,
   ReviewAnnotation,
   ReviewAssignmentResult,
   ReviewGroup,
+  ReviewReportDraft,
+  ReviewSettings,
   ReviewStrategyRule,
   ReviewTradeListResponse,
+  ReviewTradeReport,
+  ReviewTradeReportList,
 } from "@siw/contracts/types";
 
 import type { ExecutionRef } from "./agent-api";
@@ -23,6 +28,17 @@ export interface TradeFilter {
   tag?: string;
   limit?: number;
   offset?: number;
+}
+
+export type ReportModel = ReviewSettings["report_model"];
+export type ReportImage = ReviewReportDraft["images"][number];
+
+export interface CapitalRequest {
+  accountRef: string;
+  currency: "USD" | "KRW";
+  /** YYYY-MM-DD: the capital applies to trades opened from this day. */
+  effectiveFrom: string;
+  amount: string;
 }
 
 export interface AnnotationRequest {
@@ -48,12 +64,35 @@ export interface ReviewApi {
     tradeId: string,
     annotation: AnnotationRequest,
   ): Promise<ReviewAnnotation>;
+  settings(): Promise<ReviewSettings>;
+  setReportModel(model: ReportModel): Promise<ReviewSettings>;
+  capital(): Promise<ReviewAccountCapitalList>;
+  addCapital(request: CapitalRequest): Promise<ReviewAccountCapitalList>;
+  removeCapital(entryId: string): Promise<void>;
+  /** Facts and chart bars for a report; nothing is sent to Claude yet. */
+  draftReport(
+    tradeId: string,
+    includeNote: boolean,
+  ): Promise<ReviewReportDraft>;
+  /** Sends the draft and its rendered images (base64 PNG, in the draft's order). */
+  sendReport(
+    draftId: string,
+    language: "en" | "ko",
+    images: { kind: ReportImage["kind"]; png_base64: string }[],
+  ): Promise<ReviewTradeReport>;
+  reports(tradeId: string): Promise<ReviewTradeReport[]>;
+}
+
+// Trade ids contain ":" ("flat:broker:<id>"); the routes take them as a path.
+function tradePath(tradeId: string): string {
+  return tradeId.split("/").map(encodeURIComponent).join("/");
 }
 
 export function createReviewApi(
   baseUrl: string,
   fetcher: typeof fetch = fetch,
-  timeoutMs = 60_000,
+  // A report can take Claude a few minutes (the API waits up to 180 s).
+  timeoutMs = 200_000,
 ): ReviewApi {
   const target: ApiTarget = { baseUrl, fetcher, timeoutMs };
   return {
@@ -108,14 +147,81 @@ export function createReviewApi(
       );
     },
     annotate(tradeId, annotation) {
-      // Trade ids contain ":" ("flat:broker:<id>"); the route takes them as a path.
-      const path = tradeId.split("/").map(encodeURIComponent).join("/");
       return callForKind<ReviewAnnotation>(
         target,
-        `/v1/review/trades/${path}/annotation`,
+        `/v1/review/trades/${tradePath(tradeId)}/annotation`,
         "review_annotation",
         { method: "PUT", body: annotation },
       );
+    },
+    settings() {
+      return callForKind<ReviewSettings>(
+        target,
+        "/v1/review/settings",
+        "review_settings",
+      );
+    },
+    setReportModel(model) {
+      return callForKind<ReviewSettings>(
+        target,
+        "/v1/review/settings",
+        "review_settings",
+        { method: "PUT", body: { report_model: model } },
+      );
+    },
+    capital() {
+      return callForKind<ReviewAccountCapitalList>(
+        target,
+        "/v1/review/account-capital",
+        "review_account_capital_list",
+      );
+    },
+    addCapital({ accountRef, currency, effectiveFrom, amount }) {
+      return callForKind<ReviewAccountCapitalList>(
+        target,
+        "/v1/review/account-capital",
+        "review_account_capital_list",
+        {
+          method: "POST",
+          body: {
+            account_ref: accountRef,
+            currency,
+            effective_from: effectiveFrom,
+            amount,
+          },
+        },
+      );
+    },
+    async removeCapital(entryId) {
+      await callApi(
+        target,
+        `/v1/review/account-capital/${encodeURIComponent(entryId)}`,
+        { method: "DELETE" },
+      );
+    },
+    draftReport(tradeId, includeNote) {
+      return callForKind<ReviewReportDraft>(
+        target,
+        `/v1/review/trades/${tradePath(tradeId)}/report-drafts`,
+        "review_report_draft",
+        { method: "POST", body: { include_note: includeNote } },
+      );
+    },
+    sendReport(draftId, language, images) {
+      return callForKind<ReviewTradeReport>(
+        target,
+        `/v1/review/report-drafts/${encodeURIComponent(draftId)}/report`,
+        "review_trade_report",
+        { method: "POST", body: { language, images } },
+      );
+    },
+    async reports(tradeId) {
+      const response = await callForKind<ReviewTradeReportList>(
+        target,
+        `/v1/review/trades/${tradePath(tradeId)}/reports`,
+        "review_trade_report_list",
+      );
+      return response.reports;
     },
   };
 }

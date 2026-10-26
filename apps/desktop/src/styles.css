@@ -3157,3 +3157,104 @@ body {
     overflow: auto;
   }
 }
+
+/* Trade review report (ADR 0042 step 2a) */
+.rv-settings {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.rv-settings h4,
+.rv-report h4 {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.rv-capital-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.rv-report {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--term-line);
+  padding-top: 8px;
+}
+
+.rv-draft {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.rv-facts-list {
+  max-height: 200px;
+  margin: 0;
+  padding-left: 18px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.rv-hindsight {
+  color: var(--term-muted);
+}
+
+.rv-sent-note {
+  margin: 0;
+  border-left: 2px solid var(--term-line);
+  padding-left: 8px;
+  font-size: 12px;
+}
+
+.rv-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.rv-images figure {
+  margin: 0;
+}
+
+.rv-images img {
+  width: 100%;
+  border: 1px solid var(--term-line);
+  border-radius: 4px;
+}
+
+.rv-images figcaption {
+  color: var(--term-muted);
+  font-size: 11px;
+}
+
+.rv-report-view {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+}
+
+.rv-report-view h5 {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.rv-report-view ul {
+  margin: 2px 0;
+  padding-left: 18px;
+}
+
+.rv-summary {
+  margin: 0;
+  font-weight: 600;
+}
