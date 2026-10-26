@@ -660,5 +660,29 @@
       ],
       "markers": []
     }
-  ]
+  ],
+  "principles": {
+    "version": 1,
+    "after_the_fact": true,
+    "results": [
+      {
+        "item_id": "p1",
+        "scope": "shared",
+        "kind": "stop_loss_pct",
+        "value": "7",
+        "text": "손절 -7%",
+        "status": "kept",
+        "detail": "the price never reached the stop 93.0000 while held (5m bars)"
+      },
+      {
+        "item_id": "p2",
+        "scope": "shared",
+        "kind": "text",
+        "value": null,
+        "text": "뉴스 없는 급등은 추격하지 않는다",
+        "status": "judgment",
+        "detail": "judged by Claude in the report"
+      }
+    ]
+  }
 }

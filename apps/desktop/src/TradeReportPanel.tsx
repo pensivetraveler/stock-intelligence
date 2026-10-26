@@ -134,6 +134,26 @@ export function TradeReportPanel({
               </li>
             ))}
           </ul>
+          {draft.principles ? (
+            <div aria-label={t("pc.title")}>
+              <p className="workspace-note">
+                {t("pc.title")} ·{" "}
+                {t("pc.version", { version: draft.principles.version })}
+                {draft.principles.after_the_fact
+                  ? ` · ${t("pc.afterTheFact")}`
+                  : ""}
+              </p>
+              <ul className="rv-facts-list">
+                {draft.principles.results.map((result) => (
+                  <li key={result.item_id}>
+                    {t(`pc.status.${result.status}`)}:{" "}
+                    {result.text || t(`pr.kind.${result.kind}`)}
+                    {result.value !== null ? ` (${result.value})` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {draft.uncertainty.length > 0 ? (
             <p className="workspace-note">{draft.uncertainty.join(" ")}</p>
           ) : null}

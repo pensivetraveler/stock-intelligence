@@ -2,6 +2,8 @@ import type {
   MarketBarsResponse,
   ReviewAccountCapitalList,
   ReviewConversation,
+  ReviewPrincipleCheck,
+  ReviewPrinciples,
   ReviewReportDraft,
   ReviewSettings,
   ReviewTradeListResponse,
@@ -20,6 +22,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { MarketApi } from "./market-api";
 import type { ReviewApi } from "./review-api";
+import { PrinciplesPanel } from "./PrinciplesPanel";
 import { ReportConversation } from "./ReportConversation";
 import { ReviewSettingsPanel } from "./ReviewSettingsPanel";
 import { TradeReportPanel } from "./TradeReportPanel";
@@ -49,6 +52,30 @@ const bars = fixture<MarketBarsResponse>("market-bars-response.json");
 const settings = fixture<ReviewSettings>("review-settings.json");
 const draft = fixture<ReviewReportDraft>("review-report-draft.json");
 const report = fixture<ReviewTradeReport>("review-trade-report.json");
+const noPrinciples: ReviewPrinciples = {
+  kind: "review_principles",
+  schema_version: "0.1",
+  current: null,
+  versions: [],
+};
+const principleCheck: ReviewPrincipleCheck = {
+  kind: "review_principle_check",
+  schema_version: "0.1",
+  trade_id: "flat:broker:brk-1",
+  version: 2,
+  after_the_fact: true,
+  results: [
+    {
+      item_id: "p1",
+      scope: "shared",
+      kind: "stop_loss_pct",
+      value: "7",
+      text: "손절 -7%",
+      status: "broken",
+      detail: "sold at -9.10%, past the stop of -7% (93.0000)",
+    },
+  ],
+};
 const emptyConversation: ReviewConversation = {
   kind: "review_conversation",
   schema_version: "0.1",
@@ -117,6 +144,29 @@ function fakeApi(overrides: Partial<ReviewApi> = {}): ReviewApi {
     conversation: vi.fn(async () => emptyConversation),
     askQuestion: vi.fn(async () => emptyConversation),
     sendChartImages: vi.fn(async () => emptyConversation),
+    principles: vi.fn(async () => noPrinciples),
+    draftPrinciples: vi.fn(async () => ({
+      kind: "review_principle_draft" as const,
+      schema_version: "0.1" as const,
+      items: [
+        {
+          scope: "shared",
+          kind: "stop_loss_pct",
+          value: "7",
+          text: "손절 -7%",
+        },
+        {
+          scope: "shared",
+          kind: "text",
+          value: null,
+          text: "급등주 추격 금지",
+        },
+      ],
+      notes: "",
+      model: "claude-sonnet-5-5",
+    })),
+    savePrinciples: vi.fn(async () => noPrinciples),
+    principleCheck: vi.fn(async () => principleCheck),
     ...overrides,
   };
 }
@@ -251,6 +301,12 @@ describe("TradeReportPanel", () => {
     expect(within(preview).getAllByText("(hindsight)").length).toBeGreaterThan(
       0,
     );
+    expect(within(preview).getByText("Kept: 손절 -7% (7)")).toBeInTheDocument();
+    expect(
+      within(preview).getByText(
+        "Claude judges: 뉴스 없는 급등은 추격하지 않는다",
+      ),
+    ).toBeInTheDocument();
     await waitFor(() => expect(draw).toHaveBeenCalledTimes(3));
     expect(api.sendReport).not.toHaveBeenCalled();
     fireEvent.click(within(preview).getByText("Send to Claude"));
@@ -405,5 +461,61 @@ describe("ReportConversation", () => {
     expect(screen.getByText(/Request chart_image:/)).toBeInTheDocument();
     expect(screen.getByText("매도").tagName).toBe("STRONG");
     expect(screen.getByText(/900 in, 5000 from cache/)).toBeInTheDocument();
+  });
+});
+
+describe("principles", () => {
+  it("turns text into items with Claude, edits them and saves a version", async () => {
+    const api = fakeApi();
+    render(<PrinciplesPanel api={api} strategies={[]} />);
+    expect(await screen.findByText(/No principles yet/)).toBeInTheDocument();
+    fireEvent.change(
+      screen.getByLabelText("Your principles, in your own words"),
+      {
+        target: { value: "손절은 7%, 급등주 추격 금지" },
+      },
+    );
+    fireEvent.click(screen.getByText("Turn into items with Claude"));
+    const proposed = await screen.findByLabelText("Items to save");
+    expect(api.draftPrinciples).toHaveBeenCalledWith(
+      "손절은 7%, 급등주 추격 금지",
+      "en",
+    );
+    expect(api.savePrinciples).not.toHaveBeenCalled();
+    fireEvent.change(within(proposed).getAllByLabelText("Value")[0]!, {
+      target: { value: "5" },
+    });
+    fireEvent.click(within(proposed).getByText("Save as a new version"));
+    await waitFor(() =>
+      expect(api.savePrinciples).toHaveBeenCalledWith(
+        [
+          {
+            scope: "shared",
+            kind: "stop_loss_pct",
+            value: "5",
+            text: "손절 -7%",
+          },
+          {
+            scope: "shared",
+            kind: "text",
+            value: null,
+            text: "급등주 추격 금지",
+          },
+        ],
+        "손절은 7%, 급등주 추격 금지",
+      ),
+    );
+  });
+
+  it("shows the trade's check with the version and after-the-fact mark", async () => {
+    const api = fakeApi();
+    show(api);
+    fireEvent.click((await screen.findAllByText("AAPL"))[1]!);
+    const check = await screen.findByLabelText("Principles check");
+    expect(
+      await within(check).findByText(/version 2 · written after this trade/),
+    ).toBeInTheDocument();
+    expect(within(check).getByText("Broken")).toBeInTheDocument();
+    expect(within(check).getByText(/past the stop of -7%/)).toBeInTheDocument();
   });
 });

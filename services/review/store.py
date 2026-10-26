@@ -87,6 +87,11 @@ CREATE TABLE IF NOT EXISTS conversation_events (
     event TEXT NOT NULL,
     PRIMARY KEY (conversation_id, position)
 );
+CREATE TABLE IF NOT EXISTS principle_versions (
+    version INTEGER PRIMARY KEY,
+    created_at_utc TEXT NOT NULL,
+    document TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS trade_annotations (
     trade_id TEXT NOT NULL,
     revision INTEGER NOT NULL,
@@ -485,3 +490,45 @@ class ReviewStore:
 
     def events(self, conversation_id: str) -> list[dict[str, Any]]:
         return self._items("conversation_events", "event", conversation_id)
+
+    # --- trading principles (step 3a) --------------------------------------------------
+    #
+    # Each save is a new, complete version; versions are never changed, so a trade can
+    # always be checked against the principles that were in effect when it opened.
+
+    def principle_versions(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT version, created_at_utc, document FROM principle_versions ORDER BY version"
+            ).fetchall()
+        return [
+            {"version": version, "created_at_utc": created, **json.loads(document)}
+            for version, created, document in rows
+        ]
+
+    def save_principles(self, items: list[dict[str, Any]], source_text: str) -> dict[str, Any]:
+        created = _utc(self._clock())
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                (last,) = self._db.execute(
+                    "SELECT COALESCE(MAX(version), 0) FROM principle_versions"
+                ).fetchone()
+                self._db.execute(
+                    "INSERT INTO principle_versions VALUES (?, ?, ?)",
+                    (
+                        last + 1,
+                        created,
+                        json.dumps({"items": items, "source_text": source_text}),
+                    ),
+                )
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
+        return {
+            "version": last + 1,
+            "created_at_utc": created,
+            "items": items,
+            "source_text": source_text,
+        }

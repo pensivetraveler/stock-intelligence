@@ -69,7 +69,10 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ReviewReportDraft
   | ReviewTradeReport
   | ReviewTradeReportList
-  | ReviewConversation;
+  | ReviewConversation
+  | ReviewPrinciples
+  | ReviewPrincipleDraft
+  | ReviewPrincipleCheck;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -4696,6 +4699,27 @@ export interface ReviewReportDraft {
           }[];
         },
       ];
+  principles: {
+    version: number;
+    after_the_fact: boolean;
+    results: ReviewPrincipleResult[];
+  } | null;
+}
+export interface ReviewPrincipleResult {
+  item_id: string;
+  scope: string;
+  kind:
+    | "stop_loss_pct"
+    | "take_profit_pct"
+    | "max_position_pct"
+    | "no_entry_first_minutes"
+    | "max_gap_chase_pct"
+    | "max_trades_per_day"
+    | "text";
+  value: NonNegativeDecimalString | null;
+  text: string;
+  status: "kept" | "broken" | "not_applicable" | "unknown" | "judgment";
+  detail: string;
 }
 export interface ReviewTradeReport {
   kind: "review_trade_report";
@@ -5776,4 +5800,53 @@ export interface ReviewConversation {
     cache_read_tokens: number;
     cache_write_tokens: number;
   };
+}
+export interface ReviewPrinciples {
+  kind: "review_principles";
+  schema_version: SchemaVersion;
+  current: {
+    version: number;
+    created_at_utc: UtcTimestamp;
+    items: ReviewPrincipleItem[];
+    source_text: string;
+  } | null;
+  versions: {
+    version: number;
+    created_at_utc: UtcTimestamp;
+    item_count: number;
+  }[];
+}
+export interface ReviewPrincipleItem {
+  item_id: string;
+  scope: string;
+  kind:
+    | "stop_loss_pct"
+    | "take_profit_pct"
+    | "max_position_pct"
+    | "no_entry_first_minutes"
+    | "max_gap_chase_pct"
+    | "max_trades_per_day"
+    | "text";
+  value: NonNegativeDecimalString | null;
+  text: string;
+}
+export interface ReviewPrincipleDraft {
+  kind: "review_principle_draft";
+  schema_version: SchemaVersion;
+  items: {
+    scope: string;
+    kind: string;
+    value: string | null;
+    text: string;
+  }[];
+  notes: string;
+  model: string;
+}
+export interface ReviewPrincipleCheck {
+  kind: "review_principle_check";
+  schema_version: SchemaVersion;
+  trade_id: string;
+  version: number | null;
+  after_the_fact: boolean;
+  results: ReviewPrincipleResult[];
 }

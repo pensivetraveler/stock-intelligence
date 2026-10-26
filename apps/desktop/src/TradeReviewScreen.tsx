@@ -15,6 +15,8 @@ import {
   type ReviewTrade,
   type TradeFilter,
 } from "./review-api";
+import { PrincipleCheck } from "./PrincipleCheck";
+import { PrinciplesPanel } from "./PrinciplesPanel";
 import { ReviewSettingsPanel } from "./ReviewSettingsPanel";
 import { TradeChart } from "./TradeChart";
 import { TradeReportPanel } from "./TradeReportPanel";
@@ -93,6 +95,9 @@ export function TradeReviewScreen({
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [principlesOpen, setPrinciplesOpen] = useState(false);
+  // Bumped when principles are saved, so the open trade's check reloads.
+  const [principlesSaved, setPrinciplesSaved] = useState(0);
 
   const message = useCallback(
     (error: unknown) =>
@@ -213,6 +218,14 @@ export function TradeReviewScreen({
           <button
             type="button"
             className="tb-button"
+            aria-pressed={principlesOpen}
+            onClick={() => setPrinciplesOpen(!principlesOpen)}
+          >
+            {t("rv.principles")}
+          </button>
+          <button
+            type="button"
+            className="tb-button"
             aria-pressed={settingsOpen}
             onClick={() => setSettingsOpen(!settingsOpen)}
           >
@@ -231,6 +244,13 @@ export function TradeReviewScreen({
           <p className="bt-problem" role="alert">
             {problem}
           </p>
+        ) : null}
+        {principlesOpen ? (
+          <PrinciplesPanel
+            api={api}
+            strategies={list?.strategies ?? []}
+            onSaved={() => setPrinciplesSaved(principlesSaved + 1)}
+          />
         ) : null}
         {settingsOpen ? <ReviewSettingsPanel api={api} today={today} /> : null}
         <div className="rv-filters">
@@ -453,6 +473,7 @@ export function TradeReviewScreen({
                 )
               }
               onProblem={(error) => setProblem(message(error))}
+              principlesSaved={principlesSaved}
             />
           ) : (
             <p className="workspace-note rv-pick">{t("rv.pick")}</p>
@@ -529,6 +550,7 @@ function TradeDetail({
   act,
   onSaved,
   onProblem,
+  principlesSaved,
 }: {
   trade: ReviewTrade;
   api: ReviewApi;
@@ -540,6 +562,7 @@ function TradeDetail({
   act: (work: () => Promise<unknown>) => void;
   onSaved: (annotation: ReviewTrade["annotation"]) => void;
   onProblem: (error: unknown) => void;
+  principlesSaved: number;
 }) {
   const { t } = useI18n();
   const zone = zoneOf(trade.instrument_id);
@@ -665,6 +688,13 @@ function TradeDetail({
       {trade.time_uncertain ? (
         <p className="workspace-note">{t("rv.timeUncertain")}</p>
       ) : null}
+
+      <PrincipleCheck
+        key={principlesSaved}
+        api={api}
+        tradeId={trade.trade_id}
+        strategies={strategies}
+      />
 
       <div className="rv-strategy">
         <label className="bt-inline">

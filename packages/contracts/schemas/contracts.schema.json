@@ -209,6 +209,15 @@
     },
     {
       "$ref": "#/$defs/ReviewConversation"
+    },
+    {
+      "$ref": "#/$defs/ReviewPrinciples"
+    },
+    {
+      "$ref": "#/$defs/ReviewPrincipleDraft"
+    },
+    {
+      "$ref": "#/$defs/ReviewPrincipleCheck"
     }
   ],
   "$defs": {
@@ -7996,7 +8005,8 @@
         "warnings",
         "dataset_revisions",
         "note",
-        "images"
+        "images",
+        "principles"
       ],
       "properties": {
         "kind": {
@@ -8237,6 +8247,33 @@
               }
             }
           }
+        },
+        "principles": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["version", "after_the_fact", "results"],
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "after_the_fact": {
+                  "type": "boolean"
+                },
+                "results": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/ReviewPrincipleResult"
+                  }
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -8609,6 +8646,267 @@
               "type": "integer",
               "minimum": 0
             }
+          }
+        }
+      }
+    },
+    "ReviewPrincipleItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "scope", "kind", "value", "text"],
+      "properties": {
+        "item_id": {
+          "type": "string",
+          "pattern": "^p[0-9]+$"
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "kind": {
+          "enum": [
+            "stop_loss_pct",
+            "take_profit_pct",
+            "max_position_pct",
+            "no_entry_first_minutes",
+            "max_gap_chase_pct",
+            "max_trades_per_day",
+            "text"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "ReviewPrincipleResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "item_id",
+        "scope",
+        "kind",
+        "value",
+        "text",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string",
+          "pattern": "^p[0-9]+$"
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "kind": {
+          "enum": [
+            "stop_loss_pct",
+            "take_profit_pct",
+            "max_position_pct",
+            "no_entry_first_minutes",
+            "max_gap_chase_pct",
+            "max_trades_per_day",
+            "text"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "status": {
+          "enum": ["kept", "broken", "not_applicable", "unknown", "judgment"]
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      }
+    },
+    "ReviewPrinciples": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "current", "versions"],
+      "properties": {
+        "kind": {
+          "const": "review_principles"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "current": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["version", "created_at_utc", "items", "source_text"],
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "created_at_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/ReviewPrincipleItem"
+                  }
+                },
+                "source_text": {
+                  "type": "string",
+                  "maxLength": 8000
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["version", "created_at_utc", "item_count"],
+            "properties": {
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "created_at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "item_count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "ReviewPrincipleDraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "items", "notes", "model"],
+      "properties": {
+        "kind": {
+          "const": "review_principle_draft"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scope", "kind", "value", "text"],
+            "properties": {
+              "scope": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "kind": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 500
+              }
+            }
+          }
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 100
+        }
+      }
+    },
+    "ReviewPrincipleCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "trade_id",
+        "version",
+        "after_the_fact",
+        "results"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_principle_check"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "trade_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "after_the_fact": {
+          "type": "boolean"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReviewPrincipleResult"
           }
         }
       }

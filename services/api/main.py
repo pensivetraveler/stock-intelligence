@@ -113,7 +113,7 @@ from services.market_data.toss_stream import Connect, RealtimeHub, default_conne
 from services.paper_trading.store import PaperOrderStore
 from services.public_sources.finra import FinraCredential
 from services.public_sources.sources import PublicSources
-from services.review.claude import ask_for_report
+from services.review.claude import ask_for_report, convert_principles
 from services.review.conversation import call_claude
 from services.review.store import ReviewStore
 
@@ -569,6 +569,7 @@ def create_app(
     agent_ask: Callable[..., dict[str, Any]] = ask_claude,
     review_ask: Callable[..., dict[str, Any]] = ask_for_report,
     review_converse: Callable[..., dict[str, Any]] = call_claude,
+    review_convert: Callable[..., dict[str, Any]] = convert_principles,
     indicator_store: CustomIndicatorStore | None = None,
     public_sources: PublicSources | None = None,
     clock: Callable[[], datetime] = _utc_now,
@@ -1370,6 +1371,7 @@ def create_app(
         now=clock,
         ask=review_ask,
         converse=review_converse,
+        convert=review_convert,
         resolve_symbol=resolve_us_symbol,
     )
     register_agent_routes(
