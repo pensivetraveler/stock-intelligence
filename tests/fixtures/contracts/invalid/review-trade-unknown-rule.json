@@ -1,0 +1,148 @@
+{
+  "kind": "review_trade_list",
+  "schema_version": "0.1",
+  "ledger": "broker",
+  "total": 2,
+  "offset": 0,
+  "undated_execution_count": 0,
+  "strategies": [
+    {
+      "strategy_id": "strategy-x",
+      "name": "Breakout",
+      "rule": "flat"
+    }
+  ],
+  "tags": ["돌파"],
+  "trades": [
+    {
+      "trade_id": "flat:broker:brk-1",
+      "rule": "weekly",
+      "ledger": "broker",
+      "account_ref": "kiwoom-a",
+      "instrument_id": "us:aapl:xnas:2026",
+      "strategy_id": "strategy-x",
+      "status": "closed",
+      "opened_on": "2026-03-02",
+      "opened_at_utc": "2026-03-02T15:00:00Z",
+      "closed_on": "2026-03-03",
+      "closed_at_utc": "2026-03-03T16:00:00Z",
+      "holding_days": 1,
+      "entry_quantity": "20",
+      "average_entry_price": "105",
+      "exit_quantity": "20",
+      "average_exit_price": "127.5",
+      "matched_entry_cost": "2100",
+      "open_quantity": "0",
+      "unmatched_quantity": "0",
+      "gross_pnl": "450",
+      "fees": "4",
+      "net_pnl": "446",
+      "fees_unreported_count": 0,
+      "time_uncertain": false,
+      "executions": [
+        {
+          "ledger": "broker",
+          "execution_id": "brk-1",
+          "side": "buy",
+          "role": "open",
+          "quantity": "10",
+          "fill_quantity": "10",
+          "price": "100",
+          "executed_at_utc": "2026-03-02T15:00:00Z",
+          "session_date": "2026-03-02"
+        },
+        {
+          "ledger": "broker",
+          "execution_id": "brk-2",
+          "side": "buy",
+          "role": "open",
+          "quantity": "10",
+          "fill_quantity": "10",
+          "price": "110",
+          "executed_at_utc": "2026-03-02T16:00:00Z",
+          "session_date": "2026-03-02"
+        },
+        {
+          "ledger": "broker",
+          "execution_id": "brk-3",
+          "side": "sell",
+          "role": "close",
+          "quantity": "5",
+          "fill_quantity": "5",
+          "price": "120",
+          "executed_at_utc": "2026-03-03T15:00:00Z",
+          "session_date": "2026-03-03"
+        },
+        {
+          "ledger": "broker",
+          "execution_id": "brk-4",
+          "side": "sell",
+          "role": "close",
+          "quantity": "15",
+          "fill_quantity": "15",
+          "price": "130",
+          "executed_at_utc": "2026-03-03T16:00:00Z",
+          "session_date": "2026-03-03"
+        }
+      ],
+      "annotation": {
+        "note": "분할 매도",
+        "tags": ["돌파"],
+        "reviewed": true,
+        "recorded_at_utc": "2026-10-26T12:00:00Z",
+        "revision": 1
+      }
+    },
+    {
+      "trade_id": "flat:broker:brk-5",
+      "rule": "flat",
+      "ledger": "broker",
+      "account_ref": "kiwoom-a",
+      "instrument_id": "us:aapl:xnas:2026",
+      "strategy_id": "strategy-x",
+      "status": "closed",
+      "opened_on": "2026-03-04",
+      "opened_at_utc": "2026-03-04T15:00:00Z",
+      "closed_on": "2026-03-04",
+      "closed_at_utc": "2026-03-04T16:00:00Z",
+      "holding_days": 0,
+      "entry_quantity": "4",
+      "average_entry_price": "90",
+      "exit_quantity": "4",
+      "average_exit_price": "95",
+      "matched_entry_cost": "360",
+      "open_quantity": "0",
+      "unmatched_quantity": "0",
+      "gross_pnl": "20",
+      "fees": "2",
+      "net_pnl": "18",
+      "fees_unreported_count": 0,
+      "time_uncertain": false,
+      "executions": [
+        {
+          "ledger": "broker",
+          "execution_id": "brk-5",
+          "side": "buy",
+          "role": "open",
+          "quantity": "4",
+          "fill_quantity": "4",
+          "price": "90",
+          "executed_at_utc": "2026-03-04T15:00:00Z",
+          "session_date": "2026-03-04"
+        },
+        {
+          "ledger": "broker",
+          "execution_id": "brk-6",
+          "side": "sell",
+          "role": "close",
+          "quantity": "4",
+          "fill_quantity": "4",
+          "price": "95",
+          "executed_at_utc": "2026-03-04T16:00:00Z",
+          "session_date": "2026-03-04"
+        }
+      ],
+      "annotation": null
+    }
+  ]
+}

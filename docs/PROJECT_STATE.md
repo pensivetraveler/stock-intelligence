@@ -1954,3 +1954,31 @@
   - `./scripts/verify.sh` exit 0: pytest 793개, Vitest 계약 89개·데스크톱 287개, lint·typecheck·빌드. 화면 테스트는 범례의 시·고·저·종과 미확정 표시, 버튼 이름 "Pre-market"으로 고쳤다.
   - 브라우저(웹 미리보기 → 패키징한 앱의 API, Alpaca SIP): AAPL 일봉. 60세션 중 59일 표시, 2026-10-23 프리마켓 시 345.68 고 349.71 저 344.50 종 349.03(API 직접 요청 값과 같음), "PM 고가 349.71" 가격선. 캔버스에서 반투명 주황 캔들 픽셀(상승 약 4,000, 하락 약 1,450)을 확인했다. 스크린숏 해상도에서는 일봉에 가려 잘 보이지 않는 날도 있다.
 - **남은 위험:** 프리마켓 범위가 일봉 몸통 안에 들면 일봉에 가려 보이지 않는다.
+
+## 매매 복기 1단계: 거래 묶음·복기 화면 — 2026-10-26
+
+- **사용자 결정:** Claude 보조 세 기능 중 매매 복기를 먼저, 4단계로 나눠 만든다([ADR 0042](decisions/0042-claude-assistants.md)). 이번은 1단계(Claude 호출 없음).
+- **변경:**
+  - **거래 묶음(`services/review/trades.py`):**
+    - 원장(수동·가져온·증권사)은 섞지 않는다. 원장·계좌·종목·전략마다 한 흐름으로 보고, long-only FIFO로 맞춘다(복기 Agent와 같은 규칙). 매수 없는 매도는 공매도가 아니라 "짝 없음"(데이터 시작 전 보유분 가능성)으로 두고 손익에 넣지 않는다.
+    - 전략마다 묶음 규칙을 고른다: 보유 0→0(`flat`, 기본값), 하루 단위(`day`), 진입 1회마다(`fifo`), 수동 지정(`manual`). 전략이 없는 체결은 `flat`.
+    - 하루 단위에서 손익은 매도한 날의 거래에 붙는다. 진입 1회마다에서 여러 매수를 닫은 매도는 나눠 붙고 수수료도 수량 비율로 나눈다.
+    - 날짜만 아는 체결(키움 국내 정산 행)은 그날의 시각 있는 체결 뒤, 매수 먼저로 두고 `time_uncertain`으로 표시한다. 날짜도 없는 수동 기록은 빼고 건수를 보인다.
+    - 거래 ID는 `<규칙>:<첫 체결 ref>`(수동 묶음은 `manual:group-<id>`). 규칙이나 전략을 바꾸면 ID가 바뀌어 그 전 메모와 이어지지 않는다.
+  - **저장(`services/review/store.py`, `review.sqlite3`):** 체결별 전략, 전략별 규칙, 수동 묶음, 거래 메모. 메모(내용·태그·복기 완료)는 수정 없이 리비전으로 쌓고 저장 시각을 남긴다(체결 후 작성 표시). 매매일지 원장은 읽기만 한다.
+  - **API(`services/api/review_routes.py`):**
+    - `GET /v1/review/trades`(원장·종목·전략·상태·복기·태그 필터, 최신순 300건씩)
+    - `PUT /v1/review/assignments`, `PUT /v1/review/strategy-rules/{id}`, `POST /v1/review/groups`, `DELETE /v1/review/groups/{id}`, `PUT /v1/review/trades/{trade_id}/annotation`
+    - 체결 10만여 건을 읽는 데 수 초가 걸려, 체결은 원장에 기록이 늘 때만(`JournalStore.execution_revision`), 거래는 묶음이 바뀔 때만 다시 만든다.
+  - **계약:** `review_trade_list`, `review_annotation`, `review_assignment_result`, `review_strategy_rule`, `review_group`.
+  - **화면(`TradeReviewScreen.tsx`):** 오른쪽 레일의 "매매 복기" 버튼으로 연다. 필터, 거래 목록(여러 건 선택해 전략 지정·묶기), 선택한 거래의 차트(5분봉 또는 일봉, 진입·청산 표시, 청산 이후 봉은 사후 정보라고 표시), 손익·체결·전략·규칙·메모·태그·복기 완료.
+- **검증:**
+  - `./scripts/verify.sh` exit 0: pytest 812, 계약 91, 화면 291 통과, ruff·mypy·eslint·tsc·prettier·빌드 통과.
+  - 새 테스트: 묶음 규칙 10개(`tests/review/test_trades.py`), API 8개(`tests/review/test_review_api.py`), 화면 10개(`trade-review.test.ts`, `TradeReviewScreen.test.tsx`).
+  - 실데이터 사본(증권사 체결 108,925건)으로 브라우저 확인: 거래 35,794건 목록, FUFU 거래의 5분봉 차트·진입/청산 표시, 전략 지정 → FIFO 규칙으로 53주 매도가 "53 중 52"와 1주로 나뉨, 메모·태그 저장 뒤 태그 필터 1건.
+  - 체결 읽기와 묶음: 처음 약 7초(원장 읽기·파싱), 이후 묶음 변경 때 약 1초.
+  - 실데이터에서 고친 것: 5분봉 요청이 버킷 경계·1,440분 한도에 걸려 하루 단위 요청으로 나눴다. 야간(데이마켓) 체결은 SIP 봉이 없어 표시하지 못하고 건수를 알린다.
+- **남은 위험:**
+  - 키움 미국 정산 행 수수료(`broker_fee_lines`)는 거래 손익에 넣지 않았다(복기 Agent와 같음).
+  - 하루 단위 규칙에서 전날 산 주식을 판 날의 거래는 진입 수량 0, 손익만 있는 거래로 보인다.
+  - 같은 실제 거래가 두 원장(예: 증권사 API와 가져온 명세서)에 있으면 원장마다 따로 보인다(원장 필터로 하나씩 본다).

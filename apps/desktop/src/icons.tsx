@@ -130,6 +130,12 @@ export const JournalIcon = () => (
     <path d="M3.5 1.5h8l2 2v11h-10zM6 6h5M6 9h5M6 12h3" />
   </Icon>
 );
+// A list of trades with a magnifier: looking back over trades.
+export const TradeReviewIcon = () => (
+  <Icon>
+    <path d="M1.5 3.5h7M1.5 7h5M1.5 10.5h4M11 12.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM13.2 11.7l2 2" />
+  </Icon>
+);
 export const BacktestIcon = () => (
   <Icon>
     <path d="M1.5 14.5h13M2.5 12l3-4 3 2 5-6.5M10.5 3.5h3v3" />

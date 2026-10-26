@@ -272,6 +272,21 @@ class JournalStore:
             for row in rows
         ]
 
+    def execution_revision(self) -> tuple[int, ...]:
+        """Row count and last rowid of each execution table: changes whenever one is added.
+
+        Execution records are never changed or removed, so this is enough to tell whether a
+        cache built from them is still current.
+        """
+        with self._connect() as connection:
+            return tuple(
+                value
+                for table in ("manual_executions", "imported_executions", "broker_order_executions")
+                for value in connection.execute(
+                    f"SELECT COUNT(*), COALESCE(MAX(rowid), 0) FROM {table}"
+                ).fetchone()
+            )
+
     def broker_executions(self, instrument_id: str | None = None) -> list[dict[str, Any]]:
         return self._documents(
             "broker_order_executions", "executed_at_utc, execution_id", instrument_id
