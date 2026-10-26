@@ -28,13 +28,22 @@ from services.backtest.data import GetBars
 from services.journal.store import JournalStore
 from services.market_data.provider import MarketDataError
 from services.review.claude import DEFAULT_MODEL, MODELS, ReportError, ask_for_report
+from services.review.conversation import (
+    Conversation,
+    ConversationError,
+    call_claude,
+    first_content,
+    system_prompt,
+)
 from services.review.report import Capital, report_evidence
 from services.review.store import (
     CapitalNotFoundError,
+    ConversationNotFoundError,
     DraftNotFoundError,
     GroupNotFoundError,
     ReviewStore,
 )
+from services.review.tools import ToolContext
 from services.review.trades import (
     Fill,
     Rule,
@@ -121,6 +130,23 @@ class ReportRequest(BaseModel):
     images: list[ImageUpload] = Field(default_factory=list, max_length=3)
 
 
+class QuestionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(min_length=1, max_length=4000)
+    language: Literal["en", "ko"] = "ko"
+
+
+class DrawnImage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tool_use_id: str = Field(min_length=1, max_length=200)
+    png_base64: str = Field(min_length=8, max_length=MAX_IMAGE_BYTES * 2)
+
+
+class DrawnImagesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    images: list[DrawnImage] = Field(min_length=1, max_length=6)
+
+
 class _TradeIndex:
     """Fills and trades kept between requests: reading ~100k broker orders takes seconds.
 
@@ -188,6 +214,8 @@ def register_review_routes(
     api_key: Callable[[], str | None] = lambda: None,
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ask: Callable[..., dict[str, Any]] = ask_for_report,
+    converse: Callable[..., dict[str, Any]] = call_claude,
+    resolve_symbol: Callable[[str], str | None] = lambda _symbol: None,
 ) -> None:
     index = _TradeIndex()
 
@@ -578,6 +606,10 @@ def register_review_routes(
         }
         validate_document(report)
         review.save_report(report)
+        review.save_report_images(
+            report["report_id"],
+            [(kind, base64.b64decode(data)) for kind, data in sent],
+        )
         return respond(report, 201)
 
     @application.get("/v1/review/trades/{trade_id:path}/reports", response_model=None)
@@ -592,4 +624,152 @@ def register_review_routes(
                 "trade_id": trade_id,
                 "reports": review.reports(trade_id),
             }
+        )
+
+    # --- follow-up questions (step 2b) -------------------------------------------------
+
+    def conversation_document(
+        review: ReviewStore, report_id: str, conversation: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        if conversation is None:
+            return {
+                "kind": "review_conversation",
+                "schema_version": "0.1",
+                "conversation_id": None,
+                "report_id": report_id,
+                "model": None,
+                "status": "idle",
+                "error": None,
+                "events": [],
+                "pending_images": [],
+                "usage": {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cache_read_tokens": 0,
+                    "cache_write_tokens": 0,
+                },
+            }
+        state = conversation["state"]
+        pending = state.get("pending") or {}
+        return {
+            "kind": "review_conversation",
+            "schema_version": "0.1",
+            "conversation_id": conversation["conversation_id"],
+            "report_id": report_id,
+            "model": conversation["model"],
+            "status": state.get("status", "idle"),
+            "error": state.get("error"),
+            "events": review.events(conversation["conversation_id"]),
+            "pending_images": pending.get("images", []),
+            "usage": {
+                "input_tokens": state.get("input_tokens", 0),
+                "output_tokens": state.get("output_tokens", 0),
+                "cache_read_tokens": state.get("cache_read_tokens", 0),
+                "cache_write_tokens": state.get("cache_write_tokens", 0),
+            },
+        }
+
+    def runner(
+        request: Request, review: ReviewStore, conversation: dict[str, Any]
+    ) -> Conversation | JSONResponse:
+        ledgers = journal()
+        key = api_key()
+        if ledgers is None or get_bars is None:
+            return unavailable(request)
+        if key is None:
+            return error_response(
+                request,
+                409,
+                "agent_key_missing",
+                "Register an enabled Claude (Anthropic) API key on the Keys screen",
+            )
+        report = review.report(conversation["report_id"])
+        if report is None:
+            return error_response(request, 404, "report_not_found", "No such report")
+        _trades, by_id, _undated = index.trades(ledgers, review)
+        trade = by_id.get(report["trade_id"])
+        if trade is None:
+            return error_response(
+                request,
+                409,
+                "trade_regrouped",
+                "The report's trade no longer exists as grouped then (its rule or strategy "
+                "changed); start a new report",
+            )
+        tools = ToolContext(get_bars(), trade, now(), resolve_symbol, lambda: strategy_list())
+
+        def call(
+            model: str, system: str, tool_list: list[dict[str, Any]], messages: list[Any]
+        ) -> dict[str, Any]:
+            return converse(model, system, tool_list, messages, key)
+
+        return Conversation(review, conversation, tools, call, now)
+
+    @application.get("/v1/review/reports/{report_id}/conversation", response_model=None)
+    def get_conversation(request: Request, report_id: str) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        if review.report(report_id) is None:
+            return error_response(request, 404, "report_not_found", "No such report")
+        return respond(conversation_document(review, report_id, review.conversation_for(report_id)))
+
+    @application.post("/v1/review/reports/{report_id}/conversation/messages", response_model=None)
+    def ask_question(request: Request, report_id: str, body: QuestionRequest) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        report = review.report(report_id)
+        if report is None:
+            return error_response(request, 404, "report_not_found", "No such report")
+        conversation = review.conversation_for(report_id)
+        opening = None
+        if conversation is None:
+            # The same evidence the report was written from, then the report itself.
+            draft = review.draft(report["draft_id"])
+            opening = first_content(draft, report, review.report_images(report_id))
+            conversation = review.start_conversation(
+                report_id,
+                report["model"] if report["model"] in MODELS else DEFAULT_MODEL,
+                system_prompt(body.language),
+                {"status": "idle"},
+            )
+        loop = runner(request, review, conversation)
+        if isinstance(loop, JSONResponse):
+            return loop
+        try:
+            loop.ask(body.question, opening)
+        except ConversationError as exc:
+            return error_response(request, 409, "conversation_busy", str(exc))
+        return respond(conversation_document(review, report_id, review.conversation(loop.id)))
+
+    @application.post("/v1/review/conversations/{conversation_id}/images", response_model=None)
+    def add_images(request: Request, conversation_id: str, body: DrawnImagesRequest) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        try:
+            conversation = review.conversation(conversation_id)
+        except ConversationNotFoundError:
+            return error_response(request, 404, "conversation_not_found", "No such conversation")
+        drawn: dict[str, str] = {}
+        for image in body.images:
+            try:
+                raw = base64.b64decode(image.png_base64, validate=True)
+            except (binascii.Error, ValueError):
+                return error_response(request, 422, "invalid_report_images", "Not base64")
+            if not raw.startswith(PNG_MAGIC) or len(raw) > MAX_IMAGE_BYTES:
+                return error_response(
+                    request, 422, "invalid_report_images", "Each image must be a PNG"
+                )
+            drawn[image.tool_use_id] = image.png_base64
+        loop = runner(request, review, conversation)
+        if isinstance(loop, JSONResponse):
+            return loop
+        try:
+            loop.add_images(drawn)
+        except ConversationError as exc:
+            return error_response(request, 409, "conversation_busy", str(exc))
+        return respond(
+            conversation_document(review, conversation["report_id"], review.conversation(loop.id))
         )

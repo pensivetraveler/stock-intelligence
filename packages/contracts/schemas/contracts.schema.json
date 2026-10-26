@@ -206,6 +206,9 @@
     },
     {
       "$ref": "#/$defs/ReviewTradeReportList"
+    },
+    {
+      "$ref": "#/$defs/ReviewConversation"
     }
   ],
   "$defs": {
@@ -8402,6 +8405,210 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/ReviewTradeReport"
+          }
+        }
+      }
+    },
+    "ReviewConversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "conversation_id",
+        "report_id",
+        "model",
+        "status",
+        "error",
+        "events",
+        "pending_images",
+        "usage"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_conversation"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "report_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": ["idle", "running", "needs_images", "failed"]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "at_utc"],
+            "properties": {
+              "type": {
+                "enum": ["question", "answer", "request", "error"]
+              },
+              "at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 40000
+              },
+              "model": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tool": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "input": {
+                "type": "object"
+              },
+              "summary": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "error": {
+                "type": "boolean"
+              },
+              "hindsight": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "pending_images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "timeframe",
+              "title",
+              "cutoff_utc",
+              "bars",
+              "markers",
+              "tool_use_id"
+            ],
+            "properties": {
+              "kind": {
+                "const": "tool"
+              },
+              "timeframe": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "cutoff_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "bars": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/PriceBar"
+                }
+              },
+              "markers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["time_utc", "side", "quantity", "price"],
+                  "properties": {
+                    "time_utc": {
+                      "$ref": "#/$defs/UtcTimestamp"
+                    },
+                    "side": {
+                      "$ref": "#/$defs/Side"
+                    },
+                    "quantity": {
+                      "$ref": "#/$defs/NonNegativeDecimalString"
+                    },
+                    "price": {
+                      "$ref": "#/$defs/NonNegativeDecimalString"
+                    }
+                  }
+                }
+              },
+              "tool_use_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          }
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "input_tokens",
+            "output_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens"
+          ],
+          "properties": {
+            "input_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "output_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_read_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_write_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         }
       }

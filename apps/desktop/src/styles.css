@@ -3258,3 +3258,59 @@ body {
   margin: 0;
   font-weight: 600;
 }
+
+/* Follow-up questions on a report (ADR 0042 step 2b) */
+.rv-conversation {
+  display: grid;
+  gap: 6px;
+  border-top: 1px dashed var(--term-line);
+  padding-top: 6px;
+}
+
+.rv-bubble {
+  margin: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+}
+
+.rv-asked {
+  justify-self: end;
+  max-width: 85%;
+  background: var(--term-pressed);
+}
+
+.rv-answered {
+  border: 1px solid var(--term-line);
+  white-space: normal;
+}
+
+.rv-answered p {
+  margin: 0 0 4px;
+}
+
+.rv-answered ul {
+  margin: 0 0 4px;
+  padding-left: 18px;
+}
+
+.rv-request {
+  margin: 0;
+  color: var(--term-muted);
+  font-size: 11px;
+}
+
+.rv-request-error {
+  color: #e5566b;
+}
+
+.rv-question {
+  display: grid;
+  gap: 4px;
+}
+
+.rv-screen .rv-question textarea {
+  height: 60px;
+  padding: 6px;
+  resize: vertical;
+}

@@ -60,6 +60,33 @@ CREATE TABLE IF NOT EXISTS trade_reports (
     document TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS trade_reports_by_trade ON trade_reports (trade_id, created_at_utc);
+CREATE TABLE IF NOT EXISTS report_images (
+    report_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    png BLOB NOT NULL,
+    PRIMARY KEY (report_id, position)
+);
+CREATE TABLE IF NOT EXISTS conversations (
+    conversation_id TEXT PRIMARY KEY,
+    report_id TEXT NOT NULL UNIQUE,
+    created_at_utc TEXT NOT NULL,
+    model TEXT NOT NULL,
+    system TEXT NOT NULL,
+    state TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS conversation_messages (
+    conversation_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    message TEXT NOT NULL,
+    PRIMARY KEY (conversation_id, position)
+);
+CREATE TABLE IF NOT EXISTS conversation_events (
+    conversation_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    event TEXT NOT NULL,
+    PRIMARY KEY (conversation_id, position)
+);
 CREATE TABLE IF NOT EXISTS trade_annotations (
     trade_id TEXT NOT NULL,
     revision INTEGER NOT NULL,
@@ -81,6 +108,10 @@ class DraftNotFoundError(LookupError):
 
 
 class CapitalNotFoundError(LookupError):
+    pass
+
+
+class ConversationNotFoundError(LookupError):
     pass
 
 
@@ -329,3 +360,128 @@ class ReviewStore:
                 (trade_id,),
             ).fetchall()
         return [json.loads(row[0]) for row in rows]
+
+    def save_report_images(self, report_id: str, images: list[tuple[str, bytes]]) -> None:
+        """The PNGs sent with a report: a follow-up conversation re-sends the same bytes."""
+        with self._lock:
+            self._db.executemany(
+                "INSERT INTO report_images VALUES (?, ?, ?, ?)",
+                [(report_id, i, kind, png) for i, (kind, png) in enumerate(images)],
+            )
+
+    def report_images(self, report_id: str) -> list[tuple[str, bytes]]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT kind, png FROM report_images WHERE report_id = ? ORDER BY position",
+                (report_id,),
+            ).fetchall()
+        return [(str(kind), bytes(png)) for kind, png in rows]
+
+    def report(self, report_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT document FROM trade_reports WHERE report_id = ?", (report_id,)
+            ).fetchone()
+        return None if row is None else dict(json.loads(row[0]))
+
+    # --- conversations (step 2b) -------------------------------------------------------
+    #
+    # Messages are only ever appended: the conversation is replayed to Claude as stored,
+    # so earlier turns (and their thinking blocks) stay exactly as they were. The `state`
+    # row (status, pending tool calls, token totals) is the one thing that is updated.
+
+    def conversation_for(self, report_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT conversation_id, report_id, created_at_utc, model, system, state "
+                "FROM conversations WHERE report_id = ?",
+                (report_id,),
+            ).fetchone()
+        return None if row is None else self._conversation_row(row)
+
+    def conversation(self, conversation_id: str) -> dict[str, Any]:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT conversation_id, report_id, created_at_utc, model, system, state "
+                "FROM conversations WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()
+        if row is None:
+            raise ConversationNotFoundError(conversation_id)
+        return self._conversation_row(row)
+
+    @staticmethod
+    def _conversation_row(row: tuple[Any, ...]) -> dict[str, Any]:
+        conversation_id, report_id, created, model, system, state = row
+        return {
+            "conversation_id": conversation_id,
+            "report_id": report_id,
+            "created_at_utc": created,
+            "model": model,
+            "system": system,
+            "state": json.loads(state),
+        }
+
+    def start_conversation(
+        self, report_id: str, model: str, system: str, state: dict[str, Any]
+    ) -> dict[str, Any]:
+        conversation_id = f"conversation-{uuid.uuid4().hex[:12]}"
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO conversations VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    conversation_id,
+                    report_id,
+                    _utc(self._clock()),
+                    model,
+                    system,
+                    json.dumps(state),
+                ),
+            )
+        return self.conversation(conversation_id)
+
+    def set_conversation_state(self, conversation_id: str, state: dict[str, Any]) -> None:
+        with self._lock:
+            self._db.execute(
+                "UPDATE conversations SET state = ? WHERE conversation_id = ?",
+                (json.dumps(state), conversation_id),
+            )
+
+    def _append(self, table: str, column: str, conversation_id: str, item: dict[str, Any]) -> None:
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                (count,) = self._db.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE conversation_id = ?",  # noqa: S608
+                    (conversation_id,),
+                ).fetchone()
+                self._db.execute(
+                    f"INSERT INTO {table} (conversation_id, position, {column}) "  # noqa: S608
+                    "VALUES (?, ?, ?)",
+                    (conversation_id, count, json.dumps(item)),
+                )
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
+
+    def append_message(self, conversation_id: str, message: dict[str, Any]) -> None:
+        self._append("conversation_messages", "message", conversation_id, message)
+
+    def append_event(self, conversation_id: str, event: dict[str, Any]) -> None:
+        self._append("conversation_events", "event", conversation_id, event)
+
+    def _items(self, table: str, column: str, conversation_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._db.execute(
+                f"SELECT {column} FROM {table} WHERE conversation_id = ? "  # noqa: S608
+                "ORDER BY position",
+                (conversation_id,),
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def messages(self, conversation_id: str) -> list[dict[str, Any]]:
+        return self._items("conversation_messages", "message", conversation_id)
+
+    def events(self, conversation_id: str) -> list[dict[str, Any]]:
+        return self._items("conversation_events", "event", conversation_id)

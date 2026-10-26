@@ -1,6 +1,7 @@
 import type {
   MarketBarsResponse,
   ReviewAccountCapitalList,
+  ReviewConversation,
   ReviewReportDraft,
   ReviewSettings,
   ReviewTradeListResponse,
@@ -19,6 +20,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { MarketApi } from "./market-api";
 import type { ReviewApi } from "./review-api";
+import { ReportConversation } from "./ReportConversation";
 import { ReviewSettingsPanel } from "./ReviewSettingsPanel";
 import { TradeReportPanel } from "./TradeReportPanel";
 import { TradeReviewScreen } from "./TradeReviewScreen";
@@ -47,6 +49,23 @@ const bars = fixture<MarketBarsResponse>("market-bars-response.json");
 const settings = fixture<ReviewSettings>("review-settings.json");
 const draft = fixture<ReviewReportDraft>("review-report-draft.json");
 const report = fixture<ReviewTradeReport>("review-trade-report.json");
+const emptyConversation: ReviewConversation = {
+  kind: "review_conversation",
+  schema_version: "0.1",
+  conversation_id: null,
+  report_id: "report-0123456789ab",
+  model: null,
+  status: "idle",
+  error: null,
+  events: [],
+  pending_images: [],
+  usage: {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_tokens: 0,
+    cache_write_tokens: 0,
+  },
+};
 const capital: ReviewAccountCapitalList = {
   kind: "review_account_capital_list",
   schema_version: "0.1",
@@ -95,6 +114,9 @@ function fakeApi(overrides: Partial<ReviewApi> = {}): ReviewApi {
     draftReport: vi.fn(async () => draft),
     sendReport: vi.fn(async () => report),
     reports: vi.fn(async () => []),
+    conversation: vi.fn(async () => emptyConversation),
+    askQuestion: vi.fn(async () => emptyConversation),
+    sendChartImages: vi.fn(async () => emptyConversation),
     ...overrides,
   };
 }
@@ -301,5 +323,87 @@ describe("ReviewSettingsPanel", () => {
         amount: "20000",
       }),
     );
+  });
+});
+
+describe("ReportConversation", () => {
+  it("asks, draws the requested chart, and shows the answer", async () => {
+    const image = draft.images[0]!;
+    const asked: ReviewConversation = {
+      ...emptyConversation,
+      conversation_id: "conversation-1",
+      model: "claude-sonnet-5-5",
+      status: "needs_images",
+      events: [
+        {
+          type: "question",
+          text: "청산 구간 차트?",
+          at_utc: "2026-10-27T00:00:00Z",
+        },
+        {
+          type: "request",
+          tool: "chart_image",
+          input: {},
+          summary: "chart us:aapl:xnas:2026 5m",
+          error: false,
+          hindsight: false,
+          at_utc: "2026-10-27T00:00:01Z",
+        },
+      ],
+      pending_images: [{ ...image, kind: "tool", tool_use_id: "c1" }],
+    };
+    const answered: ReviewConversation = {
+      ...asked,
+      status: "idle",
+      pending_images: [],
+      events: [
+        ...asked.events,
+        {
+          type: "answer",
+          text: "청산은 박스 하단 근처였습니다.\n- **매도** 3분 뒤",
+          model: "claude-sonnet-5-5",
+          at_utc: "2026-10-27T00:00:05Z",
+        },
+      ],
+      usage: {
+        input_tokens: 900,
+        output_tokens: 80,
+        cache_read_tokens: 5000,
+        cache_write_tokens: 0,
+      },
+    };
+    const api = fakeApi({
+      askQuestion: vi.fn(async () => asked),
+      sendChartImages: vi.fn(async () => answered),
+    });
+    const draw = vi.fn(async () => "iVBORw0KGgo=");
+    render(
+      <ReportConversation
+        api={api}
+        reportId="report-0123456789ab"
+        render={draw as never}
+      />,
+    );
+    fireEvent.change(await screen.findByLabelText("Your question"), {
+      target: { value: "청산 구간 차트?" },
+    });
+    fireEvent.click(screen.getByText("Ask Claude"));
+    await waitFor(() =>
+      expect(api.sendChartImages).toHaveBeenCalledWith("conversation-1", [
+        { tool_use_id: "c1", png_base64: "iVBORw0KGgo=" },
+      ]),
+    );
+    expect(api.askQuestion).toHaveBeenCalledWith(
+      "report-0123456789ab",
+      "청산 구간 차트?",
+      "en",
+    );
+    expect(draw).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByText("청산은 박스 하단 근처였습니다."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Request chart_image:/)).toBeInTheDocument();
+    expect(screen.getByText("매도").tagName).toBe("STRONG");
+    expect(screen.getByText(/900 in, 5000 from cache/)).toBeInTheDocument();
   });
 });

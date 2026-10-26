@@ -1308,6 +1308,18 @@ const en = {
   "rs.remove": "Remove the entry from {date}",
   "rs.noAccounts":
     "No broker or imported fills yet, so there is no account to enter capital for.",
+  "rc.title": "Follow-up questions",
+  "rc.question": "Your question",
+  "rc.placeholder":
+    "e.g. How was SPY moving around my entry? Show the 15-minute chart of the exit.",
+  "rc.ask": "Ask Claude",
+  "rc.note":
+    "Claude may request more data (up to 6 requests); each is listed. Data stops at the exit unless later bars are asked for, which are marked hindsight.",
+  "rc.drawing": "Drawing the requested chart…",
+  "rc.drawPending": "Draw the requested chart and continue",
+  "rc.request": "Request {tool}:",
+  "rc.usage":
+    "{model} · tokens so far: {input} in, {read} from cache, {write} to cache, {output} out",
   "common.requestFailed": "Request failed",
 } as const;
 
@@ -2588,6 +2600,18 @@ const ko: Record<MessageKey, string> = {
   "rs.add": "추가",
   "rs.remove": "{date}부터 적용 항목 삭제",
   "rs.noAccounts": "증권사·가져온 체결이 없어 운용금을 입력할 계좌가 없습니다.",
+  "rc.title": "후속 질문",
+  "rc.question": "질문",
+  "rc.placeholder":
+    "예: 진입할 때 SPY는 어땠나요? 청산 구간 15분봉 차트를 보여주세요.",
+  "rc.ask": "Claude에게 묻기",
+  "rc.note":
+    "Claude는 데이터를 더 요청할 수 있습니다(최대 6번). 요청은 모두 표시됩니다. 데이터는 청산 시점까지이며, 그 이후를 요청하면 사후 정보로 표시됩니다.",
+  "rc.drawing": "요청한 차트 그리는 중…",
+  "rc.drawPending": "요청한 차트를 그려 이어 가기",
+  "rc.request": "요청 {tool}:",
+  "rc.usage":
+    "{model} · 지금까지 토큰: 입력 {input}, 캐시 읽기 {read}, 캐시 쓰기 {write}, 출력 {output}",
   "common.requestFailed": "요청 실패",
 };
 
