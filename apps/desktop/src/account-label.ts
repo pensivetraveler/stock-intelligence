@@ -6,5 +6,6 @@ export function accountLabel(ref: string, t: Translate): string {
     return t("journal.accountToss", { n: ref.split("-").at(-1) ?? "?" });
   }
   if (ref.startsWith("kiwoom-")) return t("journal.accountKiwoom");
+  if (ref.startsWith("meritz-")) return t("journal.accountMeritz");
   return ref;
 }

@@ -75,8 +75,11 @@ export interface MarketApi {
     key: string | null,
     params: Record<string, string>,
   ): Promise<ResearchTable>;
-  /** The app's relay of the broker's realtime stream. */
-  openRealtime(onEvent: (event: RealtimeEvent) => void): RealtimeSocket;
+  /** The app's relay of the broker's realtime stream (Toss, or Meritz US quotes). */
+  openRealtime(
+    onEvent: (event: RealtimeEvent) => void,
+    source?: LiveSource,
+  ): RealtimeSocket;
   /** Broker reference data and active buying warnings for one stock. */
   stockInfo(instrumentId: string): Promise<StockInfo>;
   /** The broker's USD/KRW reference rate. */
@@ -84,7 +87,7 @@ export interface MarketApi {
   /** The broker's market hours around today, compared with the local calendar. */
   brokerCalendar(market: "US" | "KR"): Promise<BrokerMarketCalendar>;
   /** Live last price, order book, recent trades and price limits from the broker. */
-  liveQuote(instrumentId: string): Promise<MarketQuote>;
+  liveQuote(instrumentId: string, source?: LiveSource): Promise<MarketQuote>;
   /** US-listed stocks whose ticker or company name matches `query`, tickers first. */
   searchSymbols(query: string, limit?: number): Promise<SymbolSearchResponse>;
   quote(
@@ -126,6 +129,10 @@ export interface MarketApi {
   ): Promise<BrokerSellableQuantity>;
   /** Store the executions of closed, filled orders in the broker ledger. */
   syncBroker(): Promise<BrokerSyncResult>;
+  /** Holdings, cash and today's open US orders of the Meritz key's account (ADR 0043). */
+  meritzAccount(): Promise<BrokerAccountSnapshot>;
+  /** Store the Meritz account's filled US orders since a date (default a year). */
+  syncMeritz(since?: string): Promise<BrokerSyncResult>;
   /** Store the Kiwoom account's filled US orders since a date (YYYY-MM-DD; default a year). */
   syncKiwoom(since?: string): Promise<BrokerSyncResult>;
   /** Kiwoom Korean stock trades (settlement lines, no fill times), at most a year. */
@@ -143,6 +150,9 @@ export interface MarketApi {
 }
 
 export type ImportMapping = ImportPreviewResponse["mapping"];
+
+/** Which broker serves live quotes and the realtime relay; never mixed. */
+export type LiveSource = "toss" | "meritz";
 
 /** A broker statement CSV read in the browser; the API never stores the file itself. */
 export interface StatementImportRequest {
@@ -398,9 +408,10 @@ export function createMarketApi(
         "research_table",
       );
     },
-    openRealtime(onEvent) {
+    openRealtime(onEvent, source) {
+      const query = source === "meritz" ? "?source=meritz" : "";
       return openRealtime(
-        `${baseUrl.replace(/^http/, "ws")}/v1/realtime`,
+        `${baseUrl.replace(/^http/, "ws")}/v1/realtime${query}`,
         onEvent,
       );
     },
@@ -420,8 +431,11 @@ export function createMarketApi(
         "broker_market_calendar",
       );
     },
-    liveQuote(instrumentId) {
-      const params = new URLSearchParams({ instrument_id: instrumentId });
+    liveQuote(instrumentId, source) {
+      const params = new URLSearchParams({
+        instrument_id: instrumentId,
+        ...(source ? { source } : {}),
+      });
       return get<MarketQuote>(
         `/v1/market/quote?${params.toString()}`,
         "market_quote",
@@ -507,6 +521,24 @@ export function createMarketApi(
       return callForKind<BrokerSyncResult>(
         { ...target, timeoutMs: 120_000 },
         "/v1/brokers/toss/sync",
+        "broker_sync_result",
+        { method: "POST" },
+      );
+    },
+    meritzAccount() {
+      return get<BrokerAccountSnapshot>(
+        "/v1/brokers/meritz/account",
+        "broker_account_snapshot",
+      );
+    },
+    syncMeritz(since) {
+      const query = since
+        ? `?${new URLSearchParams({ since }).toString()}`
+        : "";
+      // One paged query of 30 orders a page.
+      return callForKind<BrokerSyncResult>(
+        { ...target, timeoutMs: 600_000 },
+        `/v1/brokers/meritz/sync${query}`,
         "broker_sync_result",
         { method: "POST" },
       );

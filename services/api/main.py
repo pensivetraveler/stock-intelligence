@@ -42,7 +42,7 @@ from services.journal.ledger import account_positions
 from services.journal.store import JournalStore
 from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
-from services.market_data.broker_common import instrument_listing
+from services.market_data.broker_common import BrokerConfigError, instrument_listing
 from services.market_data.calendar import CalendarError, UsEquityCalendar
 from services.market_data.instruments import market_of, parse_instrument
 from services.market_data.kiwoom_account import NEW_YORK as KIWOOM_NEW_YORK
@@ -54,6 +54,13 @@ from services.market_data.kiwoom_account import sync_domestic as kiwoom_sync_dom
 from services.market_data.kiwoom_account import sync_executions as kiwoom_sync
 from services.market_data.kiwoom_account import sync_fees as kiwoom_sync_fees
 from services.market_data.market_router import MarketRouter
+from services.market_data.meritz import market_quote as meritz_quote
+from services.market_data.meritz_account import SEOUL
+from services.market_data.meritz_account import account_snapshot as meritz_account_snapshot
+from services.market_data.meritz_account import sync_executions as meritz_sync
+from services.market_data.meritz_session import MeritzCredentials, MeritzSession
+from services.market_data.meritz_session import session_for as meritz_session_for
+from services.market_data.meritz_stream import MeritzRealtimeHub
 from services.market_data.provider import (
     BarsQuery,
     InstrumentNotFoundError,
@@ -343,6 +350,26 @@ def _kiwoom_session(credentials: CredentialStore | None) -> KiwoomAccountSession
     return None
 
 
+def _meritz_session(credentials: CredentialStore | None) -> MeritzSession | None:
+    """The shared read-only session of the first enabled real-account Meritz key."""
+    if credentials is None:
+        return None
+    for record in credentials.list("meritz"):
+        if record.enabled and record.environment == "real":
+            secrets = credentials.secrets(record)
+            try:
+                return meritz_session_for(
+                    MeritzCredentials(
+                        secrets["app_key"], secrets["app_secret"], secrets["mac_address"]
+                    )
+                )
+            except BrokerConfigError as exc:
+                raise SecretStorageError(
+                    f"{exc}; enter the Meritz key {record.label!r} again"
+                ) from exc
+    return None
+
+
 def _toss_session(credentials: CredentialStore | None) -> TossSession | None:
     """The shared session of that key (one token per key for the whole process)."""
     found = _toss_credentials(credentials)
@@ -555,6 +582,7 @@ def create_app(
     symbol_directory: SymbolDirectory | None = None,
     toss_session: Callable[[], TossSession | None] | None = None,
     kiwoom_session: Callable[[], KiwoomAccountSession | None] | None = None,
+    meritz_session: Callable[[], MeritzSession | None] | None = None,
     overnight_source: Callable[[], Any] | None = None,
     symbol_history: SymbolHistory | None = None,
     tick_store: TickStore | None = None,
@@ -574,6 +602,7 @@ def create_app(
     provider = _LazyProvider(market_data_provider, credentials.get, korean.get)
     toss = toss_session or (lambda: _toss_session(credentials.get()))
     kiwoom = kiwoom_session or (lambda: _kiwoom_session(credentials.get()))
+    meritz = meritz_session or (lambda: _meritz_session(credentials.get()))
     boats = overnight_source or _LazyBoats(credentials.get).get
     symbols = _LazySymbols(symbol_directory, provider, toss, korean_directory)
     ticks_holder: list[TickStore | None] = [tick_store]
@@ -696,6 +725,13 @@ def create_app(
         ticks=ticks,
         instrument_for=instrument_for,
         sync_ledger=sync_recent,
+        connect=realtime_connect or default_connect,
+        now=clock,
+    )
+    meritz_hub = MeritzRealtimeHub(
+        meritz,
+        ticks=ticks,
+        instrument_for=instrument_for,
         connect=realtime_connect or default_connect,
         now=clock,
     )
@@ -962,6 +998,9 @@ def create_app(
     async def realtime(websocket: WebSocket) -> None:
         """Relay of the broker's realtime stream. The client sends {"symbols": [...]}.
 
+        `?source=meritz` relays Meritz US quotes instead of Toss (ADR 0043); the two
+        sources are never mixed in one connection.
+
         Browsers do not apply CORS to WebSockets, so the Origin is checked here: another
         site open in the same browser must not read the user's order events.
         """
@@ -971,7 +1010,10 @@ def create_app(
             await websocket.close(code=1008)
             return
         await websocket.accept()
-        client = hub.add_client(frozenset())
+        relay: RealtimeHub | MeritzRealtimeHub = (
+            meritz_hub if websocket.query_params.get("source") == "meritz" else hub
+        )
+        client = relay.add_client(frozenset())
 
         async def pump() -> None:
             while True:
@@ -986,7 +1028,7 @@ def create_app(
                     continue
                 wanted = message.get("symbols") if isinstance(message, dict) else None
                 if isinstance(wanted, list):
-                    hub.update_client(
+                    relay.update_client(
                         client,
                         frozenset(
                             str(item).upper()
@@ -998,7 +1040,7 @@ def create_app(
             pass
         finally:
             sender.cancel()
-            hub.remove_client(client)
+            relay.remove_client(client)
 
     @application.get("/v1/market/ticks", response_model=None)
     def ticks_endpoint(
@@ -1154,6 +1196,37 @@ def create_app(
             ),
         )
 
+    @application.get("/v1/brokers/meritz/account", response_model=None)
+    def meritz_account_endpoint(request: Request) -> Response:
+        """Holdings, cash and today's open US orders of the Meritz key's account."""
+        return broker_read(
+            request, meritz, "Meritz", lambda session: meritz_account_snapshot(session, clock)
+        )
+
+    @application.post("/v1/brokers/meritz/sync", response_model=None)
+    def meritz_sync_endpoint(
+        request: Request,
+        since: Annotated[date | None, Query()] = None,
+        until: Annotated[date | None, Query()] = None,
+    ) -> Response:
+        """Store the Meritz account's filled US orders with an order date (Korean) from
+        `since` (default: a year ago) to `until` (default: today)."""
+        store = journal.get()
+        if store is None:
+            return _error_response(
+                request,
+                503,
+                "journal_storage_unconfigured",
+                "set SIW_DATA_DIR to keep the broker ledger",
+            )
+        start = since or ((until or clock().astimezone(SEOUL).date()) - timedelta(days=365))
+        return broker_read(
+            request,
+            meritz,
+            "Meritz",
+            lambda session: meritz_sync(session, store, instrument_for, clock, start, until),
+        )
+
     @application.get("/v1/trades/broker", response_model=None)
     def broker_ledger(
         request: Request,
@@ -1204,17 +1277,23 @@ def create_app(
     def market_quote_endpoint(
         request: Request,
         instrument_id: Annotated[str, Query(min_length=1, max_length=200)],
+        quote_source: Annotated[Literal["toss", "meritz"] | None, Query(alias="source")] = None,
     ) -> Response:
-        """Last price, order book, recent trades and price limits, read live from Toss."""
+        """Last price, order book, recent trades and price limits, read live from Toss, or
+        from Meritz (US listings) when asked or when no Toss key is registered."""
         symbol = symbol_of(instrument_id)
         if symbol is None:
             return _error_response(
                 request, 404, "instrument_not_found", "instrument is not a listed equity ID"
             )
         try:
-            session = toss()
+            session = toss() if quote_source != "meritz" else None
         except SecretStorageError as exc:
             return _error_response(request, 502, "provider_auth_failed", str(exc))
+        if session is None and quote_source != "toss" and market_of(instrument_id) == "US":
+            return broker_read(
+                request, meritz, "Meritz", lambda found: meritz_quote(found, instrument_id, clock)
+            )
         if session is None:
             return _error_response(
                 request,

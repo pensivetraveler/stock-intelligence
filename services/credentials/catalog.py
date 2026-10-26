@@ -77,6 +77,9 @@ CATALOG: dict[str, ProviderKeySpec] = {
             (
                 SecretField("app_key", "App key", "SIW_MERITZ_APP_KEY"),
                 SecretField("app_secret", "App secret", "SIW_MERITZ_APP_SECRET"),
+                # Not secret, but every Meritz call must carry the calling device's MAC
+                # address, so it is kept with the key it is used with.
+                SecretField("mac_address", "MAC address (12 hex digits)", "SIW_MERITZ_MAC_ADDRESS"),
             ),
             per_account=True,
         ),
@@ -116,7 +119,8 @@ ENVIRONMENT_ENV_NAMES = frozenset(
 
 # Stands in for a key when an adapter is built only to list instruments; such an adapter
 # never sends a request.
-_UNUSED = "unused-listing-only"
+LISTING_ONLY = "unused-listing-only"
+_UNUSED = LISTING_ONLY
 
 
 def adapter_settings(
