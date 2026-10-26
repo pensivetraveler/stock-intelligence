@@ -1,6 +1,10 @@
 import type {
   MarketBarsResponse,
+  ReviewAccountCapitalList,
+  ReviewReportDraft,
+  ReviewSettings,
   ReviewTradeListResponse,
+  ReviewTradeReport,
 } from "@siw/contracts/types";
 import {
   fireEvent,
@@ -15,6 +19,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { MarketApi } from "./market-api";
 import type { ReviewApi } from "./review-api";
+import { ReviewSettingsPanel } from "./ReviewSettingsPanel";
+import { TradeReportPanel } from "./TradeReportPanel";
 import { TradeReviewScreen } from "./TradeReviewScreen";
 
 // The chart library needs a real canvas; the chart's own markers are tested elsewhere.
@@ -38,6 +44,15 @@ function fixture<T>(name: string): T {
 
 const list = fixture<ReviewTradeListResponse>("review-trade-list.json");
 const bars = fixture<MarketBarsResponse>("market-bars-response.json");
+const settings = fixture<ReviewSettings>("review-settings.json");
+const draft = fixture<ReviewReportDraft>("review-report-draft.json");
+const report = fixture<ReviewTradeReport>("review-trade-report.json");
+const capital: ReviewAccountCapitalList = {
+  kind: "review_account_capital_list",
+  schema_version: "0.1",
+  accounts: [{ account_ref: "kiwoom-a", currency: "USD" }],
+  entries: [],
+};
 
 function fakeApi(overrides: Partial<ReviewApi> = {}): ReviewApi {
   return {
@@ -69,6 +84,17 @@ function fakeApi(overrides: Partial<ReviewApi> = {}): ReviewApi {
       recorded_at_utc: "2026-10-26T12:00:00Z",
       revision: 1,
     })),
+    settings: vi.fn(async () => settings),
+    setReportModel: vi.fn(async (model) => ({
+      ...settings,
+      report_model: model,
+    })),
+    capital: vi.fn(async () => capital),
+    addCapital: vi.fn(async () => capital),
+    removeCapital: vi.fn(async () => undefined),
+    draftReport: vi.fn(async () => draft),
+    sendReport: vi.fn(async () => report),
+    reports: vi.fn(async () => []),
     ...overrides,
   };
 }
@@ -183,6 +209,96 @@ describe("TradeReviewScreen", () => {
         status: "open",
         limit: 300,
         offset: 0,
+      }),
+    );
+  });
+});
+
+describe("TradeReportPanel", () => {
+  it("shows what will be sent, then sends the drawn images", async () => {
+    const api = fakeApi();
+    const draw = vi.fn(async () => "iVBORw0KGgo=");
+    renderPanel(api, draw);
+    fireEvent.click(await screen.findByText("Prepare a Claude report"));
+    const preview = await screen.findByLabelText("What will be sent");
+    expect(api.draftReport).toHaveBeenCalledWith("flat:broker:brk-1", true);
+    expect(
+      within(preview).getByText(/Sent to claude-sonnet-5-5/),
+    ).toBeInTheDocument();
+    expect(within(preview).getByText(/갭 보고 추격/)).toBeInTheDocument();
+    expect(within(preview).getAllByText("(hindsight)").length).toBeGreaterThan(
+      0,
+    );
+    await waitFor(() => expect(draw).toHaveBeenCalledTimes(3));
+    expect(api.sendReport).not.toHaveBeenCalled();
+    fireEvent.click(within(preview).getByText("Send to Claude"));
+    await waitFor(() =>
+      expect(api.sendReport).toHaveBeenCalledWith("draft-0123456789ab", "en", [
+        { kind: "entry", png_base64: "iVBORw0KGgo=" },
+        { kind: "exit", png_base64: "iVBORw0KGgo=" },
+        { kind: "context", png_base64: "iVBORw0KGgo=" },
+      ]),
+    );
+    const shown = await screen.findByLabelText("Report");
+    expect(within(shown).getByText("Entry timing")).toBeInTheDocument();
+    expect(
+      within(shown).getByText("프리마켓 고가 위에서 추격했다"),
+    ).toBeInTheDocument();
+    expect(
+      within(shown).getByText(/Not investment advice/),
+    ).toBeInTheDocument();
+  });
+
+  it("drafts again without the note when it is unticked", async () => {
+    const api = fakeApi();
+    renderPanel(
+      api,
+      vi.fn(async () => "x"),
+    );
+    fireEvent.click(await screen.findByText("Prepare a Claude report"));
+    fireEvent.click(await screen.findByLabelText(/Include my note/));
+    await waitFor(() =>
+      expect(api.draftReport).toHaveBeenLastCalledWith(
+        "flat:broker:brk-1",
+        false,
+      ),
+    );
+  });
+});
+
+function renderPanel(
+  api: ReviewApi,
+  draw: (image: unknown) => Promise<string>,
+) {
+  return render(
+    <TradeReportPanel
+      api={api}
+      tradeId="flat:broker:brk-1"
+      render={draw as never}
+    />,
+  );
+}
+
+describe("ReviewSettingsPanel", () => {
+  it("changes the model and adds account capital", async () => {
+    const api = fakeApi();
+    render(<ReviewSettingsPanel api={api} today="2026-10-26" />);
+    const model = await screen.findByLabelText("Claude model for reports");
+    await waitFor(() => expect(model).toHaveValue("claude-sonnet-5-5"));
+    fireEvent.change(model, { target: { value: "claude-opus-5-5" } });
+    await waitFor(() =>
+      expect(api.setReportModel).toHaveBeenCalledWith("claude-opus-5-5"),
+    );
+    fireEvent.change(screen.getByLabelText(/Amount/), {
+      target: { value: "20000" },
+    });
+    fireEvent.click(screen.getByText("Add"));
+    await waitFor(() =>
+      expect(api.addCapital).toHaveBeenCalledWith({
+        accountRef: "kiwoom-a",
+        currency: "USD",
+        effectiveFrom: "2026-10-26",
+        amount: "20000",
       }),
     );
   });

@@ -63,7 +63,12 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ReviewAnnotation
   | ReviewAssignmentResult
   | ReviewStrategyRule
-  | ReviewGroup;
+  | ReviewGroup
+  | ReviewSettings
+  | ReviewAccountCapitalList
+  | ReviewReportDraft
+  | ReviewTradeReport
+  | ReviewTradeReportList;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -4525,4 +4530,1204 @@ export interface ReviewGroup {
   schema_version: SchemaVersion;
   group_id: Identifier;
   execution_count: number;
+}
+export interface ReviewSettings {
+  kind: "review_settings";
+  schema_version: SchemaVersion;
+  report_model: "claude-sonnet-5-5" | "claude-opus-5-5" | "claude-haiku-5-5";
+  models: ("claude-sonnet-5-5" | "claude-opus-5-5" | "claude-haiku-5-5")[];
+}
+export interface ReviewAccountCapitalList {
+  kind: "review_account_capital_list";
+  schema_version: SchemaVersion;
+  accounts: {
+    account_ref: Identifier;
+    currency: "USD" | "KRW";
+  }[];
+  entries: {
+    entry_id: Identifier;
+    account_ref: Identifier;
+    effective_from: string;
+    amount: NonNegativeDecimalString;
+    currency: "USD" | "KRW";
+    recorded_at_utc: UtcTimestamp;
+  }[];
+}
+export interface ReviewReportDraft {
+  kind: "review_report_draft";
+  schema_version: SchemaVersion;
+  draft_id: Identifier;
+  trade_id: string;
+  created_at_utc: UtcTimestamp;
+  model: "claude-sonnet-5-5" | "claude-opus-5-5" | "claude-haiku-5-5";
+  agent_version: Identifier;
+  trade: {
+    instrument_id: Identifier;
+    currency: "USD" | "KRW";
+    rule: "flat" | "day" | "fifo" | "manual";
+    status: "open" | "closed" | "incomplete";
+    opened_on: string;
+    closed_on: string | null;
+    time_uncertain: boolean;
+  };
+  facts: {
+    code: Identifier;
+    subject: string | null;
+    value: string;
+    unit:
+      "price" | "percent" | "ratio" | "count" | "days" | "currency" | "text";
+    text: string;
+    hindsight: boolean;
+  }[];
+  missing: string[];
+  uncertainty: string[];
+  warnings: string[];
+  dataset_revisions: Identifier[];
+  note: {
+    text: string;
+    tags: string[];
+    written_at_utc: UtcTimestamp;
+  } | null;
+  /**
+   * @maxItems 3
+   */
+  images:
+    | []
+    | [
+        {
+          kind: "entry" | "exit" | "context";
+          timeframe: string;
+          title: string;
+          cutoff_utc: UtcTimestamp;
+          /**
+           * @minItems 1
+           */
+          bars: [PriceBar, ...PriceBar[]];
+          markers: {
+            time_utc: UtcTimestamp;
+            side: Side;
+            quantity: NonNegativeDecimalString;
+            price: NonNegativeDecimalString;
+          }[];
+        },
+      ]
+    | [
+        {
+          kind: "entry" | "exit" | "context";
+          timeframe: string;
+          title: string;
+          cutoff_utc: UtcTimestamp;
+          /**
+           * @minItems 1
+           */
+          bars: [PriceBar, ...PriceBar[]];
+          markers: {
+            time_utc: UtcTimestamp;
+            side: Side;
+            quantity: NonNegativeDecimalString;
+            price: NonNegativeDecimalString;
+          }[];
+        },
+        {
+          kind: "entry" | "exit" | "context";
+          timeframe: string;
+          title: string;
+          cutoff_utc: UtcTimestamp;
+          /**
+           * @minItems 1
+           */
+          bars: [PriceBar, ...PriceBar[]];
+          markers: {
+            time_utc: UtcTimestamp;
+            side: Side;
+            quantity: NonNegativeDecimalString;
+            price: NonNegativeDecimalString;
+          }[];
+        },
+      ]
+    | [
+        {
+          kind: "entry" | "exit" | "context";
+          timeframe: string;
+          title: string;
+          cutoff_utc: UtcTimestamp;
+          /**
+           * @minItems 1
+           */
+          bars: [PriceBar, ...PriceBar[]];
+          markers: {
+            time_utc: UtcTimestamp;
+            side: Side;
+            quantity: NonNegativeDecimalString;
+            price: NonNegativeDecimalString;
+          }[];
+        },
+        {
+          kind: "entry" | "exit" | "context";
+          timeframe: string;
+          title: string;
+          cutoff_utc: UtcTimestamp;
+          /**
+           * @minItems 1
+           */
+          bars: [PriceBar, ...PriceBar[]];
+          markers: {
+            time_utc: UtcTimestamp;
+            side: Side;
+            quantity: NonNegativeDecimalString;
+            price: NonNegativeDecimalString;
+          }[];
+        },
+        {
+          kind: "entry" | "exit" | "context";
+          timeframe: string;
+          title: string;
+          cutoff_utc: UtcTimestamp;
+          /**
+           * @minItems 1
+           */
+          bars: [PriceBar, ...PriceBar[]];
+          markers: {
+            time_utc: UtcTimestamp;
+            side: Side;
+            quantity: NonNegativeDecimalString;
+            price: NonNegativeDecimalString;
+          }[];
+        },
+      ];
+}
+export interface ReviewTradeReport {
+  kind: "review_trade_report";
+  schema_version: SchemaVersion;
+  report_id: Identifier;
+  draft_id: Identifier;
+  trade_id: string;
+  model: Identifier;
+  language: "en" | "ko";
+  created_at_utc: UtcTimestamp;
+  summary: string;
+  /**
+   * @minItems 3
+   * @maxItems 3
+   */
+  sections: [
+    {
+      key: "entry" | "exit" | "sizing";
+      /**
+       * @maxItems 20
+       */
+      evidence:
+        | []
+        | [string]
+        | [string, string]
+        | [string, string, string]
+        | [string, string, string, string]
+        | [string, string, string, string, string]
+        | [string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string, string]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ];
+      /**
+       * @maxItems 10
+       */
+      went_well:
+        | []
+        | [string]
+        | [string, string]
+        | [string, string, string]
+        | [string, string, string, string]
+        | [string, string, string, string, string]
+        | [string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string, string]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ];
+      /**
+       * @maxItems 10
+       */
+      to_improve:
+        | []
+        | [string]
+        | [string, string]
+        | [string, string, string]
+        | [string, string, string, string]
+        | [string, string, string, string, string]
+        | [string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string, string]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ];
+      /**
+       * @maxItems 10
+       */
+      check_next:
+        | []
+        | [string]
+        | [string, string]
+        | [string, string, string]
+        | [string, string, string, string]
+        | [string, string, string, string, string]
+        | [string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string, string]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ];
+    },
+    {
+      key: "entry" | "exit" | "sizing";
+      /**
+       * @maxItems 20
+       */
+      evidence:
+        | []
+        | [string]
+        | [string, string]
+        | [string, string, string]
+        | [string, string, string, string]
+        | [string, string, string, string, string]
+        | [string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string, string]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ];
+      /**
+       * @maxItems 10
+       */
+      went_well:
+        | []
+        | [string]
+        | [string, string]
+        | [string, string, string]
+        | [string, string, string, string]
+        | [string, string, string, string, string]
+        | [string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string, string]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ];
+      /**
+       * @maxItems 10
+       */
+      to_improve:
+        | []
+        | [string]
+        | [string, string]
+        | [string, string, string]
+        | [string, string, string, string]
+        | [string, string, string, string, string]
+        | [string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string, string]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ];
+      /**
+       * @maxItems 10
+       */
+      check_next:
+        | []
+        | [string]
+        | [string, string]
+        | [string, string, string]
+        | [string, string, string, string]
+        | [string, string, string, string, string]
+        | [string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string, string]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ];
+    },
+    {
+      key: "entry" | "exit" | "sizing";
+      /**
+       * @maxItems 20
+       */
+      evidence:
+        | []
+        | [string]
+        | [string, string]
+        | [string, string, string]
+        | [string, string, string, string]
+        | [string, string, string, string, string]
+        | [string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string, string]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ];
+      /**
+       * @maxItems 10
+       */
+      went_well:
+        | []
+        | [string]
+        | [string, string]
+        | [string, string, string]
+        | [string, string, string, string]
+        | [string, string, string, string, string]
+        | [string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string, string]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ];
+      /**
+       * @maxItems 10
+       */
+      to_improve:
+        | []
+        | [string]
+        | [string, string]
+        | [string, string, string]
+        | [string, string, string, string]
+        | [string, string, string, string, string]
+        | [string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string, string]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ];
+      /**
+       * @maxItems 10
+       */
+      check_next:
+        | []
+        | [string]
+        | [string, string]
+        | [string, string, string]
+        | [string, string, string, string]
+        | [string, string, string, string, string]
+        | [string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string]
+        | [string, string, string, string, string, string, string, string]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ]
+        | [
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+            string,
+          ];
+    },
+  ];
+  uncertainty: string;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+  };
+  /**
+   * @maxItems 3
+   */
+  images:
+    | []
+    | [
+        {
+          kind: "entry" | "exit" | "context";
+          sha256: string;
+          bytes: number;
+        },
+      ]
+    | [
+        {
+          kind: "entry" | "exit" | "context";
+          sha256: string;
+          bytes: number;
+        },
+        {
+          kind: "entry" | "exit" | "context";
+          sha256: string;
+          bytes: number;
+        },
+      ]
+    | [
+        {
+          kind: "entry" | "exit" | "context";
+          sha256: string;
+          bytes: number;
+        },
+        {
+          kind: "entry" | "exit" | "context";
+          sha256: string;
+          bytes: number;
+        },
+        {
+          kind: "entry" | "exit" | "context";
+          sha256: string;
+          bytes: number;
+        },
+      ];
+}
+export interface ReviewTradeReportList {
+  kind: "review_trade_report_list";
+  schema_version: SchemaVersion;
+  trade_id: string;
+  reports: ReviewTradeReport[];
 }
