@@ -58,7 +58,12 @@ export type StockIntelligenceWorkstationContractsV01 =
   | PaperApproval
   | PaperApprovalListResponse
   | PaperIntentListResponse
-  | PaperExecutionListResponse;
+  | PaperExecutionListResponse
+  | ReviewTradeListResponse
+  | ReviewAnnotation
+  | ReviewAssignmentResult
+  | ReviewStrategyRule
+  | ReviewGroup;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -4028,4 +4033,496 @@ export interface PaperExecutionListResponse {
   kind: "paper_execution_list_response";
   schema_version: SchemaVersion;
   executions: PaperExecution[];
+}
+export interface ReviewTradeListResponse {
+  kind: "review_trade_list";
+  schema_version: SchemaVersion;
+  ledger: "manual" | "imported" | "broker";
+  total: number;
+  offset: number;
+  undated_execution_count: number;
+  strategies: {
+    strategy_id: Identifier;
+    name: string;
+    rule: "flat" | "day" | "fifo" | "manual";
+  }[];
+  tags: string[];
+  trades: ReviewTrade[];
+}
+export interface ReviewTrade {
+  trade_id: string;
+  rule: "flat" | "day" | "fifo" | "manual";
+  ledger: "manual" | "imported" | "broker";
+  account_ref: string | null;
+  instrument_id: Identifier;
+  strategy_id: Identifier | null;
+  status: "open" | "closed" | "incomplete";
+  opened_on: string;
+  opened_at_utc: UtcTimestamp | null;
+  closed_on: string | null;
+  closed_at_utc: UtcTimestamp | null;
+  holding_days: number | null;
+  entry_quantity: NonNegativeDecimalString;
+  average_entry_price: NonNegativeDecimalString | null;
+  exit_quantity: NonNegativeDecimalString;
+  average_exit_price: NonNegativeDecimalString | null;
+  matched_entry_cost: NonNegativeDecimalString;
+  open_quantity: NonNegativeDecimalString;
+  unmatched_quantity: NonNegativeDecimalString;
+  gross_pnl: DecimalString;
+  fees: NonNegativeDecimalString;
+  net_pnl: DecimalString;
+  fees_unreported_count: number;
+  time_uncertain: boolean;
+  /**
+   * @minItems 1
+   */
+  executions: [ReviewTradeExecution, ...ReviewTradeExecution[]];
+  annotation: ReviewAnnotationBody | null;
+}
+export interface ReviewTradeExecution {
+  ledger: "manual" | "imported" | "broker";
+  execution_id: Identifier;
+  side: Side;
+  role: "open" | "close" | "unmatched";
+  quantity: NonNegativeDecimalString;
+  fill_quantity: NonNegativeDecimalString;
+  price: NonNegativeDecimalString;
+  executed_at_utc: UtcTimestamp | null;
+  session_date: string;
+}
+export interface ReviewAnnotationBody {
+  note: string;
+  /**
+   * @maxItems 20
+   */
+  tags:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
+  reviewed: boolean;
+  recorded_at_utc: UtcTimestamp;
+  revision: number;
+}
+export interface ReviewAnnotation {
+  kind: "review_annotation";
+  schema_version: SchemaVersion;
+  trade_id: string;
+  note: string;
+  /**
+   * @maxItems 20
+   */
+  tags:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
+  reviewed: boolean;
+  recorded_at_utc: UtcTimestamp;
+  revision: number;
+}
+export interface ReviewAssignmentResult {
+  kind: "review_assignment_result";
+  schema_version: SchemaVersion;
+  strategy_id: Identifier | null;
+  updated: number;
+}
+export interface ReviewStrategyRule {
+  kind: "review_strategy_rule";
+  schema_version: SchemaVersion;
+  strategy_id: Identifier;
+  rule: "flat" | "day" | "fifo" | "manual";
+}
+export interface ReviewGroup {
+  kind: "review_group";
+  schema_version: SchemaVersion;
+  group_id: Identifier;
+  execution_count: number;
 }

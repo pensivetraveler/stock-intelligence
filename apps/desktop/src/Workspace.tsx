@@ -55,6 +55,7 @@ import {
   AgentIcon,
   BacktestIcon,
   JournalIcon,
+  TradeReviewIcon,
   KeyIcon,
   QuoteIcon,
   InfoIcon,
@@ -96,6 +97,7 @@ import { ResearchPanel } from "./ResearchPanel";
 import { AgentPanel } from "./AgentPanel";
 import type { AgentApi, ChartReviewRequest } from "./agent-api";
 import { BacktestScreen } from "./BacktestScreen";
+import { TradeReviewScreen } from "./TradeReviewScreen";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { latestCustom, registerCustom } from "./custom-indicators";
 import { CustomIndicatorEditor } from "./CustomIndicatorEditor";
@@ -103,6 +105,7 @@ import { FormulaDialog } from "./FormulaEditor";
 import { PineDialog } from "./PineEditor";
 import { pineDefinition, pineWidths } from "./pine";
 import type { BacktestApi } from "./backtest-api";
+import type { ReviewApi } from "./review-api";
 import { StockInfoPanel } from "./StockInfoPanel";
 import { JournalPanel } from "./JournalPanel";
 import { ReconciliationView } from "./ReconciliationView";
@@ -149,6 +152,8 @@ interface WorkspaceProps {
   backtestApi?: BacktestApi;
   /** The review Agent's client; without one it is not offered. */
   agentApi?: AgentApi;
+  /** The trade review screen's client (ADR 0042); without one it is not offered. */
+  reviewApi?: ReviewApi;
   /** Python indicators' client (ADR 0023); without one they are not offered. */
   customApi?: CustomIndicatorApi;
 }
@@ -162,6 +167,7 @@ type Panel =
   | "journal"
   | "keys"
   | "backtest"
+  | "tradeReview"
   | "review";
 
 /** Per-chart view options that are not part of the saved layout. */
@@ -287,6 +293,7 @@ export function Workspace({
   keysPanel,
   backtestApi,
   agentApi,
+  reviewApi,
   customApi,
   openOnToday = false,
 }: WorkspaceProps) {
@@ -1626,6 +1633,16 @@ export function Workspace({
         />
       ) : null}
 
+      {panel === "tradeReview" && reviewApi ? (
+        <TradeReviewScreen
+          api={reviewApi}
+          marketApi={api}
+          instruments={instruments}
+          activeInstrumentId={activeConfig.instrumentId}
+          onClose={() => setPanel(null)}
+        />
+      ) : null}
+
       {panel === "keys" && keysPanel ? (
         <div
           className="modal-backdrop"
@@ -1655,7 +1672,10 @@ export function Workspace({
         </div>
       ) : null}
 
-      {panel && panel !== "backtest" && panel !== "keys" ? (
+      {panel &&
+      panel !== "backtest" &&
+      panel !== "tradeReview" &&
+      panel !== "keys" ? (
         <aside
           className={`side-panel side-panel-${panel}`}
           aria-label={t(`panel.${panel}`)}
@@ -1769,6 +1789,7 @@ export function Workspace({
             ["account", AccountIcon],
             ["journal", JournalIcon],
             ...(backtestApi ? ([["backtest", BacktestIcon]] as const) : []),
+            ...(reviewApi ? ([["tradeReview", TradeReviewIcon]] as const) : []),
             ...(agentApi ? ([["review", AgentIcon]] as const) : []),
             ...(keysPanel ? ([["keys", KeyIcon]] as const) : []),
           ] as const
