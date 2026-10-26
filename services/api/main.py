@@ -31,6 +31,7 @@ from services.api.credential_routes import register_credential_routes
 from services.api.indicator_routes import register_indicator_routes
 from services.api.journal_routes import register_import_routes, register_journal_routes
 from services.api.paper_routes import register_paper_routes
+from services.api.review_routes import register_review_routes
 from services.backtest.jobs import BacktestRunner
 from services.backtest.store import BacktestStore
 from services.credentials.catalog import adapter_settings
@@ -112,6 +113,7 @@ from services.market_data.toss_stream import Connect, RealtimeHub, default_conne
 from services.paper_trading.store import PaperOrderStore
 from services.public_sources.finra import FinraCredential
 from services.public_sources.sources import PublicSources
+from services.review.store import ReviewStore
 
 LOG = logging.getLogger("siw.api")
 APP_NAME = "stock-intelligence-workstation-api"
@@ -456,6 +458,23 @@ class _LazyAgents:
             return self._store
 
 
+class _LazyReview:
+    """Open the trade review store on first use (needs SIW_DATA_DIR; ADR 0042)."""
+
+    def __init__(self, store: ReviewStore | None, clock: Callable[[], datetime]) -> None:
+        self._store = store
+        self._clock = clock
+        self._lock = threading.Lock()
+
+    def get(self) -> ReviewStore | None:
+        with self._lock:
+            if self._store is None:
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                if configured:
+                    self._store = ReviewStore(Path(configured) / "review.sqlite3", self._clock)
+            return self._store
+
+
 class _LazyIndicators:
     """Open the custom indicator store on first use (needs SIW_DATA_DIR)."""
 
@@ -544,6 +563,7 @@ def create_app(
     realtime_connect: Connect | None = None,
     backtest_runner: BacktestRunner | None = None,
     agent_store: AgentStore | None = None,
+    review_store: ReviewStore | None = None,
     agent_ask: Callable[..., dict[str, Any]] = ask_claude,
     indicator_store: CustomIndicatorStore | None = None,
     public_sources: PublicSources | None = None,
@@ -683,6 +703,7 @@ def create_app(
     custom_indicators = _LazyIndicators(indicator_store, clock)
     backtests = _LazyBacktests(backtest_runner, provider.get, clock, custom_indicators.get)
     agents = _LazyAgents(agent_store, clock)
+    review = _LazyReview(review_store, clock)
     sources = _LazyPublicSources(public_sources, clock, credentials.get)
 
     @asynccontextmanager
@@ -1320,6 +1341,18 @@ def create_app(
     )
     register_indicator_routes(
         application, store=custom_indicators.get, error_response=_error_response
+    )
+
+    def strategy_list() -> list[dict[str, Any]] | None:
+        jobs = backtests.get()
+        return None if jobs is None else jobs.store.strategies()
+
+    register_review_routes(
+        application,
+        journal=journal.get,
+        store=review.get,
+        strategies=strategy_list,
+        error_response=_error_response,
     )
     register_agent_routes(
         application,

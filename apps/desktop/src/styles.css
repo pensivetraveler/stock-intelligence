@@ -3022,3 +3022,138 @@ body {
   border-bottom: 1px solid var(--border);
   text-align: left;
 }
+
+/* Trade review screen (ADR 0042) */
+.modal.rv-screen {
+  color-scheme: dark;
+  width: min(1480px, 98vw);
+  height: 94vh;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.rv-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+}
+
+.rv-body {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(460px, 1.15fr);
+  gap: 16px;
+  min-height: 0;
+}
+
+.rv-list,
+.rv-detail {
+  display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rv-table tbody tr {
+  cursor: pointer;
+}
+
+.rv-table tbody tr:hover td {
+  background: var(--term-hover, rgba(255, 255, 255, 0.04));
+}
+
+.rv-link {
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.rv-up {
+  color: #3fb68b;
+}
+
+.rv-down {
+  color: #e5566b;
+}
+
+.rv-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.rv-detail h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.rv-chart-box {
+  display: grid;
+  gap: 4px;
+}
+
+.rv-chart {
+  height: 300px;
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.rv-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rv-facts dt {
+  color: var(--term-muted);
+}
+
+.rv-facts dd {
+  margin: 0;
+}
+
+.rv-strategy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+}
+
+.rv-note {
+  display: grid;
+  gap: 6px;
+}
+
+.rv-note label:not(.bt-inline) {
+  display: grid;
+  gap: 4px;
+}
+
+.rv-screen .rv-note textarea {
+  height: 90px;
+  padding: 6px;
+  resize: vertical;
+}
+
+.rv-pick {
+  align-self: start;
+}
+
+@media (max-width: 900px) {
+  .rv-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: auto;
+  }
+}

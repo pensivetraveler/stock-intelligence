@@ -176,6 +176,21 @@
     },
     {
       "$ref": "#/$defs/PaperExecutionListResponse"
+    },
+    {
+      "$ref": "#/$defs/ReviewTradeListResponse"
+    },
+    {
+      "$ref": "#/$defs/ReviewAnnotation"
+    },
+    {
+      "$ref": "#/$defs/ReviewAssignmentResult"
+    },
+    {
+      "$ref": "#/$defs/ReviewStrategyRule"
+    },
+    {
+      "$ref": "#/$defs/ReviewGroup"
     }
   ],
   "$defs": {
@@ -7401,6 +7416,462 @@
         }
       },
       "description": "Simulated paper fills; never real executions (ADR 0037)."
+    },
+    "ReviewTradeExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ledger",
+        "execution_id",
+        "side",
+        "role",
+        "quantity",
+        "fill_quantity",
+        "price",
+        "executed_at_utc",
+        "session_date"
+      ],
+      "properties": {
+        "ledger": {
+          "enum": ["manual", "imported", "broker"]
+        },
+        "execution_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "side": {
+          "$ref": "#/$defs/Side"
+        },
+        "role": {
+          "enum": ["open", "close", "unmatched"]
+        },
+        "quantity": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "fill_quantity": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "price": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "executed_at_utc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session_date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        }
+      }
+    },
+    "ReviewAnnotationBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["note", "tags", "reviewed", "recorded_at_utc", "revision"],
+      "properties": {
+        "note": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          }
+        },
+        "reviewed": {
+          "type": "boolean"
+        },
+        "recorded_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "ReviewTrade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trade_id",
+        "rule",
+        "ledger",
+        "account_ref",
+        "instrument_id",
+        "strategy_id",
+        "status",
+        "opened_on",
+        "opened_at_utc",
+        "closed_on",
+        "closed_at_utc",
+        "holding_days",
+        "entry_quantity",
+        "average_entry_price",
+        "exit_quantity",
+        "average_exit_price",
+        "matched_entry_cost",
+        "open_quantity",
+        "unmatched_quantity",
+        "gross_pnl",
+        "fees",
+        "net_pnl",
+        "fees_unreported_count",
+        "time_uncertain",
+        "executions",
+        "annotation"
+      ],
+      "properties": {
+        "trade_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "rule": {
+          "enum": ["flat", "day", "fifo", "manual"]
+        },
+        "ledger": {
+          "enum": ["manual", "imported", "broker"]
+        },
+        "account_ref": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "instrument_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "strategy_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": ["open", "closed", "incomplete"]
+        },
+        "opened_on": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "opened_at_utc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "closed_on": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "closed_at_utc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "holding_days": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entry_quantity": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "average_entry_price": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exit_quantity": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "average_exit_price": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "matched_entry_cost": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "open_quantity": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "unmatched_quantity": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "gross_pnl": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "fees": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "net_pnl": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "fees_unreported_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "time_uncertain": {
+          "type": "boolean"
+        },
+        "executions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/ReviewTradeExecution"
+          }
+        },
+        "annotation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewAnnotationBody"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ReviewTradeListResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "ledger",
+        "total",
+        "offset",
+        "undated_execution_count",
+        "strategies",
+        "tags",
+        "trades"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_trade_list"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "ledger": {
+          "enum": ["manual", "imported", "broker"]
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "undated_execution_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "strategies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["strategy_id", "name", "rule"],
+            "properties": {
+              "strategy_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "name": {
+                "type": "string"
+              },
+              "rule": {
+                "enum": ["flat", "day", "fifo", "manual"]
+              }
+            }
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          }
+        },
+        "trades": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReviewTrade"
+          }
+        }
+      }
+    },
+    "ReviewAnnotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "trade_id",
+        "note",
+        "tags",
+        "reviewed",
+        "recorded_at_utc",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_annotation"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "trade_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          }
+        },
+        "reviewed": {
+          "type": "boolean"
+        },
+        "recorded_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "ReviewAssignmentResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "strategy_id", "updated"],
+      "properties": {
+        "kind": {
+          "const": "review_assignment_result"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "strategy_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "ReviewStrategyRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "strategy_id", "rule"],
+      "properties": {
+        "kind": {
+          "const": "review_strategy_rule"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "strategy_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "rule": {
+          "enum": ["flat", "day", "fifo", "manual"]
+        }
+      }
+    },
+    "ReviewGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "group_id", "execution_count"],
+      "properties": {
+        "kind": {
+          "const": "review_group"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "group_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "execution_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
     }
   }
 }
