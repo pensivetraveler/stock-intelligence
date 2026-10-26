@@ -50,20 +50,20 @@ vi.mock("./PriceChart", () => ({
     chartId,
     candles,
     markers = [],
-    premarketHighs = [],
+    premarketBars = [],
     onCandleClick,
   }: {
     chartId: string;
     candles: { time: number }[];
     markers?: { text: string }[];
-    premarketHighs?: { time: number; high: number; final: boolean }[];
+    premarketBars?: { time: number; high: number; final: boolean }[];
     onCandleClick?: (time: number) => void;
   }) => (
     <div data-testid={`chart-${chartId}`}>
       {candles.length} candles ·{" "}
       {markers.map((marker) => marker.text).join(", ") || "no markers"}
-      {premarketHighs.length > 0
-        ? ` · PM ${premarketHighs
+      {premarketBars.length > 0
+        ? ` · PM ${premarketBars
             .map((item) => `${item.high}${item.final ? "" : "?"}`)
             .join(", ")}`
         : ""}
@@ -725,7 +725,7 @@ describe("chart workspace", () => {
     expect(api.barsCalls.at(-1)?.timeframe).toBe("60m");
   });
 
-  it("shows the pre-market high on a US daily chart from its own requests", async () => {
+  it("shows the pre-market as candles on a US daily chart from its own requests", async () => {
     const api = fakeApi();
     const served = api.bars;
     const day = (date: string) => ({
@@ -799,7 +799,7 @@ describe("chart workspace", () => {
     expect(chart).toHaveTextContent("2 candles");
     expect(api.barsCalls.some((call) => call.timeframe === "960m")).toBe(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "PM high" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pre-market" }));
 
     // One pre-market window per session, never merged into the daily bars.
     await waitFor(() =>
@@ -818,16 +818,16 @@ describe("chart workspace", () => {
     ]);
     const region = screen.getByRole("region", { name: /Chart 1/ });
     expect(region.querySelector(".legend-premarket")).toHaveTextContent(
-      "PM H 13.25 (not final)",
+      /^Pre-market O \S+ H 13\.25 L \S+ C \S+ \(not final\)$/,
     );
     expect(
-      within(region).getByText(/Pre-market high .*: 2 of the newest 60/),
+      within(region).getByText(/Pre-market \(04:00.*: 2 of the newest 60/),
     ).toBeInTheDocument();
     expect(savedLayout(storage).charts[0].premarketHigh).toBe(true);
 
     // Intraday charts have no such switch.
     pickTimeframe("5m");
-    expect(screen.queryByRole("button", { name: "PM high" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pre-market" })).toBeNull();
   });
 
   it("explains a closed day instead of drawing an empty chart", async () => {

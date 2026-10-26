@@ -770,13 +770,13 @@ const en = {
   "chart.dayMarketNote":
     "Day market (Blue Ocean via Alpaca BOATS): {n} bars in blue/purple, kept apart from the other bars; indicators do not use them.",
   "chart.dayMarketFailed": "Day market bars could not be loaded: {error}",
-  "chart.premarketHigh": "PM high",
+  "chart.premarketHigh": "Pre-market",
   "chart.premarketHint":
-    "Show the pre-market (04:00–09:30 ET) high of each of the newest daily candles",
+    "Show the pre-market (04:00–09:30 ET) as a see-through candle behind each of the newest daily candles",
   "chart.premarketLine": "PM High",
   "chart.premarketNote":
-    "Pre-market high (04:00–09:30 ET, from minute bars, not part of the daily bars): {n} of the newest {sessions} sessions in amber; dashed while not final. Days with no pre-market trade have no mark.",
-  "chart.premarketFailed": "Pre-market highs could not be loaded: {error}",
+    "Pre-market (04:00–09:30 ET, from minute bars, not part of the daily bars): {n} of the newest {sessions} sessions as see-through amber candles behind the daily candles; grey while not final. Days with no pre-market trade have none.",
+  "chart.premarketFailed": "Pre-market bars could not be loaded: {error}",
   "session.overnight": "day market",
   "chart.loading": "Loading bars…",
   "chart.older": "◀ Older bars",
@@ -813,7 +813,7 @@ const en = {
   "legend.close": "C",
   "legend.volume": "Vol",
   "legend.notFinal": "not final",
-  "legend.premarketHigh": "PM H",
+  "legend.premarket": "Pre-market",
   "watch.title": "Watchlist",
   "watch.popOut": "Open the watchlist in a floating window",
   "watch.dock": "Dock the watchlist in the side panel",
@@ -1952,13 +1952,13 @@ const ko: Record<MessageKey, string> = {
   "chart.dayMarketNote":
     "데이마켓(Blue Ocean, Alpaca BOATS) {n}봉을 파란·보라색으로 따로 표시합니다. 지표 계산에는 쓰지 않습니다.",
   "chart.dayMarketFailed": "데이마켓 봉을 불러오지 못했습니다: {error}",
-  "chart.premarketHigh": "프리마켓 고가",
+  "chart.premarketHigh": "프리마켓",
   "chart.premarketHint":
-    "최근 일봉마다 프리마켓(동부 04:00–09:30) 고가를 표시합니다",
+    "최근 일봉마다 프리마켓(동부 04:00–09:30)을 일봉 뒤에 반투명 캔들로 표시합니다",
   "chart.premarketLine": "PM 고가",
   "chart.premarketNote":
-    "프리마켓 고가(동부 04:00–09:30, 분봉에서 계산, 일봉에는 포함하지 않음): 최근 {sessions}세션 중 {n}일을 주황색으로 표시합니다. 미확정 값은 점선입니다. 프리마켓 거래가 없는 날은 표시하지 않습니다.",
-  "chart.premarketFailed": "프리마켓 고가를 불러오지 못했습니다: {error}",
+    "프리마켓(동부 04:00–09:30, 분봉에서 계산, 일봉에는 포함하지 않음): 최근 {sessions}세션 중 {n}일을 일봉 뒤에 반투명 주황 캔들로 표시합니다. 미확정 캔들은 회색입니다. 프리마켓 거래가 없는 날은 표시하지 않습니다.",
+  "chart.premarketFailed": "프리마켓 봉을 불러오지 못했습니다: {error}",
   "session.overnight": "데이마켓",
   "chart.loading": "캔들을 불러오는 중…",
   "chart.older": "◀ 이전 봉",
@@ -1995,7 +1995,7 @@ const ko: Record<MessageKey, string> = {
   "legend.close": "종",
   "legend.volume": "거래량",
   "legend.notFinal": "미확정",
-  "legend.premarketHigh": "PM 고",
+  "legend.premarket": "프리마켓",
   "watch.title": "관심종목",
   "watch.popOut": "관심종목을 떠 있는 창으로 열기",
   "watch.dock": "관심종목을 오른쪽 패널에 붙이기",

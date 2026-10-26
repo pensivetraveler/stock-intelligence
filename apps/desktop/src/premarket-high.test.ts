@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { premarketHighs, premarketRange } from "./premarket-high";
+import { premarketBars, premarketRange } from "./premarket-high";
 
 const fixtures = resolve(
   import.meta.dirname,
@@ -30,6 +30,8 @@ const window: SessionWindow = {
 };
 
 const seconds = (utc: string) => Date.parse(utc) / 1000;
+// Open, low and close of the fixture bar; each test sets its own high.
+const ohlc = { open: 250.1, low: 249.9, close: 250.25 };
 
 function preBar(
   start: string,
@@ -62,7 +64,7 @@ describe("pre-market range", () => {
   });
 });
 
-describe("pre-market highs", () => {
+describe("pre-market bars", () => {
   const day1 = preBar("2026-10-08T08:00:00Z", "2026-10-08T13:30:00Z", "251.10");
   const day2 = preBar(
     "2026-10-09T08:00:00Z",
@@ -71,23 +73,28 @@ describe("pre-market highs", () => {
     false,
   );
 
-  it("places each pre-market high on the daily bar that starts at its end", () => {
+  it("places each pre-market candle on the daily bar that starts at its end", () => {
     const daily = [
       seconds("2026-10-08T13:30:00Z"),
       seconds("2026-10-09T13:30:00Z"),
     ];
-    expect(premarketHighs([day2, day1], daily)).toEqual([
-      { time: daily[0], high: 251.1, final: true },
-      { time: daily[1], high: 249.75, final: false },
+    expect(premarketBars([day2, day1], daily)).toEqual([
+      { time: daily[0], ...ohlc, high: 251.1, final: true },
+      { time: daily[1], ...ohlc, high: 249.75, final: false },
     ]);
   });
 
   it("drops bars of other sessions and days not on the chart", () => {
     const regular = { ...day1, session: "regular" as const };
     expect(
-      premarketHighs([regular, day1, day2], [seconds("2026-10-09T13:30:00Z")]),
+      premarketBars([regular, day1, day2], [seconds("2026-10-09T13:30:00Z")]),
     ).toEqual([
-      { time: seconds("2026-10-09T13:30:00Z"), high: 249.75, final: false },
+      {
+        time: seconds("2026-10-09T13:30:00Z"),
+        ...ohlc,
+        high: 249.75,
+        final: false,
+      },
     ]);
   });
 });

@@ -1,22 +1,25 @@
 import type { PriceBar, SessionWindow } from "@siw/contracts/types";
 
 /**
- * The pre-market high on daily charts (ADR 0041). Daily bars cover the regular
- * session only, so the pre-market (04:00–09:30 ET) high comes from its own request:
- * one "960m" bucket per session, which the API cuts at the session boundary, so each
- * request for a session's pre-market window answers with one `pre` bar. Its high is
- * never merged into the daily bar.
+ * The pre-market on daily charts (ADR 0041). Daily bars cover the regular session
+ * only, so the pre-market (04:00–09:30 ET) comes from its own request: one "960m"
+ * bucket per session, which the API cuts at the session boundary, so each request
+ * for a session's pre-market window answers with one `pre` bar. It is drawn as its
+ * own candle and never merged into the daily bar.
  */
 
-/** Newest sessions whose pre-market high is fetched (one request each). */
+/** Newest sessions whose pre-market is fetched (one request each). */
 export const PREMARKET_SESSIONS = 60;
 /** A bucket longer than any session, so the API returns the whole pre-market as one bar. */
 export const PREMARKET_TIMEFRAME = "960m";
 
-export interface PremarketHigh {
+export interface PremarketBar {
   /** Start of the daily bar it belongs to (the regular open), epoch seconds. */
   time: number;
+  open: number;
   high: number;
+  low: number;
+  close: number;
   /** False while the pre-market is still running or its bar is not yet final. */
   final: boolean;
 }
@@ -33,23 +36,26 @@ export function premarketRange(
 const seconds = (utc: string) => Math.floor(Date.parse(utc) / 1000);
 
 /**
- * Pre-market highs placed on daily bars, oldest first. A `pre` bar ends at the
+ * Pre-market bars placed on daily bars, oldest first. A `pre` bar ends at the
  * regular open, which is where that session's daily bar starts; bars that match no
  * shown daily bar are dropped.
  */
-export function premarketHighs(
+export function premarketBars(
   bars: PriceBar[],
   dailyTimes: number[],
-): PremarketHigh[] {
+): PremarketBar[] {
   const shown = new Set(dailyTimes);
-  const byTime = new Map<number, PremarketHigh>();
+  const byTime = new Map<number, PremarketBar>();
   for (const bar of bars) {
     if (bar.session !== "pre") continue;
     const time = seconds(bar.interval_end_utc);
     if (!shown.has(time)) continue;
     byTime.set(time, {
       time,
+      open: Number(bar.open),
       high: Number(bar.high),
+      low: Number(bar.low),
+      close: Number(bar.close),
       final: bar.is_final,
     });
   }

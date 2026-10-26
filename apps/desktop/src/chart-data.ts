@@ -30,6 +30,12 @@ export const COLORS = {
   // The US day market (Blue Ocean, ADR 0030): its own hues, never mistaken for SIP bars.
   dayUp: "#5b8def",
   dayDown: "#a77bd6",
+  // The pre-market on daily charts (ADR 0041): see-through amber behind the day.
+  preUp: "rgba(240, 180, 41, 0.5)",
+  preDown: "rgba(232, 121, 58, 0.5)",
+  preWick: "rgba(240, 180, 41, 0.8)",
+  preUncertain: "rgba(138, 148, 166, 0.45)",
+  preLine: "#f0b429",
 };
 
 /** Day-market candles; bars not yet final stay grey like any other. */

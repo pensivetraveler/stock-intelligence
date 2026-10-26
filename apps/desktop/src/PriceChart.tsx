@@ -30,8 +30,7 @@ import type { LineStyleName, RenderedIndicator } from "./indicators";
 import { thinLabels, type ChartMarker } from "./journal-markers";
 import { hasGraphics } from "./pine-drawings";
 import { PineGraphicsPrimitive } from "./pine-graphics";
-import type { PremarketHigh } from "./premarket-high";
-import { PREMARKET_COLOR, PremarketHighPrimitive } from "./premarket-primitive";
+import type { PremarketBar } from "./premarket-high";
 import { OLDER_TRIGGER_BARS, USER_MOVE_MS } from "./older-bars";
 
 interface PriceChartProps {
@@ -40,8 +39,9 @@ interface PriceChartProps {
   volume: VolumePoint[];
   /** US day-market candles, drawn as their own series in their own colors (ADR 0030). */
   dayMarket?: CandlePoint[];
-  /** Pre-market highs on daily candles (ADR 0041); the newest also gets a price line. */
-  premarketHighs?: PremarketHigh[];
+  /** Pre-market candles drawn see-through behind the daily candles (ADR 0041); the
+   * newest one's high also gets a price line. */
+  premarketBars?: PremarketBar[];
   /** Price-line title for the newest pre-market high. */
   premarketLabel?: string;
   sync: ChartSyncGroup;
@@ -121,7 +121,7 @@ export function PriceChart({
   candles,
   volume,
   dayMarket = [],
-  premarketHighs = [],
+  premarketBars = [],
   premarketLabel = "PM High",
   sync,
   markers = [],
@@ -150,7 +150,7 @@ export function PriceChart({
   const dayMarketSeries = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeries = useRef<ISeriesApi<"Histogram"> | null>(null);
   const markerLayer = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
-  const premarketLayer = useRef<PremarketHighPrimitive | null>(null);
+  const premarketSeries = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const premarketLine = useRef<IPriceLine | null>(null);
   const applyingSyncedRange = useRef(false);
   const indicatorSeries = useRef<ISeriesApi<"Line" | "Histogram">[]>([]);
@@ -218,6 +218,16 @@ export function PriceChart({
             : exchangeTime(timeOf(time), zoneRef.current),
       },
     });
+    // Added first, so the daily candles are drawn over it.
+    premarketSeries.current = instance.addSeries(CandlestickSeries, {
+      upColor: COLORS.preUp,
+      downColor: COLORS.preDown,
+      wickUpColor: COLORS.preWick,
+      wickDownColor: COLORS.preWick,
+      borderVisible: false,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
     const candlesApi = instance.addSeries(CandlestickSeries, {
       upColor: COLORS.up,
       downColor: COLORS.down,
@@ -236,10 +246,6 @@ export function PriceChart({
       lastValueVisible: false,
     });
     markerLayer.current = createSeriesMarkers(candlesApi, []);
-    premarketLayer.current = new PremarketHighPrimitive([], () =>
-      candlesRef.current.map((point) => point.time),
-    );
-    candlesApi.attachPrimitive(premarketLayer.current);
     volumeSeries.current = instance.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "",
@@ -343,7 +349,7 @@ export function PriceChart({
       pineLayers.current = [];
       chart.current = null;
       markerLayer.current = null;
-      premarketLayer.current = null;
+      premarketSeries.current = null;
       premarketLine.current = null;
     };
   }, [chartId, sync]);
@@ -447,7 +453,19 @@ export function PriceChart({
   }, [dayMarket]);
 
   useEffect(() => {
-    premarketLayer.current?.update(premarketHighs);
+    premarketSeries.current?.setData(
+      premarketBars.map(({ time, open, high, low, close, final }) => ({
+        time: time as UTCTimestamp,
+        open,
+        high,
+        low,
+        close,
+        // Not yet final: grey, like any other bar still forming.
+        ...(final
+          ? {}
+          : { color: COLORS.preUncertain, wickColor: COLORS.preUncertain }),
+      })),
+    );
     const series = candleSeries.current;
     if (!series) return;
     if (premarketLine.current) {
@@ -455,17 +473,17 @@ export function PriceChart({
       premarketLine.current = null;
     }
     // The price line marks the newest daily candle's pre-market high only.
-    const newest = premarketHighs.at(-1);
+    const newest = premarketBars.at(-1);
     if (!newest || newest.time !== candles.at(-1)?.time) return;
     premarketLine.current = series.createPriceLine({
       price: newest.high,
-      color: PREMARKET_COLOR,
+      color: COLORS.preLine,
       lineWidth: 1,
       lineStyle: newest.final ? LineStyle.Solid : LineStyle.Dashed,
       axisLabelVisible: true,
       title: premarketLabel,
     });
-  }, [premarketHighs, premarketLabel, candles]);
+  }, [premarketBars, premarketLabel, candles]);
 
   useEffect(() => {
     chart.current?.applyOptions({

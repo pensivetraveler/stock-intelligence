@@ -89,7 +89,7 @@ import { IndicatorSettings } from "./IndicatorSettings";
 import {
   PREMARKET_SESSIONS,
   PREMARKET_TIMEFRAME,
-  premarketHighs,
+  premarketBars,
   premarketRange,
 } from "./premarket-high";
 import { PriceChart } from "./PriceChart";
@@ -714,7 +714,7 @@ export function ChartPanel({
     unavailable,
     instrumentsReady,
   ]);
-  // Pre-market highs on US daily charts (ADR 0041): their own requests, one
+  // The pre-market on US daily charts (ADR 0041): its own requests, one
   // pre-market bucket per session, never merged into the daily bars.
   const premarketWanted =
     config.premarketHigh === true &&
@@ -724,10 +724,15 @@ export function ChartPanel({
     bars: PriceBar[];
     error: unknown;
   } | null>(null);
+  // Started only once the daily bars have arrived, so the chart's own request
+  // never waits behind these at the API.
+  const mainReady = load.status === "ready";
   useEffect(() => {
     let current = true;
     setPremarket(null);
-    if (!premarketWanted || unavailable || !instrumentsReady) return;
+    if (!premarketWanted || unavailable || !instrumentsReady || !mainReady) {
+      return;
+    }
     void (async () => {
       try {
         const windows = await api.sessions(
@@ -773,6 +778,7 @@ export function ChartPanel({
     sessionDate,
     unavailable,
     instrumentsReady,
+    mainReady,
   ]);
   const premarketShown = useMemo(() => {
     if (!premarket || !series) return [];
@@ -781,7 +787,7 @@ export function ChartPanel({
       replayTime === null
         ? premarket.bars
         : barsAsOf(premarket.bars, replayTime);
-    return premarketHighs(
+    return premarketBars(
       shown,
       series.candles.map((point) => point.time),
     );
@@ -1361,7 +1367,7 @@ export function ChartPanel({
               candles={series.candles}
               volume={series.volume}
               dayMarket={dayMarketCandles}
-              premarketHighs={premarketShown}
+              premarketBars={premarketShown}
               premarketLabel={t("chart.premarketLine")}
               sync={sync}
               markers={markers}
@@ -1456,9 +1462,20 @@ export function ChartPanel({
                       );
                       return item ? (
                         <span className="legend-premarket">
-                          {t("legend.premarketHigh")}{" "}
-                          <b>{formatValue(item.high)}</b>
-                          {item.final ? "" : ` (${t("legend.notFinal")})`}
+                          {t("legend.premarket")}{" "}
+                          {(
+                            [
+                              ["legend.open", item.open],
+                              ["legend.high", item.high],
+                              ["legend.low", item.low],
+                              ["legend.close", item.close],
+                            ] as const
+                          ).map(([label, value]) => (
+                            <span key={label}>
+                              {t(label)} <b>{formatValue(value)}</b>{" "}
+                            </span>
+                          ))}
+                          {item.final ? "" : `(${t("legend.notFinal")})`}
                         </span>
                       ) : null;
                     })()
