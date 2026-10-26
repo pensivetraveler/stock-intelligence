@@ -5,6 +5,7 @@ import type {
 import { useEffect, useState } from "react";
 
 import { renderChartImage } from "./chart-image";
+import { ReportConversation } from "./ReportConversation";
 import { useI18n } from "./i18n";
 import type { ReviewApi } from "./review-api";
 
@@ -210,13 +211,26 @@ export function TradeReportPanel({
         </div>
       )}
       {reports.map((report) => (
-        <ReportView key={report.report_id} report={report} />
+        <ReportView
+          key={report.report_id}
+          report={report}
+          api={api}
+          render={render}
+        />
       ))}
     </section>
   );
 }
 
-function ReportView({ report }: { report: ReviewTradeReport }) {
+function ReportView({
+  report,
+  api,
+  render,
+}: {
+  report: ReviewTradeReport;
+  api: ReviewApi;
+  render: typeof renderChartImage;
+}) {
   const { t } = useI18n();
   return (
     <article className="rv-report-view" aria-label={t("rp.report")}>
@@ -252,6 +266,11 @@ function ReportView({ report }: { report: ReviewTradeReport }) {
         })}{" "}
         · {t("rp.notAdvice")}
       </p>
+      <ReportConversation
+        api={api}
+        reportId={report.report_id}
+        render={render}
+      />
     </article>
   );
 }

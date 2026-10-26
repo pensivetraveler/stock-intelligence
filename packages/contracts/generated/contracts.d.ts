@@ -68,7 +68,8 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ReviewAccountCapitalList
   | ReviewReportDraft
   | ReviewTradeReport
-  | ReviewTradeReportList;
+  | ReviewTradeReportList
+  | ReviewConversation;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -5730,4 +5731,49 @@ export interface ReviewTradeReportList {
   schema_version: SchemaVersion;
   trade_id: string;
   reports: ReviewTradeReport[];
+}
+export interface ReviewConversation {
+  kind: "review_conversation";
+  schema_version: SchemaVersion;
+  conversation_id: Identifier | null;
+  report_id: Identifier;
+  model: Identifier | null;
+  status: "idle" | "running" | "needs_images" | "failed";
+  error: string | null;
+  events: {
+    type: "question" | "answer" | "request" | "error";
+    at_utc: UtcTimestamp;
+    text?: string;
+    model?: string | null;
+    tool?: string;
+    input?: {
+      [k: string]: unknown;
+    };
+    summary?: string;
+    error?: boolean;
+    hindsight?: boolean;
+  }[];
+  pending_images: {
+    kind: "tool";
+    timeframe: string;
+    title: string;
+    cutoff_utc: UtcTimestamp;
+    /**
+     * @minItems 1
+     */
+    bars: [PriceBar, ...PriceBar[]];
+    markers: {
+      time_utc: UtcTimestamp;
+      side: Side;
+      quantity: NonNegativeDecimalString;
+      price: NonNegativeDecimalString;
+    }[];
+    tool_use_id: string;
+  }[];
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+  };
 }

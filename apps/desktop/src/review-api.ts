@@ -2,6 +2,7 @@ import type {
   ReviewAccountCapitalList,
   ReviewAnnotation,
   ReviewAssignmentResult,
+  ReviewConversation,
   ReviewGroup,
   ReviewReportDraft,
   ReviewSettings,
@@ -32,6 +33,7 @@ export interface TradeFilter {
 
 export type ReportModel = ReviewSettings["report_model"];
 export type ReportImage = ReviewReportDraft["images"][number];
+export type ToolImage = ReviewConversation["pending_images"][number];
 
 export interface CapitalRequest {
   accountRef: string;
@@ -81,6 +83,18 @@ export interface ReviewApi {
     images: { kind: ReportImage["kind"]; png_base64: string }[],
   ): Promise<ReviewTradeReport>;
   reports(tradeId: string): Promise<ReviewTradeReport[]>;
+  /** The follow-up conversation of a report (empty before the first question). */
+  conversation(reportId: string): Promise<ReviewConversation>;
+  /** Asks a question; may come back waiting for chart images the app must draw. */
+  askQuestion(
+    reportId: string,
+    question: string,
+    language: "en" | "ko",
+  ): Promise<ReviewConversation>;
+  sendChartImages(
+    conversationId: string,
+    images: { tool_use_id: string; png_base64: string }[],
+  ): Promise<ReviewConversation>;
 }
 
 // Trade ids contain ":" ("flat:broker:<id>"); the routes take them as a path.
@@ -213,6 +227,29 @@ export function createReviewApi(
         `/v1/review/report-drafts/${encodeURIComponent(draftId)}/report`,
         "review_trade_report",
         { method: "POST", body: { language, images } },
+      );
+    },
+    conversation(reportId) {
+      return callForKind<ReviewConversation>(
+        target,
+        `/v1/review/reports/${encodeURIComponent(reportId)}/conversation`,
+        "review_conversation",
+      );
+    },
+    askQuestion(reportId, question, language) {
+      return callForKind<ReviewConversation>(
+        target,
+        `/v1/review/reports/${encodeURIComponent(reportId)}/conversation/messages`,
+        "review_conversation",
+        { method: "POST", body: { question, language } },
+      );
+    },
+    sendChartImages(conversationId, images) {
+      return callForKind<ReviewConversation>(
+        target,
+        `/v1/review/conversations/${encodeURIComponent(conversationId)}/images`,
+        "review_conversation",
+        { method: "POST", body: { images } },
       );
     },
     async reports(tradeId) {
