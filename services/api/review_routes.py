@@ -6,8 +6,14 @@ notes are written to the review store.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import threading
+import uuid
 from collections.abc import Callable
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, Query, Request
@@ -16,9 +22,19 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from starlette.responses import Response
 
 from packages.contracts.validator import validate_document
+from services.agents.evidence import instrument_currency
 from services.api.journal_routes import ErrorResponse
+from services.backtest.data import GetBars
 from services.journal.store import JournalStore
-from services.review.store import GroupNotFoundError, ReviewStore
+from services.market_data.provider import MarketDataError
+from services.review.claude import DEFAULT_MODEL, MODELS, ReportError, ask_for_report
+from services.review.report import Capital, report_evidence
+from services.review.store import (
+    CapitalNotFoundError,
+    DraftNotFoundError,
+    GroupNotFoundError,
+    ReviewStore,
+)
 from services.review.trades import (
     Fill,
     Rule,
@@ -66,6 +82,43 @@ class AnnotationRequest(BaseModel):
     note: str = Field(default="", max_length=4000)
     tags: list[Tag] = Field(default_factory=list, max_length=20)
     reviewed: bool = False
+
+
+Model = Literal["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]
+AmountText = Annotated[str, StringConstraints(pattern=r"^[1-9][0-9]{0,14}(\.[0-9]{1,2})?$")]
+MAX_IMAGE_BYTES = 3_000_000
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+class SettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    report_model: Model
+
+
+class CapitalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_ref: str = Field(min_length=1, max_length=200)
+    # One account can trade in both currencies (Kiwoom: US and Korean stocks).
+    currency: Literal["USD", "KRW"]
+    effective_from: date
+    amount: AmountText
+
+
+class DraftRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    include_note: bool = True
+
+
+class ImageUpload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["entry", "exit", "context"]
+    png_base64: str = Field(min_length=8, max_length=MAX_IMAGE_BYTES * 2)
+
+
+class ReportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    language: Literal["en", "ko"] = "ko"
+    images: list[ImageUpload] = Field(default_factory=list, max_length=3)
 
 
 class _TradeIndex:
@@ -131,6 +184,10 @@ def register_review_routes(
     store: Callable[[], ReviewStore | None],
     strategies: Strategies,
     error_response: ErrorResponse,
+    get_bars: Callable[[], GetBars] | None = None,
+    api_key: Callable[[], str | None] = lambda: None,
+    now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    ask: Callable[..., dict[str, Any]] = ask_for_report,
 ) -> None:
     index = _TradeIndex()
 
@@ -309,4 +366,230 @@ def register_review_routes(
         note = review.annotate(trade_id, body.note, tags, body.reviewed)
         return respond(
             {"kind": "review_annotation", "schema_version": "0.1", "trade_id": trade_id, **note}
+        )
+
+    # --- report settings and account capital (step 2a) --------------------------------
+
+    def settings_document(review: ReviewStore) -> dict[str, Any]:
+        return {
+            "kind": "review_settings",
+            "schema_version": "0.1",
+            "report_model": review.setting("report_model") or DEFAULT_MODEL,
+            "models": list(MODELS),
+        }
+
+    @application.get("/v1/review/settings", response_model=None)
+    def get_settings(request: Request) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        return respond(settings_document(review))
+
+    @application.put("/v1/review/settings", response_model=None)
+    def put_settings(request: Request, body: SettingsRequest) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        review.set_setting("report_model", body.report_model)
+        return respond(settings_document(review))
+
+    def capital_document(ledgers: JournalStore, review: ReviewStore) -> dict[str, Any]:
+        fills = index.fills(ledgers).values()
+        accounts = sorted(
+            {
+                (fill.book, instrument_currency(fill.instrument_id))
+                for fill in fills
+                if fill.ledger != "manual"
+            }
+        )
+        return {
+            "kind": "review_account_capital_list",
+            "schema_version": "0.1",
+            "accounts": [
+                {"account_ref": book.split(":", 1)[1], "currency": currency}
+                for book, currency in accounts
+            ],
+            "entries": review.capital(),
+        }
+
+    @application.get("/v1/review/account-capital", response_model=None)
+    def list_capital(request: Request) -> Response:
+        ledgers, review = journal(), store()
+        if ledgers is None or review is None:
+            return unavailable(request)
+        return respond(capital_document(ledgers, review))
+
+    @application.post("/v1/review/account-capital", response_model=None)
+    def add_capital(request: Request, body: CapitalRequest) -> Response:
+        ledgers, review = journal(), store()
+        if ledgers is None or review is None:
+            return unavailable(request)
+        known = {
+            (item["account_ref"], item["currency"])
+            for item in capital_document(ledgers, review)["accounts"]
+        }
+        if (body.account_ref, body.currency) not in known:
+            return error_response(
+                request,
+                404,
+                "account_not_found",
+                f"No {body.currency} fills of account {body.account_ref}",
+            )
+        review.add_capital(
+            body.account_ref, body.effective_from.isoformat(), body.amount, body.currency
+        )
+        return respond(capital_document(ledgers, review), 201)
+
+    @application.delete("/v1/review/account-capital/{entry_id}", response_model=None)
+    def remove_capital(request: Request, entry_id: str) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        try:
+            review.remove_capital(entry_id)
+        except CapitalNotFoundError:
+            return error_response(request, 404, "capital_not_found", f"No entry {entry_id}")
+        return Response(status_code=204)
+
+    # --- single-trade report (step 2a) -------------------------------------------------
+
+    def utc(moment: datetime) -> str:
+        return moment.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+    @application.post("/v1/review/trades/{trade_id:path}/report-drafts", response_model=None)
+    def make_draft(request: Request, trade_id: str, body: DraftRequest) -> Response:
+        ledgers, review = journal(), store()
+        if ledgers is None or review is None or get_bars is None:
+            return unavailable(request)
+        _trades, by_id, _undated = index.trades(ledgers, review)
+        trade = by_id.get(trade_id)
+        if trade is None:
+            return error_response(request, 404, "trade_not_found", f"No trade {trade_id}")
+        document = trade_document(trade)
+        capital = [
+            Capital(
+                entry["account_ref"],
+                date.fromisoformat(entry["effective_from"]),
+                Decimal(entry["amount"]),
+                entry["currency"],
+            )
+            for entry in review.capital()
+        ]
+        try:
+            evidence, images = report_evidence(
+                get_bars(), trade, document["account_ref"], capital, now()
+            )
+        except MarketDataError as exc:
+            return error_response(request, 422, "agent_data_unavailable", str(exc))
+        note = review.annotations().get(trade_id) if body.include_note else None
+        draft = {
+            "kind": "review_report_draft",
+            "schema_version": "0.1",
+            "draft_id": f"draft-{uuid.uuid4().hex[:12]}",
+            "trade_id": trade_id,
+            "created_at_utc": utc(now()),
+            "model": review.setting("report_model") or DEFAULT_MODEL,
+            "agent_version": evidence.agent_version,
+            # What Claude is told about the trade: no account or record ids.
+            "trade": {
+                "instrument_id": trade.instrument_id,
+                "currency": instrument_currency(trade.instrument_id),
+                "rule": trade.rule,
+                "status": document["status"],
+                "opened_on": document["opened_on"],
+                "closed_on": document["closed_on"],
+                "time_uncertain": document["time_uncertain"],
+            },
+            "facts": [fact.document() for fact in evidence.facts],
+            "missing": list(dict.fromkeys(evidence.missing)),
+            "uncertainty": list(dict.fromkeys(evidence.uncertainty)),
+            "warnings": list(dict.fromkeys(evidence.warnings)),
+            "dataset_revisions": sorted(evidence.dataset_revisions),
+            "note": None
+            if not note or not (note["note"] or note["tags"])
+            else {
+                "text": note["note"],
+                "tags": note["tags"],
+                "written_at_utc": note["recorded_at_utc"],
+            },
+            "images": images,
+        }
+        validate_document(draft)
+        review.save_draft(draft)
+        return respond(draft, 201)
+
+    @application.post("/v1/review/report-drafts/{draft_id}/report", response_model=None)
+    def send_report(request: Request, draft_id: str, body: ReportRequest) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        try:
+            draft = review.draft(draft_id)
+        except DraftNotFoundError:
+            return error_response(request, 404, "draft_not_found", f"No draft {draft_id}")
+        expected = [image["kind"] for image in draft["images"]]
+        if [image.kind for image in body.images] != expected:
+            return error_response(
+                request,
+                422,
+                "invalid_report_images",
+                f"Send the draft's images in its order: {', '.join(expected) or 'none'}",
+            )
+        sent: list[tuple[str, str]] = []
+        hashes = []
+        for image in body.images:
+            try:
+                raw = base64.b64decode(image.png_base64, validate=True)
+            except (binascii.Error, ValueError):
+                return error_response(
+                    request, 422, "invalid_report_images", f"Image {image.kind} is not base64"
+                )
+            if not raw.startswith(PNG_MAGIC) or len(raw) > MAX_IMAGE_BYTES:
+                return error_response(
+                    request,
+                    422,
+                    "invalid_report_images",
+                    f"Image {image.kind} must be a PNG of at most {MAX_IMAGE_BYTES} bytes",
+                )
+            sent.append((image.kind, image.png_base64))
+            hashes.append(
+                {"kind": image.kind, "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+            )
+        key = api_key()
+        if key is None:
+            return error_response(
+                request,
+                409,
+                "agent_key_missing",
+                "Register an enabled Claude (Anthropic) API key on the Keys screen",
+            )
+        try:
+            answer = ask(draft, sent, key, body.language, model=draft["model"], now=now)
+        except ReportError as exc:
+            return error_response(request, 502, "report_failed", str(exc))
+        report = {
+            "kind": "review_trade_report",
+            "schema_version": "0.1",
+            "report_id": f"report-{uuid.uuid4().hex[:12]}",
+            "draft_id": draft_id,
+            "trade_id": draft["trade_id"],
+            **answer,
+            "images": hashes,
+        }
+        validate_document(report)
+        review.save_report(report)
+        return respond(report, 201)
+
+    @application.get("/v1/review/trades/{trade_id:path}/reports", response_model=None)
+    def list_reports(request: Request, trade_id: str) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        return respond(
+            {
+                "kind": "review_trade_report_list",
+                "schema_version": "0.1",
+                "trade_id": trade_id,
+                "reports": review.reports(trade_id),
+            }
         )

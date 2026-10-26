@@ -35,6 +35,31 @@ CREATE TABLE IF NOT EXISTS manual_groups (
     group_id TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS manual_groups_by_group ON manual_groups (group_id);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS account_capital (
+    entry_id TEXT PRIMARY KEY,
+    account_ref TEXT NOT NULL,
+    effective_from TEXT NOT NULL,
+    amount TEXT NOT NULL,
+    currency TEXT NOT NULL,
+    recorded_at_utc TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS report_drafts (
+    draft_id TEXT PRIMARY KEY,
+    trade_id TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    document TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS trade_reports (
+    report_id TEXT PRIMARY KEY,
+    trade_id TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    document TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS trade_reports_by_trade ON trade_reports (trade_id, created_at_utc);
 CREATE TABLE IF NOT EXISTS trade_annotations (
     trade_id TEXT NOT NULL,
     revision INTEGER NOT NULL,
@@ -48,6 +73,14 @@ CREATE TABLE IF NOT EXISTS trade_annotations (
 
 
 class GroupNotFoundError(LookupError):
+    pass
+
+
+class DraftNotFoundError(LookupError):
+    pass
+
+
+class CapitalNotFoundError(LookupError):
     pass
 
 
@@ -194,3 +227,105 @@ class ReviewStore:
             "recorded_at_utc": recorded,
             "revision": last + 1,
         }
+
+    # --- settings -------------------------------------------------------------------
+
+    def setting(self, key: str) -> str | None:
+        with self._lock:
+            row = self._db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return None if row is None else str(row[0])
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO settings VALUES (?, ?) "
+                "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+
+    # --- account capital ------------------------------------------------------------
+
+    def capital(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT entry_id, account_ref, effective_from, amount, currency, recorded_at_utc "
+                "FROM account_capital ORDER BY account_ref, effective_from"
+            ).fetchall()
+        keys = (
+            "entry_id",
+            "account_ref",
+            "effective_from",
+            "amount",
+            "currency",
+            "recorded_at_utc",
+        )
+        return [dict(zip(keys, row, strict=True)) for row in rows]
+
+    def add_capital(
+        self, account_ref: str, effective_from: str, amount: str, currency: str
+    ) -> dict[str, Any]:
+        entry = {
+            "entry_id": f"capital-{uuid.uuid4().hex[:12]}",
+            "account_ref": account_ref,
+            "effective_from": effective_from,
+            "amount": amount,
+            "currency": currency,
+            "recorded_at_utc": _utc(self._clock()),
+        }
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO account_capital VALUES (?, ?, ?, ?, ?, ?)", tuple(entry.values())
+            )
+        return entry
+
+    def remove_capital(self, entry_id: str) -> None:
+        with self._lock:
+            cursor = self._db.execute("DELETE FROM account_capital WHERE entry_id = ?", (entry_id,))
+        if cursor.rowcount == 0:
+            raise CapitalNotFoundError(entry_id)
+
+    # --- reports --------------------------------------------------------------------
+
+    def save_draft(self, document: dict[str, Any]) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO report_drafts VALUES (?, ?, ?, ?)",
+                (
+                    document["draft_id"],
+                    document["trade_id"],
+                    document["created_at_utc"],
+                    json.dumps(document),
+                ),
+            )
+
+    def draft(self, draft_id: str) -> dict[str, Any]:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT document FROM report_drafts WHERE draft_id = ?", (draft_id,)
+            ).fetchone()
+        if row is None:
+            raise DraftNotFoundError(draft_id)
+        document: dict[str, Any] = json.loads(row[0])
+        return document
+
+    def save_report(self, document: dict[str, Any]) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO trade_reports VALUES (?, ?, ?, ?)",
+                (
+                    document["report_id"],
+                    document["trade_id"],
+                    document["created_at_utc"],
+                    json.dumps(document),
+                ),
+            )
+
+    def reports(self, trade_id: str) -> list[dict[str, Any]]:
+        """A trade's reports, newest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT document FROM trade_reports WHERE trade_id = ? "
+                "ORDER BY created_at_utc DESC, report_id DESC",
+                (trade_id,),
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]

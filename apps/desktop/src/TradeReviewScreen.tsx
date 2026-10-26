@@ -15,7 +15,9 @@ import {
   type ReviewTrade,
   type TradeFilter,
 } from "./review-api";
+import { ReviewSettingsPanel } from "./ReviewSettingsPanel";
 import { TradeChart } from "./TradeChart";
+import { TradeReportPanel } from "./TradeReportPanel";
 import { joinBars, tradeChartRequests, tradeMarkers } from "./trade-review";
 
 const PAGE = 300;
@@ -90,6 +92,7 @@ export function TradeReviewScreen({
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const message = useCallback(
     (error: unknown) =>
@@ -210,6 +213,14 @@ export function TradeReviewScreen({
           <button
             type="button"
             className="tb-button"
+            aria-pressed={settingsOpen}
+            onClick={() => setSettingsOpen(!settingsOpen)}
+          >
+            {t("rv.settings")}
+          </button>
+          <button
+            type="button"
+            className="tb-button"
             aria-label={t("rv.close")}
             onClick={onClose}
           >
@@ -221,6 +232,7 @@ export function TradeReviewScreen({
             {problem}
           </p>
         ) : null}
+        {settingsOpen ? <ReviewSettingsPanel api={api} today={today} /> : null}
         <div className="rv-filters">
           <label className="bt-inline">
             {t("rv.ledger")}
@@ -785,7 +797,7 @@ function TradeDetail({
           ) : null}
         </p>
       </div>
-      <p className="workspace-note">{t("rv.reportLater")}</p>
+      <TradeReportPanel api={api} tradeId={trade.trade_id} />
     </div>
   );
 }

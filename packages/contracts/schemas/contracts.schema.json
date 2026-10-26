@@ -191,6 +191,21 @@
     },
     {
       "$ref": "#/$defs/ReviewGroup"
+    },
+    {
+      "$ref": "#/$defs/ReviewSettings"
+    },
+    {
+      "$ref": "#/$defs/ReviewAccountCapitalList"
+    },
+    {
+      "$ref": "#/$defs/ReviewReportDraft"
+    },
+    {
+      "$ref": "#/$defs/ReviewTradeReport"
+    },
+    {
+      "$ref": "#/$defs/ReviewTradeReportList"
     }
   ],
   "$defs": {
@@ -7870,6 +7885,524 @@
         "execution_count": {
           "type": "integer",
           "minimum": 1
+        }
+      }
+    },
+    "ReviewSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "report_model", "models"],
+      "properties": {
+        "kind": {
+          "const": "review_settings"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "report_model": {
+          "enum": ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "enum": ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]
+          }
+        }
+      }
+    },
+    "ReviewAccountCapitalList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "accounts", "entries"],
+      "properties": {
+        "kind": {
+          "const": "review_account_capital_list"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["account_ref", "currency"],
+            "properties": {
+              "account_ref": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "currency": {
+                "enum": ["USD", "KRW"]
+              }
+            }
+          }
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "entry_id",
+              "account_ref",
+              "effective_from",
+              "amount",
+              "currency",
+              "recorded_at_utc"
+            ],
+            "properties": {
+              "entry_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "account_ref": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "effective_from": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "amount": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "currency": {
+                "enum": ["USD", "KRW"]
+              },
+              "recorded_at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              }
+            }
+          }
+        }
+      }
+    },
+    "ReviewReportDraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "draft_id",
+        "trade_id",
+        "created_at_utc",
+        "model",
+        "agent_version",
+        "trade",
+        "facts",
+        "missing",
+        "uncertainty",
+        "warnings",
+        "dataset_revisions",
+        "note",
+        "images"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_report_draft"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "draft_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "trade_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "created_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "model": {
+          "enum": ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]
+        },
+        "agent_version": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "trade": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instrument_id",
+            "currency",
+            "rule",
+            "status",
+            "opened_on",
+            "closed_on",
+            "time_uncertain"
+          ],
+          "properties": {
+            "instrument_id": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "currency": {
+              "enum": ["USD", "KRW"]
+            },
+            "rule": {
+              "enum": ["flat", "day", "fifo", "manual"]
+            },
+            "status": {
+              "enum": ["open", "closed", "incomplete"]
+            },
+            "opened_on": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "closed_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "time_uncertain": {
+              "type": "boolean"
+            }
+          }
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "subject",
+              "value",
+              "unit",
+              "text",
+              "hindsight"
+            ],
+            "properties": {
+              "code": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "subject": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "value": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "unit": {
+                "enum": [
+                  "price",
+                  "percent",
+                  "ratio",
+                  "count",
+                  "days",
+                  "currency",
+                  "text"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "hindsight": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "uncertainty": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "dataset_revisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text", "tags", "written_at_utc"],
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "maxLength": 4000
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 32
+                  }
+                },
+                "written_at_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "images": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "timeframe",
+              "title",
+              "cutoff_utc",
+              "bars",
+              "markers"
+            ],
+            "properties": {
+              "kind": {
+                "enum": ["entry", "exit", "context"]
+              },
+              "timeframe": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "cutoff_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "bars": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/PriceBar"
+                }
+              },
+              "markers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["time_utc", "side", "quantity", "price"],
+                  "properties": {
+                    "time_utc": {
+                      "$ref": "#/$defs/UtcTimestamp"
+                    },
+                    "side": {
+                      "$ref": "#/$defs/Side"
+                    },
+                    "quantity": {
+                      "$ref": "#/$defs/NonNegativeDecimalString"
+                    },
+                    "price": {
+                      "$ref": "#/$defs/NonNegativeDecimalString"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ReviewTradeReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "report_id",
+        "draft_id",
+        "trade_id",
+        "model",
+        "language",
+        "created_at_utc",
+        "summary",
+        "sections",
+        "uncertainty",
+        "usage",
+        "images"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_trade_report"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "report_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "draft_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "trade_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "model": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "language": {
+          "enum": ["en", "ko"]
+        },
+        "created_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "sections": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "key",
+              "evidence",
+              "went_well",
+              "to_improve",
+              "check_next"
+            ],
+            "properties": {
+              "key": {
+                "enum": ["entry", "exit", "sizing"]
+              },
+              "evidence": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              },
+              "went_well": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              },
+              "to_improve": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              },
+              "check_next": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              }
+            }
+          }
+        },
+        "uncertainty": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input_tokens", "output_tokens"],
+          "properties": {
+            "input_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "output_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "images": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "sha256", "bytes"],
+            "properties": {
+              "kind": {
+                "enum": ["entry", "exit", "context"]
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "ReviewTradeReportList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "trade_id", "reports"],
+      "properties": {
+        "kind": {
+          "const": "review_trade_report_list"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "trade_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "reports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReviewTradeReport"
+          }
         }
       }
     }

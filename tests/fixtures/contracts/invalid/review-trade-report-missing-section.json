@@ -1,0 +1,39 @@
+{
+  "kind": "review_trade_report",
+  "schema_version": "0.1",
+  "report_id": "report-0123456789ab",
+  "draft_id": "draft-0123456789ab",
+  "trade_id": "flat:broker:brk-1",
+  "model": "claude-sonnet-5-5",
+  "language": "ko",
+  "created_at_utc": "2026-10-26T12:00:00Z",
+  "summary": "갭 상승 뒤 추격 매수, 빠른 익절.",
+  "sections": [
+    {
+      "key": "entry",
+      "evidence": ["gap_pct", "entry_vs_premarket_high_pct", "image:entry"],
+      "went_well": ["SPY보다 강한 종목을 골랐다"],
+      "to_improve": ["프리마켓 고가 위에서 추격했다"],
+      "check_next": ["첫 5분봉 저가 이탈 여부"]
+    },
+    {
+      "key": "exit",
+      "evidence": ["captured_of_best_ratio"],
+      "went_well": [],
+      "to_improve": ["최고가의 40%만 지켰다"],
+      "check_next": []
+    }
+  ],
+  "uncertainty": "이미지 3장과 사실만으로 판단했다.",
+  "usage": {
+    "input_tokens": 5123,
+    "output_tokens": 812
+  },
+  "images": [
+    {
+      "kind": "entry",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "bytes": 20480
+    }
+  ]
+}
