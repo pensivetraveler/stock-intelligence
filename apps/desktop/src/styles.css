@@ -3374,3 +3374,84 @@ body {
 .rv-suggestions p {
   margin: 2px 0;
 }
+
+/* Period review (ADR 0042 step 4a) */
+.rv-period {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+}
+
+.rv-period-side,
+.rv-period-main {
+  display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rv-period-form {
+  display: grid;
+  gap: 6px;
+}
+
+.rv-period-list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+}
+
+.rv-period-section {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--term-line);
+  padding-top: 8px;
+}
+
+.rv-period-section h4,
+.rv-period-section h5 {
+  margin: 4px 0 0;
+}
+
+.rv-curve {
+  height: 220px;
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.rv-bar-cell {
+  width: 140px;
+}
+
+.rv-bar {
+  display: block;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.rv-bar-up {
+  background: #3fb68b;
+}
+
+.rv-bar-down {
+  background: #e5566b;
+}
+
+.rv-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 34px);
+  gap: 3px;
+}
+
+.rv-day {
+  display: grid;
+  place-items: center;
+  height: 26px;
+  border: 1px solid var(--term-line);
+  border-radius: 3px;
+  font-size: 11px;
+}

@@ -4,6 +4,8 @@ import type {
   ReviewAssignmentResult,
   ReviewConversation,
   ReviewGroup,
+  ReviewPeriod,
+  ReviewPeriodList,
   ReviewCheckStatus,
   ReviewPrincipleCheck,
   ReviewPrincipleDraft,
@@ -58,6 +60,15 @@ export interface CapitalRequest {
   /** YYYY-MM-DD: the capital applies to trades opened from this day. */
   effectiveFrom: string;
   amount: string;
+}
+
+export interface PeriodRequest {
+  fromDate: string;
+  toDate: string;
+  ledger: ReviewLedger;
+  accountRef?: string;
+  /** A strategy id, or "none" for trades without one. */
+  strategyId?: string;
 }
 
 export interface AnnotationRequest {
@@ -130,6 +141,10 @@ export interface ReviewApi {
   checkStatus(): Promise<ReviewCheckStatus>;
   /** Queues principle checks of trades opened between the dates. */
   runChecks(fromDate: string, toDate: string): Promise<ReviewCheckStatus>;
+  /** Computes and saves a period review (statistics only; no Claude). */
+  makePeriodReview(request: PeriodRequest): Promise<ReviewPeriod>;
+  periodReviews(): Promise<ReviewPeriodList>;
+  periodReview(reviewId: string): Promise<ReviewPeriod>;
 }
 
 // Trade ids contain ":" ("flat:broker:<id>"); the routes take them as a path.
@@ -348,6 +363,37 @@ export function createReviewApi(
         "/v1/review/principle-checks/run",
         "review_check_status",
         { method: "POST", body: { from_date: fromDate, to_date: toDate } },
+      );
+    },
+    makePeriodReview({ fromDate, toDate, ledger, accountRef, strategyId }) {
+      return callForKind<ReviewPeriod>(
+        target,
+        "/v1/review/periods",
+        "review_period",
+        {
+          method: "POST",
+          body: {
+            from_date: fromDate,
+            to_date: toDate,
+            ledger,
+            ...(accountRef ? { account_ref: accountRef } : {}),
+            ...(strategyId ? { strategy_id: strategyId } : {}),
+          },
+        },
+      );
+    },
+    periodReviews() {
+      return callForKind<ReviewPeriodList>(
+        target,
+        "/v1/review/periods",
+        "review_period_list",
+      );
+    },
+    periodReview(reviewId) {
+      return callForKind<ReviewPeriod>(
+        target,
+        `/v1/review/periods/${encodeURIComponent(reviewId)}`,
+        "review_period",
       );
     },
     async reports(tradeId) {

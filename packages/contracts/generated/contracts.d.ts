@@ -75,7 +75,9 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ReviewPrincipleCheck
   | ReviewWhatIf
   | ReviewStrategySuggestions
-  | ReviewCheckStatus;
+  | ReviewCheckStatus
+  | ReviewPeriod
+  | ReviewPeriodList;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -5905,4 +5907,139 @@ export interface ReviewCheckStatus {
   done: number;
   failed: number;
   last_error: string | null;
+}
+export interface ReviewPeriod {
+  kind: "review_period";
+  schema_version: SchemaVersion;
+  review_id: Identifier;
+  created_at_utc: UtcTimestamp;
+  from_date: string;
+  to_date: string;
+  previous_from_date: string;
+  previous_to_date: string;
+  filters: {
+    ledger: "manual" | "imported" | "broker";
+    account_ref: string | null;
+    strategy_id: string | null;
+  };
+  principles_version: number | null;
+  sections: {
+    currency: "USD" | "KRW";
+    summary: ReviewPeriodSummary;
+    previous_summary: ReviewPeriodSummary;
+    principles: {
+      checked: number;
+      unchecked: number;
+      items: {
+        item_id: string;
+        text: string;
+        kind: string;
+        broken: number;
+        kept: number;
+        other: number;
+      }[];
+      broken_trades: number;
+      broken_net_pnl: DecimalString;
+      kept_trades: number;
+      kept_net_pnl: DecimalString;
+    };
+    what_if: {
+      hindsight: true;
+      computed: number;
+      missing: number;
+      gross_pnl: DecimalString;
+      actual_gross_pnl: DecimalString;
+      difference: DecimalString;
+    };
+    groups: {
+      tag: {
+        key: string;
+        trades: number;
+        win_rate: NonNegativeDecimalString | null;
+        net_pnl: DecimalString;
+        average_net: DecimalString;
+      }[];
+      ticker: {
+        key: string;
+        trades: number;
+        win_rate: NonNegativeDecimalString | null;
+        net_pnl: DecimalString;
+        average_net: DecimalString;
+      }[];
+      time_of_day: {
+        key: string;
+        trades: number;
+        win_rate: NonNegativeDecimalString | null;
+        net_pnl: DecimalString;
+        average_net: DecimalString;
+      }[];
+      weekday: {
+        key: string;
+        trades: number;
+        win_rate: NonNegativeDecimalString | null;
+        net_pnl: DecimalString;
+        average_net: DecimalString;
+      }[];
+      holding: {
+        key: string;
+        trades: number;
+        win_rate: NonNegativeDecimalString | null;
+        net_pnl: DecimalString;
+        average_net: DecimalString;
+      }[];
+      size: {
+        key: string;
+        trades: number;
+        win_rate: NonNegativeDecimalString | null;
+        net_pnl: DecimalString;
+        average_net: DecimalString;
+      }[];
+    };
+    curve: {
+      closed_on: string;
+      closed_at_utc: UtcTimestamp | null;
+      cumulative: DecimalString;
+    }[];
+    daily: {
+      date: string;
+      trades: number;
+      net_pnl: DecimalString;
+    }[];
+  }[];
+}
+export interface ReviewPeriodSummary {
+  trades: number;
+  wins: number;
+  losses: number;
+  win_rate: NonNegativeDecimalString | null;
+  net_pnl: DecimalString;
+  gross_pnl: DecimalString;
+  fees: NonNegativeDecimalString;
+  average_win: DecimalString | null;
+  average_loss: DecimalString | null;
+  profit_factor: NonNegativeDecimalString | null;
+  expectancy: DecimalString | null;
+  max_drawdown: NonNegativeDecimalString;
+  longest_losing_streak: number;
+  largest_loss_share: NonNegativeDecimalString | null;
+}
+export interface ReviewPeriodList {
+  kind: "review_period_list";
+  schema_version: SchemaVersion;
+  reviews: {
+    review_id: Identifier;
+    created_at_utc: UtcTimestamp;
+    from_date: string;
+    to_date: string;
+    filters: {
+      ledger: "manual" | "imported" | "broker";
+      account_ref: string | null;
+      strategy_id: string | null;
+    };
+    totals: {
+      currency: "USD" | "KRW";
+      trades: number;
+      net_pnl: DecimalString;
+    }[];
+  }[];
 }
