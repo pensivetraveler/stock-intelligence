@@ -1450,6 +1450,24 @@ const en = {
   "pd.key.sun": "Sun",
   "pd.calendar": "Daily P&L",
   "pd.day": "{date}: {net} ({trades} trades)",
+  "pdc.title": "Claude commentary",
+  "pdc.prepare": "Prepare a Claude commentary",
+  "pdc.previewNote":
+    "Will be sent: statistics for {sections} currencies, {principles} principles, {trades} best/worst trades ({notes} with your notes, marked as written after the trade). No account numbers, keys or record ids.",
+  "pdc.raw": "Show exactly what will be sent",
+  "pdc.commentary": "Period commentary",
+  "pdc.list.repeated_mistakes": "Repeated mistakes",
+  "pdc.list.went_well": "Went well",
+  "pdc.list.focus_next": "Focus on next period",
+  "pdc.suggestions": "Suggested principle changes",
+  "pdc.action.add": "Add",
+  "pdc.action.change": "Change",
+  "pdc.action.remove": "Remove",
+  "pdc.apply": "Open the chosen changes in the principles editor",
+  "pdc.editing": "Principles with the chosen changes",
+  "pdc.editingNote":
+    "Check the items; nothing changes until you save a new version.",
+  "pdc.saved": "Saved as a new principles version.",
   "common.requestFailed": "Request failed",
 } as const;
 
@@ -2871,6 +2889,24 @@ const ko: Record<MessageKey, string> = {
   "pd.key.sun": "일",
   "pd.calendar": "일별 손익",
   "pd.day": "{date}: {net} (거래 {trades}건)",
+  "pdc.title": "Claude 해설",
+  "pdc.prepare": "Claude 해설 준비",
+  "pdc.previewNote":
+    "보낼 내용: 통화 {sections}개의 통계, 원칙 {principles}개, 상·하위 거래 {trades}건(본인 메모 {notes}건, 체결 후 작성 표시). 계좌번호·키·기록 ID는 보내지 않습니다.",
+  "pdc.raw": "보낼 내용 그대로 보기",
+  "pdc.commentary": "기간 해설",
+  "pdc.list.repeated_mistakes": "반복되는 실수",
+  "pdc.list.went_well": "잘된 점",
+  "pdc.list.focus_next": "다음 기간에 집중할 것",
+  "pdc.suggestions": "원칙 변경 제안",
+  "pdc.action.add": "추가",
+  "pdc.action.change": "수정",
+  "pdc.action.remove": "삭제",
+  "pdc.apply": "고른 제안을 원칙 편집기로",
+  "pdc.editing": "제안을 반영한 원칙",
+  "pdc.editingNote":
+    "항목을 확인하세요. 새 버전으로 저장하기 전에는 바뀌지 않습니다.",
+  "pdc.saved": "새 원칙 버전으로 저장했습니다.",
   "common.requestFailed": "요청 실패",
 };
 

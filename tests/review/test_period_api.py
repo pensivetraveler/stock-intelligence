@@ -28,6 +28,26 @@ def korean(order_id: str, side: str, price: str, when: str) -> dict[str, Any]:
     return document
 
 
+def period_documents() -> list[dict[str, Any]]:
+    return [
+        # The previous period (25 Feb to 1 Mar): one win of 200 gross.
+        broker("0a", "buy", "100", "2026-02-26T15:00:00Z", "kiwoom-a"),
+        broker("0b", "sell", "120", "2026-02-26T16:00:00Z", "kiwoom-a"),
+        # Monday 2 March, 10:00 ET: +100 gross.
+        broker("1a", "buy", "100", "2026-03-02T15:00:00Z", "kiwoom-a"),
+        broker("1b", "sell", "110", "2026-03-02T16:00:00Z", "kiwoom-a"),
+        # Tuesday 3 March, 9:40 ET (first 30 minutes): -50 gross.
+        broker("2a", "buy", "100", "2026-03-03T14:40:00Z", "kiwoom-a"),
+        broker("2b", "sell", "95", "2026-03-03T16:00:00Z", "kiwoom-a"),
+        # Wednesday 4 March to Thursday: -100 gross, held a day.
+        broker("3a", "buy", "100", "2026-03-04T15:00:00Z", "kiwoom-a"),
+        broker("3b", "sell", "90", "2026-03-05T16:00:00Z", "kiwoom-a"),
+        # A won trade the same week: kept apart from the dollar figures.
+        korean("4a", "buy", "70000", "2026-03-03T01:00:00Z"),
+        korean("4b", "sell", "71000", "2026-03-03T02:00:00Z"),
+    ]
+
+
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.delenv("SIW_DATA_DIR", raising=False)
@@ -44,23 +64,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
 
     main.MarketBarsService = Synthetic  # type: ignore[assignment,misc]
     journal = JournalStore(tmp_path / "journal")
-    for document in [
-        # The previous period (25 Feb to 1 Mar): one win of 200 gross.
-        broker("0a", "buy", "100", "2026-02-26T15:00:00Z", "kiwoom-a"),
-        broker("0b", "sell", "120", "2026-02-26T16:00:00Z", "kiwoom-a"),
-        # Monday 2 March, 10:00 ET: +100 gross.
-        broker("1a", "buy", "100", "2026-03-02T15:00:00Z", "kiwoom-a"),
-        broker("1b", "sell", "110", "2026-03-02T16:00:00Z", "kiwoom-a"),
-        # Tuesday 3 March, 9:40 ET (first 30 minutes): -50 gross.
-        broker("2a", "buy", "100", "2026-03-03T14:40:00Z", "kiwoom-a"),
-        broker("2b", "sell", "95", "2026-03-03T16:00:00Z", "kiwoom-a"),
-        # Wednesday 4 March to Thursday: -100 gross, held a day.
-        broker("3a", "buy", "100", "2026-03-04T15:00:00Z", "kiwoom-a"),
-        broker("3b", "sell", "90", "2026-03-05T16:00:00Z", "kiwoom-a"),
-        # A won trade the same week: kept apart from the dollar figures.
-        korean("4a", "buy", "70000", "2026-03-03T01:00:00Z"),
-        korean("4b", "sell", "71000", "2026-03-03T02:00:00Z"),
-    ]:
+    for document in period_documents():
         journal.record_broker_execution(document)
     app = create_app(
         journal_store=journal,

@@ -41,9 +41,17 @@ from services.review.conversation import (
     ConversationError,
     call_claude,
     first_content,
+    period_system_prompt,
     system_prompt,
 )
-from services.review.period import period_sections, rows_for
+from services.review.period import Row, period_sections, rows_for
+from services.review.period_ai import (
+    PERIOD_TOOLS,
+    PeriodTools,
+    ask_period_commentary,
+    best_and_worst,
+    period_payload,
+)
 from services.review.principles import PrincipleError, check_trade, clean_items, version_for
 from services.review.report import Capital, report_evidence
 from services.review.store import (
@@ -195,6 +203,11 @@ class PeriodRequest(BaseModel):
 MAX_PERIOD_DAYS = 400
 
 
+class CommentaryLanguage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    language: Literal["en", "ko"] = "ko"
+
+
 class CheckRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     from_date: date
@@ -270,6 +283,7 @@ def register_review_routes(
     ask: Callable[..., dict[str, Any]] = ask_for_report,
     converse: Callable[..., dict[str, Any]] = call_claude,
     convert: Callable[..., dict[str, Any]] = convert_principles,
+    period_ask: Callable[..., dict[str, Any]] = ask_period_commentary,
     resolve_symbol: Callable[[str], str | None] = lambda _symbol: None,
 ) -> None:
     index = _TradeIndex()
@@ -1197,6 +1211,27 @@ def register_review_routes(
                 current[trade_id] = document
         return current
 
+    def period_rows(
+        ledgers: JournalStore,
+        review: ReviewStore,
+        filters: dict[str, Any],
+        first: date,
+        last: date,
+    ) -> list[Row]:
+        """Closed trades of the filters closed between the dates."""
+        trades, _by_id, _undated = index.trades(ledgers, review)
+        account, strategy = filters["account_ref"], filters["strategy_id"]
+        chosen = [
+            t
+            for t in trades
+            if t.ledger == filters["ledger"]
+            and (account is None or t.book.split(":", 1)[-1] == account)
+            and (strategy is None or (t.strategy_id or "none") == strategy)
+            # A closed trade closes on its last fill's day: skip the rest before formatting.
+            and first <= max(p.fill.day for p in t.allocations) <= last
+        ]
+        return rows_for(chosen, first, last, review.annotations(), current_check_documents(review))
+
     def period_summary(document: dict[str, Any]) -> dict[str, Any]:
         return {
             "review_id": document["review_id"],
@@ -1226,26 +1261,15 @@ def register_review_routes(
             return error_response(
                 request, 422, "invalid_period", f"a period covers at most {MAX_PERIOD_DAYS} days"
             )
-        trades, _by_id, _undated = index.trades(ledgers, review)
-        chosen = [
-            t
-            for t in trades
-            if t.ledger == body.ledger
-            and (body.account_ref is None or t.book.split(":", 1)[-1] == body.account_ref)
-            and (body.strategy_id is None or (t.strategy_id or "none") == body.strategy_id)
-        ]
         before_end = body.from_date - timedelta(days=1)
         before_start = before_end - timedelta(days=length - 1)
-        # A closed trade closes on its last fill's day: skip the rest before formatting.
-        chosen = [
-            t
-            for t in chosen
-            if before_start <= max(p.fill.day for p in t.allocations) <= body.to_date
-        ]
-        notes = review.annotations()
-        checks_now = current_check_documents(review)
-        rows = rows_for(chosen, body.from_date, body.to_date, notes, checks_now)
-        previous = rows_for(chosen, before_start, before_end, notes, checks_now)
+        filters = {
+            "ledger": body.ledger,
+            "account_ref": body.account_ref,
+            "strategy_id": body.strategy_id,
+        }
+        rows = period_rows(ledgers, review, filters, body.from_date, body.to_date)
+        previous = period_rows(ledgers, review, filters, before_start, before_end)
         versions = review.principle_versions()
         items = {i["item_id"]: i["text"] for i in (versions[-1]["items"] if versions else [])}
         # Trades not checked yet are queued, so a later review of the period has them.
@@ -1259,11 +1283,7 @@ def register_review_routes(
             "to_date": body.to_date.isoformat(),
             "previous_from_date": before_start.isoformat(),
             "previous_to_date": before_end.isoformat(),
-            "filters": {
-                "ledger": body.ledger,
-                "account_ref": body.account_ref,
-                "strategy_id": body.strategy_id,
-            },
+            "filters": filters,
             "principles_version": versions[-1]["version"] if versions else None,
             "sections": period_sections(rows, previous, items),
         }
@@ -1293,3 +1313,168 @@ def register_review_routes(
             return respond(review.period_review(review_id))
         except PeriodReviewNotFoundError:
             return error_response(request, 404, "period_review_not_found", "No such review")
+
+    # --- period commentary and follow-up questions (step 4b) ---------------------------
+
+    def period_context(
+        request: Request, review_id: str
+    ) -> tuple[ReviewStore, dict[str, Any], list[Row], dict[str, Any]] | Response:
+        """The saved review, its trades as they are now, and the payload for Claude."""
+        ledgers, review = journal(), store()
+        if ledgers is None or review is None:
+            return unavailable(request)
+        try:
+            saved = review.period_review(review_id)
+        except PeriodReviewNotFoundError:
+            return error_response(request, 404, "period_review_not_found", "No such review")
+        rows = period_rows(
+            ledgers,
+            review,
+            saved["filters"],
+            date.fromisoformat(saved["from_date"]),
+            date.fromisoformat(saved["to_date"]),
+        )
+        versions = review.principle_versions()
+        payload = period_payload(
+            saved,
+            versions[-1]["items"] if versions else [],
+            best_and_worst(rows, review.annotations()),
+        )
+        return review, saved, rows, payload
+
+    @application.get("/v1/review/periods/{review_id}/payload", response_model=None)
+    def get_period_payload(request: Request, review_id: str) -> Response:
+        found = period_context(request, review_id)
+        if isinstance(found, Response):
+            return found
+        _review, _saved, _rows, payload = found
+        return respond(
+            {
+                "kind": "review_period_payload",
+                "schema_version": "0.1",
+                "review_id": review_id,
+                "payload": payload,
+            }
+        )
+
+    @application.post("/v1/review/periods/{review_id}/commentary", response_model=None)
+    def make_period_commentary(
+        request: Request, review_id: str, body: CommentaryLanguage
+    ) -> Response:
+        found = period_context(request, review_id)
+        if isinstance(found, Response):
+            return found
+        review, _saved, _rows, payload = found
+        key = api_key()
+        if key is None:
+            return error_response(
+                request,
+                409,
+                "agent_key_missing",
+                "Register an enabled Claude (Anthropic) API key on the Keys screen",
+            )
+        try:
+            answer = period_ask(
+                payload,
+                key,
+                body.language,
+                model=review.setting("report_model") or DEFAULT_MODEL,
+                now=now,
+            )
+        except ReportError as exc:
+            return error_response(request, 502, "report_failed", str(exc))
+        document = {
+            "kind": "review_period_commentary",
+            "schema_version": "0.1",
+            "review_id": review_id,
+            **answer,
+        }
+        validate_document(document)
+        review.add_period_commentary(review_id, document)
+        return respond(document, 201)
+
+    @application.get("/v1/review/periods/{review_id}/commentaries", response_model=None)
+    def list_period_commentaries(request: Request, review_id: str) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        return respond(
+            {
+                "kind": "review_period_commentary_list",
+                "schema_version": "0.1",
+                "review_id": review_id,
+                "commentaries": review.period_commentaries(review_id),
+            }
+        )
+
+    def period_key(review_id: str) -> str:
+        return f"period:{review_id}"
+
+    @application.get("/v1/review/periods/{review_id}/conversation", response_model=None)
+    def get_period_conversation(request: Request, review_id: str) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        key = period_key(review_id)
+        return respond(conversation_document(review, key, review.conversation_for(key)))
+
+    @application.post("/v1/review/periods/{review_id}/conversation/messages", response_model=None)
+    def ask_period_question(request: Request, review_id: str, body: QuestionRequest) -> Response:
+        found = period_context(request, review_id)
+        if isinstance(found, Response):
+            return found
+        review, _saved, rows, payload = found
+        claude_key = api_key()
+        if claude_key is None:
+            return error_response(
+                request,
+                409,
+                "agent_key_missing",
+                "Register an enabled Claude (Anthropic) API key on the Keys screen",
+            )
+        key = period_key(review_id)
+        conversation = review.conversation_for(key)
+        opening = None
+        if conversation is None:
+            latest = next(iter(review.period_commentaries(review_id)), None)
+            context = {
+                "period_review": payload,
+                "your_commentary": None
+                if latest is None
+                else {
+                    k: latest[k]
+                    for k in (
+                        "summary",
+                        "repeated_mistakes",
+                        "went_well",
+                        "focus_next",
+                        "principle_suggestions",
+                    )
+                },
+            }
+            opening = [{"type": "text", "text": json.dumps(context, ensure_ascii=False)}]
+            conversation = review.start_conversation(
+                key,
+                review.setting("report_model") or DEFAULT_MODEL,
+                period_system_prompt(body.language),
+                {"status": "idle"},
+            )
+
+        def call(
+            model: str, system: str, tools: list[dict[str, Any]], messages: list[Any]
+        ) -> dict[str, Any]:
+            return converse(model, system, tools, messages, claude_key)
+
+        loop = Conversation(
+            review,
+            conversation,
+            PeriodTools(rows, review.annotations()),
+            call,
+            now,
+            specs=PERIOD_TOOLS,
+        )
+        try:
+            loop.ask(body.question, opening)
+        except ConversationError as exc:
+            return error_response(request, 409, "conversation_busy", str(exc))
+        return respond(conversation_document(review, key, review.conversation(loop.id)))

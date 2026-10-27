@@ -18,14 +18,19 @@ import contextlib
 import json
 from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
 from services.agents.commentary import API_URL, API_VERSION, LANGUAGES
 from services.review.claude import payload_for
 from services.review.store import ReviewStore
-from services.review.tools import IMAGE_TOOLS, TOOLS, ToolContext, ToolInputError, as_text
+from services.review.tools import IMAGE_TOOLS, TOOLS, ToolInputError, ToolResult, as_text
+
+
+class ToolRunner(Protocol):
+    def run(self, name: str, tool_input: Any) -> ToolResult: ...
+
 
 MAX_TOOL_CALLS = 6
 MAX_STEPS = 10
@@ -100,6 +105,24 @@ def call_claude(
     return message
 
 
+PERIOD_SYSTEM = """You answer an investor's follow-up questions about a review of their
+trading over a period. The first message holds the period's statistics, their principles,
+the best and worst trades with notes (written after the trades), and your commentary.
+Rules:
+- Use only that and what the period_trades tool returns; cite numbers. No outside
+  knowledge about companies, news or later prices.
+- What-if totals are hindsight; say so when you use them.
+- Prefer one or two well-chosen tool calls; at most {limit} per question.
+- No buy, sell or hold recommendations, no price targets. Not advice.
+- Answer concisely in {language}, in plain text with short paragraphs or bullet lists."""
+
+
+def period_system_prompt(language: str) -> str:
+    if language not in LANGUAGES:
+        raise ConversationError("language must be en or ko")
+    return PERIOD_SYSTEM.format(language=LANGUAGES[language], limit=MAX_TOOL_CALLS)
+
+
 def system_prompt(language: str) -> str:
     if language not in LANGUAGES:
         raise ConversationError("language must be en or ko")
@@ -148,9 +171,10 @@ class Conversation:
         self,
         store: ReviewStore,
         conversation: dict[str, Any],
-        tools: ToolContext,
+        tools: ToolRunner,
         call: Callable[[str, str, list[dict[str, Any]], list[dict[str, Any]]], dict[str, Any]],
         now: Callable[[], datetime],
+        specs: list[dict[str, Any]] = TOOLS,
     ) -> None:
         self.store = store
         self.id = conversation["conversation_id"]
@@ -158,6 +182,8 @@ class Conversation:
         self.system = conversation["system"]
         self.state: dict[str, Any] = conversation["state"]
         self.tools = tools
+        # The tool definitions sent with every turn; fixed for the conversation.
+        self.specs = specs
         self.call = call
         self.now = now
 
@@ -218,7 +244,9 @@ class Conversation:
     def _run(self) -> None:
         for _step in range(MAX_STEPS):
             try:
-                message = self.call(self.model, self.system, TOOLS, self.store.messages(self.id))
+                message = self.call(
+                    self.model, self.system, self.specs, self.store.messages(self.id)
+                )
             except ConversationError as exc:
                 self._fail(str(exc))
                 return

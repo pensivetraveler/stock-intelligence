@@ -3,6 +3,7 @@ import type {
   ReviewAccountCapitalList,
   ReviewCheckStatus,
   ReviewPeriod,
+  ReviewPeriodCommentary,
   ReviewPeriodList,
   ReviewWhatIf,
   ReviewConversation,
@@ -26,6 +27,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { MarketApi } from "./market-api";
 import type { ReviewApi } from "./review-api";
+import { PeriodCommentary } from "./PeriodCommentary";
 import { PeriodReview } from "./PeriodReview";
 import { PrinciplesPanel } from "./PrinciplesPanel";
 import { ReportConversation } from "./ReportConversation";
@@ -57,6 +59,40 @@ const bars = fixture<MarketBarsResponse>("market-bars-response.json");
 const settings = fixture<ReviewSettings>("review-settings.json");
 const period = fixture<ReviewPeriod>("review-period.json");
 const periodList = fixture<ReviewPeriodList>("review-period-list.json");
+const commentary: ReviewPeriodCommentary = {
+  kind: "review_period_commentary",
+  schema_version: "0.1",
+  review_id: "period-1",
+  model: "claude-sonnet-5-5",
+  language: "en",
+  created_at_utc: "2026-10-27T00:00:00Z",
+  summary: "Losses came from the open.",
+  repeated_mistakes: ["Chasing in the first 30 minutes"],
+  went_well: [],
+  focus_next: ["Wait 30 minutes"],
+  principle_suggestions: [
+    {
+      action: "add",
+      item_id: null,
+      scope: "shared",
+      kind: "no_entry_first_minutes",
+      value: "30",
+      text: "No buying in the first 30 minutes",
+      reason: "first30: 1 trade, -51",
+    },
+    {
+      action: "change",
+      item_id: "p1",
+      scope: "shared",
+      kind: "stop_loss_pct",
+      value: "3",
+      text: "Stop at 3%",
+      reason: "average loss -6%",
+    },
+  ],
+  uncertainty: "",
+  usage: { input_tokens: 10, output_tokens: 5 },
+};
 const draft = fixture<ReviewReportDraft>("review-report-draft.json");
 const report = fixture<ReviewTradeReport>("review-trade-report.json");
 const whatIf: ReviewWhatIf = {
@@ -225,6 +261,30 @@ function fakeApi(overrides: Partial<ReviewApi> = {}): ReviewApi {
     makePeriodReview: vi.fn(async () => period),
     periodReviews: vi.fn(async () => periodList),
     periodReview: vi.fn(async () => period),
+    periodPayload: vi.fn(async () => ({
+      kind: "review_period_payload" as const,
+      schema_version: "0.1" as const,
+      review_id: period.review_id,
+      payload: {
+        statistics: [{}, {}],
+        principles: [{}],
+        best_and_worst_trades: {
+          USD: {
+            best: [{ note_written_after_the_trade: "메모" }],
+            worst: [{ note_written_after_the_trade: null }],
+          },
+        },
+      },
+    })),
+    makePeriodCommentary: vi.fn(async () => commentary),
+    periodCommentaries: vi.fn(async () => ({
+      kind: "review_period_commentary_list" as const,
+      schema_version: "0.1" as const,
+      review_id: period.review_id,
+      commentaries: [],
+    })),
+    periodConversation: vi.fn(async () => emptyConversation),
+    askPeriodQuestion: vi.fn(async () => emptyConversation),
     ...overrides,
   };
 }
@@ -474,7 +534,7 @@ describe("ReportConversation", () => {
         ...asked.events,
         {
           type: "answer",
-          text: "청산은 박스 하단 근처였습니다.\n- **매도** 3분 뒤",
+          text: "청산은 박스 하단 근처였습니다.\n- **매도** 3분 뒤\n\n| 종목 | 손익 |\n|---|---|\n| FUFU | -1.56 |",
           model: "claude-sonnet-5-5",
           at_utc: "2026-10-27T00:00:05Z",
         },
@@ -518,6 +578,8 @@ describe("ReportConversation", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Request chart_image:/)).toBeInTheDocument();
     expect(screen.getByText("매도").tagName).toBe("STRONG");
+    expect(screen.getByText("-1.56").tagName).toBe("TD");
+    expect(screen.getByText("종목").tagName).toBe("TH");
     expect(screen.getByText(/900 in, 5000 from cache/)).toBeInTheDocument();
   });
 });
@@ -700,5 +762,71 @@ describe("period review", () => {
     const saved = screen.getByLabelText("Saved reviews");
     fireEvent.click(within(saved).getByText("2026-03-02 → 2026-03-06"));
     await waitFor(() => expect(api.periodReview).toHaveBeenCalled());
+  });
+});
+
+describe("period commentary", () => {
+  it("previews, sends, and opens chosen suggestions in the principles editor", async () => {
+    const current: ReviewPrinciples = {
+      ...noPrinciples,
+      current: {
+        version: 1,
+        created_at_utc: "2026-10-01T00:00:00Z",
+        source_text: "",
+        items: [
+          {
+            item_id: "p1",
+            scope: "shared",
+            kind: "stop_loss_pct",
+            value: "7",
+            text: "Stop at 7%",
+          },
+        ],
+      },
+      versions: [
+        { version: 1, created_at_utc: "2026-10-01T00:00:00Z", item_count: 1 },
+      ],
+    };
+    const api = fakeApi({ principles: vi.fn(async () => current) });
+    render(<PeriodCommentary api={api} reviewId="period-1" strategies={[]} />);
+    fireEvent.click(await screen.findByText("Prepare a Claude commentary"));
+    expect(
+      await screen.findByText(
+        /statistics for 2 currencies, 1 principles, 2 best\/worst trades \(1 with your notes/,
+      ),
+    ).toBeInTheDocument();
+    expect(api.makePeriodCommentary).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Send to Claude"));
+    const view = await screen.findByLabelText("Period commentary");
+    expect(
+      within(view).getByText("Chasing in the first 30 minutes"),
+    ).toBeInTheDocument();
+    const boxes = within(view).getAllByRole("checkbox");
+    fireEvent.click(boxes[0]!);
+    fireEvent.click(boxes[1]!);
+    fireEvent.click(within(view).getByText(/Open the chosen changes/));
+    const editor = await screen.findByLabelText("Items to save");
+    const texts = within(editor)
+      .getAllByLabelText("Wording")
+      .map((input) => (input as HTMLInputElement).value);
+    expect(texts).toEqual(["Stop at 3%", "No buying in the first 30 minutes"]);
+    expect(api.savePrinciples).not.toHaveBeenCalled();
+  });
+
+  it("asks period follow-ups through the period conversation", async () => {
+    const api = fakeApi();
+    render(<PeriodCommentary api={api} reviewId="period-1" strategies={[]} />);
+    fireEvent.change(await screen.findByLabelText("Your question"), {
+      target: { value: "Which tag lost most?" },
+    });
+    fireEvent.click(screen.getByText("Ask Claude"));
+    await waitFor(() =>
+      expect(api.askPeriodQuestion).toHaveBeenCalledWith(
+        "period-1",
+        "Which tag lost most?",
+        "en",
+      ),
+    );
+    expect(api.askQuestion).not.toHaveBeenCalled();
   });
 });
