@@ -43,6 +43,7 @@ from services.review.conversation import (
     first_content,
     system_prompt,
 )
+from services.review.period import period_sections, rows_for
 from services.review.principles import PrincipleError, check_trade, clean_items, version_for
 from services.review.report import Capital, report_evidence
 from services.review.store import (
@@ -50,6 +51,7 @@ from services.review.store import (
     ConversationNotFoundError,
     DraftNotFoundError,
     GroupNotFoundError,
+    PeriodReviewNotFoundError,
     ReviewStore,
 )
 from services.review.tools import ToolContext
@@ -178,6 +180,19 @@ class PrinciplesRequest(BaseModel):
 
 
 AUTO_CHECK_DAYS = 90
+
+
+class PeriodRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    from_date: date
+    to_date: date
+    ledger: Ledger = "broker"
+    account_ref: str | None = Field(default=None, min_length=1, max_length=200)
+    # A strategy id, or "none" for trades without one.
+    strategy_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+MAX_PERIOD_DAYS = 400
 
 
 class CheckRunRequest(BaseModel):
@@ -965,7 +980,7 @@ def register_review_routes(
         if trade is None:
             return error_response(request, 404, "trade_not_found", f"No trade {trade_id}")
         try:
-            checked = principle_check(ledgers, review, trade, capital_entries(review))
+            checked = check_with_what_if(ledgers, review, trade)
         except MarketDataError as exc:
             return error_response(request, 422, "agent_data_unavailable", str(exc))
         key = basis(review, trade, review.principle_versions())
@@ -1033,9 +1048,24 @@ def register_review_routes(
         key = basis(review, trade, versions)
         if key is None:
             return
-        checked = principle_check(ledgers, review, trade, capital_entries(review))
+        checked = check_with_what_if(ledgers, review, trade)
         if checked is not None:
             review.save_check(trade_id, key, checked)
+
+    def check_with_what_if(
+        ledgers: JournalStore, review: ReviewStore, trade: Trade
+    ) -> dict[str, Any] | None:
+        """The principles check, with the principles what-if riding along so period
+        reviews can total it (step 4a). What is stored is this whole document."""
+        checked = principle_check(ledgers, review, trade, capital_entries(review))
+        if checked is None or get_bars is None:
+            return checked
+        version = next(v for v in review.principle_versions() if v["version"] == checked["version"])
+        try:
+            checked["what_if"] = principles_what_if(get_bars(), trade, version["items"], now())
+        except MarketDataError:
+            checked["what_if"] = None
+        return checked
 
     checks = CheckRunner(check_one)
 
@@ -1149,3 +1179,117 @@ def register_review_routes(
                 "suggestions": suggest_strategies(get_bars(), trade, strategy_list()),
             }
         )
+
+    # --- period reviews (step 4a) ------------------------------------------------------
+
+    def current_check_documents(review: ReviewStore) -> dict[str, dict[str, Any]]:
+        """Stored checks whose basis still matches the trade, by trade id."""
+        ledgers = journal()
+        versions = review.principle_versions()
+        if ledgers is None or not versions:
+            return {}
+        _trades, by_id, _undated = index.trades(ledgers, review)
+        capital = capital_key(review)
+        current = {}
+        for trade_id, (stored, document) in review.check_documents().items():
+            trade = by_id.get(trade_id)
+            if trade is not None and stored == basis(review, trade, versions, capital):
+                current[trade_id] = document
+        return current
+
+    def period_summary(document: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "review_id": document["review_id"],
+            "created_at_utc": document["created_at_utc"],
+            "from_date": document["from_date"],
+            "to_date": document["to_date"],
+            "filters": document["filters"],
+            "totals": [
+                {
+                    "currency": section["currency"],
+                    "trades": section["summary"]["trades"],
+                    "net_pnl": section["summary"]["net_pnl"],
+                }
+                for section in document["sections"]
+            ],
+        }
+
+    @application.post("/v1/review/periods", response_model=None)
+    def make_period_review(request: Request, body: PeriodRequest) -> Response:
+        ledgers, review = journal(), store()
+        if ledgers is None or review is None:
+            return unavailable(request)
+        if body.to_date < body.from_date:
+            return error_response(request, 422, "invalid_period", "to_date is before from_date")
+        length = (body.to_date - body.from_date).days + 1
+        if length > MAX_PERIOD_DAYS:
+            return error_response(
+                request, 422, "invalid_period", f"a period covers at most {MAX_PERIOD_DAYS} days"
+            )
+        trades, _by_id, _undated = index.trades(ledgers, review)
+        chosen = [
+            t
+            for t in trades
+            if t.ledger == body.ledger
+            and (body.account_ref is None or t.book.split(":", 1)[-1] == body.account_ref)
+            and (body.strategy_id is None or (t.strategy_id or "none") == body.strategy_id)
+        ]
+        before_end = body.from_date - timedelta(days=1)
+        before_start = before_end - timedelta(days=length - 1)
+        # A closed trade closes on its last fill's day: skip the rest before formatting.
+        chosen = [
+            t
+            for t in chosen
+            if before_start <= max(p.fill.day for p in t.allocations) <= body.to_date
+        ]
+        notes = review.annotations()
+        checks_now = current_check_documents(review)
+        rows = rows_for(chosen, body.from_date, body.to_date, notes, checks_now)
+        previous = rows_for(chosen, before_start, before_end, notes, checks_now)
+        versions = review.principle_versions()
+        items = {i["item_id"]: i["text"] for i in (versions[-1]["items"] if versions else [])}
+        # Trades not checked yet are queued, so a later review of the period has them.
+        queue_stale(ledgers, review, before_start, body.to_date)
+        document = {
+            "kind": "review_period",
+            "schema_version": "0.1",
+            "review_id": f"period-{uuid.uuid4().hex[:12]}",
+            "created_at_utc": utc(now()),
+            "from_date": body.from_date.isoformat(),
+            "to_date": body.to_date.isoformat(),
+            "previous_from_date": before_start.isoformat(),
+            "previous_to_date": before_end.isoformat(),
+            "filters": {
+                "ledger": body.ledger,
+                "account_ref": body.account_ref,
+                "strategy_id": body.strategy_id,
+            },
+            "principles_version": versions[-1]["version"] if versions else None,
+            "sections": period_sections(rows, previous, items),
+        }
+        validate_document(document)
+        review.save_period_review(document)
+        return respond(document, 201)
+
+    @application.get("/v1/review/periods", response_model=None)
+    def list_period_reviews(request: Request) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        return respond(
+            {
+                "kind": "review_period_list",
+                "schema_version": "0.1",
+                "reviews": [period_summary(d) for d in review.period_reviews()],
+            }
+        )
+
+    @application.get("/v1/review/periods/{review_id}", response_model=None)
+    def get_period_review(request: Request, review_id: str) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        try:
+            return respond(review.period_review(review_id))
+        except PeriodReviewNotFoundError:
+            return error_response(request, 404, "period_review_not_found", "No such review")

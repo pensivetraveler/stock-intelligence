@@ -1,0 +1,29 @@
+{
+  "kind": "review_period_list",
+  "schema_version": "0.1",
+  "reviews": [
+    {
+      "review_id": "period-42b627a9c36a",
+      "created_at_utc": "2026-10-26T12:00:00Z",
+      "from_date": "2026-03-02",
+      "to_date": "2026-03-06",
+      "filters": {
+        "ledger": "broker",
+        "account_ref": null,
+        "strategy_id": null
+      },
+      "totals": [
+        {
+          "currency": "KRW",
+          "trades": 1,
+          "net_pnl": "9999"
+        },
+        {
+          "currency": "USD",
+          "trades": 3,
+          "net_pnl": "-53"
+        }
+      ]
+    }
+  ]
+}

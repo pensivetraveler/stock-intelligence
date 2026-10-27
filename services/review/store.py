@@ -99,6 +99,11 @@ CREATE TABLE IF NOT EXISTS principle_check_results (
     broken INTEGER NOT NULL,
     document TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS period_reviews (
+    review_id TEXT PRIMARY KEY,
+    created_at_utc TEXT NOT NULL,
+    document TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS trade_annotations (
     trade_id TEXT NOT NULL,
     revision INTEGER NOT NULL,
@@ -124,6 +129,10 @@ class CapitalNotFoundError(LookupError):
 
 
 class ConversationNotFoundError(LookupError):
+    pass
+
+
+class PeriodReviewNotFoundError(LookupError):
     pass
 
 
@@ -560,3 +569,38 @@ class ReviewStore:
                 "SELECT trade_id, basis, broken FROM principle_check_results"
             ).fetchall()
         return {trade_id: (basis, int(broken)) for trade_id, basis, broken in rows}
+
+    def check_documents(self) -> dict[str, tuple[str, dict[str, Any]]]:
+        """Every stored check: trade id -> (basis, document)."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT trade_id, basis, document FROM principle_check_results"
+            ).fetchall()
+        return {trade_id: (basis, json.loads(document)) for trade_id, basis, document in rows}
+
+    # --- period reviews (step 4a) ------------------------------------------------------
+
+    def save_period_review(self, document: dict[str, Any]) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO period_reviews VALUES (?, ?, ?)",
+                (document["review_id"], document["created_at_utc"], json.dumps(document)),
+            )
+
+    def period_review(self, review_id: str) -> dict[str, Any]:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT document FROM period_reviews WHERE review_id = ?", (review_id,)
+            ).fetchone()
+        if row is None:
+            raise PeriodReviewNotFoundError(review_id)
+        document: dict[str, Any] = json.loads(row[0])
+        return document
+
+    def period_reviews(self) -> list[dict[str, Any]]:
+        """Saved period reviews, newest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT document FROM period_reviews ORDER BY created_at_utc DESC, review_id DESC"
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]

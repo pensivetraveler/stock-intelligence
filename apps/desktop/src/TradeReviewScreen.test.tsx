@@ -2,6 +2,8 @@ import type {
   MarketBarsResponse,
   ReviewAccountCapitalList,
   ReviewCheckStatus,
+  ReviewPeriod,
+  ReviewPeriodList,
   ReviewWhatIf,
   ReviewConversation,
   ReviewPrincipleCheck,
@@ -24,6 +26,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { MarketApi } from "./market-api";
 import type { ReviewApi } from "./review-api";
+import { PeriodReview } from "./PeriodReview";
 import { PrinciplesPanel } from "./PrinciplesPanel";
 import { ReportConversation } from "./ReportConversation";
 import { ReviewSettingsPanel } from "./ReviewSettingsPanel";
@@ -52,6 +55,8 @@ function fixture<T>(name: string): T {
 const list = fixture<ReviewTradeListResponse>("review-trade-list.json");
 const bars = fixture<MarketBarsResponse>("market-bars-response.json");
 const settings = fixture<ReviewSettings>("review-settings.json");
+const period = fixture<ReviewPeriod>("review-period.json");
+const periodList = fixture<ReviewPeriodList>("review-period-list.json");
 const draft = fixture<ReviewReportDraft>("review-report-draft.json");
 const report = fixture<ReviewTradeReport>("review-trade-report.json");
 const whatIf: ReviewWhatIf = {
@@ -217,6 +222,9 @@ function fakeApi(overrides: Partial<ReviewApi> = {}): ReviewApi {
     })),
     checkStatus: vi.fn(async () => checkStatus),
     runChecks: vi.fn(async () => ({ ...checkStatus, queued: 3 })),
+    makePeriodReview: vi.fn(async () => period),
+    periodReviews: vi.fn(async () => periodList),
+    periodReview: vi.fn(async () => period),
     ...overrides,
   };
 }
@@ -635,5 +643,62 @@ describe("what-ifs and checks", () => {
     await waitFor(() =>
       expect(api.runChecks).toHaveBeenCalledWith("2026-01-01", "2026-10-26"),
     );
+  });
+});
+
+// The chart library needs a real canvas.
+vi.mock("./PeriodCurve", () => ({
+  PeriodCurve: ({ points }: { points: unknown[] }) => (
+    <div data-testid="period-curve">{points.length} points</div>
+  ),
+}));
+
+describe("period review", () => {
+  it("makes a review for last week and shows it against the period before", async () => {
+    const api = fakeApi();
+    render(<PeriodReview api={api} today="2026-03-11" strategies={[]} />);
+    expect(
+      await screen.findByText("2026-03-02 → 2026-03-06"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Make the review"));
+    await waitFor(() =>
+      expect(api.makePeriodReview).toHaveBeenCalledWith({
+        fromDate: "2026-03-02",
+        toDate: "2026-03-08",
+        ledger: "broker",
+      }),
+    );
+    const usd = await screen.findByLabelText("USD");
+    const results = within(usd).getByLabelText("Results");
+    const net = within(results).getByText("Net P&L").closest("tr")!;
+    expect(within(net).getByText("-53")).toBeInTheDocument();
+    expect(within(net).getByText("199")).toBeInTheDocument();
+    expect(within(net).getByText("▼ 252")).toBeInTheDocument();
+    expect(within(usd).getByText("3 points")).toBeInTheDocument();
+    expect(within(usd).getByLabelText("Time of day")).toHaveTextContent(
+      "First 30 minutes",
+    );
+    expect(within(usd).getByLabelText("Daily P&L")).toBeInTheDocument();
+  });
+
+  it("presets and saved reviews", async () => {
+    const api = fakeApi();
+    render(<PeriodReview api={api} today="2026-03-11" strategies={[]} />);
+    fireEvent.change(await screen.findByLabelText("Period"), {
+      target: { value: "lastMonth" },
+    });
+    fireEvent.click(screen.getByText("Make the review"));
+    await waitFor(() =>
+      expect(api.makePeriodReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fromDate: "2026-02-01",
+          toDate: "2026-02-28",
+        }),
+      ),
+    );
+    // After making one, the review shows next to the saved list: open the saved entry.
+    const saved = screen.getByLabelText("Saved reviews");
+    fireEvent.click(within(saved).getByText("2026-03-02 → 2026-03-06"));
+    await waitFor(() => expect(api.periodReview).toHaveBeenCalled());
   });
 });

@@ -16,6 +16,7 @@ import {
   type TradeFilter,
 } from "./review-api";
 import { ChecksBar } from "./ChecksBar";
+import { PeriodReview } from "./PeriodReview";
 import { PrincipleCheck } from "./PrincipleCheck";
 import { PrinciplesPanel } from "./PrinciplesPanel";
 import { ReviewSettingsPanel } from "./ReviewSettingsPanel";
@@ -100,6 +101,7 @@ export function TradeReviewScreen({
   const [busy, setBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [principlesOpen, setPrinciplesOpen] = useState(false);
+  const [periodOpen, setPeriodOpen] = useState(false);
   // Bumped when principles are saved, so the open trade's check reloads.
   const [principlesSaved, setPrinciplesSaved] = useState(0);
 
@@ -227,6 +229,14 @@ export function TradeReviewScreen({
           <button
             type="button"
             className="tb-button"
+            aria-pressed={periodOpen}
+            onClick={() => setPeriodOpen(!periodOpen)}
+          >
+            {t("rv.period")}
+          </button>
+          <button
+            type="button"
+            className="tb-button"
             aria-pressed={principlesOpen}
             onClick={() => setPrinciplesOpen(!principlesOpen)}
           >
@@ -262,261 +272,286 @@ export function TradeReviewScreen({
           />
         ) : null}
         {settingsOpen ? <ReviewSettingsPanel api={api} today={today} /> : null}
-        <div className="rv-filters">
-          <label className="bt-inline">
-            {t("rv.ledger")}
-            <select
-              value={filters.ledger}
-              onChange={(event) =>
-                set("ledger", event.target.value as ReviewLedger)
-              }
-            >
-              {LEDGERS.map((ledger) => (
-                <option key={ledger} value={ledger}>
-                  {t(`rv.ledger.${ledger}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="bt-inline">
-            {t("rv.strategy")}
-            <select
-              value={filters.strategyId}
-              onChange={(event) => set("strategyId", event.target.value)}
-            >
-              <option value="">{t("rv.all")}</option>
-              <option value="none">{t("rv.strategy.none")}</option>
-              {strategies.map((item) => (
-                <option key={item.strategy_id} value={item.strategy_id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="bt-inline">
-            {t("rv.status")}
-            <select
-              value={filters.status}
-              onChange={(event) =>
-                set("status", event.target.value as Filters["status"])
-              }
-            >
-              <option value="">{t("rv.all")}</option>
-              <option value="closed">{t("rv.status.closed")}</option>
-              <option value="open">{t("rv.status.open")}</option>
-              <option value="incomplete">{t("rv.status.incomplete")}</option>
-            </select>
-          </label>
-          <label className="bt-inline">
-            {t("rv.reviewed")}
-            <select
-              value={filters.reviewed}
-              onChange={(event) =>
-                set("reviewed", event.target.value as Filters["reviewed"])
-              }
-            >
-              <option value="">{t("rv.all")}</option>
-              <option value="yes">{t("rv.reviewed.yes")}</option>
-              <option value="no">{t("rv.reviewed.no")}</option>
-            </select>
-          </label>
-          <label className="bt-inline">
-            {t("rv.tag")}
-            <select
-              value={filters.tag}
-              onChange={(event) => set("tag", event.target.value)}
-            >
-              <option value="">{t("rv.all")}</option>
-              {(list?.tags ?? []).map((tag) => (
-                <option key={tag} value={tag}>
-                  {tag}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="bt-inline">
-            {t("rv.col.principles")}
-            <select
-              value={filters.principles}
-              onChange={(event) =>
-                set("principles", event.target.value as Filters["principles"])
-              }
-            >
-              <option value="">{t("rv.all")}</option>
-              <option value="broken">{t("rv.principles.broken")}</option>
-              <option value="kept">{t("rv.principles.kept")}</option>
-              <option value="unchecked">{t("rv.principles.unchecked")}</option>
-            </select>
-          </label>
-          <label className="bt-inline">
-            <input
-              type="checkbox"
-              checked={filters.onlyActive}
-              onChange={(event) => set("onlyActive", event.target.checked)}
-            />
-            {t("rv.onlyActive", { symbol: symbolOf(activeInstrumentId) })}
-          </label>
-        </div>
-        <ChecksBar api={api} today={today} onProgress={reload} />
-        <div className="rv-body">
-          <div className="rv-list">
-            {list ? (
-              <p className="workspace-note">
-                {t("rv.count", { shown: trades.length, total: list.total })}
-                {list.undated_execution_count > 0
-                  ? ` · ${t("rv.undated", { n: list.undated_execution_count })}`
-                  : ""}
-              </p>
-            ) : null}
-            {checkedTrades.length > 0 ? (
-              <BulkBar
-                trades={checkedTrades}
-                strategies={strategies}
-                canMerge={canMerge}
-                busy={busy}
-                onAssign={(strategyId) =>
-                  act(() =>
-                    api.assign(
-                      checkedTrades.flatMap(executionRefs),
-                      strategyId,
-                    ),
-                  )
-                }
-                onMerge={() =>
-                  act(() => api.makeGroup(checkedTrades.flatMap(executionRefs)))
-                }
-              />
-            ) : null}
-            {list && trades.length === 0 ? (
-              <p className="workspace-note">{t("rv.empty")}</p>
-            ) : null}
-            <table className="bt-table rv-table" aria-label={t("rv.title")}>
-              <thead>
-                <tr>
-                  <th aria-label={t("rv.select.all")} />
-                  <th>{t("rv.col.date")}</th>
-                  <th>{t("rv.col.symbol")}</th>
-                  <th>{t("rv.col.account")}</th>
-                  <th>{t("rv.strategy")}</th>
-                  <th>{t("rv.col.pnl")}</th>
-                  <th>{t("rv.col.status")}</th>
-                  <th>{t("rv.col.tags")}</th>
-                  <th>{t("rv.col.principles")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trades.map((trade) => {
-                  const label = `${symbolOf(trade.instrument_id)} ${trade.opened_on}`;
-                  const net = Number(trade.net_pnl);
-                  return (
-                    <tr
-                      key={trade.trade_id}
-                      className={trade === selected ? "selected" : undefined}
-                      onClick={() => setSelectedRef(firstRef(trade))}
-                    >
-                      <td>
-                        <input
-                          type="checkbox"
-                          aria-label={t("rv.select", { trade: label })}
-                          checked={checked.has(trade.trade_id)}
-                          onClick={(event) => event.stopPropagation()}
-                          onChange={(event) => {
-                            const next = new Set(checked);
-                            if (event.target.checked) next.add(trade.trade_id);
-                            else next.delete(trade.trade_id);
-                            setChecked(next);
-                          }}
-                        />
-                      </td>
-                      <td>
-                        {trade.opened_on}
-                        {trade.closed_on && trade.closed_on !== trade.opened_on
-                          ? ` → ${trade.closed_on}`
-                          : ""}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="rv-link"
+        {periodOpen ? (
+          <PeriodReview
+            api={api}
+            today={today}
+            strategies={list?.strategies ?? []}
+          />
+        ) : (
+          <>
+            <div className="rv-filters">
+              <label className="bt-inline">
+                {t("rv.ledger")}
+                <select
+                  value={filters.ledger}
+                  onChange={(event) =>
+                    set("ledger", event.target.value as ReviewLedger)
+                  }
+                >
+                  {LEDGERS.map((ledger) => (
+                    <option key={ledger} value={ledger}>
+                      {t(`rv.ledger.${ledger}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="bt-inline">
+                {t("rv.strategy")}
+                <select
+                  value={filters.strategyId}
+                  onChange={(event) => set("strategyId", event.target.value)}
+                >
+                  <option value="">{t("rv.all")}</option>
+                  <option value="none">{t("rv.strategy.none")}</option>
+                  {strategies.map((item) => (
+                    <option key={item.strategy_id} value={item.strategy_id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="bt-inline">
+                {t("rv.status")}
+                <select
+                  value={filters.status}
+                  onChange={(event) =>
+                    set("status", event.target.value as Filters["status"])
+                  }
+                >
+                  <option value="">{t("rv.all")}</option>
+                  <option value="closed">{t("rv.status.closed")}</option>
+                  <option value="open">{t("rv.status.open")}</option>
+                  <option value="incomplete">
+                    {t("rv.status.incomplete")}
+                  </option>
+                </select>
+              </label>
+              <label className="bt-inline">
+                {t("rv.reviewed")}
+                <select
+                  value={filters.reviewed}
+                  onChange={(event) =>
+                    set("reviewed", event.target.value as Filters["reviewed"])
+                  }
+                >
+                  <option value="">{t("rv.all")}</option>
+                  <option value="yes">{t("rv.reviewed.yes")}</option>
+                  <option value="no">{t("rv.reviewed.no")}</option>
+                </select>
+              </label>
+              <label className="bt-inline">
+                {t("rv.tag")}
+                <select
+                  value={filters.tag}
+                  onChange={(event) => set("tag", event.target.value)}
+                >
+                  <option value="">{t("rv.all")}</option>
+                  {(list?.tags ?? []).map((tag) => (
+                    <option key={tag} value={tag}>
+                      {tag}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="bt-inline">
+                {t("rv.col.principles")}
+                <select
+                  value={filters.principles}
+                  onChange={(event) =>
+                    set(
+                      "principles",
+                      event.target.value as Filters["principles"],
+                    )
+                  }
+                >
+                  <option value="">{t("rv.all")}</option>
+                  <option value="broken">{t("rv.principles.broken")}</option>
+                  <option value="kept">{t("rv.principles.kept")}</option>
+                  <option value="unchecked">
+                    {t("rv.principles.unchecked")}
+                  </option>
+                </select>
+              </label>
+              <label className="bt-inline">
+                <input
+                  type="checkbox"
+                  checked={filters.onlyActive}
+                  onChange={(event) => set("onlyActive", event.target.checked)}
+                />
+                {t("rv.onlyActive", { symbol: symbolOf(activeInstrumentId) })}
+              </label>
+            </div>
+            <ChecksBar api={api} today={today} onProgress={reload} />
+            <div className="rv-body">
+              <div className="rv-list">
+                {list ? (
+                  <p className="workspace-note">
+                    {t("rv.count", { shown: trades.length, total: list.total })}
+                    {list.undated_execution_count > 0
+                      ? ` · ${t("rv.undated", { n: list.undated_execution_count })}`
+                      : ""}
+                  </p>
+                ) : null}
+                {checkedTrades.length > 0 ? (
+                  <BulkBar
+                    trades={checkedTrades}
+                    strategies={strategies}
+                    canMerge={canMerge}
+                    busy={busy}
+                    onAssign={(strategyId) =>
+                      act(() =>
+                        api.assign(
+                          checkedTrades.flatMap(executionRefs),
+                          strategyId,
+                        ),
+                      )
+                    }
+                    onMerge={() =>
+                      act(() =>
+                        api.makeGroup(checkedTrades.flatMap(executionRefs)),
+                      )
+                    }
+                  />
+                ) : null}
+                {list && trades.length === 0 ? (
+                  <p className="workspace-note">{t("rv.empty")}</p>
+                ) : null}
+                <table className="bt-table rv-table" aria-label={t("rv.title")}>
+                  <thead>
+                    <tr>
+                      <th aria-label={t("rv.select.all")} />
+                      <th>{t("rv.col.date")}</th>
+                      <th>{t("rv.col.symbol")}</th>
+                      <th>{t("rv.col.account")}</th>
+                      <th>{t("rv.strategy")}</th>
+                      <th>{t("rv.col.pnl")}</th>
+                      <th>{t("rv.col.status")}</th>
+                      <th>{t("rv.col.tags")}</th>
+                      <th>{t("rv.col.principles")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trades.map((trade) => {
+                      const label = `${symbolOf(trade.instrument_id)} ${trade.opened_on}`;
+                      const net = Number(trade.net_pnl);
+                      return (
+                        <tr
+                          key={trade.trade_id}
+                          className={
+                            trade === selected ? "selected" : undefined
+                          }
                           onClick={() => setSelectedRef(firstRef(trade))}
                         >
-                          {symbolOf(trade.instrument_id)}
-                        </button>
-                      </td>
-                      <td>
-                        {trade.account_ref
-                          ? accountLabel(trade.account_ref, t)
-                          : "—"}
-                      </td>
-                      <td>{strategyName(trade.strategy_id)}</td>
-                      <td
-                        className={net > 0 ? "rv-up" : net < 0 ? "rv-down" : ""}
-                      >
-                        {trade.net_pnl}
-                      </td>
-                      <td>
-                        {t(`rv.status.${trade.status}`)}
-                        {trade.annotation?.reviewed ? " ✓" : ""}
-                      </td>
-                      <td>{trade.annotation?.tags.join(", ") ?? ""}</td>
-                      <td
-                        className={
-                          trade.principles_broken ? "rv-down" : undefined
-                        }
-                      >
-                        {trade.principles_broken === null
-                          ? "—"
-                          : trade.principles_broken === 0
-                            ? "✓"
-                            : t("rv.principles.brokenCount", {
-                                n: trade.principles_broken,
-                              })}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {list && trades.length < list.total ? (
-              <p className="bt-actions">
-                <button
-                  type="button"
-                  className="tb-button"
-                  disabled={busy}
-                  onClick={loadMore}
-                >
-                  {t("rv.more")}
-                </button>
-              </p>
-            ) : null}
-          </div>
-          {selected ? (
-            <TradeDetail
-              key={selected.trade_id}
-              trade={selected}
-              api={api}
-              marketApi={marketApi}
-              strategies={strategies}
-              symbol={symbolOf(selected.instrument_id)}
-              today={today}
-              busy={busy}
-              act={act}
-              onSaved={(annotation) =>
-                setTrades(
-                  trades.map((trade) =>
-                    trade.trade_id === selected.trade_id
-                      ? { ...trade, annotation }
-                      : trade,
-                  ),
-                )
-              }
-              onProblem={(error) => setProblem(message(error))}
-              principlesSaved={principlesSaved}
-            />
-          ) : (
-            <p className="workspace-note rv-pick">{t("rv.pick")}</p>
-          )}
-        </div>
+                          <td>
+                            <input
+                              type="checkbox"
+                              aria-label={t("rv.select", { trade: label })}
+                              checked={checked.has(trade.trade_id)}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) => {
+                                const next = new Set(checked);
+                                if (event.target.checked)
+                                  next.add(trade.trade_id);
+                                else next.delete(trade.trade_id);
+                                setChecked(next);
+                              }}
+                            />
+                          </td>
+                          <td>
+                            {trade.opened_on}
+                            {trade.closed_on &&
+                            trade.closed_on !== trade.opened_on
+                              ? ` → ${trade.closed_on}`
+                              : ""}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="rv-link"
+                              onClick={() => setSelectedRef(firstRef(trade))}
+                            >
+                              {symbolOf(trade.instrument_id)}
+                            </button>
+                          </td>
+                          <td>
+                            {trade.account_ref
+                              ? accountLabel(trade.account_ref, t)
+                              : "—"}
+                          </td>
+                          <td>{strategyName(trade.strategy_id)}</td>
+                          <td
+                            className={
+                              net > 0 ? "rv-up" : net < 0 ? "rv-down" : ""
+                            }
+                          >
+                            {trade.net_pnl}
+                          </td>
+                          <td>
+                            {t(`rv.status.${trade.status}`)}
+                            {trade.annotation?.reviewed ? " ✓" : ""}
+                          </td>
+                          <td>{trade.annotation?.tags.join(", ") ?? ""}</td>
+                          <td
+                            className={
+                              trade.principles_broken ? "rv-down" : undefined
+                            }
+                          >
+                            {trade.principles_broken === null
+                              ? "—"
+                              : trade.principles_broken === 0
+                                ? "✓"
+                                : t("rv.principles.brokenCount", {
+                                    n: trade.principles_broken,
+                                  })}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {list && trades.length < list.total ? (
+                  <p className="bt-actions">
+                    <button
+                      type="button"
+                      className="tb-button"
+                      disabled={busy}
+                      onClick={loadMore}
+                    >
+                      {t("rv.more")}
+                    </button>
+                  </p>
+                ) : null}
+              </div>
+              {selected ? (
+                <TradeDetail
+                  key={selected.trade_id}
+                  trade={selected}
+                  api={api}
+                  marketApi={marketApi}
+                  strategies={strategies}
+                  symbol={symbolOf(selected.instrument_id)}
+                  today={today}
+                  busy={busy}
+                  act={act}
+                  onSaved={(annotation) =>
+                    setTrades(
+                      trades.map((trade) =>
+                        trade.trade_id === selected.trade_id
+                          ? { ...trade, annotation }
+                          : trade,
+                      ),
+                    )
+                  }
+                  onProblem={(error) => setProblem(message(error))}
+                  principlesSaved={principlesSaved}
+                />
+              ) : (
+                <p className="workspace-note rv-pick">{t("rv.pick")}</p>
+              )}
+            </div>
+          </>
+        )}
       </section>
     </div>
   );
