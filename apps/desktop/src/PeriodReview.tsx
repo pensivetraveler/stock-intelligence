@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { accountLabel } from "./account-label";
 import { useI18n, type MessageKey } from "./i18n";
+import { PeriodCommentary } from "./PeriodCommentary";
 import { PeriodCurve } from "./PeriodCurve";
 import {
   daysBetween,
@@ -237,7 +238,15 @@ export function PeriodReview({
       </aside>
       <div className="rv-period-main">
         {shown ? (
-          <PeriodDocument review={shown} />
+          <>
+            <PeriodCommentary
+              key={shown.review_id}
+              api={api}
+              reviewId={shown.review_id}
+              strategies={strategies}
+            />
+            <PeriodDocument review={shown} />
+          </>
         ) : (
           <p className="workspace-note">{t("pd.pick")}</p>
         )}

@@ -16,10 +16,13 @@ export function ReportConversation({
   api,
   reportId,
   render = renderChartImage,
+  periodReviewId,
 }: {
   api: ReviewApi;
   reportId: string;
   render?: typeof renderChartImage;
+  /** Talk about a period review instead of a trade report (step 4b). */
+  periodReviewId?: string;
 }) {
   const { t, language } = useI18n();
   const [conversation, setConversation] = useState<ReviewConversation | null>(
@@ -36,8 +39,10 @@ export function ReportConversation({
 
   useEffect(() => {
     let current = true;
-    api
-      .conversation(reportId)
+    (periodReviewId
+      ? api.periodConversation(periodReviewId)
+      : api.conversation(reportId)
+    )
       .then((loaded) => current && setConversation(loaded))
       .catch((error: unknown) => current && fail(error));
     return () => {
@@ -45,7 +50,7 @@ export function ReportConversation({
     };
     // `fail` only formats the error; reloading on its identity would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, reportId]);
+  }, [api, reportId, periodReviewId]);
 
   /** Draws every awaited chart and sends them until the answer no longer waits. */
   const settle = async (state: ReviewConversation) => {
@@ -75,11 +80,10 @@ export function ReportConversation({
     setBusy("asking");
     setProblem(null);
     try {
-      const answered = await api.askQuestion(
-        reportId,
-        text,
-        language === "ko" ? "ko" : "en",
-      );
+      const lang = language === "ko" ? "ko" : "en";
+      const answered = periodReviewId
+        ? await api.askPeriodQuestion(periodReviewId, text, lang)
+        : await api.askQuestion(reportId, text, lang);
       setConversation(answered);
       setQuestion("");
       await settle(answered);
@@ -198,24 +202,70 @@ function bold(line: string): ReactNode[] {
     );
 }
 
-/** The two markdown forms answers use: **bold** and "- " bullet lines. */
+/** Cells of a "| a | b |" table line. */
+function cells(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+/**
+ * The markdown forms answers use: **bold**, "- " bullet lines and "| a | b |" tables.
+ * Everything is shown as text; no HTML from the answer is ever interpreted.
+ */
 function answerText(text: string): ReactNode[] {
   const blocks: ReactNode[] = [];
   let bullets: string[] = [];
+  let table: string[][] = [];
   const flush = () => {
-    if (bullets.length === 0) return;
-    blocks.push(
-      <ul key={`list-${blocks.length}`}>
-        {bullets.map((item, index) => (
-          <li key={index}>{bold(item)}</li>
-        ))}
-      </ul>,
-    );
-    bullets = [];
+    if (bullets.length > 0) {
+      blocks.push(
+        <ul key={`list-${blocks.length}`}>
+          {bullets.map((item, index) => (
+            <li key={index}>{bold(item)}</li>
+          ))}
+        </ul>,
+      );
+      bullets = [];
+    }
+    if (table.length > 0) {
+      const [head, ...body] = table;
+      blocks.push(
+        <table key={`table-${blocks.length}`} className="bt-table">
+          <thead>
+            <tr>
+              {(head ?? []).map((cell, index) => (
+                <th key={index}>{bold(cell)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {body.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {row.map((cell, index) => (
+                  <td key={index}>{bold(cell)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>,
+      );
+      table = [];
+    }
   };
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+      if (bullets.length > 0) flush();
+      // The "|---|---|" line under the header carries no content.
+      if (!/^\|[\s:|-]+\|$/.test(trimmed)) table.push(cells(trimmed));
+      continue;
+    }
     if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+      if (table.length > 0) flush();
       bullets.push(trimmed.slice(2));
       continue;
     }

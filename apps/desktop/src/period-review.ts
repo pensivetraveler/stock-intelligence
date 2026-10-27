@@ -62,3 +62,57 @@ export function curveTimes(
   }
   return times;
 }
+
+export interface SuggestionInput {
+  action: "add" | "change" | "remove";
+  item_id: string | null;
+  scope: string;
+  kind: string;
+  value: string | null;
+  text: string;
+}
+
+export interface ItemInput {
+  item_id?: string;
+  scope: string;
+  kind: string;
+  value: string | null;
+  text: string;
+}
+
+/**
+ * The principles with the chosen suggestions applied, for the investor to check in the
+ * editor before saving: a change replaces its item, a remove drops it, an add is appended.
+ * A change or remove naming an unknown item is added instead of being lost.
+ */
+export function applySuggestions(
+  items: ItemInput[],
+  suggestions: SuggestionInput[],
+): { scope: string; kind: string; value: string | null; text: string }[] {
+  const next = items.map((item) => ({ ...item }));
+  for (const suggestion of suggestions) {
+    const index = next.findIndex(
+      (item) =>
+        item.item_id !== undefined && item.item_id === suggestion.item_id,
+    );
+    const replacement = {
+      scope: suggestion.scope,
+      kind: suggestion.kind,
+      value: suggestion.kind === "text" ? null : suggestion.value,
+      text: suggestion.text,
+    };
+    if (suggestion.action === "remove" && index >= 0) {
+      next.splice(index, 1);
+    } else if (suggestion.action === "change" && index >= 0) {
+      next[index] = { ...replacement, item_id: next[index]!.item_id };
+    } else if (suggestion.action !== "remove") {
+      next.push(replacement);
+    }
+  }
+  return next.map(({ scope, kind, value, text }) => ({
+    scope,
+    kind,
+    value,
+    text,
+  }));
+}

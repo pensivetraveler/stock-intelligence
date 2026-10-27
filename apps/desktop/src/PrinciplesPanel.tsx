@@ -23,16 +23,21 @@ export function PrinciplesPanel({
   api,
   strategies,
   onSaved,
+  initialItems,
 }: {
   api: ReviewApi;
   strategies: { strategy_id: string; name: string }[];
   /** Called after a new version is saved, so checks shown elsewhere reload. */
   onSaved?: () => void;
+  /** Items to open the editor with (e.g. Claude's chosen suggestions applied). */
+  initialItems?: PrincipleInput[];
 }) {
   const { t, language } = useI18n();
   const [loaded, setLoaded] = useState<ReviewPrinciples | null>(null);
   const [text, setText] = useState("");
-  const [items, setItems] = useState<PrincipleInput[] | null>(null);
+  const [items, setItems] = useState<PrincipleInput[] | null>(
+    initialItems ?? null,
+  );
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);

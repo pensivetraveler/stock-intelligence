@@ -233,6 +233,15 @@
     },
     {
       "$ref": "#/$defs/ReviewPeriodList"
+    },
+    {
+      "$ref": "#/$defs/ReviewPeriodCommentary"
+    },
+    {
+      "$ref": "#/$defs/ReviewPeriodCommentaryList"
+    },
+    {
+      "$ref": "#/$defs/ReviewPeriodPayload"
     }
   ],
   "$defs": {
@@ -9916,6 +9925,200 @@
               }
             }
           }
+        }
+      }
+    },
+    "ReviewPeriodCommentary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "review_id",
+        "model",
+        "language",
+        "created_at_utc",
+        "summary",
+        "repeated_mistakes",
+        "went_well",
+        "focus_next",
+        "principle_suggestions",
+        "uncertainty",
+        "usage"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_period_commentary"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "review_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "model": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "language": {
+          "enum": ["en", "ko"]
+        },
+        "created_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "repeated_mistakes": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "went_well": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "focus_next": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "principle_suggestions": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action",
+              "item_id",
+              "scope",
+              "kind",
+              "value",
+              "text",
+              "reason"
+            ],
+            "properties": {
+              "action": {
+                "enum": ["add", "change", "remove"]
+              },
+              "item_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "scope": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "kind": {
+                "enum": [
+                  "stop_loss_pct",
+                  "take_profit_pct",
+                  "max_position_pct",
+                  "no_entry_first_minutes",
+                  "max_gap_chase_pct",
+                  "max_trades_per_day",
+                  "text"
+                ]
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 1000
+              }
+            }
+          }
+        },
+        "uncertainty": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input_tokens", "output_tokens"],
+          "properties": {
+            "input_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "output_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "ReviewPeriodCommentaryList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "review_id", "commentaries"],
+      "properties": {
+        "kind": {
+          "const": "review_period_commentary_list"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "review_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "commentaries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReviewPeriodCommentary"
+          }
+        }
+      }
+    },
+    "ReviewPeriodPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "review_id", "payload"],
+      "properties": {
+        "kind": {
+          "const": "review_period_payload"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "review_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "payload": {
+          "type": "object"
         }
       }
     }

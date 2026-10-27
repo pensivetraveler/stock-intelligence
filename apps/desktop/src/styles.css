@@ -3455,3 +3455,12 @@ body {
   border-radius: 3px;
   font-size: 11px;
 }
+
+/* Period commentary (ADR 0042 step 4b) */
+.rv-suggestion {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 2px 0;
+  font-size: 12px;
+}

@@ -104,6 +104,12 @@ CREATE TABLE IF NOT EXISTS period_reviews (
     created_at_utc TEXT NOT NULL,
     document TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS period_commentaries (
+    review_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    document TEXT NOT NULL,
+    PRIMARY KEY (review_id, position)
+);
 CREATE TABLE IF NOT EXISTS trade_annotations (
     trade_id TEXT NOT NULL,
     revision INTEGER NOT NULL,
@@ -602,5 +608,31 @@ class ReviewStore:
         with self._lock:
             rows = self._db.execute(
                 "SELECT document FROM period_reviews ORDER BY created_at_utc DESC, review_id DESC"
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def add_period_commentary(self, review_id: str, document: dict[str, Any]) -> None:
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                (count,) = self._db.execute(
+                    "SELECT COUNT(*) FROM period_commentaries WHERE review_id = ?", (review_id,)
+                ).fetchone()
+                self._db.execute(
+                    "INSERT INTO period_commentaries VALUES (?, ?, ?)",
+                    (review_id, count, json.dumps(document)),
+                )
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
+
+    def period_commentaries(self, review_id: str) -> list[dict[str, Any]]:
+        """A period review's commentaries, newest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT document FROM period_commentaries WHERE review_id = ? "
+                "ORDER BY position DESC",
+                (review_id,),
             ).fetchall()
         return [json.loads(row[0]) for row in rows]

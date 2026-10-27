@@ -53,3 +53,56 @@ describe("period dates", () => {
     ).toEqual([1772467200, 1772467201, 1772496000]);
   });
 });
+
+describe("applying suggestions", () => {
+  it("changes, removes and adds, keeping unknown changes as additions", async () => {
+    const { applySuggestions } = await import("./period-review");
+    const items = [
+      {
+        item_id: "p1",
+        scope: "shared",
+        kind: "stop_loss_pct",
+        value: "7",
+        text: "stop 7",
+      },
+      {
+        item_id: "p2",
+        scope: "shared",
+        kind: "text",
+        value: null,
+        text: "notes",
+      },
+    ];
+    expect(
+      applySuggestions(items, [
+        {
+          action: "change",
+          item_id: "p1",
+          scope: "shared",
+          kind: "stop_loss_pct",
+          value: "3",
+          text: "stop 3",
+        },
+        {
+          action: "remove",
+          item_id: "p2",
+          scope: "shared",
+          kind: "text",
+          value: null,
+          text: "",
+        },
+        {
+          action: "change",
+          item_id: "p9",
+          scope: "shared",
+          kind: "text",
+          value: "1",
+          text: "new",
+        },
+      ]),
+    ).toEqual([
+      { scope: "shared", kind: "stop_loss_pct", value: "3", text: "stop 3" },
+      { scope: "shared", kind: "text", value: null, text: "new" },
+    ]);
+  });
+});

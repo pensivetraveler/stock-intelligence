@@ -5,7 +5,10 @@ import type {
   ReviewConversation,
   ReviewGroup,
   ReviewPeriod,
+  ReviewPeriodCommentary,
+  ReviewPeriodCommentaryList,
   ReviewPeriodList,
+  ReviewPeriodPayload,
   ReviewCheckStatus,
   ReviewPrincipleCheck,
   ReviewPrincipleDraft,
@@ -145,6 +148,19 @@ export interface ReviewApi {
   makePeriodReview(request: PeriodRequest): Promise<ReviewPeriod>;
   periodReviews(): Promise<ReviewPeriodList>;
   periodReview(reviewId: string): Promise<ReviewPeriod>;
+  /** Exactly what a commentary request would send; nothing is sent. */
+  periodPayload(reviewId: string): Promise<ReviewPeriodPayload>;
+  makePeriodCommentary(
+    reviewId: string,
+    language: "en" | "ko",
+  ): Promise<ReviewPeriodCommentary>;
+  periodCommentaries(reviewId: string): Promise<ReviewPeriodCommentaryList>;
+  periodConversation(reviewId: string): Promise<ReviewConversation>;
+  askPeriodQuestion(
+    reviewId: string,
+    question: string,
+    language: "en" | "ko",
+  ): Promise<ReviewConversation>;
 }
 
 // Trade ids contain ":" ("flat:broker:<id>"); the routes take them as a path.
@@ -394,6 +410,43 @@ export function createReviewApi(
         target,
         `/v1/review/periods/${encodeURIComponent(reviewId)}`,
         "review_period",
+      );
+    },
+    periodPayload(reviewId) {
+      return callForKind<ReviewPeriodPayload>(
+        target,
+        `/v1/review/periods/${encodeURIComponent(reviewId)}/payload`,
+        "review_period_payload",
+      );
+    },
+    makePeriodCommentary(reviewId, language) {
+      return callForKind<ReviewPeriodCommentary>(
+        target,
+        `/v1/review/periods/${encodeURIComponent(reviewId)}/commentary`,
+        "review_period_commentary",
+        { method: "POST", body: { language } },
+      );
+    },
+    periodCommentaries(reviewId) {
+      return callForKind<ReviewPeriodCommentaryList>(
+        target,
+        `/v1/review/periods/${encodeURIComponent(reviewId)}/commentaries`,
+        "review_period_commentary_list",
+      );
+    },
+    periodConversation(reviewId) {
+      return callForKind<ReviewConversation>(
+        target,
+        `/v1/review/periods/${encodeURIComponent(reviewId)}/conversation`,
+        "review_conversation",
+      );
+    },
+    askPeriodQuestion(reviewId, question, language) {
+      return callForKind<ReviewConversation>(
+        target,
+        `/v1/review/periods/${encodeURIComponent(reviewId)}/conversation/messages`,
+        "review_conversation",
+        { method: "POST", body: { question, language } },
       );
     },
     async reports(tradeId) {
