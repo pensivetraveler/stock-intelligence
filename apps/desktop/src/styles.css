@@ -3348,3 +3348,29 @@ body {
 .rv-status-judgment strong {
   color: var(--term-muted);
 }
+
+/* What-ifs and background checks (ADR 0042 step 3b) */
+.rv-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+}
+
+.rv-whatif {
+  display: grid;
+  gap: 6px;
+}
+
+.rv-whatif h4 {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.rv-whatif-part p {
+  margin: 0;
+}
+
+.rv-suggestions p {
+  margin: 2px 0;
+}

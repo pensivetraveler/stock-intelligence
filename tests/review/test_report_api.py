@@ -28,7 +28,7 @@ FIXTURES = Path(__file__).parents[1] / "fixtures" / "contracts" / "valid"
 TEMPLATE = json.loads((FIXTURES / "price-bar.json").read_text())
 AGGREGATED = json.loads((FIXTURES / "aggregated-price-bar.json").read_text())
 PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 64).decode()
-STEP = {"5m": timedelta(minutes=5)}
+STEP = {"5m": timedelta(minutes=5), "1m": timedelta(minutes=1)}
 
 
 def _utc(moment: datetime) -> str:
@@ -72,7 +72,7 @@ def bars(query: BarsQuery) -> BarsResult:
         ):
             windows.append(window)
         day += timedelta(days=1)
-    if query.timeframe == "5m":
+    if query.timeframe in STEP:
         moment = query.start_utc
         i = 0
         for window in windows or [calendar.window_for_date(query.start_utc.date())]:
@@ -80,9 +80,10 @@ def bars(query: BarsQuery) -> BarsResult:
                 continue
             moment = window.pre_open_utc
             while moment < window.post_close_utc:
-                if query.start_utc <= moment and moment + STEP["5m"] <= query.end_utc:
-                    out.append(_bar(query, moment, moment + STEP["5m"], i))
-                moment += STEP["5m"]
+                step = STEP[query.timeframe]
+                if query.start_utc <= moment and moment + step <= query.end_utc:
+                    out.append(_bar(query, moment, moment + step, i))
+                moment += step
                 i += 1
     elif query.timeframe == "1d":
         for i, window in enumerate(windows):

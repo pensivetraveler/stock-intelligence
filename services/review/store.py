@@ -92,6 +92,13 @@ CREATE TABLE IF NOT EXISTS principle_versions (
     created_at_utc TEXT NOT NULL,
     document TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS principle_check_results (
+    trade_id TEXT PRIMARY KEY,
+    basis TEXT NOT NULL,
+    computed_at_utc TEXT NOT NULL,
+    broken INTEGER NOT NULL,
+    document TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS trade_annotations (
     trade_id TEXT NOT NULL,
     revision INTEGER NOT NULL,
@@ -532,3 +539,24 @@ class ReviewStore:
             "items": items,
             "source_text": source_text,
         }
+
+    # --- stored principle checks (step 3b) ---------------------------------------------
+
+    def save_check(self, trade_id: str, basis: str, document: dict[str, Any]) -> None:
+        broken = sum(1 for r in document.get("results", []) if r["status"] == "broken")
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO principle_check_results VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT (trade_id) DO UPDATE SET basis = excluded.basis, "
+                "computed_at_utc = excluded.computed_at_utc, broken = excluded.broken, "
+                "document = excluded.document",
+                (trade_id, basis, _utc(self._clock()), broken, json.dumps(document)),
+            )
+
+    def check_summaries(self) -> dict[str, tuple[str, int]]:
+        """Every stored check: trade id -> (basis, broken count)."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT trade_id, basis, broken FROM principle_check_results"
+            ).fetchall()
+        return {trade_id: (basis, int(broken)) for trade_id, basis, broken in rows}

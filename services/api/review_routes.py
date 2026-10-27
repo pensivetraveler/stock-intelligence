@@ -9,10 +9,11 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import json
 import threading
 import uuid
 from collections.abc import Callable
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
@@ -27,6 +28,7 @@ from services.api.journal_routes import ErrorResponse
 from services.backtest.data import GetBars
 from services.journal.store import JournalStore
 from services.market_data.provider import MarketDataError
+from services.review.checker import CheckRunner
 from services.review.claude import (
     DEFAULT_MODEL,
     MODELS,
@@ -61,6 +63,7 @@ from services.review.trades import (
     status_of,
     trade_document,
 )
+from services.review.whatif import principles_what_if, strategy_what_if, suggest_strategies
 
 Ledger = Literal["manual", "imported", "broker"]
 Tag = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
@@ -174,6 +177,15 @@ class PrinciplesRequest(BaseModel):
     source_text: str = Field(default="", max_length=8000)
 
 
+AUTO_CHECK_DAYS = 90
+
+
+class CheckRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    from_date: date
+    to_date: date
+
+
 class _TradeIndex:
     """Fills and trades kept between requests: reading ~100k broker orders takes seconds.
 
@@ -275,6 +287,7 @@ def register_review_routes(
         status: Literal["open", "closed", "incomplete"] | None = None,
         reviewed: bool | None = None,
         tag: Annotated[str | None, Query(min_length=1, max_length=32)] = None,
+        principles: Literal["broken", "kept", "unchecked"] | None = None,
         limit: Annotated[int, Query(ge=1, le=1000)] = 300,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> Response:
@@ -284,6 +297,8 @@ def register_review_routes(
         trades, _by_id, undated = index.trades(ledgers, review)
         notes = review.annotations()
         rules = review.rules()
+        broken_counts = stored_checks(review)
+        queue_recent(ledgers, review)
         chosen: list[Trade] = []
         for trade in trades:
             if trade.ledger != ledger:
@@ -299,12 +314,21 @@ def register_review_routes(
                 continue
             if tag is not None and (note is None or tag not in note["tags"]):
                 continue
+            if principles is not None:
+                broken = broken_counts.get(trade.trade_id)
+                if principles == "unchecked" and broken is not None:
+                    continue
+                if principles == "broken" and not broken:
+                    continue
+                if principles == "kept" and broken != 0:
+                    continue
             chosen.append(trade)
         documents = []
         for trade in chosen[offset : offset + limit]:
             document = trade_document(trade)
             note = notes.get(trade.trade_id)
             document["annotation"] = note
+            document["principles_broken"] = broken_counts.get(trade.trade_id)
             documents.append(document)
         tags = sorted({tag for note in notes.values() for tag in note["tags"]})
         return respond(
@@ -541,6 +565,11 @@ def register_review_routes(
             principles = principle_check(ledgers, review, trade, capital)
         except MarketDataError as exc:
             return error_response(request, 422, "agent_data_unavailable", str(exc))
+        try:
+            what_if = what_ifs(review, trade, None)
+        except MarketDataError as exc:
+            what_if = None
+            evidence.warnings.append(f"What-ifs were not computed: {exc}")
         note = review.annotations().get(trade_id) if body.include_note else None
         draft = {
             "kind": "review_report_draft",
@@ -574,6 +603,7 @@ def register_review_routes(
             },
             "images": images,
             "principles": principles,
+            "what_if": what_if,
         }
         validate_document(draft)
         review.save_draft(draft)
@@ -834,12 +864,7 @@ def register_review_routes(
         if version is None:
             return None
         trades, _by_id, _undated = index.trades(ledgers, review)
-        same_day = sum(
-            1
-            for other in trades
-            if other.ledger == trade.ledger
-            and min(p.fill.day for p in other.allocations).isoformat() == document["opened_on"]
-        )
+        same_day = opened_per_day(trades).get((trade.ledger, document["opened_on"]), 0)
         results = check_trade(
             get_bars(),
             trade,
@@ -850,6 +875,20 @@ def register_review_routes(
             now(),
         )
         return {"version": version["version"], "after_the_fact": after, "results": results}
+
+    day_counts: dict[int, dict[tuple[str, str], int]] = {}
+
+    def opened_per_day(trades: list[Trade]) -> dict[tuple[str, str], int]:
+        """Trades opened per (ledger, day), counted once per grouping of the trades."""
+        key = id(trades)
+        if key not in day_counts:
+            counts: dict[tuple[str, str], int] = {}
+            for other in trades:
+                day = min(p.fill.day for p in other.allocations).isoformat()
+                counts[(other.ledger, day)] = counts.get((other.ledger, day), 0) + 1
+            day_counts.clear()  # only the current grouping is kept
+            day_counts[key] = counts
+        return day_counts[key]
 
     def principles_document(review: ReviewStore) -> dict[str, Any]:
         versions = review.principle_versions()
@@ -929,6 +968,9 @@ def register_review_routes(
             checked = principle_check(ledgers, review, trade, capital_entries(review))
         except MarketDataError as exc:
             return error_response(request, 422, "agent_data_unavailable", str(exc))
+        key = basis(review, trade, review.principle_versions())
+        if checked is not None and key is not None:
+            review.save_check(trade_id, key, checked)
         return respond(
             {
                 "kind": "review_principle_check",
@@ -937,5 +979,173 @@ def register_review_routes(
                 "version": None if checked is None else checked["version"],
                 "after_the_fact": False if checked is None else checked["after_the_fact"],
                 "results": [] if checked is None else checked["results"],
+            }
+        )
+
+    # --- stored checks, what-ifs and strategy suggestions (step 3b) --------------------
+
+    def capital_key(review: ReviewStore) -> str:
+        return hashlib.sha256(json.dumps(review.capital(), sort_keys=True).encode()).hexdigest()[
+            :12
+        ]
+
+    def basis(
+        review: ReviewStore,
+        trade: Trade,
+        versions: list[dict[str, Any]],
+        capital: str | None = None,
+    ) -> str | None:
+        """What a stored check depends on; None when there are no principles."""
+        if not versions:
+            return None
+        fills = sorted(p.fill.ref for p in trade.allocations)
+        return (
+            f"v{versions[-1]['version']}|c{capital or capital_key(review)}|s{trade.strategy_id}|"
+            f"{len(fills)}:{fills[-1]}:{trade.open_quantity}"
+        )
+
+    def stored_checks(review: ReviewStore) -> dict[str, int]:
+        """Broken counts of stored checks that are still current (by their basis)."""
+        ledgers = journal()
+        if ledgers is None:
+            return {}
+        versions = review.principle_versions()
+        if not versions:
+            return {}
+        _trades, by_id, _undated = index.trades(ledgers, review)
+        capital = capital_key(review)
+        current = {}
+        for trade_id, (stored, broken) in review.check_summaries().items():
+            trade = by_id.get(trade_id)
+            if trade is not None and stored == basis(review, trade, versions, capital):
+                current[trade_id] = broken
+        return current
+
+    def check_one(trade_id: str) -> None:
+        ledgers, review = journal(), store()
+        if ledgers is None or review is None:
+            return
+        _trades, by_id, _undated = index.trades(ledgers, review)
+        trade = by_id.get(trade_id)
+        if trade is None:
+            return  # regrouped since it was queued
+        versions = review.principle_versions()
+        key = basis(review, trade, versions)
+        if key is None:
+            return
+        checked = principle_check(ledgers, review, trade, capital_entries(review))
+        if checked is not None:
+            review.save_check(trade_id, key, checked)
+
+    checks = CheckRunner(check_one)
+
+    def queue_stale(ledgers: JournalStore, review: ReviewStore, first: date, last: date) -> int:
+        if get_bars is None:
+            return 0
+        versions = review.principle_versions()
+        if not versions:
+            return 0
+        trades, _by_id, _undated = index.trades(ledgers, review)
+        stored = review.check_summaries()
+        capital = capital_key(review)
+        stale = []
+        for trade in trades:
+            opened = min(p.fill.day for p in trade.allocations)
+            if not first <= opened <= last:
+                continue
+            key = basis(review, trade, versions, capital)
+            if stored.get(trade.trade_id, ("", 0))[0] != key:
+                stale.append(trade.trade_id)
+        return checks.enqueue(stale)
+
+    def queue_recent(ledgers: JournalStore, review: ReviewStore) -> None:
+        today = now().date()
+        queue_stale(ledgers, review, today - timedelta(days=AUTO_CHECK_DAYS), today)
+
+    def status_document() -> dict[str, Any]:
+        return {
+            "kind": "review_check_status",
+            "schema_version": "0.1",
+            "auto_from_date": (now().date() - timedelta(days=AUTO_CHECK_DAYS)).isoformat(),
+            **checks.status(),
+        }
+
+    @application.get("/v1/review/principle-checks/status", response_model=None)
+    def check_status(request: Request) -> Response:
+        if store() is None:
+            return unavailable(request)
+        return respond(status_document())
+
+    @application.post("/v1/review/principle-checks/run", response_model=None)
+    def run_checks(request: Request, body: CheckRunRequest) -> Response:
+        ledgers, review = journal(), store()
+        if ledgers is None or review is None or get_bars is None:
+            return unavailable(request)
+        if body.to_date < body.from_date:
+            return error_response(
+                request, 422, "invalid_check_range", "to_date is before from_date"
+            )
+        queue_stale(ledgers, review, body.from_date, body.to_date)
+        return respond(status_document(), 202)
+
+    def trade_or_error(
+        request: Request, trade_id: str
+    ) -> tuple[JournalStore, ReviewStore, Trade] | Response:
+        ledgers, review = journal(), store()
+        if ledgers is None or review is None or get_bars is None:
+            return unavailable(request)
+        _trades, by_id, _undated = index.trades(ledgers, review)
+        trade = by_id.get(trade_id)
+        if trade is None:
+            return error_response(request, 404, "trade_not_found", f"No trade {trade_id}")
+        return ledgers, review, trade
+
+    def what_ifs(review: ReviewStore, trade: Trade, strategy_id: str | None) -> dict[str, Any]:
+        assert get_bars is not None
+        document = trade_document(trade)
+        opened_text = document["opened_at_utc"] or f"{document['opened_on']}T00:00:00Z"
+        opened = datetime.fromisoformat(opened_text.replace("Z", "+00:00"))
+        version, _after = version_for(review.principle_versions(), opened)
+        principles_part = (
+            None
+            if version is None
+            else principles_what_if(get_bars(), trade, version["items"], now())
+        )
+        chosen = strategy_id or trade.strategy_id
+        found = next((s for s in strategy_list() if s["strategy_id"] == chosen), None)
+        strategy_part = None if found is None else strategy_what_if(get_bars(), trade, found, now())
+        return {"principles": principles_part, "strategy": strategy_part}
+
+    @application.get("/v1/review/trades/{trade_id:path}/what-if", response_model=None)
+    def get_what_if(
+        request: Request,
+        trade_id: str,
+        strategy_id: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
+    ) -> Response:
+        found = trade_or_error(request, trade_id)
+        if isinstance(found, Response):
+            return found
+        _ledgers, review, trade = found
+        try:
+            parts = what_ifs(review, trade, strategy_id)
+        except MarketDataError as exc:
+            return error_response(request, 422, "agent_data_unavailable", str(exc))
+        return respond(
+            {"kind": "review_what_if", "schema_version": "0.1", "trade_id": trade_id, **parts}
+        )
+
+    @application.get("/v1/review/trades/{trade_id:path}/strategy-suggestions", response_model=None)
+    def get_suggestions(request: Request, trade_id: str) -> Response:
+        found = trade_or_error(request, trade_id)
+        if isinstance(found, Response):
+            return found
+        _ledgers, _review, trade = found
+        assert get_bars is not None
+        return respond(
+            {
+                "kind": "review_strategy_suggestions",
+                "schema_version": "0.1",
+                "trade_id": trade_id,
+                "suggestions": suggest_strategies(get_bars(), trade, strategy_list()),
             }
         )

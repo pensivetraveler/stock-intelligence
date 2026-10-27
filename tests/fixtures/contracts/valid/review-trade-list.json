@@ -91,7 +91,8 @@
         "reviewed": true,
         "recorded_at_utc": "2026-10-26T12:00:00Z",
         "revision": 1
-      }
+      },
+      "principles_broken": 1
     },
     {
       "trade_id": "flat:broker:brk-5",
@@ -142,7 +143,8 @@
           "session_date": "2026-03-04"
         }
       ],
-      "annotation": null
+      "annotation": null,
+      "principles_broken": null
     }
   ]
 }

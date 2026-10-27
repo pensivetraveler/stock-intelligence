@@ -684,5 +684,22 @@
         "detail": "judged by Claude in the report"
       }
     ]
+  },
+  "what_if": {
+    "principles": {
+      "type": "principles",
+      "status": "computed",
+      "hindsight": true,
+      "notes": ["all shares are taken at the average buy from the first buy"],
+      "reason": "stop",
+      "exit_price": "93",
+      "exit_at_utc": "2026-03-03T16:30:00Z",
+      "timeframe": "5m",
+      "quantity": "20",
+      "gross_pnl": "-140",
+      "actual_gross_pnl": "40",
+      "difference": "-180"
+    },
+    "strategy": null
   }
 }

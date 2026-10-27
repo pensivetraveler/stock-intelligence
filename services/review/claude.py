@@ -42,6 +42,9 @@ the facts (JSON), the investor's own note, and the chart images. Rules:
   the app's results for numeric rules as they are. Rules with status "judgment" are text:
   judge them from the evidence and say plainly that it is your judgment. If the check is
   "after_the_fact", the rules were written after this trade; say so when you use them.
+- "what_if_hindsight" replays the trade by the investor's stop/target principles and by a
+  saved strategy. It is hindsight: use it to show what the rules would have done, never
+  as proof that a decision was right or wrong at the time.
 - No buy, sell or hold recommendations, no price targets. This is a review, not advice.
 - Be concise and concrete. Answer in {language}."""
 
@@ -85,6 +88,7 @@ def payload_for(draft: dict[str, Any]) -> dict[str, Any]:
         "data_warnings": draft["warnings"][:20],
         "investor_note_written_after_the_trade": draft["note"],
         "trading_principles": draft.get("principles"),
+        "what_if_hindsight": draft.get("what_if"),
         "images": [
             {
                 "kind": image["kind"],

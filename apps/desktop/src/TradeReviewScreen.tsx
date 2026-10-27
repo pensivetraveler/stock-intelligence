@@ -15,11 +15,13 @@ import {
   type ReviewTrade,
   type TradeFilter,
 } from "./review-api";
+import { ChecksBar } from "./ChecksBar";
 import { PrincipleCheck } from "./PrincipleCheck";
 import { PrinciplesPanel } from "./PrinciplesPanel";
 import { ReviewSettingsPanel } from "./ReviewSettingsPanel";
 import { TradeChart } from "./TradeChart";
 import { TradeReportPanel } from "./TradeReportPanel";
+import { WhatIfPanel } from "./WhatIfPanel";
 import { joinBars, tradeChartRequests, tradeMarkers } from "./trade-review";
 
 const PAGE = 300;
@@ -34,6 +36,7 @@ interface Filters {
   status: "" | ReviewTrade["status"];
   reviewed: "" | "yes" | "no";
   tag: string;
+  principles: "" | "broken" | "kept" | "unchecked";
   onlyActive: boolean;
 }
 
@@ -43,6 +46,7 @@ const START: Filters = {
   status: "",
   reviewed: "",
   tag: "",
+  principles: "",
   onlyActive: false,
 };
 
@@ -125,6 +129,7 @@ export function TradeReviewScreen({
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.reviewed ? { reviewed: filters.reviewed === "yes" } : {}),
       ...(filters.tag ? { tag: filters.tag } : {}),
+      ...(filters.principles ? { principles: filters.principles } : {}),
       limit: PAGE,
       offset,
     }),
@@ -146,6 +151,10 @@ export function TradeReviewScreen({
   }, [api, query, message]);
 
   useEffect(() => {
+    void load();
+  }, [load]);
+
+  const reload = useCallback(() => {
     void load();
   }, [load]);
 
@@ -326,6 +335,20 @@ export function TradeReviewScreen({
             </select>
           </label>
           <label className="bt-inline">
+            {t("rv.col.principles")}
+            <select
+              value={filters.principles}
+              onChange={(event) =>
+                set("principles", event.target.value as Filters["principles"])
+              }
+            >
+              <option value="">{t("rv.all")}</option>
+              <option value="broken">{t("rv.principles.broken")}</option>
+              <option value="kept">{t("rv.principles.kept")}</option>
+              <option value="unchecked">{t("rv.principles.unchecked")}</option>
+            </select>
+          </label>
+          <label className="bt-inline">
             <input
               type="checkbox"
               checked={filters.onlyActive}
@@ -334,6 +357,7 @@ export function TradeReviewScreen({
             {t("rv.onlyActive", { symbol: symbolOf(activeInstrumentId) })}
           </label>
         </div>
+        <ChecksBar api={api} today={today} onProgress={reload} />
         <div className="rv-body">
           <div className="rv-list">
             {list ? (
@@ -377,6 +401,7 @@ export function TradeReviewScreen({
                   <th>{t("rv.col.pnl")}</th>
                   <th>{t("rv.col.status")}</th>
                   <th>{t("rv.col.tags")}</th>
+                  <th>{t("rv.col.principles")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -434,6 +459,19 @@ export function TradeReviewScreen({
                         {trade.annotation?.reviewed ? " ✓" : ""}
                       </td>
                       <td>{trade.annotation?.tags.join(", ") ?? ""}</td>
+                      <td
+                        className={
+                          trade.principles_broken ? "rv-down" : undefined
+                        }
+                      >
+                        {trade.principles_broken === null
+                          ? "—"
+                          : trade.principles_broken === 0
+                            ? "✓"
+                            : t("rv.principles.brokenCount", {
+                                n: trade.principles_broken,
+                              })}
+                      </td>
                     </tr>
                   );
                 })}
@@ -694,6 +732,16 @@ function TradeDetail({
         api={api}
         tradeId={trade.trade_id}
         strategies={strategies}
+      />
+      <WhatIfPanel
+        key={`what-if-${principlesSaved}`}
+        api={api}
+        tradeId={trade.trade_id}
+        linkedStrategyId={trade.strategy_id}
+        strategies={strategies}
+        onAssign={(strategyId) =>
+          act(() => api.assign(executionRefs(trade), strategyId))
+        }
       />
 
       <div className="rv-strategy">

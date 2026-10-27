@@ -4,11 +4,14 @@ import type {
   ReviewAssignmentResult,
   ReviewConversation,
   ReviewGroup,
+  ReviewCheckStatus,
   ReviewPrincipleCheck,
   ReviewPrincipleDraft,
   ReviewPrinciples,
   ReviewReportDraft,
   ReviewSettings,
+  ReviewStrategySuggestions,
+  ReviewWhatIf,
   ReviewStrategyRule,
   ReviewTradeListResponse,
   ReviewTradeReport,
@@ -30,6 +33,8 @@ export interface TradeFilter {
   status?: ReviewTrade["status"];
   reviewed?: boolean;
   tag?: string;
+  /** Stored principle checks: any broken, none broken, or not checked yet. */
+  principles?: "broken" | "kept" | "unchecked";
   limit?: number;
   offset?: number;
 }
@@ -119,6 +124,12 @@ export interface ReviewApi {
     sourceText: string,
   ): Promise<ReviewPrinciples>;
   principleCheck(tradeId: string): Promise<ReviewPrincipleCheck>;
+  /** Hindsight replays: by the principles' stop/target and by a strategy. */
+  whatIf(tradeId: string, strategyId?: string): Promise<ReviewWhatIf>;
+  strategySuggestions(tradeId: string): Promise<ReviewStrategySuggestions>;
+  checkStatus(): Promise<ReviewCheckStatus>;
+  /** Queues principle checks of trades opened between the dates. */
+  runChecks(fromDate: string, toDate: string): Promise<ReviewCheckStatus>;
 }
 
 // Trade ids contain ":" ("flat:broker:<id>"); the routes take them as a path.
@@ -143,6 +154,7 @@ export function createReviewApi(
         query.set("reviewed", String(filter.reviewed));
       }
       if (filter.tag) query.set("tag", filter.tag);
+      if (filter.principles) query.set("principles", filter.principles);
       if (filter.limit) query.set("limit", String(filter.limit));
       if (filter.offset) query.set("offset", String(filter.offset));
       return callForKind<ReviewTradeListResponse>(
@@ -304,6 +316,38 @@ export function createReviewApi(
         target,
         `/v1/review/trades/${tradePath(tradeId)}/principle-check`,
         "review_principle_check",
+      );
+    },
+    whatIf(tradeId, strategyId) {
+      const query = strategyId
+        ? `?strategy_id=${encodeURIComponent(strategyId)}`
+        : "";
+      return callForKind<ReviewWhatIf>(
+        target,
+        `/v1/review/trades/${tradePath(tradeId)}/what-if${query}`,
+        "review_what_if",
+      );
+    },
+    strategySuggestions(tradeId) {
+      return callForKind<ReviewStrategySuggestions>(
+        target,
+        `/v1/review/trades/${tradePath(tradeId)}/strategy-suggestions`,
+        "review_strategy_suggestions",
+      );
+    },
+    checkStatus() {
+      return callForKind<ReviewCheckStatus>(
+        target,
+        "/v1/review/principle-checks/status",
+        "review_check_status",
+      );
+    },
+    runChecks(fromDate, toDate) {
+      return callForKind<ReviewCheckStatus>(
+        target,
+        "/v1/review/principle-checks/run",
+        "review_check_status",
+        { method: "POST", body: { from_date: fromDate, to_date: toDate } },
       );
     },
     async reports(tradeId) {
