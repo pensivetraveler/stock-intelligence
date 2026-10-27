@@ -72,7 +72,10 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ReviewConversation
   | ReviewPrinciples
   | ReviewPrincipleDraft
-  | ReviewPrincipleCheck;
+  | ReviewPrincipleCheck
+  | ReviewWhatIf
+  | ReviewStrategySuggestions
+  | ReviewCheckStatus;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -4088,6 +4091,7 @@ export interface ReviewTrade {
    */
   executions: [ReviewTradeExecution, ...ReviewTradeExecution[]];
   annotation: ReviewAnnotationBody | null;
+  principles_broken: number | null;
 }
 export interface ReviewTradeExecution {
   ledger: "manual" | "imported" | "broker";
@@ -4704,6 +4708,10 @@ export interface ReviewReportDraft {
     after_the_fact: boolean;
     results: ReviewPrincipleResult[];
   } | null;
+  what_if: {
+    principles: ReviewWhatIfPart | null;
+    strategy: ReviewWhatIfPart | null;
+  } | null;
 }
 export interface ReviewPrincipleResult {
   item_id: string;
@@ -4720,6 +4728,27 @@ export interface ReviewPrincipleResult {
   text: string;
   status: "kept" | "broken" | "not_applicable" | "unknown" | "judgment";
   detail: string;
+}
+export interface ReviewWhatIfPart {
+  type: "principles" | "strategy";
+  status: "computed" | "not_applicable" | "unknown" | "no_signal";
+  hindsight: true;
+  notes: string[];
+  detail?: string;
+  reason?: "stop" | "target" | "none";
+  strategy_id?: Identifier;
+  strategy_name?: string;
+  timeframe?: string;
+  window_start_utc?: UtcTimestamp;
+  window_end_utc?: UtcTimestamp;
+  entry_price?: NonNegativeDecimalString;
+  entry_at_utc?: UtcTimestamp;
+  exit_price?: NonNegativeDecimalString;
+  exit_at_utc?: UtcTimestamp;
+  quantity?: NonNegativeDecimalString;
+  gross_pnl?: DecimalString;
+  actual_gross_pnl?: DecimalString;
+  difference?: DecimalString;
 }
 export interface ReviewTradeReport {
   kind: "review_trade_report";
@@ -5849,4 +5878,31 @@ export interface ReviewPrincipleCheck {
   version: number | null;
   after_the_fact: boolean;
   results: ReviewPrincipleResult[];
+}
+export interface ReviewWhatIf {
+  kind: "review_what_if";
+  schema_version: SchemaVersion;
+  trade_id: string;
+  principles: ReviewWhatIfPart | null;
+  strategy: ReviewWhatIfPart | null;
+}
+export interface ReviewStrategySuggestions {
+  kind: "review_strategy_suggestions";
+  schema_version: SchemaVersion;
+  trade_id: string;
+  suggestions: {
+    strategy_id: Identifier;
+    name: string;
+    timeframes: ("5m" | "1d")[];
+  }[];
+}
+export interface ReviewCheckStatus {
+  kind: "review_check_status";
+  schema_version: SchemaVersion;
+  auto_from_date: string;
+  queued: number;
+  running: boolean;
+  done: number;
+  failed: number;
+  last_error: string | null;
 }

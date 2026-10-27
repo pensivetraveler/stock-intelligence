@@ -1,6 +1,8 @@
 import type {
   MarketBarsResponse,
   ReviewAccountCapitalList,
+  ReviewCheckStatus,
+  ReviewWhatIf,
   ReviewConversation,
   ReviewPrincipleCheck,
   ReviewPrinciples,
@@ -52,6 +54,36 @@ const bars = fixture<MarketBarsResponse>("market-bars-response.json");
 const settings = fixture<ReviewSettings>("review-settings.json");
 const draft = fixture<ReviewReportDraft>("review-report-draft.json");
 const report = fixture<ReviewTradeReport>("review-trade-report.json");
+const whatIf: ReviewWhatIf = {
+  kind: "review_what_if",
+  schema_version: "0.1",
+  trade_id: "flat:broker:brk-1",
+  principles: {
+    type: "principles",
+    status: "computed",
+    hindsight: true,
+    reason: "stop",
+    exit_price: "93",
+    exit_at_utc: "2026-03-03T16:30:00Z",
+    timeframe: "5m",
+    quantity: "20",
+    gross_pnl: "-140",
+    actual_gross_pnl: "40",
+    difference: "-180",
+    notes: ["all shares are taken at the average buy from the first buy"],
+  },
+  strategy: null,
+};
+const checkStatus: ReviewCheckStatus = {
+  kind: "review_check_status",
+  schema_version: "0.1",
+  auto_from_date: "2026-07-28",
+  queued: 0,
+  running: false,
+  done: 12,
+  failed: 0,
+  last_error: null,
+};
 const noPrinciples: ReviewPrinciples = {
   kind: "review_principles",
   schema_version: "0.1",
@@ -167,6 +199,24 @@ function fakeApi(overrides: Partial<ReviewApi> = {}): ReviewApi {
     })),
     savePrinciples: vi.fn(async () => noPrinciples),
     principleCheck: vi.fn(async () => principleCheck),
+    whatIf: vi.fn(async (tradeId: string) => ({
+      ...whatIf,
+      trade_id: tradeId,
+    })),
+    strategySuggestions: vi.fn(async (tradeId: string) => ({
+      kind: "review_strategy_suggestions" as const,
+      schema_version: "0.1" as const,
+      trade_id: tradeId,
+      suggestions: [
+        {
+          strategy_id: "strategy-x",
+          name: "Breakout",
+          timeframes: ["5m" as const],
+        },
+      ],
+    })),
+    checkStatus: vi.fn(async () => checkStatus),
+    runChecks: vi.fn(async () => ({ ...checkStatus, queued: 3 })),
     ...overrides,
   };
 }
@@ -517,5 +567,73 @@ describe("principles", () => {
     ).toBeInTheDocument();
     expect(within(check).getByText("Broken")).toBeInTheDocument();
     expect(within(check).getByText(/past the stop of -7%/)).toBeInTheDocument();
+  });
+});
+
+describe("what-ifs and checks", () => {
+  it("shows the principles replay and suggests strategies for an unlinked trade", async () => {
+    const unlinked = {
+      ...list,
+      trades: list.trades.map((trade) => ({ ...trade, strategy_id: null })),
+    };
+    const api = fakeApi({ trades: vi.fn(async () => unlinked) });
+    show(api);
+    fireEvent.click((await screen.findAllByText("AAPL"))[1]!);
+    const panel = await screen.findByLabelText("What if");
+    expect(await within(panel).findByText("-180")).toBeInTheDocument();
+    expect(within(panel).getByText(/stopped out/)).toBeInTheDocument();
+    expect(within(panel).getByText(/not available/)).toBeInTheDocument();
+    expect(
+      await within(panel).findByText(/Breakout \(5m\)/),
+    ).toBeInTheDocument();
+    fireEvent.click(within(panel).getByText("Link this strategy"));
+    await waitFor(() =>
+      expect(api.assign).toHaveBeenCalledWith(
+        [
+          { ledger: "broker", execution_id: "brk-5" },
+          { ledger: "broker", execution_id: "brk-6" },
+        ],
+        "strategy-x",
+      ),
+    );
+    fireEvent.change(within(panel).getByLabelText("Replay strategy"), {
+      target: { value: "strategy-x" },
+    });
+    await waitFor(() =>
+      expect(api.whatIf).toHaveBeenLastCalledWith(
+        "flat:broker:brk-5",
+        "strategy-x",
+      ),
+    );
+  });
+
+  it("lists broken counts, filters them and runs checks over dates", async () => {
+    const api = fakeApi();
+    show(api);
+    await screen.findByText("2 of 2 trades");
+    expect(screen.getByText("1 broken")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Principles"), {
+      target: { value: "broken" },
+    });
+    await waitFor(() =>
+      expect(api.trades).toHaveBeenLastCalledWith({
+        ledger: "broker",
+        principles: "broken",
+        limit: 300,
+        offset: 0,
+      }),
+    );
+    expect(
+      await screen.findByText(
+        /Trades from 2026-07-28 are checked automatically/,
+      ),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("From"), {
+      target: { value: "2026-01-01" },
+    });
+    fireEvent.click(screen.getByText("Run checks"));
+    await waitFor(() =>
+      expect(api.runChecks).toHaveBeenCalledWith("2026-01-01", "2026-10-26"),
+    );
   });
 });
