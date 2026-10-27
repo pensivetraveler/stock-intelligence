@@ -3314,3 +3314,37 @@ body {
   padding: 6px;
   resize: vertical;
 }
+
+/* Trading principles (ADR 0042 step 3a) */
+.rv-principle-list,
+.rv-principle-results {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.rv-principle-row {
+  display: grid;
+  grid-template-columns: 140px 190px auto minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.rv-principle-check h4 {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.rv-status-kept strong {
+  color: #3fb68b;
+}
+
+.rv-status-broken strong {
+  color: #e5566b;
+}
+
+.rv-status-unknown strong,
+.rv-status-not_applicable strong,
+.rv-status-judgment strong {
+  color: var(--term-muted);
+}

@@ -371,6 +371,37 @@ def _path_facts(ctx: _Context) -> None:
         )
 
 
+def peak_cost(executions: Sequence[Execution]) -> Decimal:
+    """The largest cost held at once: buys add their cost, sells take off the oldest lots."""
+    lots: list[list[Decimal]] = []
+    peak = Decimal(0)
+    for execution in executions:
+        if execution.side == "buy":
+            lots.append([execution.quantity, execution.price])
+        else:
+            left = execution.quantity
+            while left > 0 and lots:
+                take = min(left, lots[0][0])
+                lots[0][0] -= take
+                left -= take
+                if lots[0][0] == 0:
+                    lots.pop(0)
+        peak = max(peak, sum((q * p for q, p in lots), Decimal(0)))
+    return peak
+
+
+def capital_for(
+    capital: Sequence[Capital], account_ref: str | None, currency: str, day: date
+) -> Capital | None:
+    """The capital entry in effect on a day for an account and currency."""
+    entered = [
+        c
+        for c in capital
+        if c.account_ref == account_ref and c.currency == currency and c.effective_from <= day
+    ]
+    return max(entered, key=lambda c: c.effective_from) if entered else None
+
+
 def _size_facts(ctx: _Context, capital: Sequence[Capital], account_ref: str | None) -> None:
     evidence, executions = ctx.evidence, ctx.executions
     buys = [e for e in executions if e.side == "buy"]
@@ -396,21 +427,7 @@ def _size_facts(ctx: _Context, capital: Sequence[Capital], account_ref: str | No
                 f"{buys[0].price:f}",
             )
         )
-    # The largest cost held at once: buys add their cost, sells take off the oldest lots.
-    lots: list[list[Decimal]] = []
-    peak = Decimal(0)
-    for execution in executions:
-        if execution.side == "buy":
-            lots.append([execution.quantity, execution.price])
-        else:
-            left = execution.quantity
-            while left > 0 and lots:
-                take = min(left, lots[0][0])
-                lots[0][0] -= take
-                left -= take
-                if lots[0][0] == 0:
-                    lots.pop(0)
-        peak = max(peak, sum((q * p for q, p in lots), Decimal(0)))
+    peak = peak_cost(executions)
     currency = instrument_currency(ctx.trade.instrument_id)
     evidence.facts.append(
         Fact(
@@ -420,21 +437,14 @@ def _size_facts(ctx: _Context, capital: Sequence[Capital], account_ref: str | No
             f"At most {peak:.2f} {currency} was held in the position at once (at cost)",
         )
     )
-    entered = [
-        c
-        for c in capital
-        if c.account_ref == account_ref
-        and c.currency == currency
-        and c.effective_from <= buys[0].day
-    ]
-    if not entered:
+    chosen = capital_for(capital, account_ref, currency, buys[0].day)
+    if chosen is None:
         evidence.missing.append("position_pct_of_capital")
         evidence.uncertainty.append(
             "No account capital was entered for this account and date, so the position "
             "size is not compared with the account."
         )
         return
-    chosen = max(entered, key=lambda c: c.effective_from)
     share = peak / chosen.amount
     evidence.facts.append(
         Fact(

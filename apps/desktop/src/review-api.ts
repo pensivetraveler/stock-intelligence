@@ -4,6 +4,9 @@ import type {
   ReviewAssignmentResult,
   ReviewConversation,
   ReviewGroup,
+  ReviewPrincipleCheck,
+  ReviewPrincipleDraft,
+  ReviewPrinciples,
   ReviewReportDraft,
   ReviewSettings,
   ReviewStrategyRule,
@@ -34,6 +37,15 @@ export interface TradeFilter {
 export type ReportModel = ReviewSettings["report_model"];
 export type ReportImage = ReviewReportDraft["images"][number];
 export type ToolImage = ReviewConversation["pending_images"][number];
+export type PrincipleKind = ReviewPrincipleCheck["results"][number]["kind"];
+
+/** One principle as edited before saving (item ids are given by the API). */
+export interface PrincipleInput {
+  scope: string;
+  kind: string;
+  value: string | null;
+  text: string;
+}
 
 export interface CapitalRequest {
   accountRef: string;
@@ -95,6 +107,18 @@ export interface ReviewApi {
     conversationId: string,
     images: { tool_use_id: string; png_base64: string }[],
   ): Promise<ReviewConversation>;
+  principles(): Promise<ReviewPrinciples>;
+  /** Claude's proposed items for the investor's text; nothing is saved. */
+  draftPrinciples(
+    text: string,
+    language: "en" | "ko",
+  ): Promise<ReviewPrincipleDraft>;
+  /** Saves the whole set as a new version. */
+  savePrinciples(
+    items: PrincipleInput[],
+    sourceText: string,
+  ): Promise<ReviewPrinciples>;
+  principleCheck(tradeId: string): Promise<ReviewPrincipleCheck>;
 }
 
 // Trade ids contain ":" ("flat:broker:<id>"); the routes take them as a path.
@@ -250,6 +274,36 @@ export function createReviewApi(
         `/v1/review/conversations/${encodeURIComponent(conversationId)}/images`,
         "review_conversation",
         { method: "POST", body: { images } },
+      );
+    },
+    principles() {
+      return callForKind<ReviewPrinciples>(
+        target,
+        "/v1/review/principles",
+        "review_principles",
+      );
+    },
+    draftPrinciples(text, language) {
+      return callForKind<ReviewPrincipleDraft>(
+        target,
+        "/v1/review/principles/draft",
+        "review_principle_draft",
+        { method: "POST", body: { text, language } },
+      );
+    },
+    savePrinciples(items, sourceText) {
+      return callForKind<ReviewPrinciples>(
+        target,
+        "/v1/review/principles",
+        "review_principles",
+        { method: "PUT", body: { items, source_text: sourceText } },
+      );
+    },
+    principleCheck(tradeId) {
+      return callForKind<ReviewPrincipleCheck>(
+        target,
+        `/v1/review/trades/${tradePath(tradeId)}/principle-check`,
+        "review_principle_check",
       );
     },
     async reports(tradeId) {

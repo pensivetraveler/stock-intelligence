@@ -27,7 +27,13 @@ from services.api.journal_routes import ErrorResponse
 from services.backtest.data import GetBars
 from services.journal.store import JournalStore
 from services.market_data.provider import MarketDataError
-from services.review.claude import DEFAULT_MODEL, MODELS, ReportError, ask_for_report
+from services.review.claude import (
+    DEFAULT_MODEL,
+    MODELS,
+    ReportError,
+    ask_for_report,
+    convert_principles,
+)
 from services.review.conversation import (
     Conversation,
     ConversationError,
@@ -35,6 +41,7 @@ from services.review.conversation import (
     first_content,
     system_prompt,
 )
+from services.review.principles import PrincipleError, check_trade, clean_items, version_for
 from services.review.report import Capital, report_evidence
 from services.review.store import (
     CapitalNotFoundError,
@@ -147,6 +154,26 @@ class DrawnImagesRequest(BaseModel):
     images: list[DrawnImage] = Field(min_length=1, max_length=6)
 
 
+class PrincipleTextRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(min_length=1, max_length=8000)
+    language: Literal["en", "ko"] = "ko"
+
+
+class PrincipleItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: str = Field(min_length=1, max_length=200)
+    kind: str = Field(min_length=1, max_length=40)
+    value: str | None = Field(default=None, max_length=40)
+    text: str = Field(default="", max_length=500)
+
+
+class PrinciplesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[PrincipleItem] = Field(max_length=100)
+    source_text: str = Field(default="", max_length=8000)
+
+
 class _TradeIndex:
     """Fills and trades kept between requests: reading ~100k broker orders takes seconds.
 
@@ -215,6 +242,7 @@ def register_review_routes(
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ask: Callable[..., dict[str, Any]] = ask_for_report,
     converse: Callable[..., dict[str, Any]] = call_claude,
+    convert: Callable[..., dict[str, Any]] = convert_principles,
     resolve_symbol: Callable[[str], str | None] = lambda _symbol: None,
 ) -> None:
     index = _TradeIndex()
@@ -509,6 +537,10 @@ def register_review_routes(
             )
         except MarketDataError as exc:
             return error_response(request, 422, "agent_data_unavailable", str(exc))
+        try:
+            principles = principle_check(ledgers, review, trade, capital)
+        except MarketDataError as exc:
+            return error_response(request, 422, "agent_data_unavailable", str(exc))
         note = review.annotations().get(trade_id) if body.include_note else None
         draft = {
             "kind": "review_report_draft",
@@ -541,6 +573,7 @@ def register_review_routes(
                 "written_at_utc": note["recorded_at_utc"],
             },
             "images": images,
+            "principles": principles,
         }
         validate_document(draft)
         review.save_draft(draft)
@@ -772,4 +805,137 @@ def register_review_routes(
             return error_response(request, 409, "conversation_busy", str(exc))
         return respond(
             conversation_document(review, conversation["report_id"], review.conversation(loop.id))
+        )
+
+    # --- trading principles (step 3a) --------------------------------------------------
+
+    def capital_entries(review: ReviewStore) -> list[Capital]:
+        return [
+            Capital(
+                entry["account_ref"],
+                date.fromisoformat(entry["effective_from"]),
+                Decimal(entry["amount"]),
+                entry["currency"],
+            )
+            for entry in review.capital()
+        ]
+
+    def principle_check(
+        ledgers: JournalStore, review: ReviewStore, trade: Trade, capital: list[Capital]
+    ) -> dict[str, Any] | None:
+        """The trade against the principles in effect when it opened (None: no principles)."""
+        if get_bars is None:
+            return None
+        document = trade_document(trade)
+        # When it opened: the first fill's time, or the start of its day when only that.
+        opened_text = document["opened_at_utc"] or f"{document['opened_on']}T00:00:00Z"
+        opened = datetime.fromisoformat(opened_text.replace("Z", "+00:00"))
+        version, after = version_for(review.principle_versions(), opened)
+        if version is None:
+            return None
+        trades, _by_id, _undated = index.trades(ledgers, review)
+        same_day = sum(
+            1
+            for other in trades
+            if other.ledger == trade.ledger
+            and min(p.fill.day for p in other.allocations).isoformat() == document["opened_on"]
+        )
+        results = check_trade(
+            get_bars(),
+            trade,
+            version["items"],
+            document["account_ref"],
+            capital,
+            same_day,
+            now(),
+        )
+        return {"version": version["version"], "after_the_fact": after, "results": results}
+
+    def principles_document(review: ReviewStore) -> dict[str, Any]:
+        versions = review.principle_versions()
+        current = versions[-1] if versions else None
+        return {
+            "kind": "review_principles",
+            "schema_version": "0.1",
+            "current": current,
+            "versions": [
+                {
+                    "version": v["version"],
+                    "created_at_utc": v["created_at_utc"],
+                    "item_count": len(v["items"]),
+                }
+                for v in versions
+            ],
+        }
+
+    @application.get("/v1/review/principles", response_model=None)
+    def get_principles(request: Request) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        return respond(principles_document(review))
+
+    @application.post("/v1/review/principles/draft", response_model=None)
+    def draft_principles(request: Request, body: PrincipleTextRequest) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        key = api_key()
+        if key is None:
+            return error_response(
+                request,
+                409,
+                "agent_key_missing",
+                "Register an enabled Claude (Anthropic) API key on the Keys screen",
+            )
+        listed = [{"strategy_id": s["strategy_id"], "name": s["name"]} for s in strategy_list()]
+        try:
+            proposed = convert(
+                body.text,
+                listed,
+                key,
+                body.language,
+                model=review.setting("report_model") or DEFAULT_MODEL,
+            )
+        except ReportError as exc:
+            return error_response(request, 502, "principles_conversion_failed", str(exc))
+        return respond({"kind": "review_principle_draft", "schema_version": "0.1", **proposed})
+
+    @application.put("/v1/review/principles", response_model=None)
+    def save_principles(request: Request, body: PrinciplesRequest) -> Response:
+        review = store()
+        if review is None:
+            return unavailable(request)
+        try:
+            items = clean_items(
+                [item.model_dump() for item in body.items],
+                {s["strategy_id"] for s in strategy_list()},
+            )
+        except PrincipleError as exc:
+            return error_response(request, 422, "invalid_principles", str(exc))
+        review.save_principles(items, body.source_text)
+        return respond(principles_document(review), 201)
+
+    @application.get("/v1/review/trades/{trade_id:path}/principle-check", response_model=None)
+    def get_principle_check(request: Request, trade_id: str) -> Response:
+        ledgers, review = journal(), store()
+        if ledgers is None or review is None or get_bars is None:
+            return unavailable(request)
+        _trades, by_id, _undated = index.trades(ledgers, review)
+        trade = by_id.get(trade_id)
+        if trade is None:
+            return error_response(request, 404, "trade_not_found", f"No trade {trade_id}")
+        try:
+            checked = principle_check(ledgers, review, trade, capital_entries(review))
+        except MarketDataError as exc:
+            return error_response(request, 422, "agent_data_unavailable", str(exc))
+        return respond(
+            {
+                "kind": "review_principle_check",
+                "schema_version": "0.1",
+                "trade_id": trade_id,
+                "version": None if checked is None else checked["version"],
+                "after_the_fact": False if checked is None else checked["after_the_fact"],
+                "results": [] if checked is None else checked["results"],
+            }
         )
