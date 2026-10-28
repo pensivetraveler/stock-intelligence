@@ -1306,6 +1306,8 @@ export interface IndicatorInstance {
   formula?: string;
   /** Pine Script indicators (type "pine", ADR 0040): the script. */
   pine?: string;
+  /** The Claude conversation that wrote this Pine script (ADR 0042), to continue it. */
+  assistant?: string;
   label?: string;
   pane?: "price" | "separate";
 }
@@ -1522,6 +1524,10 @@ export function parseIndicators(value: unknown): IndicatorInstance[] {
           type: "pine",
           params: cleanParams(definition, record.params),
           pine: record.pine,
+          ...(typeof record.assistant === "string" &&
+          /^[A-Za-z0-9_-]{1,100}$/.test(record.assistant)
+            ? { assistant: record.assistant }
+            : {}),
           ...(isHigherTimeframe(record.timeframe)
             ? { timeframe: record.timeframe }
             : {}),

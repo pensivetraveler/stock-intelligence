@@ -28,10 +28,12 @@ from services.agents.store import AgentStore
 from services.api.agent_routes import register_agent_routes
 from services.api.backtest_routes import register_backtest_routes
 from services.api.credential_routes import register_credential_routes
+from services.api.indicator_assistant_routes import register_indicator_assistant_routes
 from services.api.indicator_routes import register_indicator_routes
 from services.api.journal_routes import register_import_routes, register_journal_routes
 from services.api.paper_routes import register_paper_routes
 from services.api.review_routes import register_review_routes
+from services.assistant.indicator import call_indicator_claude
 from services.backtest.jobs import BacktestRunner
 from services.backtest.store import BacktestStore
 from services.credentials.catalog import adapter_settings
@@ -572,6 +574,7 @@ def create_app(
     review_converse: Callable[..., dict[str, Any]] = call_claude,
     review_convert: Callable[..., dict[str, Any]] = convert_principles,
     review_period_ask: Callable[..., dict[str, Any]] = ask_period_commentary,
+    indicator_converse: Callable[..., dict[str, Any]] = call_indicator_claude,
     indicator_store: CustomIndicatorStore | None = None,
     public_sources: PublicSources | None = None,
     clock: Callable[[], datetime] = _utc_now,
@@ -1376,6 +1379,14 @@ def create_app(
         convert=review_convert,
         period_ask=review_period_ask,
         resolve_symbol=resolve_us_symbol,
+    )
+    register_indicator_assistant_routes(
+        application,
+        store=review.get,
+        error_response=_error_response,
+        api_key=lambda: _claude_key(credentials.get()),
+        now=clock,
+        converse=indicator_converse,
     )
     register_agent_routes(
         application,

@@ -143,10 +143,13 @@ export function PineDialog({
   target,
   onAdd,
   onClose,
+  onAssistant,
 }: {
   target: string;
   onAdd: (source: string) => void;
   onClose: () => void;
+  /** Write the indicator with Claude instead (ADR 0042). */
+  onAssistant?: () => void;
 }) {
   const { t } = useI18n();
   return (
@@ -169,6 +172,14 @@ export function PineDialog({
           <span className="workspace-note">{t("ind.target", { target })}</span>
         </header>
         <p className="workspace-note">{t("pine.note")}</p>
+        {onAssistant ? (
+          <p className="bt-actions">
+            <button type="button" className="tb-button" onClick={onAssistant}>
+              {t("ia.open")}
+            </button>
+            <span className="workspace-note">{t("ia.title")}</span>
+          </p>
+        ) : null}
         <PineFields
           initial={PINE_EXAMPLE}
           examples

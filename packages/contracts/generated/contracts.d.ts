@@ -80,7 +80,9 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ReviewPeriodList
   | ReviewPeriodCommentary
   | ReviewPeriodCommentaryList
-  | ReviewPeriodPayload;
+  | ReviewPeriodPayload
+  | IndicatorConversation
+  | IndicatorAssistantSettings;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -7056,4 +7058,40 @@ export interface ReviewPeriodPayload {
   payload: {
     [k: string]: unknown;
   };
+}
+export interface IndicatorConversation {
+  kind: "indicator_conversation";
+  schema_version: SchemaVersion;
+  conversation_id: Identifier;
+  model: Identifier;
+  status: "idle" | "running" | "needs_run" | "stopped" | "failed";
+  error: string | null;
+  events: {
+    type: "question" | "answer" | "code" | "run" | "stopped" | "error";
+    at_utc: UtcTimestamp;
+    text?: string;
+    model?: string | null;
+    tool_use_id?: string;
+    code?: string;
+    ok?: boolean;
+  }[];
+  pending_run: {
+    tool_use_id: string;
+    code: string;
+  } | null;
+  runs: number;
+  max_runs: number;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+  };
+}
+export interface IndicatorAssistantSettings {
+  kind: "indicator_assistant_settings";
+  schema_version: SchemaVersion;
+  model: "claude-sonnet-5-5" | "claude-opus-5-5" | "claude-haiku-5-5";
+  retry_model: "claude-sonnet-5-5" | "claude-opus-5-5" | "claude-haiku-5-5";
+  models: ("claude-sonnet-5-5" | "claude-opus-5-5" | "claude-haiku-5-5")[];
 }
