@@ -3,7 +3,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { IndicatorAssistant } from "./IndicatorAssistant";
-import type { IndicatorAssistantApi } from "./indicator-assistant-api";
+import {
+  type IndicatorAssistantApi,
+  nextRetry,
+} from "./indicator-assistant-api";
 import type { OhlcvBar } from "./indicators";
 import { pineReference, runForAssistant } from "./pine-assistant";
 
@@ -192,12 +195,19 @@ describe("IndicatorAssistant", () => {
     expect(onApply).toHaveBeenCalledWith(GOOD, "conversation-1");
   });
 
-  it("offers a retry on Opus once the fixes run out", async () => {
+  it("retries on Sonnet high first once the fixes run out", async () => {
     const stopped = conversation({
       status: "stopped",
       runs: 6,
       error: "Claude could not fix the script in 5 tries",
       events: [
+        {
+          type: "question",
+          at_utc: AT,
+          text: "draw it",
+          model: "claude-sonnet-5-5",
+          effort: "medium",
+        },
         {
           type: "stopped",
           at_utc: AT,
@@ -230,15 +240,48 @@ describe("IndicatorAssistant", () => {
       />,
     );
     fireEvent.click(
-      await screen.findByRole("button", { name: "Retry with Opus" }),
+      await screen.findByRole("button", {
+        name: "Retry with Sonnet (high effort)",
+      }),
     );
+    expect(
+      screen.queryByRole("button", { name: "Retry with Opus" }),
+    ).toBeNull();
     await waitFor(() => expect(api.ask).toHaveBeenCalled());
-    const [, , context, model] = vi.mocked(api.ask).mock.calls[0]!;
-    expect(model).toBe("claude-opus-5-5");
+    const [, , context, retry] = vi.mocked(api.ask).mock.calls[0]!;
+    expect(retry).toEqual({ model: "claude-sonnet-5-5", effort: "high" });
     expect(context.code).toBe(GOOD);
     expect(
       screen.getByRole("button", { name: "Apply to indicator" }),
     ).toBeTruthy();
+  });
+});
+
+describe("nextRetry", () => {
+  const asked = (model: string, effort?: "medium" | "high") => [
+    {
+      type: "question" as const,
+      at_utc: AT,
+      text: "q",
+      model,
+      ...(effort ? { effort } : {}),
+    },
+  ];
+
+  it("goes from the default to Sonnet high, then Opus, then stops", () => {
+    expect(nextRetry(asked("claude-sonnet-5-5", "medium"))).toEqual({
+      model: "claude-sonnet-5-5",
+      effort: "high",
+    });
+    expect(nextRetry(asked("claude-haiku-5-5"))).toEqual({
+      model: "claude-sonnet-5-5",
+      effort: "high",
+    });
+    expect(nextRetry(asked("claude-sonnet-5-5", "high"))).toEqual({
+      model: "claude-opus-5-5",
+      effort: "medium",
+    });
+    expect(nextRetry(asked("claude-opus-5-5", "medium"))).toBeNull();
   });
 });
 

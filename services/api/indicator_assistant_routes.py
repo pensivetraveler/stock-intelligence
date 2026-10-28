@@ -57,8 +57,9 @@ class AskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     question: str = Field(min_length=1, max_length=4000)
     context: ChartContext
-    # Only for "retry with Opus": this request alone runs on the given model.
+    # Only for a retry (Sonnet at high effort, then Opus): this request alone uses them.
     model: Model | None = None
+    effort: Literal["medium", "high"] | None = None
 
 
 class RunRequest(BaseModel):
@@ -176,9 +177,13 @@ def register_indicator_assistant_routes(
             )
 
         def call(
-            model: str, system: str, tools: list[dict[str, Any]], messages: list[Any]
+            model: str,
+            system: str,
+            tools: list[dict[str, Any]],
+            messages: list[Any],
+            effort: str,
         ) -> dict[str, Any]:
-            return converse(model, system, tools, messages, key)
+            return converse(model, system, tools, messages, key, effort=effort)
 
         return IndicatorConversation(review, conversation, call, now)
 
@@ -226,7 +231,7 @@ def register_indicator_assistant_routes(
         if isinstance(runner, JSONResponse):
             return runner
         try:
-            runner.ask(body.question, body.context.model_dump(), body.model)
+            runner.ask(body.question, body.context.model_dump(), body.model, body.effort)
         except ConversationError as exc:
             return error_response(request, 409, "conversation_busy", str(exc))
         return respond(document(review, review.conversation(runner.id)))

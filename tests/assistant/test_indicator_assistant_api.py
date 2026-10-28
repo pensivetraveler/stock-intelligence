@@ -16,7 +16,8 @@ from packages.contracts.validator import validate_document
 from services.api.main import create_app
 from services.assistant.indicator import MAX_RUNS, call_indicator_claude
 from services.review.store import ReviewStore
-from tests.review.test_conversation_api import Scripted, answer, tool_use
+from tests.review.test_conversation_api import Scripted as BaseScripted
+from tests.review.test_conversation_api import answer, tool_use
 
 NOW = datetime(2026, 10, 28, 12, 0, tzinfo=timezone.utc)
 CONTEXT = {"symbol": "AAPL", "timeframe": "5m", "bars": 390, "code": None}
@@ -26,6 +27,23 @@ START = {
     "reference": "Supported: ta.bb, plotshape",
     "context": CONTEXT,
 }
+
+
+class Scripted(BaseScripted):
+    """Claude's turns, also recording the effort of each call."""
+
+    def __call__(  # type: ignore[override]
+        self,
+        model: str,
+        system: str,
+        tools: list[Any],
+        messages: list[Any],
+        key: str,
+        effort: str = "medium",
+    ) -> dict[str, Any]:
+        reply = super().__call__(model, system, tools, messages, key)
+        self.calls[-1]["effort"] = effort
+        return reply
 
 
 def run(tool_id: str, code: str = "//@version=5\nindicator('x')") -> dict[str, Any]:
@@ -75,6 +93,7 @@ def test_run_loop_until_answer(client: TestClient, scripted: Scripted) -> None:
     first = scripted.calls[0]
     assert "Supported: ta.bb" in first["system"]
     assert first["model"] == "claude-sonnet-5-5"
+    assert first["effort"] == "medium"
     assert [tool["name"] for tool in first["tools"]] == ["run_pine"]
     sent = json.loads(first["messages"][0]["content"][0]["text"])
     assert sent == {
@@ -120,16 +139,49 @@ def test_stops_after_the_last_failed_run(client: TestClient, scripted: Scripted)
     assert document["status"] == "stopped"
     assert document["runs"] == MAX_RUNS
     assert len(scripted.calls) == MAX_RUNS  # no extra call after the last failure
-    # Retrying on Opus sends the stored failure and the new request in order.
+    # The first retry runs on Sonnet at high effort, after the stored failure.
     scripted.turns.append(answer("고쳤습니다"))
     retried = client.post(
         f"/v1/indicator-assistant/conversations/{conversation_id}/messages",
-        json={"question": "다시 고쳐줘", "context": CONTEXT, "model": "claude-opus-5-5"},
+        json={
+            "question": "다시 고쳐줘",
+            "context": CONTEXT,
+            "model": "claude-sonnet-5-5",
+            "effort": "high",
+        },
     ).json()
+    validate_document(retried)
     assert retried["status"] == "idle"
-    assert scripted.calls[-1]["model"] == "claude-opus-5-5"
+    assert (scripted.calls[-1]["model"], scripted.calls[-1]["effort"]) == (
+        "claude-sonnet-5-5",
+        "high",
+    )
+    assert retried["events"][-2]["effort"] == "high"
     roles = [m["role"] for m in scripted.calls[-1]["messages"]]
     assert roles[-3:] == ["assistant", "user", "user"]
+    # The last step is Opus; a later request goes back to the default.
+    scripted.turns += [answer("Opus"), answer("기본")]
+    client.post(
+        f"/v1/indicator-assistant/conversations/{conversation_id}/messages",
+        json={"question": "한 번 더", "context": CONTEXT, "model": "claude-opus-5-5"},
+    )
+    assert (scripted.calls[-1]["model"], scripted.calls[-1]["effort"]) == (
+        "claude-opus-5-5",
+        "medium",
+    )
+    client.post(
+        f"/v1/indicator-assistant/conversations/{conversation_id}/messages",
+        json={"question": "설명", "context": CONTEXT},
+    )
+    assert (scripted.calls[-1]["model"], scripted.calls[-1]["effort"]) == (
+        "claude-sonnet-5-5",
+        "medium",
+    )
+    bad = client.post(
+        f"/v1/indicator-assistant/conversations/{conversation_id}/messages",
+        json={"question": "x", "context": CONTEXT, "effort": "max"},
+    )
+    assert bad.status_code == 422
 
 
 def test_new_request_answers_an_unrun_script(client: TestClient, scripted: Scripted) -> None:

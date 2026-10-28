@@ -3,17 +3,16 @@ import { useEffect, useMemo, useState } from "react";
 
 import { answerText } from "./answer-text";
 import { useI18n } from "./i18n";
-import type {
-  AssistantEvent,
-  AssistantModel,
-  ChartContext,
-  IndicatorAssistantApi,
+import {
+  type AssistantEvent,
+  type ChartContext,
+  type IndicatorAssistantApi,
+  type RetryStep,
+  nextRetry,
 } from "./indicator-assistant-api";
 import type { OhlcvBar } from "./indicators";
 import { MAX_PINE_LENGTH, type PineContext } from "./pine";
 import { pineReference, runForAssistant } from "./pine-assistant";
-
-const RETRY_MODEL: AssistantModel = "claude-opus-5-5";
 
 /** The chart a script is tried on: its bars and what Pine needs to know about it. */
 export interface AssistantChart {
@@ -116,7 +115,7 @@ export function IndicatorAssistant({
     }
   };
 
-  const send = async (text: string, model?: AssistantModel) => {
+  const send = async (text: string, retry?: RetryStep) => {
     const current = chart();
     if (!current) {
       setProblem(t("ia.noChart"));
@@ -130,7 +129,7 @@ export function IndicatorAssistant({
             conversation.conversation_id,
             text,
             contextNow(current),
-            model,
+            retry,
           )
         : await api.start(
             text,
@@ -163,7 +162,7 @@ export function IndicatorAssistant({
       ? [event]
       : [],
   );
-  const stopped = conversation?.status === "stopped";
+  const retry = conversation?.status === "stopped" ? nextRetry(events) : null;
   const waiting = conversation?.status === "needs_run";
   const runnable = checked?.ok === true;
 
@@ -194,16 +193,22 @@ export function IndicatorAssistant({
           {problem}
         </p>
       ) : null}
-      {stopped && busy === null ? (
+      {retry && busy === null ? (
         <p className="bt-actions">
           <button
             type="button"
             className="tb-button"
-            onClick={() => void send(t("ia.retryQuestion"), RETRY_MODEL)}
+            onClick={() => void send(t("ia.retryQuestion"), retry)}
           >
-            {t("ia.retryOpus")}
+            {retry.model === "claude-opus-5-5"
+              ? t("ia.retryOpus")
+              : t("ia.retryHigh")}
           </button>
-          <span className="workspace-note">{t("ia.retryNote")}</span>
+          <span className="workspace-note">
+            {retry.model === "claude-opus-5-5"
+              ? t("ia.retryNote")
+              : t("ia.retryHighNote")}
+          </span>
         </p>
       ) : null}
       {waiting && busy === null && conversation ? (

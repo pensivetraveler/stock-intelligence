@@ -7074,6 +7074,7 @@ export interface IndicatorConversation {
     tool_use_id?: string;
     code?: string;
     ok?: boolean;
+    effort?: "medium" | "high";
   }[];
   pending_run: {
     tool_use_id: string;

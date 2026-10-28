@@ -85,8 +85,12 @@ const en = {
   "ia.thinking": "Claude is working (scripts run: {runs}/{max})…",
   "ia.running": "Running the script on the chart…",
   "ia.runPending": "Run the waiting script",
+  "ia.retryHigh": "Retry with Sonnet (high effort)",
+  "ia.retryHighNote":
+    "Thinks longer at about the same cost; it continues from the last error.",
   "ia.retryOpus": "Retry with Opus",
-  "ia.retryNote": "Opus costs more; it continues from the last error.",
+  "ia.retryNote":
+    "Opus costs about 2.5 times as much; it continues from the last error.",
   "ia.retryQuestion":
     "The last script still fails. Find the cause from the errors above and fix it.",
   "ia.noChart": "The chart has no bars yet; wait for it to load.",
@@ -1584,8 +1588,12 @@ const ko: Record<MessageKey, string> = {
   "ia.thinking": "Claude가 작업 중입니다(실행한 스크립트 {runs}/{max})…",
   "ia.running": "차트에서 스크립트를 실행하는 중…",
   "ia.runPending": "대기 중인 스크립트 실행",
+  "ia.retryHigh": "Sonnet high로 다시 시도",
+  "ia.retryHighNote":
+    "비슷한 비용으로 더 오래 생각합니다. 마지막 오류에서 이어서 고칩니다.",
   "ia.retryOpus": "Opus로 다시 시도",
-  "ia.retryNote": "Opus는 비용이 더 듭니다. 마지막 오류에서 이어서 고칩니다.",
+  "ia.retryNote":
+    "Opus는 비용이 약 2.5배입니다. 마지막 오류에서 이어서 고칩니다.",
   "ia.retryQuestion":
     "마지막 스크립트가 아직 실패합니다. 위 오류에서 원인을 찾아 고쳐 주세요.",
   "ia.noChart": "차트에 아직 봉이 없습니다. 불러올 때까지 기다려 주세요.",

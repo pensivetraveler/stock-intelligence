@@ -27,11 +27,13 @@ from services.review.claude import FALLBACK_BETA, FALLBACK_MODELS, MODELS
 from services.review.conversation import BINDING_BETA, ConversationError
 from services.review.store import ReviewStore
 
-# Model assignment #SIW-1 (Local Agent session, 2026-10-28): Sonnet at medium effort,
-# provisional until the pilot; Opus only when the investor asks for a retry.
+# Model assignment #SIW-1 (Local Agent session, confirmed by the 2026-10-28 pilot): Sonnet
+# at medium effort. When five fixes are not enough the investor may retry, first on
+# Sonnet at high effort (same cost in the pilot), then on Opus (about 2.5 times the cost).
 DEFAULT_MODEL = "claude-sonnet-5-5"
 RETRY_MODEL = "claude-opus-5-5"
 EFFORT = "medium"
+EFFORTS = ("medium", "high")
 MAX_RUNS = 6
 MAX_STEPS = 12
 MAX_TOKENS = 16_000
@@ -168,7 +170,7 @@ def _utc(now: datetime) -> str:
     return now.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-Call = Callable[[str, str, list[dict[str, Any]], list[dict[str, Any]]], dict[str, Any]]
+Call = Callable[[str, str, list[dict[str, Any]], list[dict[str, Any]], str], dict[str, Any]]
 
 
 class IndicatorConversation:
@@ -195,12 +197,21 @@ class IndicatorConversation:
     def _event(self, event: dict[str, Any]) -> None:
         self.store.append_event(self.id, {**event, "at_utc": _utc(self.now())})
 
-    def ask(self, question: str, context: dict[str, Any], model: str | None = None) -> None:
+    def ask(
+        self,
+        question: str,
+        context: dict[str, Any],
+        model: str | None = None,
+        effort: str | None = None,
+    ) -> None:
         if self.state.get("status") == "running":
             raise ConversationError("the previous request is still running")
         if model is not None and model not in MODELS:
             raise ConversationError(f"model must be one of {', '.join(MODELS)}")
+        if effort is not None and effort not in EFFORTS:
+            raise ConversationError(f"effort must be one of {', '.join(EFFORTS)}")
         chosen = model or self.model
+        chosen_effort = effort or EFFORT
         # A script left unrun (the app was closed or the investor moved on) is answered
         # first, so every tool call keeps its result.
         pending = self.state.get("pending") if self.state.get("status") == "needs_run" else None
@@ -223,8 +234,17 @@ class IndicatorConversation:
             {"type": "text", "text": question},
         ]
         self.store.append_message(self.id, {"role": "user", "content": content})
-        self._event({"type": "question", "text": question, "model": chosen})
-        self.state.update(status="running", runs=0, error=None, pending=None, request_model=chosen)
+        self._event(
+            {"type": "question", "text": question, "model": chosen, "effort": chosen_effort}
+        )
+        self.state.update(
+            status="running",
+            runs=0,
+            error=None,
+            pending=None,
+            request_model=chosen,
+            request_effort=chosen_effort,
+        )
         self._save()
         self._run()
 
@@ -271,9 +291,10 @@ class IndicatorConversation:
 
     def _run(self) -> None:
         model = self.state.get("request_model") or self.model
+        effort = self.state.get("request_effort") or EFFORT
         for _step in range(MAX_STEPS):
             try:
-                message = self.call(model, self.system, TOOLS, self.store.messages(self.id))
+                message = self.call(model, self.system, TOOLS, self.store.messages(self.id), effort)
             except ConversationError as exc:
                 self._fail(str(exc))
                 return

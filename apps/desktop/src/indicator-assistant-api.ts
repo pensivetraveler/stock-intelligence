@@ -7,6 +7,33 @@ import { callForKind, type ApiTarget } from "./market-api";
 
 export type AssistantModel = IndicatorAssistantSettings["model"];
 export type AssistantEvent = IndicatorConversation["events"][number];
+export type AssistantEffort = NonNullable<AssistantEvent["effort"]>;
+
+/** A retry after five failed fixes: the model and effort of that request alone. */
+export interface RetryStep {
+  model: AssistantModel;
+  effort: AssistantEffort;
+}
+
+/**
+ * Retries after five failed fixes (model assignment #SIW-1): Sonnet at high effort costs
+ * about the same as the default, so it comes first; Opus costs about 2.5 times as much.
+ */
+const RETRY_STEPS: RetryStep[] = [
+  { model: "claude-sonnet-5-5", effort: "high" },
+  { model: "claude-opus-5-5", effort: "medium" },
+];
+
+/** The next retry after a stopped request, or null once Opus has been tried. */
+export function nextRetry(events: AssistantEvent[]): RetryStep | null {
+  const last = [...events].reverse().find((event) => event.type === "question");
+  const tried = RETRY_STEPS.findIndex(
+    (step) =>
+      step.model === last?.model && step.effort === (last?.effort ?? "medium"),
+  );
+  if (last?.model === "claude-opus-5-5") return null;
+  return RETRY_STEPS[tried + 1] ?? null;
+}
 
 /** The chart and editor as they are when a request is sent (never bar values). */
 export interface ChartContext {
@@ -34,12 +61,12 @@ export interface IndicatorAssistantApi {
     context: ChartContext,
   ): Promise<IndicatorConversation>;
   conversation(conversationId: string): Promise<IndicatorConversation>;
-  /** `model` only for a retry on another model; the request alone uses it. */
+  /** `retry` only for a retry step; the request alone uses its model and effort. */
   ask(
     conversationId: string,
     question: string,
     context: ChartContext,
-    model?: AssistantModel,
+    retry?: RetryStep,
   ): Promise<IndicatorConversation>;
   sendRun(
     conversationId: string,
@@ -88,14 +115,14 @@ export function createIndicatorAssistantApi(
         "indicator_conversation",
       );
     },
-    ask(conversationId, question, context, model) {
+    ask(conversationId, question, context, retry) {
       return callForKind<IndicatorConversation>(
         target,
         `${path(conversationId)}/messages`,
         "indicator_conversation",
         {
           method: "POST",
-          body: { question, context, ...(model ? { model } : {}) },
+          body: { question, context, ...(retry ?? {}) },
         },
       );
     },
