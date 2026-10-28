@@ -114,6 +114,7 @@ import { Watchlist } from "./Watchlist";
 import {
   MarketApiError,
   type InstrumentListing,
+  type LiveSource,
   type MarketApi,
   type SymbolSearchResult,
 } from "./market-api";
@@ -178,6 +179,8 @@ interface ChartTools {
 }
 
 const SPLIT_STORAGE_KEY = "siw.chartSplit";
+/** Which broker serves the live quote and the realtime relay (ADR 0043). */
+const LIVE_SOURCE_KEY = "siw.liveSource";
 const WATCHLIST_WINDOW_KEY = "siw.watchlistWindow";
 const DEFAULT_WATCHLIST_WINDOW: WindowGeometry = {
   x: 120,
@@ -395,6 +398,21 @@ export function Workspace({
   const [floating, setFloatingState] = useState(() =>
     loadWatchlistWindow(storage),
   );
+  const [liveSource, setLiveSourceState] = useState<LiveSource>(() => {
+    try {
+      return storage?.getItem(LIVE_SOURCE_KEY) === "meritz" ? "meritz" : "toss";
+    } catch {
+      return "toss";
+    }
+  });
+  const setLiveSource = (next: LiveSource) => {
+    setLiveSourceState(next);
+    try {
+      storage?.setItem(LIVE_SOURCE_KEY, next);
+    } catch {
+      // Not saved: the choice holds until the page reloads.
+    }
+  };
   const setFloating = (next: { open: boolean; geometry: WindowGeometry }) => {
     setFloatingState(next);
     try {
@@ -866,6 +884,9 @@ export function Workspace({
   const [notice, setNotice] = useState<string | null>(null);
   const realtimeRef = useRef<RealtimeSocket | null>(null);
   useEffect(() => {
+    // Another source's trades must not be shown as this one's.
+    setLive({});
+    setLiveConnected(false);
     const socket = api.openRealtime((event) => {
       if (event.event === "trade" || event.event === "orderbook") {
         setLive((previous) => applyLive(previous, event));
@@ -886,15 +907,16 @@ export function Workspace({
           setNotice(t("live.ledger", { n: event.stored_new }));
         }
       }
-    });
+    }, liveSource);
     realtimeRef.current = socket;
     return () => {
       socket.close();
       realtimeRef.current = null;
     };
-    // The socket lives as long as the API; t and refreshJournal only word events.
+    // The socket lives as long as the API and the source; t and refreshJournal only
+    // word events.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api]);
+  }, [api, liveSource]);
   const liveSymbols = [
     ...new Set(
       visibleCharts
@@ -909,7 +931,8 @@ export function Workspace({
   useEffect(() => {
     // Replay shows the past, so nothing live is requested meanwhile.
     realtimeRef.current?.setSymbols(liveKey ? liveKey.split(",") : []);
-  }, [liveKey]);
+    // A new source opens a new socket, which needs the symbols again.
+  }, [liveKey, liveSource]);
   useEffect(() => {
     if (notice === null) return;
     const timer = window.setTimeout(() => setNotice(null), 8_000);
@@ -1737,6 +1760,8 @@ export function Workspace({
               replayOn={replayOn}
               live={live[activeSymbol] ?? null}
               liveConnected={liveConnected}
+              source={liveSource}
+              onSourceChange={setLiveSource}
             />
           ) : null}
           {panel === "info" ? (

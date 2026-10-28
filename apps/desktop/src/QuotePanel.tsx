@@ -2,7 +2,7 @@ import type { MarketQuote } from "@siw/contracts/types";
 import { useEffect, useState } from "react";
 
 import { useI18n } from "./i18n";
-import { MarketApiError, type MarketApi } from "./market-api";
+import { MarketApiError, type LiveSource, type MarketApi } from "./market-api";
 import type { LiveSymbol } from "./realtime";
 import { zoneFormat, zoneOf, type MarketZone } from "./market-zone";
 
@@ -29,6 +29,9 @@ interface QuotePanelProps {
   /** Trades and order book pushed by the realtime relay for this symbol. */
   live?: LiveSymbol | null;
   liveConnected?: boolean;
+  /** Which broker the quote and the relay come from (ADR 0043); never mixed. */
+  source?: LiveSource;
+  onSourceChange?: (source: LiveSource) => void;
 }
 
 /**
@@ -43,6 +46,8 @@ export function QuotePanel({
   replayOn,
   live = null,
   liveConnected = false,
+  source = "toss",
+  onSourceChange,
 }: QuotePanelProps) {
   const { t } = useI18n();
   const zone = zoneOf(instrumentId);
@@ -57,7 +62,7 @@ export function QuotePanel({
     setError(null);
     const load = () =>
       api
-        .liveQuote(instrumentId)
+        .liveQuote(instrumentId, source)
         .then((result) => {
           if (!current) return;
           setQuote(result);
@@ -72,7 +77,7 @@ export function QuotePanel({
       current = false;
       window.clearInterval(timer);
     };
-  }, [api, instrumentId, replayOn]);
+  }, [api, instrumentId, replayOn, source]);
 
   if (replayOn) {
     return (
@@ -125,10 +130,24 @@ export function QuotePanel({
       <h2>
         {t("quote.title")} · {symbol}
       </h2>
+      {onSourceChange ? (
+        <label className="quote-source">
+          {t("quote.sourcePick")}{" "}
+          <select
+            value={source}
+            onChange={(event) =>
+              onSourceChange(event.target.value as LiveSource)
+            }
+          >
+            <option value="toss">{t("quote.sourceToss")}</option>
+            <option value="meritz">{t("quote.sourceMeritz")}</option>
+          </select>
+        </label>
+      ) : null}
       {error ? (
         <p className="chart-error" role="alert">
           {unavailable
-            ? t("quote.noKey")
+            ? t(source === "meritz" ? "quote.noMeritzKey" : "quote.noKey")
             : t("quote.failed", {
                 error: error instanceof Error ? error.message : String(error),
               })}
@@ -199,10 +218,15 @@ export function QuotePanel({
             </tbody>
           </table>
           <p className="workspace-note">
-            {t("quote.source", {
-              source: quote.source_id,
-              time: at(quote.observed_at_utc),
-            })}
+            {t(
+              quote.source_id.startsWith("meritz")
+                ? "quote.sourceMeritzLine"
+                : "quote.source",
+              {
+                source: quote.source_id,
+                time: at(quote.observed_at_utc),
+              },
+            )}
           </p>
         </>
       ) : null}

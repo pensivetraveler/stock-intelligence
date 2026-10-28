@@ -91,8 +91,10 @@ function fakeApi(
   sessionCalendars: string[];
   realtime: {
     symbols: string[][];
+    sources: (string | undefined)[];
     push: (event: RealtimeEvent) => void;
   };
+  quoteSources: (string | undefined)[];
   researchCalls: {
     dataset: string;
     key: string | null;
@@ -119,8 +121,10 @@ function fakeApi(
   const imported: ImportedExecution[] = [];
   const broker: BrokerOrderExecution[] = [];
   const sessionCalendars: string[] = [];
+  const quoteSources: (string | undefined)[] = [];
   const realtime = {
     symbols: [] as string[][],
+    sources: [] as (string | undefined)[],
     // Replaced when the workspace opens the relay.
     push: (() => {}) as (event: RealtimeEvent) => void,
   };
@@ -136,7 +140,9 @@ function fakeApi(
     scenarioRequests,
     importRequests,
     realtime,
-    openRealtime: (onEvent) => {
+    quoteSources,
+    openRealtime: (onEvent, source) => {
+      realtime.sources.push(source);
       realtime.push = (event) => act(() => onEvent(event));
       return {
         setSymbols: (symbols) => realtime.symbols.push(symbols),
@@ -241,8 +247,9 @@ function fakeApi(
           },
         ],
       }),
-    liveQuote: (instrumentId) =>
-      Promise.resolve({
+    liveQuote: (instrumentId, source) => {
+      quoteSources.push(source);
+      return Promise.resolve({
         kind: "market_quote",
         schema_version: "0.1",
         instrument_id: instrumentId,
@@ -260,7 +267,8 @@ function fakeApi(
           { price: "252.31", volume: "15", at_utc: "2026-10-20T14:59:58.120Z" },
         ],
         price_limits: null,
-      }),
+      });
+    },
     searchSymbols: (query) =>
       Promise.resolve({
         kind: "symbol_search_response",
@@ -473,6 +481,12 @@ function fakeApi(
         sellable_quantity: "7",
         observed_at_utc: "2026-10-20T13:00:00Z",
       }),
+    // No Meritz key unless a test registers one.
+    meritzAccount: () =>
+      Promise.reject(
+        new MarketApiError("register a Meritz key", "quote_source_unavailable"),
+      ),
+    syncMeritz: () => Promise.reject(new Error("not in this test")),
     syncKiwoomDomestic: () => Promise.reject(new Error("not in this test")),
     syncKiwoomFees: () => Promise.reject(new Error("not in this test")),
     syncKiwoom: () =>
@@ -1307,7 +1321,9 @@ describe("chart workspace", () => {
     render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
     fireEvent.click(screen.getByRole("button", { name: "Account" }));
-    const panel = await screen.findByRole("region", { name: "Toss account" });
+    const panel = await screen.findByRole("region", {
+      name: "Broker accounts",
+    });
     expect(
       await within(panel).findByText("Account ****8901 (BROKERAGE)"),
     ).toBeVisible();
@@ -1323,11 +1339,115 @@ describe("chart workspace", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Trade journal" }));
     const heading = await screen.findByText(
-      "Broker API executions (Toss, Kiwoom)",
+      "Broker API executions (Toss, Kiwoom, Meritz)",
     );
     const ledger = heading.closest(".ledger") as HTMLElement;
     expect(await within(ledger).findByText("250.10")).toBeVisible();
     expect(within(ledger).getByText("0.25")).toBeVisible();
+  });
+
+  it("shows the Meritz account and syncs its fills", async () => {
+    const api = fakeApi();
+    api.meritzAccount = () =>
+      Promise.resolve({
+        kind: "broker_account_snapshot",
+        schema_version: "0.1",
+        broker_id: "meritz",
+        observed_at_utc: "2026-10-20T13:00:00Z",
+        accounts: [
+          {
+            account_ref: "meritz-abc",
+            account_seq: 1,
+            account_suffix: null,
+            account_type: "해외주식",
+            summary: null,
+            holdings: [
+              {
+                symbol: "AAPL",
+                name: "애플",
+                market_country: "US",
+                currency: "USD",
+                quantity: "10",
+                last_price: "309.6",
+                average_purchase_price: "247.1084",
+                purchase_amount: "2471.084",
+                market_value: "3096",
+                profit_loss: "624.92",
+                profit_loss_rate: "25.29",
+                daily_profit_loss: null,
+                commission: null,
+                tax: null,
+              },
+            ],
+            buying_power: { usd: "13233.19", krw: null },
+            commission_rates: [],
+            open_orders: [],
+            open_conditional_orders: [],
+            errors: [],
+          },
+        ],
+      });
+    const since: (string | undefined)[] = [];
+    api.syncMeritz = (from) => {
+      since.push(from);
+      return Promise.resolve({
+        kind: "broker_sync_result",
+        schema_version: "0.1",
+        broker_id: "meritz",
+        synced_at_utc: "2026-10-20T13:00:00Z",
+        accounts: 1,
+        orders_seen: 3,
+        stored_new: 2,
+        already_stored: 0,
+        skipped: {
+          not_filled: 0,
+          unsupported_currency: 0,
+          unknown_instrument: 0,
+          time_unresolved: 1,
+        },
+        conflicts: [],
+      });
+    };
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: "Account" }));
+    const panel = await screen.findByRole("region", {
+      name: "Broker accounts",
+    });
+    const heading = await within(panel).findByText("Meritz account (해외주식)");
+    const account = heading.closest(".ledger") as HTMLElement;
+    expect(within(account).getByText("309.6")).toBeVisible();
+    // The sellable check is a Toss query; Meritz rows have none.
+    expect(within(account).queryByRole("button", { name: "Check" })).toBeNull();
+    fireEvent.change(within(panel).getByLabelText("From (Kiwoom, Meritz)"), {
+      target: { value: "2026-01-02" },
+    });
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Sync Meritz US fills" }),
+    );
+    expect(await within(panel).findByRole("status")).toHaveTextContent(
+      /2 new.*Meritz: 1 orders whose time falls in no US session/,
+    );
+    expect(since).toEqual(["2026-01-02"]);
+  });
+
+  it("switches the live quote and the relay to Meritz and remembers it", async () => {
+    const api = fakeApi();
+    const storage = memoryStorage();
+    render(<Workspace api={api} storage={storage} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: "Live quote" }));
+    const panel = await screen.findByRole("region", { name: "Live quote" });
+    await waitFor(() => expect(api.quoteSources).toContain("toss"));
+    expect(api.realtime.sources).toEqual(["toss"]);
+    fireEvent.change(within(panel).getByLabelText("Source"), {
+      target: { value: "meritz" },
+    });
+    await waitFor(() => expect(api.quoteSources.at(-1)).toBe("meritz"));
+    expect(api.realtime.sources.at(-1)).toBe("meritz");
+    // The new socket is told the symbols again.
+    expect(api.realtime.symbols.at(-1)).toEqual(["SYNTH"]);
+    expect(storage.getItem("siw.liveSource")).toBe("meritz");
   });
 
   it("shows pushed trades live and announces order updates", async () => {

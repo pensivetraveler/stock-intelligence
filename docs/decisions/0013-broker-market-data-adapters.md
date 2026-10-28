@@ -29,8 +29,8 @@ The user asked for four broker APIs as alternatives to Alpaca. On 2026-10-17, re
   - Duplicate minutes raise `ProviderDataError`, never a silent choice.
   - Adjustment is reported as `raw` only where unadjusted prices are requested explicitly (Toss `adjusted=false`, Kiwoom `upd_stkpc_tp=0`), and `unknown` for KIS and Meritz.
 - **Meritz specifics:**
-  - The required `mac_address` comes only from `SIW_MERITZ_MAC_ADDRESS`. It is never auto-detected and never shown in errors or `repr`.
-  - Success is judged by `rsp_cd == "0000"`, not by the HTTP status.
+  - The required `mac_address` comes only from `SIW_MERITZ_MAC_ADDRESS`. It is never auto-detected and never shown in errors or `repr`. Since ADR 0043 a key registered on the Keys screen carries its own MAC address field.
+  - Success is judged by `rsp_cd == "0000"`, not by the HTTP status. Since ADR 0043 the account APIs' "5766" and "5762" count too, and "5820" (no rows) is an empty reply.
   - When a full 40-bar page comes back, minutes older than its oldest bar are reported with the new settled reason `beyond_source_history`. This makes Meritz a recent-window alternative only.
 - **Shared coverage builder (`broker_common.build_result`):** canonical bars with exact decimals, plus the same gap reasons as Alpaca: `provider_no_bar`, `not_yet_final`, `outside_entitlement`, `not_available_as_of_cutoff` and `session_not_covered`.
 - **Live check:** `python -m services.market_data.broker_check --provider <name>` makes one 30-minute request. It prints the first raw record as the broker sent it, next to the derived UTC bar start, so the time semantics can be confirmed. Capabilities stay `verification_status: documented` until a check passes.
