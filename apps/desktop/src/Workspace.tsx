@@ -1495,6 +1495,22 @@ export function Workspace({
               </button>
             ))}
           </div>
+          {activeConfig.timeframe === "1d" &&
+          activeConfig.instrumentId.startsWith("us:") ? (
+            <button
+              type="button"
+              className="tb-button"
+              aria-pressed={activeConfig.premarketHigh === true}
+              title={t("chart.premarketHint")}
+              onClick={() =>
+                updateActive({
+                  premarketHigh: activeConfig.premarketHigh !== true,
+                })
+              }
+            >
+              {t("chart.premarketHigh")}
+            </button>
+          ) : null}
           <span className="tb-spacer" />
           <ExchangeClock zone={zoneOf(activeConfig.instrumentId)} />
         </footer>

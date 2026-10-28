@@ -50,16 +50,23 @@ vi.mock("./PriceChart", () => ({
     chartId,
     candles,
     markers = [],
+    premarketBars = [],
     onCandleClick,
   }: {
     chartId: string;
     candles: { time: number }[];
     markers?: { text: string }[];
+    premarketBars?: { time: number; high: number; final: boolean }[];
     onCandleClick?: (time: number) => void;
   }) => (
     <div data-testid={`chart-${chartId}`}>
       {candles.length} candles ·{" "}
       {markers.map((marker) => marker.text).join(", ") || "no markers"}
+      {premarketBars.length > 0
+        ? ` · PM ${premarketBars
+            .map((item) => `${item.high}${item.final ? "" : "?"}`)
+            .join(", ")}`
+        : ""}
       <button type="button" onClick={() => onCandleClick?.(candles[0].time)}>
         click first candle of {chartId}
       </button>
@@ -716,6 +723,111 @@ describe("chart workspace", () => {
     expect(saved.charts[0].timeframe).toBe("60m");
     expect(saved.charts[1]).toEqual(DEFAULT_WORKSPACE.charts[1]);
     expect(api.barsCalls.at(-1)?.timeframe).toBe("60m");
+  });
+
+  it("shows the pre-market as candles on a US daily chart from its own requests", async () => {
+    const api = fakeApi();
+    const served = api.bars;
+    const day = (date: string) => ({
+      ...fixture<SessionWindow>("session-window-early-close.json"),
+      session_date: date,
+      is_early_close: false,
+      pre_open_utc: `${date}T08:00:00Z`,
+      regular_open_utc: `${date}T13:30:00Z`,
+      regular_close_utc: `${date}T20:00:00Z`,
+      post_close_utc: `${date}T23:59:00Z`,
+    });
+    api.sessions = (endDate, count) => {
+      api.sessionsCalls.push({ endDate, count });
+      return Promise.resolve([day("2026-10-07"), day("2026-10-08")]);
+    };
+    const premarket: Record<string, [string, boolean]> = {
+      "2026-10-07": ["11.50", true],
+      "2026-10-08": ["13.25", false],
+    };
+    api.bars = (request) =>
+      served(request).then((response) => {
+        const template = response.bars[0];
+        if (request.timeframe === "1d") {
+          return {
+            ...response,
+            bars: ["2026-10-07", "2026-10-08"].map((date) => ({
+              ...template,
+              timeframe: "1d",
+              interval_start_utc: `${date}T13:30:00Z`,
+              interval_end_utc: `${date}T20:00:00Z`,
+              available_at_utc: `${date}T20:15:00Z`,
+              open: "10",
+              high: "12",
+              low: "9",
+              close: "11",
+              is_final: true,
+            })),
+          };
+        }
+        if (request.timeframe !== "960m") return response;
+        const date = request.startUtc.slice(0, 10);
+        const [high, final] = premarket[date];
+        return {
+          ...response,
+          bars: [
+            {
+              ...template,
+              timeframe: "960m",
+              session: "pre" as const,
+              interval_start_utc: request.startUtc,
+              interval_end_utc: request.endUtc,
+              high,
+              is_final: final,
+            },
+          ],
+        };
+      });
+    const storage = memoryStorage();
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        ...DEFAULT_WORKSPACE,
+        charts: [
+          { ...DEFAULT_WORKSPACE.charts[0], timeframe: "1d" },
+          DEFAULT_WORKSPACE.charts[1],
+        ],
+      }),
+    );
+    render(<Workspace api={api} storage={storage} />);
+    const chart = await screen.findByTestId("chart-chart-1");
+    expect(chart).toHaveTextContent("2 candles");
+    expect(api.barsCalls.some((call) => call.timeframe === "960m")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pre-market" }));
+
+    // One pre-market window per session, never merged into the daily bars.
+    await waitFor(() =>
+      expect(chart).toHaveTextContent(
+        "2 candles · no markers · PM 11.5, 13.25?",
+      ),
+    );
+    expect(
+      api.barsCalls
+        .filter((call) => call.timeframe === "960m")
+        .map((call) => [call.startUtc, call.endUtc])
+        .sort(),
+    ).toEqual([
+      ["2026-10-07T08:00:00Z", "2026-10-07T13:30:00Z"],
+      ["2026-10-08T08:00:00Z", "2026-10-08T13:30:00Z"],
+    ]);
+    const region = screen.getByRole("region", { name: /Chart 1/ });
+    expect(region.querySelector(".legend-premarket")).toHaveTextContent(
+      /^Pre-market O \S+ H 13\.25 L \S+ C \S+ \(not final\)$/,
+    );
+    expect(
+      within(region).getByText(/Pre-market \(04:00.*: 2 of the newest 60/),
+    ).toBeInTheDocument();
+    expect(savedLayout(storage).charts[0].premarketHigh).toBe(true);
+
+    // Intraday charts have no such switch.
+    pickTimeframe("5m");
+    expect(screen.queryByRole("button", { name: "Pre-market" })).toBeNull();
   });
 
   it("explains a closed day instead of drawing an empty chart", async () => {

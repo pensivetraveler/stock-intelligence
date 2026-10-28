@@ -58,6 +58,22 @@ describe("workspace persistence", () => {
     expect(loadWorkspace(storage)).toEqual(state);
   });
 
+  it("keeps the pre-market high switch only when it is on", () => {
+    const chart = (premarketHigh: unknown) => ({
+      ...DEFAULT_WORKSPACE.charts[0],
+      timeframe: "1d",
+      premarketHigh,
+    });
+    const parsed = parseWorkspace({
+      ...DEFAULT_WORKSPACE,
+      charts: [chart(true), chart(false), chart("yes")],
+    });
+
+    expect(parsed?.charts[0].premarketHigh).toBe(true);
+    expect(parsed?.charts[1]).not.toHaveProperty("premarketHigh");
+    expect(parsed?.charts[2]).not.toHaveProperty("premarketHigh");
+  });
+
   it("fills the third and fourth chart of a two-chart layout from the first", () => {
     const storage = memoryStorage();
     const first = {

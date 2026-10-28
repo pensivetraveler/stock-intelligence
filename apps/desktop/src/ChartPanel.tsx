@@ -86,6 +86,12 @@ import {
   prependOlder,
 } from "./older-bars";
 import { IndicatorSettings } from "./IndicatorSettings";
+import {
+  PREMARKET_SESSIONS,
+  PREMARKET_TIMEFRAME,
+  premarketBars,
+  premarketRange,
+} from "./premarket-high";
 import { PriceChart } from "./PriceChart";
 import { TradeEntry } from "./TradeEntry";
 import { sessionRange, type ChartConfig } from "./workspace-state";
@@ -708,6 +714,84 @@ export function ChartPanel({
     unavailable,
     instrumentsReady,
   ]);
+  // The pre-market on US daily charts (ADR 0041): its own requests, one
+  // pre-market bucket per session, never merged into the daily bars.
+  const premarketWanted =
+    config.premarketHigh === true &&
+    timeframe === "1d" &&
+    instrumentId.startsWith("us:");
+  const [premarket, setPremarket] = useState<{
+    bars: PriceBar[];
+    error: unknown;
+  } | null>(null);
+  // Started only once the daily bars have arrived, so the chart's own request
+  // never waits behind these at the API.
+  const mainReady = load.status === "ready";
+  useEffect(() => {
+    let current = true;
+    setPremarket(null);
+    if (!premarketWanted || unavailable || !instrumentsReady || !mainReady) {
+      return;
+    }
+    void (async () => {
+      try {
+        const windows = await api.sessions(
+          sessionDate,
+          PREMARKET_SESSIONS,
+          zoneOf(instrumentId).calendarId,
+        );
+        const ranges = windows.flatMap((window) => {
+          const range = premarketRange(window);
+          return range ? [range] : [];
+        });
+        const loaded: PriceBar[] = [];
+        // A few sessions at a time, newest first, so today's line comes first.
+        for (let k = ranges.length; k > 0; k -= HISTORY_REQUESTS) {
+          const batch = ranges.slice(Math.max(0, k - HISTORY_REQUESTS), k);
+          const responses = await Promise.all(
+            batch.map((range) =>
+              api.bars({
+                instrumentId,
+                timeframe: PREMARKET_TIMEFRAME,
+                ...range,
+              }),
+            ),
+          );
+          if (!current) return;
+          loaded.push(...responses.flatMap((response) => response.bars));
+          setPremarket({ bars: [...loaded], error: null });
+        }
+        if (current && loaded.length === 0) {
+          setPremarket({ bars: [], error: null });
+        }
+      } catch (error) {
+        if (current) setPremarket({ bars: [], error });
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [
+    api,
+    premarketWanted,
+    instrumentId,
+    sessionDate,
+    unavailable,
+    instrumentsReady,
+    mainReady,
+  ]);
+  const premarketShown = useMemo(() => {
+    if (!premarket || !series) return [];
+    // In replay a pre-market high appears only once its bar had closed.
+    const shown =
+      replayTime === null
+        ? premarket.bars
+        : barsAsOf(premarket.bars, replayTime);
+    return premarketBars(
+      shown,
+      series.candles.map((point) => point.time),
+    );
+  }, [premarket, series, replayTime]);
   const dayMarketCandles = useMemo(() => {
     if (!dayMarket) return [];
     const shown =
@@ -1283,6 +1367,8 @@ export function ChartPanel({
               candles={series.candles}
               volume={series.volume}
               dayMarket={dayMarketCandles}
+              premarketBars={premarketShown}
+              premarketLabel={t("chart.premarketLine")}
               sync={sync}
               markers={markers}
               onCandleClick={selectCandle}
@@ -1366,6 +1452,34 @@ export function ChartPanel({
                 <span>
                   {t("legend.volume")} <b>{legendBar.volume}</b>
                 </span>
+                {premarketWanted
+                  ? (() => {
+                      const time = Math.floor(
+                        Date.parse(legendBar.interval_start_utc) / 1000,
+                      );
+                      const item = premarketShown.find(
+                        (entry) => entry.time === time,
+                      );
+                      return item ? (
+                        <span className="legend-premarket">
+                          {t("legend.premarket")}{" "}
+                          {(
+                            [
+                              ["legend.open", item.open],
+                              ["legend.high", item.high],
+                              ["legend.low", item.low],
+                              ["legend.close", item.close],
+                            ] as const
+                          ).map(([label, value]) => (
+                            <span key={label}>
+                              {t(label)} <b>{formatValue(value)}</b>{" "}
+                            </span>
+                          ))}
+                          {item.final ? "" : `(${t("legend.notFinal")})`}
+                        </span>
+                      ) : null;
+                    })()
+                  : null}
                 {isUncertain(legendBar) ? (
                   <span className="legend-provisional">
                     {t("legend.notFinal")}
@@ -1699,6 +1813,24 @@ export function ChartPanel({
             ]
           : [],
       )}
+      {premarketWanted && premarket ? (
+        <p
+          className={premarket.error ? "chart-error" : "workspace-note"}
+          role={premarket.error ? "alert" : "status"}
+        >
+          {premarket.error
+            ? t("chart.premarketFailed", {
+                error:
+                  premarket.error instanceof Error
+                    ? premarket.error.message
+                    : String(premarket.error),
+              })
+            : t("chart.premarketNote", {
+                n: premarketShown.length,
+                sessions: PREMARKET_SESSIONS,
+              })}
+        </p>
+      ) : null}
       {dayMarketWanted && dayMarket ? (
         <p
           className={dayMarket.error ? "chart-error" : "workspace-note"}
