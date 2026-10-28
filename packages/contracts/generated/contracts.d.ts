@@ -68,7 +68,19 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ReviewAccountCapitalList
   | ReviewReportDraft
   | ReviewTradeReport
-  | ReviewTradeReportList;
+  | ReviewTradeReportList
+  | ReviewConversation
+  | ReviewPrinciples
+  | ReviewPrincipleDraft
+  | ReviewPrincipleCheck
+  | ReviewWhatIf
+  | ReviewStrategySuggestions
+  | ReviewCheckStatus
+  | ReviewPeriod
+  | ReviewPeriodList
+  | ReviewPeriodCommentary
+  | ReviewPeriodCommentaryList
+  | ReviewPeriodPayload;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -4084,6 +4096,7 @@ export interface ReviewTrade {
    */
   executions: [ReviewTradeExecution, ...ReviewTradeExecution[]];
   annotation: ReviewAnnotationBody | null;
+  principles_broken: number | null;
 }
 export interface ReviewTradeExecution {
   ledger: "manual" | "imported" | "broker";
@@ -4695,6 +4708,52 @@ export interface ReviewReportDraft {
           }[];
         },
       ];
+  principles: {
+    version: number;
+    after_the_fact: boolean;
+    results: ReviewPrincipleResult[];
+  } | null;
+  what_if: {
+    principles: ReviewWhatIfPart | null;
+    strategy: ReviewWhatIfPart | null;
+  } | null;
+}
+export interface ReviewPrincipleResult {
+  item_id: string;
+  scope: string;
+  kind:
+    | "stop_loss_pct"
+    | "take_profit_pct"
+    | "max_position_pct"
+    | "no_entry_first_minutes"
+    | "max_gap_chase_pct"
+    | "max_trades_per_day"
+    | "text";
+  value: NonNegativeDecimalString | null;
+  text: string;
+  status: "kept" | "broken" | "not_applicable" | "unknown" | "judgment";
+  detail: string;
+}
+export interface ReviewWhatIfPart {
+  type: "principles" | "strategy";
+  status: "computed" | "not_applicable" | "unknown" | "no_signal";
+  hindsight: true;
+  notes: string[];
+  detail?: string;
+  reason?: "stop" | "target" | "none";
+  strategy_id?: Identifier;
+  strategy_name?: string;
+  timeframe?: string;
+  window_start_utc?: UtcTimestamp;
+  window_end_utc?: UtcTimestamp;
+  entry_price?: NonNegativeDecimalString;
+  entry_at_utc?: UtcTimestamp;
+  exit_price?: NonNegativeDecimalString;
+  exit_at_utc?: UtcTimestamp;
+  quantity?: NonNegativeDecimalString;
+  gross_pnl?: DecimalString;
+  actual_gross_pnl?: DecimalString;
+  difference?: DecimalString;
 }
 export interface ReviewTradeReport {
   kind: "review_trade_report";
@@ -5730,4 +5789,1271 @@ export interface ReviewTradeReportList {
   schema_version: SchemaVersion;
   trade_id: string;
   reports: ReviewTradeReport[];
+}
+export interface ReviewConversation {
+  kind: "review_conversation";
+  schema_version: SchemaVersion;
+  conversation_id: Identifier | null;
+  report_id: Identifier;
+  model: Identifier | null;
+  status: "idle" | "running" | "needs_images" | "failed";
+  error: string | null;
+  events: {
+    type: "question" | "answer" | "request" | "error";
+    at_utc: UtcTimestamp;
+    text?: string;
+    model?: string | null;
+    tool?: string;
+    input?: {
+      [k: string]: unknown;
+    };
+    summary?: string;
+    error?: boolean;
+    hindsight?: boolean;
+  }[];
+  pending_images: {
+    kind: "tool";
+    timeframe: string;
+    title: string;
+    cutoff_utc: UtcTimestamp;
+    /**
+     * @minItems 1
+     */
+    bars: [PriceBar, ...PriceBar[]];
+    markers: {
+      time_utc: UtcTimestamp;
+      side: Side;
+      quantity: NonNegativeDecimalString;
+      price: NonNegativeDecimalString;
+    }[];
+    tool_use_id: string;
+  }[];
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+  };
+}
+export interface ReviewPrinciples {
+  kind: "review_principles";
+  schema_version: SchemaVersion;
+  current: {
+    version: number;
+    created_at_utc: UtcTimestamp;
+    items: ReviewPrincipleItem[];
+    source_text: string;
+  } | null;
+  versions: {
+    version: number;
+    created_at_utc: UtcTimestamp;
+    item_count: number;
+  }[];
+}
+export interface ReviewPrincipleItem {
+  item_id: string;
+  scope: string;
+  kind:
+    | "stop_loss_pct"
+    | "take_profit_pct"
+    | "max_position_pct"
+    | "no_entry_first_minutes"
+    | "max_gap_chase_pct"
+    | "max_trades_per_day"
+    | "text";
+  value: NonNegativeDecimalString | null;
+  text: string;
+}
+export interface ReviewPrincipleDraft {
+  kind: "review_principle_draft";
+  schema_version: SchemaVersion;
+  items: {
+    scope: string;
+    kind: string;
+    value: string | null;
+    text: string;
+  }[];
+  notes: string;
+  model: string;
+}
+export interface ReviewPrincipleCheck {
+  kind: "review_principle_check";
+  schema_version: SchemaVersion;
+  trade_id: string;
+  version: number | null;
+  after_the_fact: boolean;
+  results: ReviewPrincipleResult[];
+}
+export interface ReviewWhatIf {
+  kind: "review_what_if";
+  schema_version: SchemaVersion;
+  trade_id: string;
+  principles: ReviewWhatIfPart | null;
+  strategy: ReviewWhatIfPart | null;
+}
+export interface ReviewStrategySuggestions {
+  kind: "review_strategy_suggestions";
+  schema_version: SchemaVersion;
+  trade_id: string;
+  suggestions: {
+    strategy_id: Identifier;
+    name: string;
+    timeframes: ("5m" | "1d")[];
+  }[];
+}
+export interface ReviewCheckStatus {
+  kind: "review_check_status";
+  schema_version: SchemaVersion;
+  auto_from_date: string;
+  queued: number;
+  running: boolean;
+  done: number;
+  failed: number;
+  last_error: string | null;
+}
+export interface ReviewPeriod {
+  kind: "review_period";
+  schema_version: SchemaVersion;
+  review_id: Identifier;
+  created_at_utc: UtcTimestamp;
+  from_date: string;
+  to_date: string;
+  previous_from_date: string;
+  previous_to_date: string;
+  filters: {
+    ledger: "manual" | "imported" | "broker";
+    account_ref: string | null;
+    strategy_id: string | null;
+  };
+  principles_version: number | null;
+  sections: {
+    currency: "USD" | "KRW";
+    summary: ReviewPeriodSummary;
+    previous_summary: ReviewPeriodSummary;
+    principles: {
+      checked: number;
+      unchecked: number;
+      items: {
+        item_id: string;
+        text: string;
+        kind: string;
+        broken: number;
+        kept: number;
+        other: number;
+      }[];
+      broken_trades: number;
+      broken_net_pnl: DecimalString;
+      kept_trades: number;
+      kept_net_pnl: DecimalString;
+    };
+    what_if: {
+      hindsight: true;
+      computed: number;
+      missing: number;
+      gross_pnl: DecimalString;
+      actual_gross_pnl: DecimalString;
+      difference: DecimalString;
+    };
+    groups: {
+      tag: {
+        key: string;
+        trades: number;
+        win_rate: NonNegativeDecimalString | null;
+        net_pnl: DecimalString;
+        average_net: DecimalString;
+      }[];
+      ticker: {
+        key: string;
+        trades: number;
+        win_rate: NonNegativeDecimalString | null;
+        net_pnl: DecimalString;
+        average_net: DecimalString;
+      }[];
+      time_of_day: {
+        key: string;
+        trades: number;
+        win_rate: NonNegativeDecimalString | null;
+        net_pnl: DecimalString;
+        average_net: DecimalString;
+      }[];
+      weekday: {
+        key: string;
+        trades: number;
+        win_rate: NonNegativeDecimalString | null;
+        net_pnl: DecimalString;
+        average_net: DecimalString;
+      }[];
+      holding: {
+        key: string;
+        trades: number;
+        win_rate: NonNegativeDecimalString | null;
+        net_pnl: DecimalString;
+        average_net: DecimalString;
+      }[];
+      size: {
+        key: string;
+        trades: number;
+        win_rate: NonNegativeDecimalString | null;
+        net_pnl: DecimalString;
+        average_net: DecimalString;
+      }[];
+    };
+    curve: {
+      closed_on: string;
+      closed_at_utc: UtcTimestamp | null;
+      cumulative: DecimalString;
+    }[];
+    daily: {
+      date: string;
+      trades: number;
+      net_pnl: DecimalString;
+    }[];
+  }[];
+}
+export interface ReviewPeriodSummary {
+  trades: number;
+  wins: number;
+  losses: number;
+  win_rate: NonNegativeDecimalString | null;
+  net_pnl: DecimalString;
+  gross_pnl: DecimalString;
+  fees: NonNegativeDecimalString;
+  average_win: DecimalString | null;
+  average_loss: DecimalString | null;
+  profit_factor: NonNegativeDecimalString | null;
+  expectancy: DecimalString | null;
+  max_drawdown: NonNegativeDecimalString;
+  longest_losing_streak: number;
+  largest_loss_share: NonNegativeDecimalString | null;
+}
+export interface ReviewPeriodList {
+  kind: "review_period_list";
+  schema_version: SchemaVersion;
+  reviews: {
+    review_id: Identifier;
+    created_at_utc: UtcTimestamp;
+    from_date: string;
+    to_date: string;
+    filters: {
+      ledger: "manual" | "imported" | "broker";
+      account_ref: string | null;
+      strategy_id: string | null;
+    };
+    totals: {
+      currency: "USD" | "KRW";
+      trades: number;
+      net_pnl: DecimalString;
+    }[];
+  }[];
+}
+export interface ReviewPeriodCommentary {
+  kind: "review_period_commentary";
+  schema_version: SchemaVersion;
+  review_id: Identifier;
+  model: Identifier;
+  language: "en" | "ko";
+  created_at_utc: UtcTimestamp;
+  summary: string;
+  /**
+   * @maxItems 10
+   */
+  repeated_mistakes:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
+  /**
+   * @maxItems 10
+   */
+  went_well:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
+  /**
+   * @maxItems 10
+   */
+  focus_next:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
+  /**
+   * @maxItems 10
+   */
+  principle_suggestions:
+    | []
+    | [
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+      ]
+    | [
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+      ]
+    | [
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+      ]
+    | [
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+      ]
+    | [
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+      ]
+    | [
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+      ]
+    | [
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+      ]
+    | [
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+      ]
+    | [
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+      ]
+    | [
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+        {
+          action: "add" | "change" | "remove";
+          item_id: string | null;
+          scope: string;
+          kind:
+            | "stop_loss_pct"
+            | "take_profit_pct"
+            | "max_position_pct"
+            | "no_entry_first_minutes"
+            | "max_gap_chase_pct"
+            | "max_trades_per_day"
+            | "text";
+          value: string | null;
+          text: string;
+          reason: string;
+        },
+      ];
+  uncertainty: string;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+  };
+}
+export interface ReviewPeriodCommentaryList {
+  kind: "review_period_commentary_list";
+  schema_version: SchemaVersion;
+  review_id: Identifier;
+  commentaries: ReviewPeriodCommentary[];
+}
+export interface ReviewPeriodPayload {
+  kind: "review_period_payload";
+  schema_version: SchemaVersion;
+  review_id: Identifier;
+  payload: {
+    [k: string]: unknown;
+  };
 }

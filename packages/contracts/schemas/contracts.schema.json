@@ -206,6 +206,42 @@
     },
     {
       "$ref": "#/$defs/ReviewTradeReportList"
+    },
+    {
+      "$ref": "#/$defs/ReviewConversation"
+    },
+    {
+      "$ref": "#/$defs/ReviewPrinciples"
+    },
+    {
+      "$ref": "#/$defs/ReviewPrincipleDraft"
+    },
+    {
+      "$ref": "#/$defs/ReviewPrincipleCheck"
+    },
+    {
+      "$ref": "#/$defs/ReviewWhatIf"
+    },
+    {
+      "$ref": "#/$defs/ReviewStrategySuggestions"
+    },
+    {
+      "$ref": "#/$defs/ReviewCheckStatus"
+    },
+    {
+      "$ref": "#/$defs/ReviewPeriod"
+    },
+    {
+      "$ref": "#/$defs/ReviewPeriodList"
+    },
+    {
+      "$ref": "#/$defs/ReviewPeriodCommentary"
+    },
+    {
+      "$ref": "#/$defs/ReviewPeriodCommentaryList"
+    },
+    {
+      "$ref": "#/$defs/ReviewPeriodPayload"
     }
   ],
   "$defs": {
@@ -7543,7 +7579,8 @@
         "fees_unreported_count",
         "time_uncertain",
         "executions",
-        "annotation"
+        "annotation",
+        "principles_broken"
       ],
       "properties": {
         "trade_id": {
@@ -7693,6 +7730,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/ReviewAnnotationBody"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "principles_broken": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
             },
             {
               "type": "null"
@@ -7993,7 +8041,9 @@
         "warnings",
         "dataset_revisions",
         "note",
-        "images"
+        "images",
+        "principles",
+        "what_if"
       ],
       "properties": {
         "kind": {
@@ -8234,6 +8284,67 @@
               }
             }
           }
+        },
+        "principles": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["version", "after_the_fact", "results"],
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "after_the_fact": {
+                  "type": "boolean"
+                },
+                "results": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/ReviewPrincipleResult"
+                  }
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "what_if": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["principles", "strategy"],
+              "properties": {
+                "principles": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ReviewWhatIfPart"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "strategy": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ReviewWhatIfPart"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -8403,6 +8514,1611 @@
           "items": {
             "$ref": "#/$defs/ReviewTradeReport"
           }
+        }
+      }
+    },
+    "ReviewConversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "conversation_id",
+        "report_id",
+        "model",
+        "status",
+        "error",
+        "events",
+        "pending_images",
+        "usage"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_conversation"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "report_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": ["idle", "running", "needs_images", "failed"]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "at_utc"],
+            "properties": {
+              "type": {
+                "enum": ["question", "answer", "request", "error"]
+              },
+              "at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 40000
+              },
+              "model": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tool": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "input": {
+                "type": "object"
+              },
+              "summary": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "error": {
+                "type": "boolean"
+              },
+              "hindsight": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "pending_images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "timeframe",
+              "title",
+              "cutoff_utc",
+              "bars",
+              "markers",
+              "tool_use_id"
+            ],
+            "properties": {
+              "kind": {
+                "const": "tool"
+              },
+              "timeframe": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "cutoff_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "bars": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/PriceBar"
+                }
+              },
+              "markers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["time_utc", "side", "quantity", "price"],
+                  "properties": {
+                    "time_utc": {
+                      "$ref": "#/$defs/UtcTimestamp"
+                    },
+                    "side": {
+                      "$ref": "#/$defs/Side"
+                    },
+                    "quantity": {
+                      "$ref": "#/$defs/NonNegativeDecimalString"
+                    },
+                    "price": {
+                      "$ref": "#/$defs/NonNegativeDecimalString"
+                    }
+                  }
+                }
+              },
+              "tool_use_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          }
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "input_tokens",
+            "output_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens"
+          ],
+          "properties": {
+            "input_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "output_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_read_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_write_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "ReviewPrincipleItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "scope", "kind", "value", "text"],
+      "properties": {
+        "item_id": {
+          "type": "string",
+          "pattern": "^p[0-9]+$"
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "kind": {
+          "enum": [
+            "stop_loss_pct",
+            "take_profit_pct",
+            "max_position_pct",
+            "no_entry_first_minutes",
+            "max_gap_chase_pct",
+            "max_trades_per_day",
+            "text"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "ReviewPrincipleResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "item_id",
+        "scope",
+        "kind",
+        "value",
+        "text",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string",
+          "pattern": "^p[0-9]+$"
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "kind": {
+          "enum": [
+            "stop_loss_pct",
+            "take_profit_pct",
+            "max_position_pct",
+            "no_entry_first_minutes",
+            "max_gap_chase_pct",
+            "max_trades_per_day",
+            "text"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "status": {
+          "enum": ["kept", "broken", "not_applicable", "unknown", "judgment"]
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      }
+    },
+    "ReviewPrinciples": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "current", "versions"],
+      "properties": {
+        "kind": {
+          "const": "review_principles"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "current": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["version", "created_at_utc", "items", "source_text"],
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "created_at_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/ReviewPrincipleItem"
+                  }
+                },
+                "source_text": {
+                  "type": "string",
+                  "maxLength": 8000
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["version", "created_at_utc", "item_count"],
+            "properties": {
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "created_at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "item_count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "ReviewPrincipleDraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "items", "notes", "model"],
+      "properties": {
+        "kind": {
+          "const": "review_principle_draft"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scope", "kind", "value", "text"],
+            "properties": {
+              "scope": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "kind": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 500
+              }
+            }
+          }
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 100
+        }
+      }
+    },
+    "ReviewPrincipleCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "trade_id",
+        "version",
+        "after_the_fact",
+        "results"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_principle_check"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "trade_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "after_the_fact": {
+          "type": "boolean"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReviewPrincipleResult"
+          }
+        }
+      }
+    },
+    "ReviewWhatIfPart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "status", "hindsight", "notes"],
+      "properties": {
+        "type": {
+          "enum": ["principles", "strategy"]
+        },
+        "status": {
+          "enum": ["computed", "not_applicable", "unknown", "no_signal"]
+        },
+        "hindsight": {
+          "const": true
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "reason": {
+          "enum": ["stop", "target", "none"]
+        },
+        "strategy_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "strategy_name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "timeframe": {
+          "type": "string",
+          "maxLength": 8
+        },
+        "window_start_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "window_end_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "entry_price": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "entry_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "exit_price": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "exit_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "quantity": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "gross_pnl": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "actual_gross_pnl": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "difference": {
+          "$ref": "#/$defs/DecimalString"
+        }
+      }
+    },
+    "ReviewWhatIf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "trade_id",
+        "principles",
+        "strategy"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_what_if"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "trade_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "principles": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewWhatIfPart"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "strategy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewWhatIfPart"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ReviewStrategySuggestions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "trade_id", "suggestions"],
+      "properties": {
+        "kind": {
+          "const": "review_strategy_suggestions"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "trade_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["strategy_id", "name", "timeframes"],
+            "properties": {
+              "strategy_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "timeframes": {
+                "type": "array",
+                "items": {
+                  "enum": ["5m", "1d"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ReviewCheckStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "auto_from_date",
+        "queued",
+        "running",
+        "done",
+        "failed",
+        "last_error"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_check_status"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "auto_from_date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "queued": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "done": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 300
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ReviewPeriodSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trades",
+        "wins",
+        "losses",
+        "win_rate",
+        "net_pnl",
+        "gross_pnl",
+        "fees",
+        "average_win",
+        "average_loss",
+        "profit_factor",
+        "expectancy",
+        "max_drawdown",
+        "longest_losing_streak",
+        "largest_loss_share"
+      ],
+      "properties": {
+        "trades": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "wins": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "losses": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "win_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "net_pnl": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "gross_pnl": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "fees": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "average_win": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "average_loss": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "profit_factor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expectancy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_drawdown": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "longest_losing_streak": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "largest_loss_share": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ReviewPeriod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "review_id",
+        "created_at_utc",
+        "from_date",
+        "to_date",
+        "previous_from_date",
+        "previous_to_date",
+        "filters",
+        "principles_version",
+        "sections"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_period"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "review_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "created_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "from_date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "to_date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "previous_from_date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "previous_to_date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "filters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ledger", "account_ref", "strategy_id"],
+          "properties": {
+            "ledger": {
+              "enum": ["manual", "imported", "broker"]
+            },
+            "account_ref": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "strategy_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "principles_version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "currency",
+              "summary",
+              "previous_summary",
+              "principles",
+              "what_if",
+              "groups",
+              "curve",
+              "daily"
+            ],
+            "properties": {
+              "currency": {
+                "enum": ["USD", "KRW"]
+              },
+              "summary": {
+                "$ref": "#/$defs/ReviewPeriodSummary"
+              },
+              "previous_summary": {
+                "$ref": "#/$defs/ReviewPeriodSummary"
+              },
+              "principles": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "checked",
+                  "unchecked",
+                  "items",
+                  "broken_trades",
+                  "broken_net_pnl",
+                  "kept_trades",
+                  "kept_net_pnl"
+                ],
+                "properties": {
+                  "checked": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "unchecked": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "item_id",
+                        "text",
+                        "kind",
+                        "broken",
+                        "kept",
+                        "other"
+                      ],
+                      "properties": {
+                        "item_id": {
+                          "type": "string",
+                          "maxLength": 20
+                        },
+                        "text": {
+                          "type": "string",
+                          "maxLength": 500
+                        },
+                        "kind": {
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "broken": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "kept": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "other": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    }
+                  },
+                  "broken_trades": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "broken_net_pnl": {
+                    "$ref": "#/$defs/DecimalString"
+                  },
+                  "kept_trades": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "kept_net_pnl": {
+                    "$ref": "#/$defs/DecimalString"
+                  }
+                }
+              },
+              "what_if": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "hindsight",
+                  "computed",
+                  "missing",
+                  "gross_pnl",
+                  "actual_gross_pnl",
+                  "difference"
+                ],
+                "properties": {
+                  "hindsight": {
+                    "const": true
+                  },
+                  "computed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "missing": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "gross_pnl": {
+                    "$ref": "#/$defs/DecimalString"
+                  },
+                  "actual_gross_pnl": {
+                    "$ref": "#/$defs/DecimalString"
+                  },
+                  "difference": {
+                    "$ref": "#/$defs/DecimalString"
+                  }
+                }
+              },
+              "groups": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "tag",
+                  "ticker",
+                  "time_of_day",
+                  "weekday",
+                  "holding",
+                  "size"
+                ],
+                "properties": {
+                  "tag": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "key",
+                        "trades",
+                        "win_rate",
+                        "net_pnl",
+                        "average_net"
+                      ],
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "maxLength": 100
+                        },
+                        "trades": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "win_rate": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/NonNegativeDecimalString"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "net_pnl": {
+                          "$ref": "#/$defs/DecimalString"
+                        },
+                        "average_net": {
+                          "$ref": "#/$defs/DecimalString"
+                        }
+                      }
+                    }
+                  },
+                  "ticker": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "key",
+                        "trades",
+                        "win_rate",
+                        "net_pnl",
+                        "average_net"
+                      ],
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "maxLength": 100
+                        },
+                        "trades": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "win_rate": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/NonNegativeDecimalString"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "net_pnl": {
+                          "$ref": "#/$defs/DecimalString"
+                        },
+                        "average_net": {
+                          "$ref": "#/$defs/DecimalString"
+                        }
+                      }
+                    }
+                  },
+                  "time_of_day": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "key",
+                        "trades",
+                        "win_rate",
+                        "net_pnl",
+                        "average_net"
+                      ],
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "maxLength": 100
+                        },
+                        "trades": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "win_rate": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/NonNegativeDecimalString"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "net_pnl": {
+                          "$ref": "#/$defs/DecimalString"
+                        },
+                        "average_net": {
+                          "$ref": "#/$defs/DecimalString"
+                        }
+                      }
+                    }
+                  },
+                  "weekday": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "key",
+                        "trades",
+                        "win_rate",
+                        "net_pnl",
+                        "average_net"
+                      ],
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "maxLength": 100
+                        },
+                        "trades": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "win_rate": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/NonNegativeDecimalString"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "net_pnl": {
+                          "$ref": "#/$defs/DecimalString"
+                        },
+                        "average_net": {
+                          "$ref": "#/$defs/DecimalString"
+                        }
+                      }
+                    }
+                  },
+                  "holding": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "key",
+                        "trades",
+                        "win_rate",
+                        "net_pnl",
+                        "average_net"
+                      ],
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "maxLength": 100
+                        },
+                        "trades": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "win_rate": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/NonNegativeDecimalString"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "net_pnl": {
+                          "$ref": "#/$defs/DecimalString"
+                        },
+                        "average_net": {
+                          "$ref": "#/$defs/DecimalString"
+                        }
+                      }
+                    }
+                  },
+                  "size": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "key",
+                        "trades",
+                        "win_rate",
+                        "net_pnl",
+                        "average_net"
+                      ],
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "maxLength": 100
+                        },
+                        "trades": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "win_rate": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/NonNegativeDecimalString"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "net_pnl": {
+                          "$ref": "#/$defs/DecimalString"
+                        },
+                        "average_net": {
+                          "$ref": "#/$defs/DecimalString"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "curve": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["closed_on", "closed_at_utc", "cumulative"],
+                  "properties": {
+                    "closed_on": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    },
+                    "closed_at_utc": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/UtcTimestamp"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cumulative": {
+                      "$ref": "#/$defs/DecimalString"
+                    }
+                  }
+                }
+              },
+              "daily": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["date", "trades", "net_pnl"],
+                  "properties": {
+                    "date": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    },
+                    "trades": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "net_pnl": {
+                      "$ref": "#/$defs/DecimalString"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ReviewPeriodList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "reviews"],
+      "properties": {
+        "kind": {
+          "const": "review_period_list"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "reviews": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "review_id",
+              "created_at_utc",
+              "from_date",
+              "to_date",
+              "filters",
+              "totals"
+            ],
+            "properties": {
+              "review_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "created_at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "from_date": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "to_date": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "filters": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["ledger", "account_ref", "strategy_id"],
+                "properties": {
+                  "ledger": {
+                    "enum": ["manual", "imported", "broker"]
+                  },
+                  "account_ref": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "strategy_id": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              },
+              "totals": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["currency", "trades", "net_pnl"],
+                  "properties": {
+                    "currency": {
+                      "enum": ["USD", "KRW"]
+                    },
+                    "trades": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "net_pnl": {
+                      "$ref": "#/$defs/DecimalString"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ReviewPeriodCommentary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "review_id",
+        "model",
+        "language",
+        "created_at_utc",
+        "summary",
+        "repeated_mistakes",
+        "went_well",
+        "focus_next",
+        "principle_suggestions",
+        "uncertainty",
+        "usage"
+      ],
+      "properties": {
+        "kind": {
+          "const": "review_period_commentary"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "review_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "model": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "language": {
+          "enum": ["en", "ko"]
+        },
+        "created_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "repeated_mistakes": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "went_well": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "focus_next": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "principle_suggestions": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action",
+              "item_id",
+              "scope",
+              "kind",
+              "value",
+              "text",
+              "reason"
+            ],
+            "properties": {
+              "action": {
+                "enum": ["add", "change", "remove"]
+              },
+              "item_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 20
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "scope": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "kind": {
+                "enum": [
+                  "stop_loss_pct",
+                  "take_profit_pct",
+                  "max_position_pct",
+                  "no_entry_first_minutes",
+                  "max_gap_chase_pct",
+                  "max_trades_per_day",
+                  "text"
+                ]
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 1000
+              }
+            }
+          }
+        },
+        "uncertainty": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input_tokens", "output_tokens"],
+          "properties": {
+            "input_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "output_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "ReviewPeriodCommentaryList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "review_id", "commentaries"],
+      "properties": {
+        "kind": {
+          "const": "review_period_commentary_list"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "review_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "commentaries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReviewPeriodCommentary"
+          }
+        }
+      }
+    },
+    "ReviewPeriodPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "review_id", "payload"],
+      "properties": {
+        "kind": {
+          "const": "review_period_payload"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "review_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "payload": {
+          "type": "object"
         }
       }
     }

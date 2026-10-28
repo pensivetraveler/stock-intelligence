@@ -346,6 +346,28 @@ async def test_market_bars_aggregates_fifteen_minute_buckets() -> None:
     assert body["bars"][0]["lineage"]["observed_source_bar_count"] == 4
 
 
+async def test_market_bars_returns_the_whole_pre_market_as_one_bucket() -> None:
+    # Daily charts read the pre-market high this way (ADR 0041): a bucket longer than
+    # any session is cut at the regular open, so the pre-market window is one bar.
+    async with client() as test_client:
+        response = await test_client.get(
+            "/v1/market/bars",
+            params={
+                "instrument_id": "us:synth:xnas:2026",
+                "start_utc": "2026-10-09T08:00:00Z",
+                "end_utc": "2026-10-09T13:30:00Z",
+                "timeframe": "960m",
+            },
+        )
+
+    assert response.status_code == 200
+    bars = response.json()["bars"]
+    assert len(bars) == 1
+    assert bars[0]["session"] == "pre"
+    assert bars[0]["interval_start_utc"] == "2026-10-09T08:00:00Z"
+    assert bars[0]["interval_end_utc"] == "2026-10-09T13:30:00Z"
+
+
 async def test_market_bars_rejects_misaligned_aggregate_range() -> None:
     async with client() as test_client:
         response = await test_client.get(

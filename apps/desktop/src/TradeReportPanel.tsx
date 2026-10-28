@@ -5,6 +5,7 @@ import type {
 import { useEffect, useState } from "react";
 
 import { renderChartImage } from "./chart-image";
+import { ReportConversation } from "./ReportConversation";
 import { useI18n } from "./i18n";
 import type { ReviewApi } from "./review-api";
 
@@ -133,6 +134,26 @@ export function TradeReportPanel({
               </li>
             ))}
           </ul>
+          {draft.principles ? (
+            <div aria-label={t("pc.title")}>
+              <p className="workspace-note">
+                {t("pc.title")} ·{" "}
+                {t("pc.version", { version: draft.principles.version })}
+                {draft.principles.after_the_fact
+                  ? ` · ${t("pc.afterTheFact")}`
+                  : ""}
+              </p>
+              <ul className="rv-facts-list">
+                {draft.principles.results.map((result) => (
+                  <li key={result.item_id}>
+                    {t(`pc.status.${result.status}`)}:{" "}
+                    {result.text || t(`pr.kind.${result.kind}`)}
+                    {result.value !== null ? ` (${result.value})` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {draft.uncertainty.length > 0 ? (
             <p className="workspace-note">{draft.uncertainty.join(" ")}</p>
           ) : null}
@@ -210,13 +231,26 @@ export function TradeReportPanel({
         </div>
       )}
       {reports.map((report) => (
-        <ReportView key={report.report_id} report={report} />
+        <ReportView
+          key={report.report_id}
+          report={report}
+          api={api}
+          render={render}
+        />
       ))}
     </section>
   );
 }
 
-function ReportView({ report }: { report: ReviewTradeReport }) {
+function ReportView({
+  report,
+  api,
+  render,
+}: {
+  report: ReviewTradeReport;
+  api: ReviewApi;
+  render: typeof renderChartImage;
+}) {
   const { t } = useI18n();
   return (
     <article className="rv-report-view" aria-label={t("rp.report")}>
@@ -252,6 +286,11 @@ function ReportView({ report }: { report: ReviewTradeReport }) {
         })}{" "}
         · {t("rp.notAdvice")}
       </p>
+      <ReportConversation
+        api={api}
+        reportId={report.report_id}
+        render={render}
+      />
     </article>
   );
 }

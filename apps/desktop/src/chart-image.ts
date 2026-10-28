@@ -7,7 +7,7 @@ import {
 } from "lightweight-charts";
 
 import { toSeries } from "./chart-data";
-import type { ReportImage } from "./review-api";
+import type { ReportImage, ToolImage } from "./review-api";
 import { TRADE_COLORS } from "./trade-review";
 
 const WIDTH = 960;
@@ -22,7 +22,9 @@ function nextFrame(): Promise<void> {
  * bars the API cut at the image's time, never captured from the visible chart, so it
  * cannot show a later bar.
  */
-export async function renderChartImage(image: ReportImage): Promise<string> {
+export async function renderChartImage(
+  image: ReportImage | ToolImage,
+): Promise<string> {
   const host = document.createElement("div");
   host.style.cssText = `position:fixed;left:-${WIDTH * 2}px;top:0;width:${WIDTH}px;height:${HEIGHT}px;`;
   document.body.appendChild(host);

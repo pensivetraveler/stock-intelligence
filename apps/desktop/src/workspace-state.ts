@@ -19,6 +19,8 @@ export interface ChartConfig {
   indicators?: IndicatorInstance[];
   /** Drawings on this chart; each one names the instrument it was drawn on. */
   drawings?: Drawing[];
+  /** Show the pre-market high on US daily charts (ADR 0041). Stored only when on. */
+  premarketHigh?: boolean;
 }
 
 /** How many charts the workspace shows: one, two side by side, or a 2x2 grid. */
@@ -96,6 +98,7 @@ function parseChart(value: unknown): ChartConfig | null {
     sessionScope: chart.sessionScope,
     ...(indicators.length > 0 ? { indicators } : {}),
     ...(drawings.length > 0 ? { drawings } : {}),
+    ...(chart.premarketHigh === true ? { premarketHigh: true } : {}),
   };
 }
 
