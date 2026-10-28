@@ -3472,6 +3472,7 @@ body {
 /* Claude indicator assistant (ADR 0042, indicators step 1) */
 .ia-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   padding: 8px;
   font-size: 12px;
@@ -3479,7 +3480,9 @@ body {
 
 .ia-events {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
+  overflow-wrap: anywhere;
 }
 
 .ia-code summary,

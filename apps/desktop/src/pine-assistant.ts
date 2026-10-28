@@ -31,7 +31,7 @@ export function pineReference(): string {
     "Output: plot (line or histogram, colour per bar, linewidth, display.none), hline, plotshape, plotchar, plotarrow, bgcolor, barcolor, fill, line.*, label.*, box.*, table.*, linefill.*. overlay=true draws on the price chart, otherwise a separate pane.",
     `Functions: ${functions.join(", ")}.`,
     "request.security works on the chart, but the assistant's test run has no other symbol or timeframe data; avoid it unless asked.",
-    "Not supported: strategy() and strategy.* in this assistant, user-defined types (type), import/export libraries, matrix, map, polyline, alerts (alertcondition, alert) and anything not listed above.",
+    "Not supported: time(...) and time_close(...) called as functions (use the time variable, year, month, dayofweek, hour and timestamp()), strategy() and strategy.* in this assistant, user-defined types (type), import/export libraries, matrix, map, polyline and anything not listed above. alertcondition, alert and log.* are accepted but do nothing in the app.",
     "Limits: 50,000 characters, 2,000,000 loop steps per run, 32 nested calls, 100,000 items per array.",
     "Errors are reported as line and column. No look-ahead: a bar never sees a later bar.",
   ].join("\n");

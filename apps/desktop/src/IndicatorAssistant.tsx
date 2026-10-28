@@ -250,18 +250,18 @@ export function IndicatorAssistant({
         >
           {busy !== null ? t("rp.sending") : t("ia.send")}
         </button>
-        {conversation && conversation.usage.output_tokens > 0 ? (
-          <span className="workspace-note">
-            {t("rc.usage", {
-              model: conversation.model,
-              input: conversation.usage.input_tokens,
-              output: conversation.usage.output_tokens,
-              read: conversation.usage.cache_read_tokens,
-              write: conversation.usage.cache_write_tokens,
-            })}
-          </span>
-        ) : null}
       </p>
+      {conversation && conversation.usage.output_tokens > 0 ? (
+        <p className="workspace-note">
+          {t("rc.usage", {
+            model: conversation.model,
+            input: conversation.usage.input_tokens,
+            output: conversation.usage.output_tokens,
+            read: conversation.usage.cache_read_tokens,
+            write: conversation.usage.cache_write_tokens,
+          })}
+        </p>
+      ) : null}
       <label>
         {t("pine.code")}
         <textarea
