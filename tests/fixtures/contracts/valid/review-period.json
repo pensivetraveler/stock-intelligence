@@ -1,0 +1,317 @@
+{
+  "kind": "review_period",
+  "schema_version": "0.1",
+  "review_id": "period-42b627a9c36a",
+  "created_at_utc": "2026-10-26T12:00:00Z",
+  "from_date": "2026-03-02",
+  "to_date": "2026-03-06",
+  "previous_from_date": "2026-02-25",
+  "previous_to_date": "2026-03-01",
+  "filters": {
+    "ledger": "broker",
+    "account_ref": null,
+    "strategy_id": null
+  },
+  "principles_version": null,
+  "sections": [
+    {
+      "currency": "KRW",
+      "summary": {
+        "trades": 1,
+        "wins": 1,
+        "losses": 0,
+        "win_rate": "1",
+        "net_pnl": "9999",
+        "gross_pnl": "10000",
+        "fees": "1",
+        "average_win": "9999",
+        "average_loss": null,
+        "profit_factor": null,
+        "expectancy": "9999",
+        "max_drawdown": "0",
+        "longest_losing_streak": 0,
+        "largest_loss_share": null
+      },
+      "previous_summary": {
+        "trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "win_rate": null,
+        "net_pnl": "0",
+        "gross_pnl": "0",
+        "fees": "0",
+        "average_win": null,
+        "average_loss": null,
+        "profit_factor": null,
+        "expectancy": null,
+        "max_drawdown": "0",
+        "longest_losing_streak": 0,
+        "largest_loss_share": null
+      },
+      "principles": {
+        "checked": 0,
+        "unchecked": 1,
+        "items": [],
+        "broken_trades": 0,
+        "broken_net_pnl": "0",
+        "kept_trades": 0,
+        "kept_net_pnl": "0"
+      },
+      "what_if": {
+        "hindsight": true,
+        "computed": 0,
+        "missing": 1,
+        "gross_pnl": "0",
+        "actual_gross_pnl": "0",
+        "difference": "0"
+      },
+      "groups": {
+        "tag": [
+          {
+            "key": "(none)",
+            "trades": 1,
+            "win_rate": "1",
+            "net_pnl": "9999",
+            "average_net": "9999"
+          }
+        ],
+        "ticker": [
+          {
+            "key": "005930",
+            "trades": 1,
+            "win_rate": "1",
+            "net_pnl": "9999",
+            "average_net": "9999"
+          }
+        ],
+        "time_of_day": [
+          {
+            "key": "regular",
+            "trades": 1,
+            "win_rate": "1",
+            "net_pnl": "9999",
+            "average_net": "9999"
+          }
+        ],
+        "weekday": [
+          {
+            "key": "tue",
+            "trades": 1,
+            "win_rate": "1",
+            "net_pnl": "9999",
+            "average_net": "9999"
+          }
+        ],
+        "holding": [
+          {
+            "key": "intraday",
+            "trades": 1,
+            "win_rate": "1",
+            "net_pnl": "9999",
+            "average_net": "9999"
+          }
+        ],
+        "size": [
+          {
+            "key": "<1000000",
+            "trades": 1,
+            "win_rate": "1",
+            "net_pnl": "9999",
+            "average_net": "9999"
+          }
+        ]
+      },
+      "curve": [
+        {
+          "closed_on": "2026-03-03",
+          "closed_at_utc": "2026-03-03T02:00:00Z",
+          "cumulative": "9999"
+        }
+      ],
+      "daily": [
+        {
+          "date": "2026-03-03",
+          "trades": 1,
+          "net_pnl": "9999"
+        }
+      ]
+    },
+    {
+      "currency": "USD",
+      "summary": {
+        "trades": 3,
+        "wins": 1,
+        "losses": 2,
+        "win_rate": "0.3333",
+        "net_pnl": "-53",
+        "gross_pnl": "-50",
+        "fees": "3",
+        "average_win": "99",
+        "average_loss": "-76",
+        "profit_factor": "0.6513",
+        "expectancy": "-17.6667",
+        "max_drawdown": "152",
+        "longest_losing_streak": 2,
+        "largest_loss_share": "0.6645"
+      },
+      "previous_summary": {
+        "trades": 1,
+        "wins": 1,
+        "losses": 0,
+        "win_rate": "1",
+        "net_pnl": "199",
+        "gross_pnl": "200",
+        "fees": "1",
+        "average_win": "199",
+        "average_loss": null,
+        "profit_factor": null,
+        "expectancy": "199",
+        "max_drawdown": "0",
+        "longest_losing_streak": 0,
+        "largest_loss_share": null
+      },
+      "principles": {
+        "checked": 0,
+        "unchecked": 3,
+        "items": [],
+        "broken_trades": 0,
+        "broken_net_pnl": "0",
+        "kept_trades": 0,
+        "kept_net_pnl": "0"
+      },
+      "what_if": {
+        "hindsight": true,
+        "computed": 0,
+        "missing": 3,
+        "gross_pnl": "0",
+        "actual_gross_pnl": "0",
+        "difference": "0"
+      },
+      "groups": {
+        "tag": [
+          {
+            "key": "(none)",
+            "trades": 2,
+            "win_rate": "0",
+            "net_pnl": "-152",
+            "average_net": "-76"
+          },
+          {
+            "key": "돌파",
+            "trades": 1,
+            "win_rate": "1",
+            "net_pnl": "99",
+            "average_net": "99"
+          }
+        ],
+        "ticker": [
+          {
+            "key": "AAPL",
+            "trades": 3,
+            "win_rate": "0.3333",
+            "net_pnl": "-53",
+            "average_net": "-17.6667"
+          }
+        ],
+        "time_of_day": [
+          {
+            "key": "regular",
+            "trades": 2,
+            "win_rate": "0.5",
+            "net_pnl": "-2",
+            "average_net": "-1"
+          },
+          {
+            "key": "first30",
+            "trades": 1,
+            "win_rate": "0",
+            "net_pnl": "-51",
+            "average_net": "-51"
+          }
+        ],
+        "weekday": [
+          {
+            "key": "mon",
+            "trades": 1,
+            "win_rate": "1",
+            "net_pnl": "99",
+            "average_net": "99"
+          },
+          {
+            "key": "tue",
+            "trades": 1,
+            "win_rate": "0",
+            "net_pnl": "-51",
+            "average_net": "-51"
+          },
+          {
+            "key": "wed",
+            "trades": 1,
+            "win_rate": "0",
+            "net_pnl": "-101",
+            "average_net": "-101"
+          }
+        ],
+        "holding": [
+          {
+            "key": "intraday",
+            "trades": 2,
+            "win_rate": "0.5",
+            "net_pnl": "48",
+            "average_net": "24"
+          },
+          {
+            "key": "1-5d",
+            "trades": 1,
+            "win_rate": "0",
+            "net_pnl": "-101",
+            "average_net": "-101"
+          }
+        ],
+        "size": [
+          {
+            "key": "1000-5000",
+            "trades": 3,
+            "win_rate": "0.3333",
+            "net_pnl": "-53",
+            "average_net": "-17.6667"
+          }
+        ]
+      },
+      "curve": [
+        {
+          "closed_on": "2026-03-02",
+          "closed_at_utc": "2026-03-02T16:00:00Z",
+          "cumulative": "99"
+        },
+        {
+          "closed_on": "2026-03-03",
+          "closed_at_utc": "2026-03-03T16:00:00Z",
+          "cumulative": "48"
+        },
+        {
+          "closed_on": "2026-03-05",
+          "closed_at_utc": "2026-03-05T16:00:00Z",
+          "cumulative": "-53"
+        }
+      ],
+      "daily": [
+        {
+          "date": "2026-03-02",
+          "trades": 1,
+          "net_pnl": "99"
+        },
+        {
+          "date": "2026-03-03",
+          "trades": 1,
+          "net_pnl": "-51"
+        },
+        {
+          "date": "2026-03-05",
+          "trades": 1,
+          "net_pnl": "-101"
+        }
+      ]
+    }
+  ]
+}

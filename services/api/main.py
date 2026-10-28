@@ -113,6 +113,9 @@ from services.market_data.toss_stream import Connect, RealtimeHub, default_conne
 from services.paper_trading.store import PaperOrderStore
 from services.public_sources.finra import FinraCredential
 from services.public_sources.sources import PublicSources
+from services.review.claude import ask_for_report, convert_principles
+from services.review.conversation import call_claude
+from services.review.period_ai import ask_period_commentary
 from services.review.store import ReviewStore
 
 LOG = logging.getLogger("siw.api")
@@ -565,6 +568,10 @@ def create_app(
     agent_store: AgentStore | None = None,
     review_store: ReviewStore | None = None,
     agent_ask: Callable[..., dict[str, Any]] = ask_claude,
+    review_ask: Callable[..., dict[str, Any]] = ask_for_report,
+    review_converse: Callable[..., dict[str, Any]] = call_claude,
+    review_convert: Callable[..., dict[str, Any]] = convert_principles,
+    review_period_ask: Callable[..., dict[str, Any]] = ask_period_commentary,
     indicator_store: CustomIndicatorStore | None = None,
     public_sources: PublicSources | None = None,
     clock: Callable[[], datetime] = _utc_now,
@@ -1343,6 +1350,14 @@ def create_app(
         application, store=custom_indicators.get, error_response=_error_response
     )
 
+    def resolve_us_symbol(symbol: str) -> str | None:
+        """A US ticker's instrument id from the listings known on disk (no request)."""
+        wanted = symbol.upper()
+        for instrument_id, entry in symbols.known().items():
+            if entry.symbol.upper() == wanted and instrument_id.startswith("us:"):
+                return instrument_id
+        return None
+
     def strategy_list() -> list[dict[str, Any]] | None:
         jobs = backtests.get()
         return None if jobs is None else jobs.store.strategies()
@@ -1353,6 +1368,14 @@ def create_app(
         store=review.get,
         strategies=strategy_list,
         error_response=_error_response,
+        get_bars=lambda: MarketBarsService(provider.get()).get_bars,
+        api_key=lambda: _claude_key(credentials.get()),
+        now=clock,
+        ask=review_ask,
+        converse=review_converse,
+        convert=review_convert,
+        period_ask=review_period_ask,
+        resolve_symbol=resolve_us_symbol,
     )
     register_agent_routes(
         application,

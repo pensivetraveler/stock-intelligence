@@ -3161,3 +3161,310 @@ body {
     overflow: auto;
   }
 }
+
+/* Trade review report (ADR 0042 step 2a) */
+.rv-settings {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.rv-settings h4,
+.rv-report h4 {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.rv-capital-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.rv-report {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--term-line);
+  padding-top: 8px;
+}
+
+.rv-draft {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.rv-facts-list {
+  max-height: 200px;
+  margin: 0;
+  padding-left: 18px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.rv-hindsight {
+  color: var(--term-muted);
+}
+
+.rv-sent-note {
+  margin: 0;
+  border-left: 2px solid var(--term-line);
+  padding-left: 8px;
+  font-size: 12px;
+}
+
+.rv-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.rv-images figure {
+  margin: 0;
+}
+
+.rv-images img {
+  width: 100%;
+  border: 1px solid var(--term-line);
+  border-radius: 4px;
+}
+
+.rv-images figcaption {
+  color: var(--term-muted);
+  font-size: 11px;
+}
+
+.rv-report-view {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+}
+
+.rv-report-view h5 {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.rv-report-view ul {
+  margin: 2px 0;
+  padding-left: 18px;
+}
+
+.rv-summary {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* Follow-up questions on a report (ADR 0042 step 2b) */
+.rv-conversation {
+  display: grid;
+  gap: 6px;
+  border-top: 1px dashed var(--term-line);
+  padding-top: 6px;
+}
+
+.rv-bubble {
+  margin: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+}
+
+.rv-asked {
+  justify-self: end;
+  max-width: 85%;
+  background: var(--term-pressed);
+}
+
+.rv-answered {
+  border: 1px solid var(--term-line);
+  white-space: normal;
+}
+
+.rv-answered p {
+  margin: 0 0 4px;
+}
+
+.rv-answered ul {
+  margin: 0 0 4px;
+  padding-left: 18px;
+}
+
+.rv-request {
+  margin: 0;
+  color: var(--term-muted);
+  font-size: 11px;
+}
+
+.rv-request-error {
+  color: #e5566b;
+}
+
+.rv-question {
+  display: grid;
+  gap: 4px;
+}
+
+.rv-screen .rv-question textarea {
+  height: 60px;
+  padding: 6px;
+  resize: vertical;
+}
+
+/* Trading principles (ADR 0042 step 3a) */
+.rv-principle-list,
+.rv-principle-results {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.rv-principle-row {
+  display: grid;
+  grid-template-columns: 140px 190px auto minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.rv-principle-check h4 {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.rv-status-kept strong {
+  color: #3fb68b;
+}
+
+.rv-status-broken strong {
+  color: #e5566b;
+}
+
+.rv-status-unknown strong,
+.rv-status-not_applicable strong,
+.rv-status-judgment strong {
+  color: var(--term-muted);
+}
+
+/* What-ifs and background checks (ADR 0042 step 3b) */
+.rv-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+}
+
+.rv-whatif {
+  display: grid;
+  gap: 6px;
+}
+
+.rv-whatif h4 {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.rv-whatif-part p {
+  margin: 0;
+}
+
+.rv-suggestions p {
+  margin: 2px 0;
+}
+
+/* Period review (ADR 0042 step 4a) */
+.rv-period {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+}
+
+.rv-period-side,
+.rv-period-main {
+  display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rv-period-form {
+  display: grid;
+  gap: 6px;
+}
+
+.rv-period-list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+}
+
+.rv-period-section {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--term-line);
+  padding-top: 8px;
+}
+
+.rv-period-section h4,
+.rv-period-section h5 {
+  margin: 4px 0 0;
+}
+
+.rv-curve {
+  height: 220px;
+  border: 1px solid var(--term-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.rv-bar-cell {
+  width: 140px;
+}
+
+.rv-bar {
+  display: block;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.rv-bar-up {
+  background: #3fb68b;
+}
+
+.rv-bar-down {
+  background: #e5566b;
+}
+
+.rv-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 34px);
+  gap: 3px;
+}
+
+.rv-day {
+  display: grid;
+  place-items: center;
+  height: 26px;
+  border: 1px solid var(--term-line);
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+/* Period commentary (ADR 0042 step 4b) */
+.rv-suggestion {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 2px 0;
+  font-size: 12px;
+}

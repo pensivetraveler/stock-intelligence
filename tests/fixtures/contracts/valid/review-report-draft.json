@@ -1,0 +1,705 @@
+{
+  "kind": "review_report_draft",
+  "schema_version": "0.1",
+  "draft_id": "draft-0123456789ab",
+  "trade_id": "flat:broker:brk-1",
+  "created_at_utc": "2026-10-26T12:00:00Z",
+  "model": "claude-sonnet-5-5",
+  "agent_version": "trade-report-1",
+  "trade": {
+    "instrument_id": "us:aapl:xnas:2026",
+    "currency": "USD",
+    "rule": "flat",
+    "status": "closed",
+    "opened_on": "2026-03-03",
+    "closed_on": "2026-03-03",
+    "time_uncertain": false
+  },
+  "facts": [
+    {
+      "code": "execution_count",
+      "subject": null,
+      "value": "3",
+      "unit": "count",
+      "text": "2 buys and 1 sells",
+      "hindsight": false
+    },
+    {
+      "code": "average_buy",
+      "subject": null,
+      "value": "100.5000",
+      "unit": "price",
+      "text": "Bought 20 at 100.5000 on average",
+      "hindsight": false
+    },
+    {
+      "code": "average_sell",
+      "subject": null,
+      "value": "103.0000",
+      "unit": "price",
+      "text": "Sold 20 at 103.0000 on average",
+      "hindsight": false
+    },
+    {
+      "code": "realized_pnl",
+      "subject": null,
+      "value": "48.50",
+      "unit": "currency",
+      "text": "Realized P&L after fees 48.50 USD (FIFO within one account, fees 1.50 USD)",
+      "hindsight": false
+    },
+    {
+      "code": "holding_days",
+      "subject": null,
+      "value": "0",
+      "unit": "days",
+      "text": "From the first to the last execution: 0 calendar days",
+      "hindsight": false
+    },
+    {
+      "code": "fill_range_position",
+      "subject": "fill 1",
+      "value": "0.93",
+      "unit": "ratio",
+      "text": "fill 1 (buy 10 at 100 on 2026-03-03) sat at 93% of that session's range",
+      "hindsight": false
+    },
+    {
+      "code": "fill_range_position",
+      "subject": "fill 2",
+      "value": "1.88",
+      "unit": "ratio",
+      "text": "fill 2 (buy 10 at 101 on 2026-03-03) sat at 188% of that session's range",
+      "hindsight": false
+    },
+    {
+      "code": "fill_range_position",
+      "subject": "fill 3",
+      "value": "3.79",
+      "unit": "ratio",
+      "text": "fill 3 (sell 20 at 103 on 2026-03-03) sat at 379% of that session's range",
+      "hindsight": false
+    },
+    {
+      "code": "entry_rsi14",
+      "subject": null,
+      "value": "33.6",
+      "unit": "ratio",
+      "text": "RSI 14 at the close before the first buy was 33.6",
+      "hindsight": false
+    },
+    {
+      "code": "entry_close_vs_sma20_pct",
+      "subject": null,
+      "value": "-2.03",
+      "unit": "percent",
+      "text": "Before the first buy the close was -2.03% from its 20-day average",
+      "hindsight": false
+    },
+    {
+      "code": "entry_close_vs_sma50_pct",
+      "subject": null,
+      "value": "-0.17",
+      "unit": "percent",
+      "text": "Before the first buy the close was -0.17% from its 50-day average",
+      "hindsight": false
+    },
+    {
+      "code": "mfe_pct",
+      "subject": null,
+      "value": "-0.42",
+      "unit": "percent",
+      "text": "While held, the high reached -0.42% from the average buy",
+      "hindsight": true
+    },
+    {
+      "code": "mae_pct",
+      "subject": null,
+      "value": "-1.47",
+      "unit": "percent",
+      "text": "While held, the low reached -1.47% from the average buy",
+      "hindsight": true
+    },
+    {
+      "code": "after_exit_1d_pct",
+      "subject": null,
+      "value": "-3.73",
+      "unit": "percent",
+      "text": "1 session(s) after the last sell the close was -3.73% from the average sell",
+      "hindsight": true
+    },
+    {
+      "code": "after_exit_5d_pct",
+      "subject": null,
+      "value": "-5.10",
+      "unit": "percent",
+      "text": "5 session(s) after the last sell the close was -5.10% from the average sell",
+      "hindsight": true
+    },
+    {
+      "code": "entry_vs_previous_close_pct",
+      "subject": null,
+      "value": "-0.05",
+      "unit": "percent",
+      "text": "The first buy at 100 was -0.05% from the previous regular close 100.0500",
+      "hindsight": false
+    },
+    {
+      "code": "gap_pct",
+      "subject": null,
+      "value": "-0.06",
+      "unit": "percent",
+      "text": "The regular session opened -0.06% from the previous close",
+      "hindsight": false
+    },
+    {
+      "code": "premarket_high",
+      "subject": null,
+      "value": "103.5500",
+      "unit": "price",
+      "text": "The pre-market high before the first buy was 103.5500",
+      "hindsight": false
+    },
+    {
+      "code": "entry_vs_premarket_high_pct",
+      "subject": null,
+      "value": "-3.43",
+      "unit": "percent",
+      "text": "The first buy was -3.43% from that pre-market high",
+      "hindsight": false
+    },
+    {
+      "code": "spy_change_to_entry_pct",
+      "subject": "SPY",
+      "value": "0.18",
+      "unit": "percent",
+      "text": "SPY was +0.18% from its previous close by 2026-03-03T15:00:00Z (the last 5-minute bar before the first buy)",
+      "hindsight": false
+    },
+    {
+      "code": "relative_to_spy_pct",
+      "subject": "SPY",
+      "value": "-2.15",
+      "unit": "percent",
+      "text": "By then the stock was -1.97% from its previous close, -2.15% against SPY",
+      "hindsight": false
+    },
+    {
+      "code": "qqq_change_to_entry_pct",
+      "subject": "QQQ",
+      "value": "-1.97",
+      "unit": "percent",
+      "text": "QQQ was -1.97% from its previous close by 2026-03-03T15:00:00Z (the last 5-minute bar before the first buy)",
+      "hindsight": false
+    },
+    {
+      "code": "relative_to_qqq_pct",
+      "subject": "QQQ",
+      "value": "0.00",
+      "unit": "percent",
+      "text": "By then the stock was -1.97% from its previous close, +0.00% against QQQ",
+      "hindsight": false
+    },
+    {
+      "code": "intraday_mfe_pct",
+      "subject": null,
+      "value": "3.03",
+      "unit": "percent",
+      "text": "While held (5-minute bars), the high reached +3.03% from the average buy",
+      "hindsight": true
+    },
+    {
+      "code": "intraday_mae_pct",
+      "subject": null,
+      "value": "-3.98",
+      "unit": "percent",
+      "text": "While held (5-minute bars), the low reached -3.98% from the average buy",
+      "hindsight": true
+    },
+    {
+      "code": "captured_of_best_ratio",
+      "subject": null,
+      "value": "0.82",
+      "unit": "ratio",
+      "text": "The exit kept 82% of the best price reached while held (1 = sold at the high)",
+      "hindsight": true
+    },
+    {
+      "code": "holding_minutes",
+      "subject": null,
+      "value": "180",
+      "unit": "count",
+      "text": "From the first buy to the last sell: 180 minutes",
+      "hindsight": false
+    },
+    {
+      "code": "entry_count",
+      "subject": null,
+      "value": "2",
+      "unit": "count",
+      "text": "2 buy(s) built the position",
+      "hindsight": false
+    },
+    {
+      "code": "exit_count",
+      "subject": null,
+      "value": "1",
+      "unit": "count",
+      "text": "1 sell(s) closed it",
+      "hindsight": false
+    },
+    {
+      "code": "scale_in_effect_pct",
+      "subject": null,
+      "value": "0.50",
+      "unit": "percent",
+      "text": "Later buys moved the average price +0.50% from the first buy's 100",
+      "hindsight": false
+    },
+    {
+      "code": "peak_position_cost",
+      "subject": null,
+      "value": "2010.00",
+      "unit": "currency",
+      "text": "At most 2010.00 USD was held in the position at once (at cost)",
+      "hindsight": false
+    }
+  ],
+  "missing": ["position_pct_of_capital"],
+  "uncertainty": [
+    "No account capital was entered for this account and date, so the position size is not compared with the account."
+  ],
+  "warnings": [
+    "us:aapl:xnas:2026: prices are not adjusted; a split or dividend in the range shows up as a price jump"
+  ],
+  "dataset_revisions": ["synthetic-r1"],
+  "note": {
+    "text": "갭 보고 추격",
+    "tags": ["돌파"],
+    "written_at_utc": "2026-10-26T11:00:00Z"
+  },
+  "images": [
+    {
+      "kind": "entry",
+      "timeframe": "5m",
+      "title": "5-minute bars on 2026-03-03 up to the first buy",
+      "cutoff_utc": "2026-03-03T15:00:00Z",
+      "bars": [
+        {
+          "kind": "price_bar",
+          "schema_version": "0.1",
+          "instrument_id": "us:aapl:xnas:2026",
+          "timeframe": "5m",
+          "interval_start_utc": "2026-03-03T14:45:00Z",
+          "interval_end_utc": "2026-03-03T14:50:00Z",
+          "open": "98.7429",
+          "high": "99.2929",
+          "low": "98.2429",
+          "close": "98.7929",
+          "volume": "50000",
+          "volume_unit": "shares",
+          "session": "regular",
+          "is_final": true,
+          "quality": "complete",
+          "lineage": {
+            "kind": "aggregated_1m",
+            "source_timeframe": "1m",
+            "expected_source_bar_count": 5,
+            "observed_source_bar_count": 5,
+            "source_dataset_revision": "fake-aapl-20261009-r1",
+            "calendar_id": "XNAS",
+            "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
+          },
+          "adjustment": "raw",
+          "source_id": "fake-market-data",
+          "source_feed_scope": "synthetic-us-equity-1m",
+          "dataset_revision": "fake-aapl-20261009-r1:agg:5m:us-equity-extended-hours-v1-2026-10-12",
+          "available_at_utc": "2026-03-03T14:50:00Z"
+        },
+        {
+          "kind": "price_bar",
+          "schema_version": "0.1",
+          "instrument_id": "us:aapl:xnas:2026",
+          "timeframe": "5m",
+          "interval_start_utc": "2026-03-03T14:50:00Z",
+          "interval_end_utc": "2026-03-03T14:55:00Z",
+          "open": "98.3679",
+          "high": "98.9179",
+          "low": "97.8679",
+          "close": "98.4179",
+          "volume": "50000",
+          "volume_unit": "shares",
+          "session": "regular",
+          "is_final": true,
+          "quality": "complete",
+          "lineage": {
+            "kind": "aggregated_1m",
+            "source_timeframe": "1m",
+            "expected_source_bar_count": 5,
+            "observed_source_bar_count": 5,
+            "source_dataset_revision": "fake-aapl-20261009-r1",
+            "calendar_id": "XNAS",
+            "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
+          },
+          "adjustment": "raw",
+          "source_id": "fake-market-data",
+          "source_feed_scope": "synthetic-us-equity-1m",
+          "dataset_revision": "fake-aapl-20261009-r1:agg:5m:us-equity-extended-hours-v1-2026-10-12",
+          "available_at_utc": "2026-03-03T14:55:00Z"
+        },
+        {
+          "kind": "price_bar",
+          "schema_version": "0.1",
+          "instrument_id": "us:aapl:xnas:2026",
+          "timeframe": "5m",
+          "interval_start_utc": "2026-03-03T14:55:00Z",
+          "interval_end_utc": "2026-03-03T15:00:00Z",
+          "open": "98.0262",
+          "high": "98.5762",
+          "low": "97.5262",
+          "close": "98.0762",
+          "volume": "50000",
+          "volume_unit": "shares",
+          "session": "regular",
+          "is_final": true,
+          "quality": "complete",
+          "lineage": {
+            "kind": "aggregated_1m",
+            "source_timeframe": "1m",
+            "expected_source_bar_count": 5,
+            "observed_source_bar_count": 5,
+            "source_dataset_revision": "fake-aapl-20261009-r1",
+            "calendar_id": "XNAS",
+            "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
+          },
+          "adjustment": "raw",
+          "source_id": "fake-market-data",
+          "source_feed_scope": "synthetic-us-equity-1m",
+          "dataset_revision": "fake-aapl-20261009-r1:agg:5m:us-equity-extended-hours-v1-2026-10-12",
+          "available_at_utc": "2026-03-03T15:00:00Z"
+        }
+      ],
+      "markers": []
+    },
+    {
+      "kind": "exit",
+      "timeframe": "5m",
+      "title": "5-minute bars from the entry day's pre-market up to the last sell",
+      "cutoff_utc": "2026-03-03T18:00:00Z",
+      "bars": [
+        {
+          "kind": "price_bar",
+          "schema_version": "0.1",
+          "instrument_id": "us:aapl:xnas:2026",
+          "timeframe": "5m",
+          "interval_start_utc": "2026-03-03T15:00:00Z",
+          "interval_end_utc": "2026-03-03T15:05:00Z",
+          "open": "97.7246",
+          "high": "98.2746",
+          "low": "97.2246",
+          "close": "97.7746",
+          "volume": "50000",
+          "volume_unit": "shares",
+          "session": "regular",
+          "is_final": true,
+          "quality": "complete",
+          "lineage": {
+            "kind": "aggregated_1m",
+            "source_timeframe": "1m",
+            "expected_source_bar_count": 5,
+            "observed_source_bar_count": 5,
+            "source_dataset_revision": "fake-aapl-20261009-r1",
+            "calendar_id": "XNAS",
+            "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
+          },
+          "adjustment": "raw",
+          "source_id": "fake-market-data",
+          "source_feed_scope": "synthetic-us-equity-1m",
+          "dataset_revision": "fake-aapl-20261009-r1:agg:5m:us-equity-extended-hours-v1-2026-10-12",
+          "available_at_utc": "2026-03-03T15:05:00Z"
+        },
+        {
+          "kind": "price_bar",
+          "schema_version": "0.1",
+          "instrument_id": "us:aapl:xnas:2026",
+          "timeframe": "5m",
+          "interval_start_utc": "2026-03-03T16:00:00Z",
+          "interval_end_utc": "2026-03-03T16:05:00Z",
+          "open": "98.3903",
+          "high": "98.9403",
+          "low": "97.8903",
+          "close": "98.4403",
+          "volume": "50000",
+          "volume_unit": "shares",
+          "session": "regular",
+          "is_final": true,
+          "quality": "complete",
+          "lineage": {
+            "kind": "aggregated_1m",
+            "source_timeframe": "1m",
+            "expected_source_bar_count": 5,
+            "observed_source_bar_count": 5,
+            "source_dataset_revision": "fake-aapl-20261009-r1",
+            "calendar_id": "XNAS",
+            "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
+          },
+          "adjustment": "raw",
+          "source_id": "fake-market-data",
+          "source_feed_scope": "synthetic-us-equity-1m",
+          "dataset_revision": "fake-aapl-20261009-r1:agg:5m:us-equity-extended-hours-v1-2026-10-12",
+          "available_at_utc": "2026-03-03T16:05:00Z"
+        },
+        {
+          "kind": "price_bar",
+          "schema_version": "0.1",
+          "instrument_id": "us:aapl:xnas:2026",
+          "timeframe": "5m",
+          "interval_start_utc": "2026-03-03T17:45:00Z",
+          "interval_end_utc": "2026-03-03T17:50:00Z",
+          "open": "101.9509",
+          "high": "102.5009",
+          "low": "101.4509",
+          "close": "102.0009",
+          "volume": "50000",
+          "volume_unit": "shares",
+          "session": "regular",
+          "is_final": true,
+          "quality": "complete",
+          "lineage": {
+            "kind": "aggregated_1m",
+            "source_timeframe": "1m",
+            "expected_source_bar_count": 5,
+            "observed_source_bar_count": 5,
+            "source_dataset_revision": "fake-aapl-20261009-r1",
+            "calendar_id": "XNAS",
+            "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
+          },
+          "adjustment": "raw",
+          "source_id": "fake-market-data",
+          "source_feed_scope": "synthetic-us-equity-1m",
+          "dataset_revision": "fake-aapl-20261009-r1:agg:5m:us-equity-extended-hours-v1-2026-10-12",
+          "available_at_utc": "2026-03-03T17:50:00Z"
+        },
+        {
+          "kind": "price_bar",
+          "schema_version": "0.1",
+          "instrument_id": "us:aapl:xnas:2026",
+          "timeframe": "5m",
+          "interval_start_utc": "2026-03-03T17:50:00Z",
+          "interval_end_utc": "2026-03-03T17:55:00Z",
+          "open": "101.6065",
+          "high": "102.1565",
+          "low": "101.1065",
+          "close": "101.6565",
+          "volume": "50000",
+          "volume_unit": "shares",
+          "session": "regular",
+          "is_final": true,
+          "quality": "complete",
+          "lineage": {
+            "kind": "aggregated_1m",
+            "source_timeframe": "1m",
+            "expected_source_bar_count": 5,
+            "observed_source_bar_count": 5,
+            "source_dataset_revision": "fake-aapl-20261009-r1",
+            "calendar_id": "XNAS",
+            "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
+          },
+          "adjustment": "raw",
+          "source_id": "fake-market-data",
+          "source_feed_scope": "synthetic-us-equity-1m",
+          "dataset_revision": "fake-aapl-20261009-r1:agg:5m:us-equity-extended-hours-v1-2026-10-12",
+          "available_at_utc": "2026-03-03T17:55:00Z"
+        },
+        {
+          "kind": "price_bar",
+          "schema_version": "0.1",
+          "instrument_id": "us:aapl:xnas:2026",
+          "timeframe": "5m",
+          "interval_start_utc": "2026-03-03T17:55:00Z",
+          "interval_end_utc": "2026-03-03T18:00:00Z",
+          "open": "101.2294",
+          "high": "101.7794",
+          "low": "100.7294",
+          "close": "101.2794",
+          "volume": "50000",
+          "volume_unit": "shares",
+          "session": "regular",
+          "is_final": true,
+          "quality": "complete",
+          "lineage": {
+            "kind": "aggregated_1m",
+            "source_timeframe": "1m",
+            "expected_source_bar_count": 5,
+            "observed_source_bar_count": 5,
+            "source_dataset_revision": "fake-aapl-20261009-r1",
+            "calendar_id": "XNAS",
+            "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
+          },
+          "adjustment": "raw",
+          "source_id": "fake-market-data",
+          "source_feed_scope": "synthetic-us-equity-1m",
+          "dataset_revision": "fake-aapl-20261009-r1:agg:5m:us-equity-extended-hours-v1-2026-10-12",
+          "available_at_utc": "2026-03-03T18:00:00Z"
+        }
+      ],
+      "markers": [
+        {
+          "time_utc": "2026-03-03T15:00:00Z",
+          "side": "buy",
+          "quantity": "10",
+          "price": "100"
+        },
+        {
+          "time_utc": "2026-03-03T16:00:00Z",
+          "side": "buy",
+          "quantity": "10",
+          "price": "101"
+        }
+      ]
+    },
+    {
+      "kind": "context",
+      "timeframe": "1d",
+      "title": "Daily bars for 120 sessions before the entry day",
+      "cutoff_utc": "2026-03-03T15:00:00Z",
+      "bars": [
+        {
+          "kind": "price_bar",
+          "schema_version": "0.1",
+          "instrument_id": "us:aapl:xnas:2026",
+          "timeframe": "1d",
+          "interval_start_utc": "2026-02-26T09:00:00Z",
+          "interval_end_utc": "2026-02-27T01:00:00Z",
+          "open": "97.4654",
+          "high": "98.0154",
+          "low": "96.9654",
+          "close": "97.5154",
+          "volume": "12345",
+          "volume_unit": "shares",
+          "session": "regular",
+          "is_final": true,
+          "quality": "complete",
+          "lineage": {
+            "kind": "provider",
+            "source_timeframe": "1d",
+            "expected_source_bar_count": 1,
+            "observed_source_bar_count": 1,
+            "source_dataset_revision": null,
+            "calendar_id": "XNAS",
+            "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
+          },
+          "adjustment": "raw",
+          "source_id": "synthetic-fixture",
+          "source_feed_scope": "synthetic",
+          "dataset_revision": "fixture-r1",
+          "available_at_utc": "2026-02-27T01:00:00Z"
+        },
+        {
+          "kind": "price_bar",
+          "schema_version": "0.1",
+          "instrument_id": "us:aapl:xnas:2026",
+          "timeframe": "1d",
+          "interval_start_utc": "2026-02-27T09:00:00Z",
+          "interval_end_utc": "2026-02-28T01:00:00Z",
+          "open": "97.2627",
+          "high": "97.8127",
+          "low": "96.7627",
+          "close": "97.3127",
+          "volume": "12345",
+          "volume_unit": "shares",
+          "session": "regular",
+          "is_final": true,
+          "quality": "complete",
+          "lineage": {
+            "kind": "provider",
+            "source_timeframe": "1d",
+            "expected_source_bar_count": 1,
+            "observed_source_bar_count": 1,
+            "source_dataset_revision": null,
+            "calendar_id": "XNAS",
+            "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
+          },
+          "adjustment": "raw",
+          "source_id": "synthetic-fixture",
+          "source_feed_scope": "synthetic",
+          "dataset_revision": "fixture-r1",
+          "available_at_utc": "2026-02-28T01:00:00Z"
+        },
+        {
+          "kind": "price_bar",
+          "schema_version": "0.1",
+          "instrument_id": "us:aapl:xnas:2026",
+          "timeframe": "1d",
+          "interval_start_utc": "2026-03-02T09:00:00Z",
+          "interval_end_utc": "2026-03-03T01:00:00Z",
+          "open": "97.1158",
+          "high": "97.6658",
+          "low": "96.6158",
+          "close": "97.1658",
+          "volume": "12345",
+          "volume_unit": "shares",
+          "session": "regular",
+          "is_final": true,
+          "quality": "complete",
+          "lineage": {
+            "kind": "provider",
+            "source_timeframe": "1d",
+            "expected_source_bar_count": 1,
+            "observed_source_bar_count": 1,
+            "source_dataset_revision": null,
+            "calendar_id": "XNAS",
+            "calendar_version": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
+          },
+          "adjustment": "raw",
+          "source_id": "synthetic-fixture",
+          "source_feed_scope": "synthetic",
+          "dataset_revision": "fixture-r1",
+          "available_at_utc": "2026-03-03T01:00:00Z"
+        }
+      ],
+      "markers": []
+    }
+  ],
+  "principles": {
+    "version": 1,
+    "after_the_fact": true,
+    "results": [
+      {
+        "item_id": "p1",
+        "scope": "shared",
+        "kind": "stop_loss_pct",
+        "value": "7",
+        "text": "손절 -7%",
+        "status": "kept",
+        "detail": "the price never reached the stop 93.0000 while held (5m bars)"
+      },
+      {
+        "item_id": "p2",
+        "scope": "shared",
+        "kind": "text",
+        "value": null,
+        "text": "뉴스 없는 급등은 추격하지 않는다",
+        "status": "judgment",
+        "detail": "judged by Claude in the report"
+      }
+    ]
+  },
+  "what_if": {
+    "principles": {
+      "type": "principles",
+      "status": "computed",
+      "hindsight": true,
+      "notes": ["all shares are taken at the average buy from the first buy"],
+      "reason": "stop",
+      "exit_price": "93",
+      "exit_at_utc": "2026-03-03T16:30:00Z",
+      "timeframe": "5m",
+      "quantity": "20",
+      "gross_pnl": "-140",
+      "actual_gross_pnl": "40",
+      "difference": "-180"
+    },
+    "strategy": null
+  }
+}
