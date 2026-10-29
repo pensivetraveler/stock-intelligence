@@ -103,6 +103,8 @@ fn ensure_api() -> Option<Child> {
         .args(["run", "uvicorn", "services.api.main:app", "--host", "127.0.0.1", "--port", "8765"])
         .current_dir(&repo)
         .env("UV_CACHE_DIR", repo.join(".uv-cache"))
+        // The API stops itself if this app is killed before it can stop the group.
+        .env("SIW_PARENT_PID", std::process::id().to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::from(log.try_clone().ok()?))
         .stderr(Stdio::from(log));

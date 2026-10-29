@@ -32,6 +32,7 @@ from services.api.indicator_assistant_routes import register_indicator_assistant
 from services.api.indicator_routes import register_indicator_routes
 from services.api.journal_routes import register_import_routes, register_journal_routes
 from services.api.paper_routes import register_paper_routes
+from services.api.parent_watch import parent_pid_from_env, start_parent_watch
 from services.api.review_routes import register_review_routes
 from services.assistant.indicator import call_indicator_claude
 from services.backtest.jobs import BacktestRunner
@@ -757,7 +758,11 @@ def create_app(
         # Under a server, open the fixture and cache at startup so misconfiguration fails
         # fast; clients that skip lifespan events still get the provider on first request.
         provider.get()
+        parent_pid = parent_pid_from_env()
+        parent_watch = start_parent_watch(parent_pid) if parent_pid is not None else None
         yield
+        if parent_watch is not None:
+            parent_watch.set()
         store = ticks_holder[0]
         if store is not None:
             store.flush()  # ticks still in memory when the server stops
