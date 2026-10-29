@@ -2308,3 +2308,18 @@
   - `chart-data.test.ts` 2개 추가(색 변환, 자기 색 캔들만 바뀌고 꼬리 유지). 데스크톱 Vitest·tsc 통과.
   - 브라우저(웹 미리보기, 실제 데이터 폴더의 API·Alpaca SIP, AAPL 일봉, 읽기 조회만): 캔버스 픽셀을 셌다. 프리마켓을 켜면 원래 색 몸통 픽셀이 상승 15,212 → 2,252(꼬리)로 줄고 반투명 몸통 색(41,113,92) 8,778이 나타났다. 끄면 원래대로(반투명 0). 콘솔에 스크립트 오류는 없었다(API 전환 중 네트워크 오류만).
 - **남은 위험:** 프리마켓을 켜면 일봉이 옅어 보인다. 미국 데이마켓 캔들(별도 시리즈, 일봉 위)은 바꾸지 않았다.
+
+## 앱 강제 종료 시 API 정리 — 2026-10-29
+
+- **사용자 요청:** 잔여 작업 "강제 종료(SIGKILL·크래시) 때 API가 남는다"(SIW Agent·SIW Research 공통)를 처리한다.
+- **변경:**
+  - `services/api/parent_watch.py`: 환경변수 `SIW_PARENT_PID`가 있으면 API가 2초마다 그 프로세스가 있는지 본다. 없어지면 자기에게 SIGTERM을 보내 정상 종료와 같은 경로(lifespan 정리)로 끝난다. uvicorn이 끝나면 `uv`도 끝난다.
+  - `services/api/main.py`의 lifespan이 감시를 시작하고, 서버가 멈출 때 감시를 끝낸다.
+  - SIW Agent(`apps/desktop/src-tauri/src/lib.rs`)와 SIW Research(`apps/electron/api-process.cjs`)가 API를 띄울 때 자기 PID를 넘긴다.
+  - 변수가 없거나 1 이하·숫자가 아니면 감시하지 않는다. 터미널에서 띄운 API와 상주 실행기는 영향을 받지 않는다.
+- **검증:**
+  - `tests/api/test_parent_watch.py` 4개: 변수 해석, 부모가 사라지면 멈춤, 감시를 끝내면 멈추지 않음, 실제 부모 프로세스를 SIGKILL하면 자식이 SIGTERM으로 끝남. `tests/api` 44개 통과, ruff 통과.
+  - 실제 Electron 앱(포트 8799): 앱을 SIGKILL로 강제 종료하자 6초 안에 uv·uvicorn이 모두 없어지고 포트가 비었다(변경 전에는 남아서 `/health` 200). 정상 종료도 그대로 정리된다.
+  - `cargo test` 4개 통과.
+- **미검증:** SIW Agent `.app`을 실제로 강제 종료해 보지 않았다(8765에서 실제 데이터로 API를 띄우게 돼서). Python 쪽은 같은 경로다.
+- **남은 위험:** 부모 PID가 2초 안에 다른 프로세스에 재사용되면 API가 남는다. 강제 종료 뒤 최대 약 2초 동안 API가 응답한다.
