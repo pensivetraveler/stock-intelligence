@@ -571,7 +571,8 @@ def test_meritz_capped_latest_page_marks_older_minutes_beyond_history() -> None:
             ProviderRateLimitError,
         ),
         (
-            j({"rsp_cd": "5820", "rsp_msg": "조회할 자료가 없습니다."}, status=500),
+            # "5820" (no rows) is an empty reply, not an error; other codes are refused.
+            j({"rsp_cd": "IGW50002", "rsp_msg": "지연 시세로 조회하십시오."}, status=500),
             InvalidBarsQueryError,
         ),
     ],

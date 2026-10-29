@@ -49,3 +49,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0039-indicator-style-and-lower-timeframes.md`: (accepted) 보조지표 설정을 TradingView식 입력·스타일 탭으로(소스, 선별 색·굵기·선 모양·표시, 기준선), 더 작은 시간대 지표(각 차트 봉의 마지막 작은 봉 값, 미래 값 없음)
 - `0040-pine-script-indicators.md`: (accepted, 보충 2026-10-25) Pine Script — 앱 안의 인터프리터(eval 없음, 봉 단위 실행, 미래 값 없음, 실행 한도). 입력·plot·plotshape·bgcolor·fill·그리기(line/label/box/table)·배열·문자열·switch·메서드, request.security(확정 시점 정렬, lookahead는 x[1]만), strategy는 차트 백테스트 체결만(주문·원장 없음, 봉 안 순서 가정 표시)
 - `0041-premarket-high-on-daily-charts.md`: (accepted, 보충 2026-10-26) 미국 일봉 차트의 프리마켓 — 세션마다 장전 구간 `960m` 봉 하나를 따로 받아(최근 60세션, 일봉을 받은 뒤) 일봉에 섞지 않고 일봉 뒤 반투명 캔들로 표시, 최신 고가 가격선, 미확정은 회색·점선, 리플레이는 장전 봉이 닫힌 뒤에만
+- `0043-meritz-open-api.md`: (accepted, 실계좌 확인 전) 메리츠증권 Open API 읽기 전용 연동 — 키별 공유 세션(MAC 주소는 키와 함께 저장, 허용 목록에 주문 경로 없음), 해외주식 체결내역 → 증권사 원장(체결 시각은 확인 전까지 한국 시간으로 보고 세션 밖은 제외), 계좌 잔고·현금·미체결, 일봉·현재가(시세 출처 선택), 실시간 시세 중계(토스와 섞지 않음)

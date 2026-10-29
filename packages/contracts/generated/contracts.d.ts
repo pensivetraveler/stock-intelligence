@@ -999,15 +999,15 @@ export interface BrokerOrderExecution {
   quantity: NonNegativeDecimalString;
   price: NonNegativeDecimalString;
   /**
-   * null when the broker's order history does not report it (Kiwoom); never assumed zero.
+   * null when the broker's order history does not report it (Kiwoom, Meritz); never assumed zero.
    */
   fees: null | NonNegativeDecimalString;
   /**
-   * null when the broker's order history does not report it (Kiwoom); never assumed zero.
+   * null when the broker's order history does not report it (Kiwoom, Meritz); never assumed zero.
    */
   commission: null | NonNegativeDecimalString;
   /**
-   * null when the broker's order history does not report it (Kiwoom); never assumed zero.
+   * null when the broker's order history does not report it (Kiwoom, Meritz); never assumed zero.
    */
   tax: null | NonNegativeDecimalString;
   /**
@@ -1016,7 +1016,7 @@ export interface BrokerOrderExecution {
   currency: "USD" | "KRW";
   executed_at_utc: null | UtcTimestamp;
   /**
-   * reported_last_fill: the broker's filledAt for the order, when its last fill happened (Toss). reported_fill_time: the one fill time the broker reports for the order, without saying whether it is the first or the last fill (Kiwoom cntr_time). Neither is a per-fill time. not_reported: the broker reports no fill time (Kiwoom domestic settlement lines); executed_at_utc is null and trade_date gives the day.
+   * reported_last_fill: the broker's filledAt for the order, when its last fill happened (Toss). reported_fill_time: the one fill time the broker reports for the order, without saying whether it is the first or the last fill (Kiwoom cntr_time, Meritz cntg_ymdh). Neither is a per-fill time. not_reported: the broker reports no fill time (Kiwoom domestic settlement lines); executed_at_utc is null and trade_date gives the day.
    */
   time_meaning: "reported_last_fill" | "reported_fill_time" | "not_reported";
   /**
@@ -1030,7 +1030,7 @@ export interface BrokerOrderExecution {
    */
   ordered_at_utc: null | UtcTimestamp;
   settlement_date: null | string;
-  broker_id: "toss" | "kiwoom";
+  broker_id: "toss" | "kiwoom" | "meritz";
   broker_account_ref: Identifier;
   broker_order_id: string;
   verification_status: "broker_api_reported";
@@ -1061,7 +1061,7 @@ export interface BrokerLedgerResponse {
 export interface BrokerSyncResult {
   kind: "broker_sync_result";
   schema_version: SchemaVersion;
-  broker_id: "toss" | "kiwoom";
+  broker_id: "toss" | "kiwoom" | "meritz";
   synced_at_utc: UtcTimestamp;
   accounts: number;
   orders_seen: number;
@@ -1072,7 +1072,7 @@ export interface BrokerSyncResult {
     unsupported_currency: number;
     unknown_instrument: number;
     /**
-     * Kiwoom: orders whose reported time could not be placed on the order date's US session (04:00-20:00 New York), for example daytime-session orders. Not stored.
+     * Kiwoom and Meritz: orders whose reported time could not be placed on a US session (04:00-20:00 New York, or the day market before it). Not stored.
      */
     time_unresolved?: number;
   };
@@ -1096,7 +1096,7 @@ export interface BrokerSyncResult {
 export interface BrokerAccountSnapshot {
   kind: "broker_account_snapshot";
   schema_version: SchemaVersion;
-  broker_id: "toss";
+  broker_id: "toss" | "meritz";
   observed_at_utc: UtcTimestamp;
   accounts: {
     account_ref: Identifier;

@@ -1,36 +1,41 @@
-"""메리츠증권 Open API US minute-bar adapter (read-only, from the official spec).
+"""메리츠증권 Open API US market data (read-only, from the official spec): minute bars,
+daily bars and a point-in-time quote.
 
-Spec: openapi.imeritz.com (JSON download /api-spec/download/json, generated 2026-10-17;
-how-to page). Public beta 2026-10-12 to 10-25, general availability planned 2026-10-26.
+Spec: openapi.imeritz.com (JSON download /api-spec/download/json, generated 2026-10-26;
+how-to page). Public beta 2026-10-12 to 10-25, general availability 2026-10-26.
 Documented facts used here:
 - `GET /market/v1/overseas/candles/minutes` (TR ohhts_eapi_005r) returns at most the
-  latest 40 bars, newest first, with no date or paging parameter;
-- bar times are `korea_date` + `korea_hour` in Korean time;
-- every error comes back as HTTP 500, so success is judged by `rsp_cd == "0000"`;
-  `EGW00200` means the per-second limit was exceeded;
-- every call needs a `mac_address` header (12 uppercase hex characters);
+  latest 40 bars, newest first, with no date or paging parameter; bar times are
+  `korea_date` + `korea_hour` in Korean time;
+- `GET /market/v1/overseas/candles/days` (TR ohhts_6001_003r) returns every day between
+  `from` and `to` (YYYYMMDD), newest first; `mod_stpr_cls_code` "1" asks for prices as
+  traded and "0" for split-adjusted ones;
+- the current price (TR ohhts_6000_001r) carries no time; the tick list (`trades/ticks`)
+  carries Korean clock times without a date; the order book carries no time;
 - data may be used only for the account holder's own investment, never passed on.
-Not documented: whether `korea_hour` marks the bar start or end, and session coverage.
+Token, MAC header and `rsp_cd` handling live in `meritz_session`.
+Not documented: whether `korea_hour` marks the bar start or end, session coverage of the
+minute and daily bars, and whether a daily `date` is the New York trading date (assumed).
 """
 
 from __future__ import annotations
 
 import os
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
 
+from packages.contracts.validator import validate_document
+from services.credentials.catalog import LISTING_ONLY
 from services.market_data.broker_common import (
-    AllowlistedClient,
     BrokerConfigError,
     RawMinute,
     SourceIdentity,
-    TokenCache,
     account_environment,
     build_result,
     capabilities,
@@ -41,25 +46,42 @@ from services.market_data.broker_common import (
     require,
     validate_minute_query,
 )
-from services.market_data.calendar import TradingSessionName, UsEquityCalendar
+from services.market_data.calendar import CalendarError, TradingSessionName, UsEquityCalendar
+from services.market_data.daily import (
+    ADJUSTED,
+    DailySource,
+    RawDay,
+    build_daily_result,
+    sessions_in_range,
+    validate_daily_query,
+)
+from services.market_data.instruments import parse_instrument
+from services.market_data.meritz_session import (
+    BASE_URL,
+    DAYS_PATH,
+    EXCHANGE_CODES,
+    MINUTES_PATH,
+    ORDERBOOK_PATH,
+    PRICES_PATH,
+    TICKS_PATH,
+    MeritzCredentials,
+    MeritzSession,
+    normalize_mac,
+    session_for,
+)
 from services.market_data.provider import (
     BarsQuery,
     BarsResult,
     InstrumentNotFoundError,
     InvalidBarsQueryError,
-    ProviderAuthError,
     ProviderDataError,
-    ProviderRateLimitError,
-    ProviderUnavailableError,
 )
 
 SEOUL = ZoneInfo("Asia/Seoul")
-TOKEN_PATH = "/oauth2/token"
-MINUTES_PATH = "/market/v1/overseas/candles/minutes"
 PAGE_CAP = 40
-EXCHANGE_CODES = {"XNAS": "OQ", "XNYS": "NY", "XASE": "AX", "ARCX": "AX"}
-RATE_LIMIT_CODES = {"EGW00200"}
-MAC_PATTERN = re.compile(r"^[0-9A-F]{12}$")
+# One daily request covers at most this many calendar days; the spec names no cap.
+DAILY_CHUNK_DAYS = 366
+SOURCE_ID = "meritz-us"
 
 
 @dataclass(frozen=True)
@@ -67,7 +89,7 @@ class MeritzConfig:
     app_key: str
     app_secret: str
     mac_address: str
-    base_url: str = "https://openapi.imeritz.com:9443"
+    base_url: str = BASE_URL
     symbols: tuple[tuple[str, str], ...] = (("SPY", "ARCX"), ("AAPL", "XNAS"), ("MSFT", "XNAS"))
     sessions: frozenset[TradingSessionName] = frozenset({"regular"})
     finality_minutes: int = 15
@@ -77,6 +99,10 @@ class MeritzConfig:
     def __repr__(self) -> str:
         return f"MeritzConfig(base_url={self.base_url!r}, symbols={self.symbols!r})"
 
+    @property
+    def credentials(self) -> MeritzCredentials:
+        return MeritzCredentials(self.app_key, self.app_secret, self.mac_address, self.base_url)
+
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> MeritzConfig:
         values = os.environ if env is None else env
@@ -85,9 +111,13 @@ class MeritzConfig:
         )
         # No demo domain is documented, so demo account keys are refused.
         account_environment(values, "SIW_MERITZ_ENVIRONMENT", None, "Meritz Securities")
-        mac = mac.replace(":", "").replace("-", "").upper()
-        if not MAC_PATTERN.fullmatch(mac):
-            raise BrokerConfigError("SIW_MERITZ_MAC_ADDRESS must be 12 hexadecimal characters")
+        try:
+            # An adapter built only to list instruments gets placeholders and never calls.
+            mac = mac if mac == LISTING_ONLY else normalize_mac(mac)
+        except BrokerConfigError as exc:
+            raise BrokerConfigError(
+                "SIW_MERITZ_MAC_ADDRESS must be 12 hexadecimal characters"
+            ) from exc
         symbols = parse_symbols(
             values.get("SIW_MERITZ_SYMBOLS", "SPY:ARCX,AAPL:XNAS,MSFT:XNAS"), "SIW_MERITZ_SYMBOLS"
         )
@@ -112,8 +142,16 @@ class MeritzConfig:
         )
 
 
+def listing_of(instrument_id: str) -> tuple[str, str] | None:
+    """(symbol, quote-API market code) of a US listing on a venue Meritz quotes."""
+    parsed = parse_instrument(instrument_id)
+    if parsed is None or parsed.market != "US" or parsed.venue not in EXCHANGE_CODES:
+        return None
+    return parsed.symbol, EXCHANGE_CODES[parsed.venue]
+
+
 class MeritzMarketDataProvider:
-    source_id = "meritz-us"
+    source_id = SOURCE_ID
 
     def __init__(
         self,
@@ -125,14 +163,8 @@ class MeritzMarketDataProvider:
         self.config = config
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._calendar = UsEquityCalendar("XNAS")
-        # No published request limit beyond the EGW00200 error; space calls conservatively.
-        self._http = AllowlistedClient(
-            config.base_url,
-            [("POST", TOKEN_PATH), ("GET", MINUTES_PATH)],
-            transport=transport,
-            min_interval_seconds=0.2,
-        )
-        self._token = TokenCache(self._issue_token, margin_seconds=60)
+        self._transport = transport
+        self._session: MeritzSession | None = None
         self._instruments = {f"us:{s.lower()}:{v.lower()}:2026": (s, v) for s, v in config.symbols}
         self.last_raw_sample: dict[str, Any] | None = None
         self.identity = SourceIdentity(
@@ -144,6 +176,13 @@ class MeritzMarketDataProvider:
             publication_delay_minutes=15 if config.delayed else 0,
             finality_minutes=config.finality_minutes,
         )
+
+    @property
+    def session(self) -> MeritzSession:
+        # Built on first use: listing instruments never needs the key or the MAC address.
+        if self._session is None:
+            self._session = session_for(self.config.credentials, transport=self._transport)
+        return self._session
 
     def capabilities(self) -> dict[str, Any]:
         return capabilities(self.source_id, self.identity.feed_scope, self._now())
@@ -170,59 +209,97 @@ class MeritzMarketDataProvider:
         floor = min(item.start_utc for item in raw) if len(raw) >= PAGE_CAP else None
         return build_result(query, raw, self.identity, self._calendar, now, history_start_utc=floor)
 
-    def _issue_token(self) -> tuple[str, float]:
-        response = self._http.request(
-            "POST",
-            TOKEN_PATH,
-            data={
-                "grant_type": "client_credentials",
-                "client_id": self.config.app_key,
-                "client_secret": self.config.app_secret,
-                "scope": "login",
-            },
-        )
-        try:
-            payload = response.json()
-        except ValueError as exc:
-            raise ProviderAuthError(
-                f"Meritz refused to issue a token ({response.status_code})"
-            ) from exc
-        token = payload.get("access_token") if isinstance(payload, dict) else None
-        if response.status_code >= 400 or not token:
-            raise ProviderAuthError(f"Meritz refused to issue a token ({response.status_code})")
-        return str(token), float(payload.get("expires_in", 86_400))
+    def get_adjusted_daily_bars(self, query: BarsQuery, adjustment: str) -> BarsResult:
+        """Daily bars adjusted for splits (`mod_stpr_cls_code` "0"); never cached, since
+        adjusted history changes when a new split is applied. Dividends are not adjusted."""
+        if adjustment not in ADJUSTED:
+            raise InvalidBarsQueryError("adjustment must be split_adjusted or fully_adjusted")
+        if adjustment != "split_adjusted":
+            raise InvalidBarsQueryError(
+                "Meritz's adjusted daily prices reflect splits only; use split_adjusted"
+            )
+        return self.get_daily_bars(query, adjustment)
 
-    def _latest(self, symbol: str, exchange: str) -> list[dict[str, Any]]:
-        params = {
+    def get_daily_bars(self, query: BarsQuery, adjustment: str = "raw") -> BarsResult:
+        """Daily bars (prices as traded unless asked) for sessions opening in the range."""
+        now = self._now()
+        validate_daily_query(query, "1d", now)
+        listing = listing_of(query.instrument_id)
+        if listing is None:
+            raise InstrumentNotFoundError("not a US listing on a venue Meritz quotes")
+        symbol, market = listing
+        try:
+            sessions = sessions_in_range(self._calendar, query.start_utc, query.end_utc)
+        except CalendarError as exc:
+            raise InvalidBarsQueryError(str(exc)) from exc
+        raw: dict[date, RawDay] = {}
+        if sessions and sessions[0].regular_open_utc < now:
+            cursor, last = sessions[0].session_date, sessions[-1].session_date
+            while cursor <= last:
+                stop = min(last, cursor + timedelta(days=DAILY_CHUNK_DAYS - 1))
+                for row in self._days(symbol, market, cursor, stop, adjustment != "raw"):
+                    day = self._day(row)
+                    if day is None or not cursor <= day.session_date <= stop:
+                        continue
+                    if day.session_date in raw:
+                        raise ProviderDataError("Meritz returned two daily bars for one date")
+                    raw[day.session_date] = day
+                cursor = stop + timedelta(days=1)
+        source = DailySource(
+            source_id=self.source_id,
+            feed_scope=self.identity.feed_scope,
+            dataset_revision=f"{self.identity.dataset_revision}:1d"
+            if adjustment == "raw"
+            else f"{self.source_id}-adjusted-r1:1d:split:asof-{now.date()}",
+            adjustment=adjustment,
+            publication_delay_minutes=self.identity.publication_delay_minutes,
+            finality_minutes=self.config.finality_minutes,
+        )
+        return build_daily_result(query, raw, source, self._calendar, now)
+
+    def _quote_params(self, symbol: str, market: str) -> dict[str, str]:
+        return {
             "mrkt_div_code": "OV",
-            "mrkt_cls_code": exchange,
+            "mrkt_cls_code": market,
             "iscd": symbol,
             "dely_rltm_cls_code": "1" if self.config.delayed else "0",
-            "hour_cls_code": "60",
         }
-        headers = {
-            "authorization": f"Bearer {self._token.get()}",
-            "mac_address": self.config.mac_address,
+
+    def _latest(self, symbol: str, market: str) -> list[dict[str, Any]]:
+        params = {**self._quote_params(symbol, market), "hour_cls_code": "60"}
+        data = self.session.get(MINUTES_PATH, params).get("data")
+        return [row for row in data if isinstance(row, dict)] if isinstance(data, list) else []
+
+    def _days(
+        self, symbol: str, market: str, start: date, stop: date, adjusted: bool
+    ) -> list[dict[str, Any]]:
+        params = {
+            **self._quote_params(symbol, market),
+            "mod_stpr_cls_code": "0" if adjusted else "1",
+            "from": start.strftime("%Y%m%d"),
+            "to": stop.strftime("%Y%m%d"),
         }
-        response = self._http.request("GET", MINUTES_PATH, params=params, headers=headers)
+        data = self.session.get(DAYS_PATH, params).get("data")
+        return [row for row in data if isinstance(row, dict)] if isinstance(data, list) else []
+
+    def _day(self, row: dict[str, Any]) -> RawDay | None:
         try:
-            payload = response.json()
-        except ValueError as exc:
-            raise ProviderUnavailableError(
-                f"Meritz returned no JSON ({response.status_code})"
-            ) from exc
-        code = str(payload.get("rsp_cd", "")) if isinstance(payload, dict) else ""
-        if code == "0000":
-            return list(payload.get("data") or [])
-        if code in RATE_LIMIT_CODES:
-            raise ProviderRateLimitError("Meritz per-second limit reached; retry later")
-        message = str(payload.get("rsp_msg", ""))[:200] if isinstance(payload, dict) else ""
-        if response.status_code in (401, 403):
-            raise ProviderAuthError(f"Meritz rejected the request ({response.status_code} {code})")
-        if not code:
-            raise ProviderUnavailableError(f"Meritz is unavailable ({response.status_code})")
-        # Every error is HTTP 500 with a code; the spec gives no token-specific codes.
-        raise InvalidBarsQueryError(f"Meritz refused the query ({code}): {message}")
+            day = datetime.strptime(str(row["date"]), "%Y%m%d").date()
+        except (KeyError, ValueError) as exc:
+            raise ProviderDataError("Meritz returned a daily bar without a valid date") from exc
+        volume = decimal_field(row, "acml_vol")
+        # A day without trades (seen in the spec's example for the day not yet traded,
+        # with every price equal to the previous close) is not a bar.
+        if volume == 0:
+            return None
+        return RawDay(
+            day,
+            decimal_field(row, "oprc"),
+            decimal_field(row, "hprc"),
+            decimal_field(row, "lprc"),
+            decimal_field(row, "prpr"),
+            volume,
+        )
 
     def _minute(self, record: dict[str, Any]) -> RawMinute:
         try:
@@ -244,3 +321,128 @@ class MeritzMarketDataProvider:
             close=decimal_field(record, "prpr"),
             volume=decimal_field(record, "cntg_vol"),
         )
+
+
+# --- quote ---------------------------------------------------------------------------
+
+TRADE_COUNT = 30
+
+
+def _price(value: object) -> str:
+    try:
+        number = Decimal(str(value).replace(",", "").strip())
+    except InvalidOperation as exc:
+        raise ProviderDataError("Meritz returned a quote with an invalid number") from exc
+    if not number.is_finite() or number < 0:
+        raise ProviderDataError("Meritz returned a quote with an invalid number")
+    return format(number, "f")
+
+
+def _utc_ms(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def tick_times(clocks: list[str], now: datetime) -> list[datetime | None]:
+    """Instants of Korean clock times listed newest first, none after `now`.
+
+    The tick list carries times without a date: the newest is the latest instant with
+    its clock time not after `now`, and each older one the latest not after the next
+    newer tick. A clock that cannot be read gets None, and the walk goes on.
+    """
+    out: list[datetime | None] = []
+    bound = now.astimezone(SEOUL)
+    for clock in clocks:
+        try:
+            parsed = datetime.strptime(clock, "%H%M%S").time()
+        except ValueError:
+            out.append(None)
+            continue
+        moment = datetime.combine(bound.date(), parsed, SEOUL)
+        if moment > bound:
+            moment -= timedelta(days=1)
+        out.append(moment)
+        bound = moment
+    return out
+
+
+def market_quote(
+    session: MeritzSession,
+    instrument_id: str,
+    now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    delayed: bool = False,
+) -> dict[str, Any]:
+    """Last trade, order book and recent trades of a US listing, read live from Meritz.
+
+    The current-price reply carries no time, so the last price is taken from the newest
+    tick, which does. The order book carries no time either: its `at_utc` is when this
+    API read it. US listings have no daily price limits.
+    """
+    listing = listing_of(instrument_id)
+    if listing is None:
+        raise InvalidBarsQueryError("not a US listing on a venue Meritz quotes")
+    symbol, market = listing
+    params = {
+        "mrkt_div_code": "OV",
+        "mrkt_cls_code": market,
+        "iscd": symbol,
+        "dely_rltm_cls_code": "1" if delayed else "0",
+    }
+    observed = now()
+    price = session.get(PRICES_PATH, params).get("data")
+    price = price if isinstance(price, dict) else {}
+    # A wrong code answers "0000" with an empty iscd and zero prices (spec).
+    if not str(price.get("iscd") or "").strip():
+        raise InvalidBarsQueryError(f"Meritz has no quote for {symbol}")
+    currency = str(price.get("crnc_code") or "USD").strip()
+    if currency != "USD":
+        raise ProviderDataError(f"Meritz returned a {currency} quote for a US listing")
+    ticks_data = session.get(TICKS_PATH, params).get("data")
+    listed = ticks_data if isinstance(ticks_data, list) else []
+    rows = [row for row in listed if isinstance(row, dict)][:TRADE_COUNT]
+    times = tick_times([str(row.get("korea_hour") or "") for row in rows], observed)
+    trades = [
+        {
+            "price": _price(row.get("prpr")),
+            "volume": _price(row.get("cntg_vol")),
+            "at_utc": _utc_ms(moment),
+        }
+        for row, moment in zip(rows, times, strict=True)
+        if moment is not None
+    ]
+    book_data = session.get(ORDERBOOK_PATH, params).get("data")
+    book = book_data if isinstance(book_data, dict) else {}
+
+    def levels(side: str, volume: str) -> list[dict[str, str]]:
+        out = []
+        for level in range(1, 11):
+            level_price = _price(book.get(f"{side}{level}", "0"))
+            if Decimal(level_price) == 0:
+                continue  # an empty level is sent as 0
+            out.append({"price": level_price, "volume": _price(book.get(f"{volume}{level}", "0"))})
+        return out
+
+    asks, bids = levels("askp", "askp_rsqn"), levels("bidp", "bidp_rsqn")
+    observed_text = (
+        observed.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    )
+    document: dict[str, Any] = {
+        "kind": "market_quote",
+        "schema_version": "0.1",
+        "instrument_id": instrument_id,
+        "symbol": symbol,
+        "source_id": "meritz-us-delayed" if delayed else SOURCE_ID,
+        "currency": "USD",
+        "observed_at_utc": observed_text,
+        "last": {"price": trades[0]["price"], "at_utc": trades[0]["at_utc"]} if trades else None,
+        # Delayed quotes send every level as 0: no book rather than an empty one.
+        "orderbook": {"at_utc": _utc_ms(observed), "asks": asks, "bids": bids}
+        if asks or bids
+        else None,
+        "trades": trades,
+        "price_limits": None,
+    }
+    try:
+        validate_document(document)
+    except ValueError as exc:
+        raise ProviderDataError(f"Meritz quote violates the contract: {exc}") from exc
+    return document

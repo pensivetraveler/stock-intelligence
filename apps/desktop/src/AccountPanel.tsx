@@ -16,15 +16,20 @@ interface AccountPanelProps {
 
 const dash = (value: string | null | undefined) => value ?? "—";
 
+type Account = BrokerAccountSnapshot["accounts"][number];
+
 /**
- * Read-only view of every Toss account (holdings, buying power, commission rates, open
- * orders and conditional orders) and on-demand syncs of filled Toss and Kiwoom orders into
- * the broker ledger. Nothing here can place, change or cancel an order.
+ * Read-only view of every Toss account and the Meritz key's account (holdings, buying
+ * power, open orders; Toss also commission rates and conditional orders) and on-demand
+ * syncs of filled Toss, Kiwoom and Meritz orders into the broker ledger. Nothing here can
+ * place, change or cancel an order.
  */
 export function AccountPanel({ api, onSynced }: AccountPanelProps) {
   const { t } = useI18n();
   const [snapshot, setSnapshot] = useState<BrokerAccountSnapshot | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [meritz, setMeritz] = useState<BrokerAccountSnapshot | null>(null);
+  const [meritzError, setMeritzError] = useState<unknown>(null);
   const [sync, setSync] = useState<
     | { state: "idle" }
     | { state: "busy" }
@@ -37,10 +42,15 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
   const load = useCallback(() => {
     let current = true;
     setError(null);
+    setMeritzError(null);
     api
       .brokerAccount()
       .then((result) => current && setSnapshot(result))
       .catch((reason: unknown) => current && setError(reason));
+    api
+      .meritzAccount()
+      .then((result) => current && setMeritz(result))
+      .catch((reason: unknown) => current && setMeritzError(reason));
     return () => {
       current = false;
     };
@@ -48,15 +58,19 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
 
   useEffect(() => load(), [load]);
 
-  const runSync = (broker: "toss" | "kiwoom" | "kiwoom-kr" | "kiwoom-fees") => {
+  const runSync = (
+    broker: "toss" | "kiwoom" | "kiwoom-kr" | "kiwoom-fees" | "meritz",
+  ) => {
     setSync({ state: "busy" });
     (broker === "kiwoom"
       ? api.syncKiwoom(kiwoomSince || undefined)
-      : broker === "kiwoom-kr"
-        ? api.syncKiwoomDomestic(kiwoomSince || undefined)
-        : broker === "kiwoom-fees"
-          ? api.syncKiwoomFees(kiwoomSince || undefined)
-          : api.syncBroker()
+      : broker === "meritz"
+        ? api.syncMeritz(kiwoomSince || undefined)
+        : broker === "kiwoom-kr"
+          ? api.syncKiwoomDomestic(kiwoomSince || undefined)
+          : broker === "kiwoom-fees"
+            ? api.syncKiwoomFees(kiwoomSince || undefined)
+            : api.syncBroker()
     )
       .then((result) => {
         setSync({ state: "done", result });
@@ -72,6 +86,157 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
       : t("account.failed", {
           error: reason instanceof Error ? reason.message : String(reason),
         });
+
+  const accountView = (account: Account, broker: "toss" | "meritz") => (
+    <div className="ledger" key={account.account_ref}>
+      <h3>
+        {broker === "meritz"
+          ? t("account.headingMeritz", { type: account.account_type })
+          : t("account.heading", {
+              suffix: account.account_suffix ?? "????",
+              type: account.account_type,
+            })}
+      </h3>
+      {account.summary ? (
+        <p>
+          {t("account.summary", {
+            usd: dash(account.summary.market_value.usd),
+            krw: dash(account.summary.market_value.krw),
+            pnlUsd: dash(account.summary.profit_loss.usd),
+            pnlKrw: dash(account.summary.profit_loss.krw),
+            rate: dash(account.summary.profit_loss_rate),
+          })}
+        </p>
+      ) : null}
+      <p>
+        {t("account.buyingPower", {
+          usd: dash(account.buying_power.usd),
+          krw: dash(account.buying_power.krw),
+        })}
+      </p>
+      <h3>{t("account.holdings")}</h3>
+      {account.holdings.length === 0 ? (
+        <p className="workspace-note">{t("account.noHoldings")}</p>
+      ) : (
+        <table className="quote-trades">
+          <thead>
+            <tr>
+              <th>{t("journal.symbol")}</th>
+              <th>{t("journal.qty")}</th>
+              <th>{t("journal.avgPrice")}</th>
+              <th>{t("quote.price")}</th>
+              <th>P&L</th>
+              <th>{t("account.sellable")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {account.holdings.map((holding) => {
+              const key = `${account.account_seq}:${holding.symbol}`;
+              return (
+                <tr key={holding.symbol}>
+                  <td title={holding.name ?? undefined}>{holding.symbol}</td>
+                  <td>{dash(holding.quantity)}</td>
+                  <td>{dash(holding.average_purchase_price)}</td>
+                  <td>{dash(holding.last_price)}</td>
+                  <td>
+                    {dash(holding.profit_loss)} {holding.currency ?? ""}
+                  </td>
+                  <td>
+                    {broker !== "toss"
+                      ? "—"
+                      : (sellable[key] ?? (
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() =>
+                              void api
+                                .sellableQuantity(
+                                  account.account_seq,
+                                  holding.symbol,
+                                )
+                                .then((result) =>
+                                  setSellable((previous) => ({
+                                    ...previous,
+                                    [key]: result.sellable_quantity,
+                                  })),
+                                )
+                                .catch(() =>
+                                  setSellable((previous) => ({
+                                    ...previous,
+                                    [key]: "—",
+                                  })),
+                                )
+                            }
+                          >
+                            {t("account.check")}
+                          </button>
+                        ))}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      <h3>{t("account.openOrders")}</h3>
+      {account.open_orders.length === 0 ? (
+        <p className="workspace-note">{t("account.noOpenOrders")}</p>
+      ) : (
+        <table className="quote-trades">
+          <tbody>
+            {account.open_orders.map((order) => (
+              <tr key={order.broker_order_id}>
+                <td>{order.symbol}</td>
+                <td>{order.side}</td>
+                <td>{order.status}</td>
+                <td>
+                  {dash(order.filled_quantity)} / {dash(order.quantity)}
+                </td>
+                <td>{dash(order.price)}</td>
+                <td>
+                  {order.ordered_at_utc
+                    ? exchangeTime(order.ordered_at_utc)
+                    : ""}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <h3>{t("account.conditional")}</h3>
+      {account.open_conditional_orders.length === 0 ? (
+        <p className="workspace-note">{t("account.noConditional")}</p>
+      ) : (
+        <table className="quote-trades">
+          <tbody>
+            {account.open_conditional_orders.map((order) => (
+              <tr key={order.conditional_order_id}>
+                <td>{order.symbol}</td>
+                <td>{order.type}</td>
+                <td>{order.status}</td>
+                <td>{dash(order.quantity)}</td>
+                <td>{dash(order.expire_date)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <h3>{t("account.commissions")}</h3>
+      <p>
+        {account.commission_rates
+          .map(
+            (rate) =>
+              `${rate.market_country} ${dash(rate.rate)}${rate.end_date ? ` (~${rate.end_date})` : ""}`,
+          )
+          .join(" · ") || "—"}
+      </p>
+      {account.errors.length ? (
+        <p className="chart-error">
+          {t("account.partErrors", { errors: account.errors.join(" · ") })}
+        </p>
+      ) : null}
+    </div>
+  );
 
   return (
     <section className="quote-panel" aria-label={t("account.title")}>
@@ -106,6 +271,13 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
         >
           {t("account.syncKiwoomFees")}
         </button>{" "}
+        <button
+          type="button"
+          disabled={sync.state === "busy"}
+          onClick={() => runSync("meritz")}
+        >
+          {t("account.syncMeritz")}
+        </button>{" "}
         <label>
           {t("account.kiwoomSince")}{" "}
           <input
@@ -135,6 +307,11 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
                 n: sync.result.skipped.time_unresolved ?? 0,
               })
             : null}
+          {sync.result.broker_id === "meritz"
+            ? t("account.meritzNote", {
+                n: sync.result.skipped.time_unresolved ?? 0,
+              })
+            : null}
         </p>
       ) : null}
       {sync.state === "failed" ? (
@@ -153,154 +330,22 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
       {snapshot && snapshot.accounts.length === 0 ? (
         <p className="workspace-note">{t("account.none")}</p>
       ) : null}
-      {snapshot?.accounts.map((account) => (
-        <div className="ledger" key={account.account_ref}>
-          <h3>
-            {t("account.heading", {
-              suffix: account.account_suffix ?? "????",
-              type: account.account_type,
-            })}
-          </h3>
-          {account.summary ? (
-            <p>
-              {t("account.summary", {
-                usd: dash(account.summary.market_value.usd),
-                krw: dash(account.summary.market_value.krw),
-                pnlUsd: dash(account.summary.profit_loss.usd),
-                pnlKrw: dash(account.summary.profit_loss.krw),
-                rate: dash(account.summary.profit_loss_rate),
-              })}
-            </p>
-          ) : null}
-          <p>
-            {t("account.buyingPower", {
-              usd: dash(account.buying_power.usd),
-              krw: dash(account.buying_power.krw),
-            })}
-          </p>
-          <h3>{t("account.holdings")}</h3>
-          {account.holdings.length === 0 ? (
-            <p className="workspace-note">{t("account.noHoldings")}</p>
-          ) : (
-            <table className="quote-trades">
-              <thead>
-                <tr>
-                  <th>{t("journal.symbol")}</th>
-                  <th>{t("journal.qty")}</th>
-                  <th>{t("journal.avgPrice")}</th>
-                  <th>{t("quote.price")}</th>
-                  <th>P&L</th>
-                  <th>{t("account.sellable")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {account.holdings.map((holding) => {
-                  const key = `${account.account_seq}:${holding.symbol}`;
-                  return (
-                    <tr key={holding.symbol}>
-                      <td title={holding.name ?? undefined}>
-                        {holding.symbol}
-                      </td>
-                      <td>{dash(holding.quantity)}</td>
-                      <td>{dash(holding.average_purchase_price)}</td>
-                      <td>{dash(holding.last_price)}</td>
-                      <td>
-                        {dash(holding.profit_loss)} {holding.currency ?? ""}
-                      </td>
-                      <td>
-                        {sellable[key] ?? (
-                          <button
-                            type="button"
-                            className="secondary"
-                            onClick={() =>
-                              void api
-                                .sellableQuantity(
-                                  account.account_seq,
-                                  holding.symbol,
-                                )
-                                .then((result) =>
-                                  setSellable((previous) => ({
-                                    ...previous,
-                                    [key]: result.sellable_quantity,
-                                  })),
-                                )
-                                .catch(() =>
-                                  setSellable((previous) => ({
-                                    ...previous,
-                                    [key]: "—",
-                                  })),
-                                )
-                            }
-                          >
-                            {t("account.check")}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-          <h3>{t("account.openOrders")}</h3>
-          {account.open_orders.length === 0 ? (
-            <p className="workspace-note">{t("account.noOpenOrders")}</p>
-          ) : (
-            <table className="quote-trades">
-              <tbody>
-                {account.open_orders.map((order) => (
-                  <tr key={order.broker_order_id}>
-                    <td>{order.symbol}</td>
-                    <td>{order.side}</td>
-                    <td>{order.status}</td>
-                    <td>
-                      {dash(order.filled_quantity)} / {dash(order.quantity)}
-                    </td>
-                    <td>{dash(order.price)}</td>
-                    <td>
-                      {order.ordered_at_utc
-                        ? exchangeTime(order.ordered_at_utc)
-                        : ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <h3>{t("account.conditional")}</h3>
-          {account.open_conditional_orders.length === 0 ? (
-            <p className="workspace-note">{t("account.noConditional")}</p>
-          ) : (
-            <table className="quote-trades">
-              <tbody>
-                {account.open_conditional_orders.map((order) => (
-                  <tr key={order.conditional_order_id}>
-                    <td>{order.symbol}</td>
-                    <td>{order.type}</td>
-                    <td>{order.status}</td>
-                    <td>{dash(order.quantity)}</td>
-                    <td>{dash(order.expire_date)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <h3>{t("account.commissions")}</h3>
-          <p>
-            {account.commission_rates
-              .map(
-                (rate) =>
-                  `${rate.market_country} ${dash(rate.rate)}${rate.end_date ? ` (~${rate.end_date})` : ""}`,
-              )
-              .join(" · ") || "—"}
-          </p>
-          {account.errors.length ? (
-            <p className="chart-error">
-              {t("account.partErrors", { errors: account.errors.join(" · ") })}
-            </p>
-          ) : null}
-        </div>
-      ))}
+      {snapshot?.accounts.map((account) => accountView(account, "toss"))}
+      {meritzError &&
+      !(
+        meritzError instanceof MarketApiError &&
+        meritzError.code === "quote_source_unavailable"
+      ) ? (
+        <p className="chart-error" role="alert">
+          {t("account.meritzFailed", {
+            error:
+              meritzError instanceof Error
+                ? meritzError.message
+                : String(meritzError),
+          })}
+        </p>
+      ) : null}
+      {meritz?.accounts.map((account) => accountView(account, "meritz"))}
     </section>
   );
 }

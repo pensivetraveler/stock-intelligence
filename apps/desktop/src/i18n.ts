@@ -646,13 +646,14 @@ const en = {
   "bt.reason.invalid_size": "Invalid size",
   "bt.reason.invalid_quantity": "Invalid quantity",
   "bt.reason.invalid_intent": "Invalid order",
-  "account.title": "Toss account",
+  "account.title": "Broker accounts",
   "account.noKey":
     "Account data comes from Toss: register an enabled real-account Toss key on the Keys screen.",
   "account.failed": "Account data failed: {error}",
   "account.loading": "Loading accounts…",
   "account.none": "Toss returned no accounts.",
   "account.heading": "Account ****{suffix} ({type})",
+  "account.headingMeritz": "Meritz account ({type})",
   "account.summary":
     "Value {usd} USD / {krw} KRW · P&L {pnlUsd} USD / {pnlKrw} KRW ({rate})",
   "account.holdings": "Holdings",
@@ -674,7 +675,11 @@ const en = {
   "account.syncKiwoom": "Sync Kiwoom US fills",
   "account.syncKiwoomDomestic": "Sync Kiwoom Korean trades",
   "account.syncKiwoomFees": "Sync Kiwoom US fees",
-  "account.kiwoomSince": "Kiwoom from",
+  "account.kiwoomSince": "From (Kiwoom, Meritz)",
+  "account.syncMeritz": "Sync Meritz US fills",
+  "account.meritzNote":
+    ". Meritz: {n} orders whose time falls in no US session were left out; fill times are read as Korean time (not yet confirmed with a live account); fees are not reported and stay blank.",
+  "account.meritzFailed": "Meritz account could not be read: {error}",
   "account.kiwoomNote":
     ". Kiwoom: {n} orders outside the US session's hours (e.g. daytime session) were left out; fees are not reported and stay blank.",
   "account.readOnly":
@@ -739,6 +744,11 @@ const en = {
   "quote.noKey":
     "Live quotes come from Toss: register an enabled real-account Toss key on the Keys screen.",
   "quote.failed": "Live quote failed: {error}",
+  "quote.sourcePick": "Source",
+  "quote.sourceToss": "Toss",
+  "quote.sourceMeritz": "Meritz",
+  "quote.noMeritzKey":
+    "Meritz quotes need an enabled real-account Meritz key (with its MAC address) on the Keys screen.",
   "quote.replay": "Live quotes pause during replay, which shows the past.",
   "quote.live": "live",
   "quote.polling": "polling every 5 s",
@@ -752,6 +762,8 @@ const en = {
   "quote.limits": "Daily limits: {lower} – {upper}",
   "quote.source":
     "Source {source} (Toss quotes US stocks from some venues only, not the full market) · read {time}, refreshed every 5 seconds",
+  "quote.sourceMeritzLine":
+    "Source {source} (Meritz; the order book carries no time, so its time is when it was read) · read {time}, refreshed every 5 seconds",
   "panel.keys": "API keys",
   "ws.menu": "Workspace: {name}",
   "status.label": "Status",
@@ -946,7 +958,7 @@ const en = {
   "journal.noManual":
     "No actual executions recorded. Click a candle to add one.",
   "journal.noImported": "No statements imported.",
-  "journal.brokerTitle": "Broker API executions (Toss, Kiwoom)",
+  "journal.brokerTitle": "Broker API executions (Toss, Kiwoom, Meritz)",
   "journal.brokerNote":
     "One row per order: total filled quantity at the average fill price, at the fill time the broker reports (Toss: the last fill; Kiwoom: one fill time per order). Each account is its own position book.",
   "journal.positionFeesUnreported":
@@ -959,6 +971,7 @@ const en = {
   "journal.fees": "Fees",
   "journal.accountToss": "Toss account {n}",
   "journal.accountKiwoom": "Kiwoom",
+  "journal.accountMeritz": "Meritz",
   "journal.newestOnly":
     "Showing the newest {shown} of {total}; positions and counts cover all of them.",
   "journal.noScenarios": "No hypothetical scenarios yet.",
@@ -2142,13 +2155,14 @@ const ko: Record<MessageKey, string> = {
   "bt.reason.invalid_size": "잘못된 크기",
   "bt.reason.invalid_quantity": "잘못된 수량",
   "bt.reason.invalid_intent": "잘못된 주문",
-  "account.title": "토스 계좌",
+  "account.title": "증권사 계좌",
   "account.noKey":
     "계좌 정보는 토스에서 받습니다. 키 화면에 사용 중인 실전 토스 키를 등록하세요.",
   "account.failed": "계좌 정보를 받지 못했습니다: {error}",
   "account.loading": "계좌를 불러오는 중…",
   "account.none": "토스가 돌려준 계좌가 없습니다.",
   "account.heading": "계좌 ****{suffix} ({type})",
+  "account.headingMeritz": "메리츠 계좌 ({type})",
   "account.summary":
     "평가금액 {usd} USD / {krw} KRW · 손익 {pnlUsd} USD / {pnlKrw} KRW ({rate})",
   "account.holdings": "보유 종목",
@@ -2170,7 +2184,11 @@ const ko: Record<MessageKey, string> = {
   "account.syncKiwoom": "키움 미국주식 체결 동기화",
   "account.syncKiwoomDomestic": "키움 국내주식 거래 동기화",
   "account.syncKiwoomFees": "키움 미국주식 수수료 동기화",
-  "account.kiwoomSince": "키움 시작일",
+  "account.kiwoomSince": "시작일(키움·메리츠)",
+  "account.syncMeritz": "메리츠 미국주식 체결 동기화",
+  "account.meritzNote":
+    ". 메리츠: 미국 세션 어디에도 들지 않는 주문 {n}건은 제외했습니다. 체결 시각은 한국 시간으로 읽습니다(실계좌로 아직 확인하지 않음). 수수료는 제공되지 않아 비워 둡니다.",
+  "account.meritzFailed": "메리츠 계좌를 읽지 못했습니다: {error}",
   "account.kiwoomNote":
     ". 키움: 미국 정규·시간외 시간대 밖 주문(주간거래 등) {n}건은 제외했고, 수수료는 제공되지 않아 비워 둡니다.",
   "account.readOnly":
@@ -2234,6 +2252,11 @@ const ko: Record<MessageKey, string> = {
   "quote.noKey":
     "실시간 시세는 토스에서 받습니다. 키 화면에 사용 중인 실전 토스 키를 등록하세요.",
   "quote.failed": "실시간 시세를 받지 못했습니다: {error}",
+  "quote.sourcePick": "출처",
+  "quote.sourceToss": "토스",
+  "quote.sourceMeritz": "메리츠",
+  "quote.noMeritzKey":
+    "메리츠 시세는 키 화면에 사용 중인 실전 메리츠 키(MAC 주소 포함)가 있어야 합니다.",
   "quote.replay": "리플레이는 과거를 보여주므로 실시간 시세를 멈춥니다.",
   "quote.live": "실시간",
   "quote.polling": "5초마다 조회",
@@ -2247,6 +2270,8 @@ const ko: Record<MessageKey, string> = {
   "quote.limits": "가격 제한: {lower} – {upper}",
   "quote.source":
     "출처 {source}(토스는 미국 주식을 일부 거래소 기준으로 제공하며 전체 시장 기준이 아님) · {time} 조회, 5초마다 갱신",
+  "quote.sourceMeritzLine":
+    "출처 {source}(메리츠. 호가에는 시각이 없어 조회한 시각을 씁니다) · {time} 조회, 5초마다 갱신",
   "panel.keys": "API 키 관리",
   "ws.menu": "워크스페이스: {name}",
   "status.label": "상태",
@@ -2437,7 +2462,7 @@ const ko: Record<MessageKey, string> = {
   "journal.dateOnly": "{date}(시각 미제공)",
   "journal.noManual": "기록된 실제 체결이 없습니다. 캔들을 클릭해 추가하세요.",
   "journal.noImported": "가져온 거래내역이 없습니다.",
-  "journal.brokerTitle": "증권사 API 체결(토스·키움)",
+  "journal.brokerTitle": "증권사 API 체결(토스·키움·메리츠)",
   "journal.brokerNote":
     "주문 1건당 1행: 총 체결 수량과 평균 체결가이며, 시각은 증권사가 알려준 체결 시각입니다(토스는 마지막 체결, 키움은 주문당 체결 시각 1개). 포지션은 계좌별로 따로 계산합니다.",
   "journal.positionFeesUnreported":
@@ -2450,6 +2475,7 @@ const ko: Record<MessageKey, string> = {
   "journal.fees": "수수료",
   "journal.accountToss": "토스 계좌 {n}",
   "journal.accountKiwoom": "키움",
+  "journal.accountMeritz": "메리츠",
   "journal.newestOnly":
     "전체 {total}건 중 최근 {shown}건만 보여 줍니다. 포지션과 건수는 전체 기준입니다.",
   "journal.noScenarios": "가상 시나리오가 아직 없습니다.",
