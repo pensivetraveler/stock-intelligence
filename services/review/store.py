@@ -99,6 +99,10 @@ CREATE TABLE IF NOT EXISTS principle_check_results (
     broken INTEGER NOT NULL,
     document TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS principle_check_queue (
+    trade_id TEXT PRIMARY KEY,
+    queued_at_utc TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS period_reviews (
     review_id TEXT PRIMARY KEY,
     created_at_utc TEXT NOT NULL,
@@ -567,6 +571,26 @@ class ReviewStore:
                 "document = excluded.document",
                 (trade_id, basis, _utc(self._clock()), broken, json.dumps(document)),
             )
+
+    # Trades waiting for a background check, kept so an app restart picks them up again.
+    def queue_checks(self, trade_ids: list[str]) -> None:
+        moment = _utc(self._clock())
+        with self._lock:
+            self._db.executemany(
+                "INSERT OR IGNORE INTO principle_check_queue VALUES (?, ?)",
+                [(trade_id, moment) for trade_id in trade_ids],
+            )
+
+    def unqueue_check(self, trade_id: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM principle_check_queue WHERE trade_id = ?", (trade_id,))
+
+    def queued_checks(self) -> list[str]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT trade_id FROM principle_check_queue ORDER BY queued_at_utc, rowid"
+            ).fetchall()
+        return [trade_id for (trade_id,) in rows]
 
     def check_summaries(self) -> dict[str, tuple[str, int]]:
         """Every stored check: trade id -> (basis, broken count)."""
