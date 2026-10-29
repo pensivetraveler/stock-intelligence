@@ -1081,11 +1081,47 @@ def register_review_routes(
             checked["what_if"] = None
         return checked
 
-    checks = CheckRunner(check_one)
+    def remember_queued(trade_ids: list[str]) -> None:
+        review = store()
+        if review is not None:
+            review.queue_checks(trade_ids)
+
+    def forget_queued(trade_id: str) -> None:
+        review = store()
+        if review is not None:
+            review.unqueue_check(trade_id)
+
+    checks = CheckRunner(check_one, added=remember_queued, finished=forget_queued)
+    resumed: list[bool] = []
+
+    def resume_saved(ledgers: JournalStore, review: ReviewStore) -> None:
+        """Once per process: queue again the trades still waiting when the app last closed,
+        except those regrouped away or already checked on their current basis."""
+        if resumed or get_bars is None:
+            return
+        resumed.append(True)
+        saved = review.queued_checks()
+        versions = review.principle_versions()
+        if not saved or not versions:
+            return
+        _trades, by_id, _undated = index.trades(ledgers, review)
+        stored = review.check_summaries()
+        capital = capital_key(review)
+        pending = []
+        for trade_id in saved:
+            trade = by_id.get(trade_id)
+            if trade is not None and stored.get(trade_id, ("", 0))[0] != basis(
+                review, trade, versions, capital
+            ):
+                pending.append(trade_id)
+            else:
+                review.unqueue_check(trade_id)
+        checks.enqueue(pending)
 
     def queue_stale(ledgers: JournalStore, review: ReviewStore, first: date, last: date) -> int:
         if get_bars is None:
             return 0
+        resume_saved(ledgers, review)
         versions = review.principle_versions()
         if not versions:
             return 0
@@ -1116,8 +1152,11 @@ def register_review_routes(
 
     @application.get("/v1/review/principle-checks/status", response_model=None)
     def check_status(request: Request) -> Response:
-        if store() is None:
+        ledgers, review = journal(), store()
+        if review is None:
             return unavailable(request)
+        if ledgers is not None:
+            resume_saved(ledgers, review)
         return respond(status_document())
 
     @application.post("/v1/review/principle-checks/run", response_model=None)

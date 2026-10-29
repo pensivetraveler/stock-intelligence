@@ -16,6 +16,7 @@ from services.api.main import create_app
 from services.backtest.jobs import BacktestRunner
 from services.backtest.store import BacktestStore
 from services.journal.store import JournalStore
+from services.review.checker import CheckRunner
 from services.review.store import ReviewStore
 from tests.agents.test_review_agent import broker
 from tests.review.test_conversation_api import trade_documents
@@ -235,6 +236,37 @@ def test_checks_run_in_the_background_and_fill_the_list(setup: Any) -> None:
         1,
         2,
     )
+
+
+def test_waiting_checks_are_queued_again_after_a_restart(setup: Any, tmp_path: Path) -> None:
+    client, journal, _ids, _app = setup
+    principles(client, ("max_trades_per_day", "5"), ("stop_loss_pct", "50"))
+    # The app closed with an old trade (outside the automatic 90 days) still waiting, and a
+    # trade id that no longer exists.
+    ReviewStore(tmp_path / "review.sqlite3", lambda: NOW).queue_checks([TRADE, "gone:trade"])
+    review = ReviewStore(tmp_path / "review.sqlite3", lambda: NOW)
+    assert TRADE not in review.check_summaries()
+    restarted = create_app(
+        journal_store=journal, review_store=review, review_ask=Asked(), clock=lambda: NOW
+    )
+    with TestClient(restarted) as second:
+        _wait(second)
+    assert TRADE in review.check_summaries()
+    assert review.queued_checks() == []
+
+
+def test_the_runner_mirrors_its_queue() -> None:
+    saved: list[str] = []
+    runner = CheckRunner(
+        lambda trade_id: None if trade_id != "bad" else 1 / 0,
+        pause=0,
+        added=saved.extend,
+        finished=saved.remove,
+    )
+    assert runner.enqueue(["a", "bad", "a"]) == 2
+    runner.wait()
+    assert saved == []  # finished (or failed) checks are forgotten
+    assert runner.status()["failed"] == 1
 
 
 def test_report_draft_carries_the_what_ifs(setup: Any) -> None:
