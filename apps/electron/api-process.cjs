@@ -59,7 +59,12 @@ async function ensureApi({ apiUrl, repoDir, log }) {
     args.push("--env-file", ".env");
   const child = spawn(uv, args, {
     cwd: repoDir,
-    env: { ...process.env, UV_CACHE_DIR: path.join(repoDir, ".uv-cache") },
+    env: {
+      ...process.env,
+      UV_CACHE_DIR: path.join(repoDir, ".uv-cache"),
+      // The API stops itself if this app is killed before before-quit can stop it.
+      SIW_PARENT_PID: String(process.pid),
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout.on("data", (chunk) => log(String(chunk)));
