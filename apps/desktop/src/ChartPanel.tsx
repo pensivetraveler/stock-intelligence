@@ -154,6 +154,8 @@ interface ChartPanelProps {
   };
   onJournalChange: () => void;
   /** Ask the review Agent about this chart up to a candle's end. */
+  /** Continue the Claude conversation that wrote a Pine indicator (ADR 0042). */
+  onOpenAssistant?: (instance: IndicatorInstance) => void;
   onAskAgent?: (request: {
     instrumentId: string;
     timeframe: string;
@@ -226,6 +228,7 @@ export function ChartPanel({
   journal,
   onJournalChange,
   onAskAgent,
+  onOpenAssistant,
   customApi,
   customVersion = 0,
   onBars,
@@ -1697,6 +1700,22 @@ export function ChartPanel({
                                     );
                                   })}
                                   {timeframeField(item.instance)}
+                                  {item.instance.type === "pine" &&
+                                  item.instance.assistant &&
+                                  onOpenAssistant ? (
+                                    <p className="bt-actions">
+                                      <button
+                                        type="button"
+                                        className="tb-button"
+                                        onClick={() => {
+                                          setEditing(null);
+                                          onOpenAssistant(item.instance);
+                                        }}
+                                      >
+                                        {t("ia.continue")}
+                                      </button>
+                                    </p>
+                                  ) : null}
                                   {item.instance.type === "pine" ? (
                                     <PineFields
                                       initial={item.instance.pine ?? ""}

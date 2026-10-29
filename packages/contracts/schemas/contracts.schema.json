@@ -242,6 +242,12 @@
     },
     {
       "$ref": "#/$defs/ReviewPeriodPayload"
+    },
+    {
+      "$ref": "#/$defs/IndicatorConversation"
+    },
+    {
+      "$ref": "#/$defs/IndicatorAssistantSettings"
     }
   ],
   "$defs": {
@@ -10119,6 +10125,186 @@
         },
         "payload": {
           "type": "object"
+        }
+      }
+    },
+    "IndicatorAssistantSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "model", "retry_model", "models"],
+      "properties": {
+        "kind": {
+          "const": "indicator_assistant_settings"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "model": {
+          "enum": ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]
+        },
+        "retry_model": {
+          "enum": ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "enum": ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]
+          }
+        }
+      }
+    },
+    "IndicatorConversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "conversation_id",
+        "model",
+        "status",
+        "error",
+        "events",
+        "pending_run",
+        "runs",
+        "max_runs",
+        "usage"
+      ],
+      "properties": {
+        "kind": {
+          "const": "indicator_conversation"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "conversation_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "model": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "status": {
+          "enum": ["idle", "running", "needs_run", "stopped", "failed"]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "at_utc"],
+            "properties": {
+              "type": {
+                "enum": [
+                  "question",
+                  "answer",
+                  "code",
+                  "run",
+                  "stopped",
+                  "error"
+                ]
+              },
+              "at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 40000
+              },
+              "model": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tool_use_id": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "code": {
+                "type": "string",
+                "maxLength": 50000
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "effort": {
+                "enum": ["medium", "high"]
+              }
+            }
+          }
+        },
+        "pending_run": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["tool_use_id", "code"],
+              "properties": {
+                "tool_use_id": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "code": {
+                  "type": "string",
+                  "maxLength": 50000
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_runs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "input_tokens",
+            "output_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens"
+          ],
+          "properties": {
+            "input_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "output_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_read_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_write_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
         }
       }
     }

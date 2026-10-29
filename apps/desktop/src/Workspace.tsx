@@ -37,7 +37,14 @@ import {
   stepForward,
   type ReplayState,
 } from "./replay";
-import { defaultParams, type OhlcvBar } from "./indicators";
+import { IndicatorAssistant } from "./IndicatorAssistant";
+import type { IndicatorAssistantApi } from "./indicator-assistant-api";
+import {
+  cleanParams,
+  defaultParams,
+  type IndicatorInstance,
+  type OhlcvBar,
+} from "./indicators";
 import { useI18n, type MessageKey, type Translate } from "./i18n";
 import {
   AppMark,
@@ -157,6 +164,8 @@ interface WorkspaceProps {
   reviewApi?: ReviewApi;
   /** Python indicators' client (ADR 0023); without one they are not offered. */
   customApi?: CustomIndicatorApi;
+  /** Claude writing Pine indicators (ADR 0042); without one it is not offered. */
+  assistantApi?: IndicatorAssistantApi;
 }
 
 type Panel =
@@ -289,6 +298,29 @@ type NameForm = {
 /** Newest broker executions listed in the journal panel. */
 const JOURNAL_BROKER_ROWS = 500;
 
+/** The key of the assistant's preview indicator; never stored in the layout. */
+const PREVIEW_KEY = "assistant-preview";
+
+/** A new Pine indicator instance with the script's plot widths as its style. */
+function pineInstance(key: string, source: string): IndicatorInstance {
+  const widths = Object.entries(pineWidths(source));
+  return {
+    key,
+    type: "pine",
+    params: defaultParams(pineDefinition(source)),
+    pine: source,
+    ...(widths.length > 0
+      ? {
+          style: {
+            outputs: Object.fromEntries(
+              widths.map(([output, width]) => [output, { width }]),
+            ),
+          },
+        }
+      : {}),
+  };
+}
+
 export function Workspace({
   api,
   storage = browserStorage(),
@@ -298,6 +330,7 @@ export function Workspace({
   agentApi,
   reviewApi,
   customApi,
+  assistantApi,
   openOnToday = false,
 }: WorkspaceProps) {
   const { t } = useI18n();
@@ -566,6 +599,23 @@ export function Workspace({
   const [customVersion, setCustomVersion] = useState(0);
   const [formulaOpen, setFormulaOpen] = useState(false);
   const [pineOpen, setPineOpen] = useState(false);
+  // The Claude indicator assistant (ADR 0042): which chart, which indicator it edits.
+  const [assistant, setAssistant] = useState<{
+    session: number;
+    chart: number;
+    instanceKey: string | null;
+    conversationId: string | null;
+    code: string;
+  } | null>(null);
+  const [assistantPreview, setAssistantPreview] = useState<string | null>(null);
+  const [assistantGeometry, setAssistantGeometry] = useState<WindowGeometry>(
+    () => ({
+      x: Math.max(0, window.innerWidth - 500),
+      y: 72,
+      width: 460,
+      height: Math.max(320, Math.min(760, window.innerHeight - 96)),
+    }),
+  );
   // The bars each chart computes indicators on, for Python indicator previews.
   const chartBars = useRef<OhlcvBar[][]>([]);
   const onChartBars = useMemo(
@@ -775,6 +825,78 @@ export function Workspace({
     LAYOUT_TEMPLATES[0];
 
   const activeConfig = layout.charts[activeChart];
+  /** A chart's config with the assistant's preview drawn on it (dashed, not saved). */
+  const withPreview = (index: number): ChartConfig => {
+    const config = layout.charts[index];
+    if (!assistant || assistant.chart !== index || !assistantPreview) {
+      return config;
+    }
+    const preview = pineInstance(PREVIEW_KEY, assistantPreview);
+    const outputs = Object.fromEntries(
+      pineDefinition(assistantPreview).outputs.map((output) => [
+        output.key,
+        { ...preview.style?.outputs?.[output.key], line: "dashed" as const },
+      ]),
+    );
+    return {
+      ...config,
+      indicators: [
+        ...(config.indicators ?? []),
+        { ...preview, style: { ...preview.style, outputs } },
+      ],
+    };
+  };
+  const assistantChart = (index: number) => {
+    const config = layout.charts[index];
+    const bars = chartBars.current[index] ?? [];
+    if (!config || bars.length === 0) return null;
+    const zone = zoneOf(config.instrumentId);
+    const symbol = symbolOf(config.instrumentId);
+    return {
+      symbol,
+      timeframe: config.timeframe,
+      bars,
+      context: {
+        timeZone: zone.timeZone,
+        symbol,
+        timeframe: config.timeframe,
+        priceDecimals: zone.priceDecimals,
+      },
+    };
+  };
+  /** Saves the assistant's script: updates its indicator, or adds a new one. */
+  const applyAssistant = (source: string, conversationId: string | null) => {
+    if (!assistant) return;
+    const config = layout.charts[assistant.chart];
+    const list = config.indicators ?? [];
+    const existing = list.find((item) => item.key === assistant.instanceKey);
+    const link = conversationId ? { assistant: conversationId } : {};
+    if (existing) {
+      updateChart(assistant.chart)({
+        ...config,
+        indicators: list.map((item) =>
+          item.key === existing.key
+            ? {
+                ...item,
+                ...link,
+                pine: source,
+                // Inputs that no longer exist drop; new ones take their defaults.
+                params: cleanParams(pineDefinition(source), item.params),
+              }
+            : item,
+        ),
+      });
+    } else {
+      const key = newId();
+      updateChart(assistant.chart)({
+        ...config,
+        indicators: [...list, { ...pineInstance(key, source), ...link }],
+      });
+      setAssistant({ ...assistant, instanceKey: key, conversationId });
+    }
+    setAssistantPreview(null);
+  };
+
   const updateActive = (changes: Partial<ChartConfig>) => {
     // A different day or symbol has nothing to do with the replay in progress.
     if (
@@ -1400,7 +1522,7 @@ export function Workspace({
               chartId={`chart-${index + 1}`}
               title={t("ws.chartTitle", { n: index + 1 })}
               api={api}
-              config={layout.charts[index]}
+              config={withPreview(index)}
               instruments={instruments}
               instrumentsReady={instrumentsReady}
               sync={sync}
@@ -1432,8 +1554,25 @@ export function Workspace({
               onIndicatorsChange={(indicators) =>
                 updateChart(index)({
                   ...layout.charts[index],
-                  indicators,
+                  // The assistant's preview is drawn, never saved.
+                  indicators: indicators.filter(
+                    (item) => item.key !== PREVIEW_KEY,
+                  ),
                 })
+              }
+              onOpenAssistant={
+                assistantApi
+                  ? (instance) => {
+                      setAssistantPreview(null);
+                      setAssistant({
+                        session: Date.now(),
+                        chart: index,
+                        instanceKey: instance.key,
+                        conversationId: instance.assistant ?? null,
+                        code: instance.pine ?? "",
+                      });
+                    }
+                  : undefined
               }
               tool={index === activeChart ? drawTool : "cursor"}
               onDrawingsChange={(drawings) =>
@@ -1902,28 +2041,29 @@ export function Workspace({
           onAdd={(source) => {
             setPineOpen(false);
             setIndicatorsOpen(false);
-            const widths = Object.entries(pineWidths(source));
             updateActive({
               indicators: [
                 ...(activeConfig.indicators ?? []),
-                {
-                  key: newId(),
-                  type: "pine",
-                  params: defaultParams(pineDefinition(source)),
-                  pine: source,
-                  ...(widths.length > 0
-                    ? {
-                        style: {
-                          outputs: Object.fromEntries(
-                            widths.map(([key, width]) => [key, { width }]),
-                          ),
-                        },
-                      }
-                    : {}),
-                },
+                pineInstance(newId(), source),
               ],
             });
           }}
+          onAssistant={
+            assistantApi
+              ? () => {
+                  setPineOpen(false);
+                  setIndicatorsOpen(false);
+                  setAssistantPreview(null);
+                  setAssistant({
+                    session: Date.now(),
+                    chart: activeChart,
+                    instanceKey: null,
+                    conversationId: null,
+                    code: "",
+                  });
+                }
+              : undefined
+          }
         />
       ) : null}
 
@@ -1958,6 +2098,41 @@ export function Workspace({
             }
           }}
         />
+      ) : null}
+
+      {assistant && assistantApi ? (
+        <FloatingWindow
+          title={`${t("ia.title")} \u00b7 ${symbolOf(layout.charts[assistant.chart].instrumentId)} \u00b7 ${layout.charts[assistant.chart].timeframe}`}
+          geometry={assistantGeometry}
+          onGeometryChange={setAssistantGeometry}
+          actions={
+            <button
+              type="button"
+              className="tb-button"
+              aria-label={t("ia.close")}
+              title={t("ia.close")}
+              onClick={() => {
+                setAssistant(null);
+                setAssistantPreview(null);
+              }}
+            >
+              <CloseIcon />
+            </button>
+          }
+        >
+          <IndicatorAssistant
+            key={assistant.session}
+            api={assistantApi}
+            conversationId={assistant.conversationId}
+            initialCode={assistant.code}
+            applied={assistant.instanceKey !== null}
+            chart={() => assistantChart(assistant.chart)}
+            onPreview={setAssistantPreview}
+            onApply={(source, conversationId) =>
+              applyAssistant(source, conversationId)
+            }
+          />
+        </FloatingWindow>
       ) : null}
 
       {floating.open ? (

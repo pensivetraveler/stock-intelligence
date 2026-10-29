@@ -3468,3 +3468,47 @@ body {
   margin: 2px 0;
   font-size: 12px;
 }
+
+/* Claude indicator assistant (ADR 0042, indicators step 1) */
+.ia-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: 8px;
+  font-size: 12px;
+}
+
+.ia-events {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.ia-code summary,
+.ia-panel details.rv-request summary {
+  cursor: pointer;
+}
+
+.ia-code pre,
+.ia-panel details.rv-request pre {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre;
+}
+
+.ia-panel textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px;
+  resize: vertical;
+}
+
+.ia-panel .rv-question textarea {
+  height: 60px;
+}
+
+.ia-versions {
+  display: grid;
+  gap: 4px;
+}

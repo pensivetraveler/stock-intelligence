@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { version as APP_VERSION } from "../package.json";
 import { checkApiHealth, type ApiConnectionState } from "./api-health";
 import { createAgentApi } from "./agent-api";
+import { createIndicatorAssistantApi } from "./indicator-assistant-api";
 import { createReviewApi } from "./review-api";
 import { createBacktestApi } from "./backtest-api";
 import { createCredentialApi } from "./credential-api";
@@ -76,6 +77,10 @@ function AppContent({
     () => createReviewApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
   );
+  const assistantApi = useMemo(
+    () => createIndicatorAssistantApi(apiBaseUrl, fetcher),
+    [apiBaseUrl, fetcher],
+  );
   const customApi = useMemo(
     () => createCustomIndicatorApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
@@ -143,6 +148,7 @@ function AppContent({
             agentApi={agentApi}
             reviewApi={reviewApi}
             customApi={customApi}
+            assistantApi={assistantApi}
             openOnToday
           />
         ) : (
