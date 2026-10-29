@@ -21,7 +21,12 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { CandlePoint, VolumePoint } from "./chart-data";
-import { COLORS, exchangeTime } from "./chart-data";
+import {
+  COLORS,
+  exchangeTime,
+  seeThrough,
+  seeThroughCandles,
+} from "./chart-data";
 import { zoneFormat, zoneOf } from "./market-zone";
 import type { ChartSyncGroup } from "./chart-sync";
 import { DrawingLayer, type Projection } from "./DrawingLayer";
@@ -151,6 +156,7 @@ export function PriceChart({
   const volumeSeries = useRef<ISeriesApi<"Histogram"> | null>(null);
   const markerLayer = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const premarketSeries = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const seeThroughDay = premarketBars.length > 0;
   const premarketLine = useRef<IPriceLine | null>(null);
   const applyingSyncedRange = useRef(false);
   const indicatorSeries = useRef<ISeriesApi<"Line" | "Histogram">[]>([]);
@@ -390,7 +396,10 @@ export function PriceChart({
       candles[0].time < shownFirst.current;
     const visibleTimes = prepended ? scale?.getVisibleRange() : null;
     candleSeries.current?.setData(
-      candles.map((point) => ({ ...point, time: point.time as UTCTimestamp })),
+      seeThroughCandles(candles, seeThroughDay).map((point) => ({
+        ...point,
+        time: point.time as UTCTimestamp,
+      })),
     );
     volumeSeries.current?.setData(
       volume.map((point) => ({ ...point, time: point.time as UTCTimestamp })),
@@ -414,7 +423,7 @@ export function PriceChart({
     }
     shownCount.current = candles.length;
     shownFirst.current = candles[0]?.time ?? null;
-  }, [candles, volume, fitKey]);
+  }, [candles, volume, fitKey, seeThroughDay]);
 
   // Pine `barcolor()` on price-pane scripts recolours those candles.
   const barColors = useMemo(() => {
@@ -432,16 +441,26 @@ export function PriceChart({
     if (barColors.size === 0 && !coloredCandles.current) return;
     coloredCandles.current = barColors.size > 0;
     candleSeries.current?.setData(
-      candles.map((point) => {
-        const color = barColors.get(point.time);
-        return {
-          ...point,
-          time: point.time as UTCTimestamp,
-          ...(color ? { color, wickColor: color, borderColor: color } : {}),
-        };
-      }),
+      seeThroughCandles(
+        candles.map((point) => {
+          const color = barColors.get(point.time);
+          return color
+            ? { ...point, color, wickColor: color, borderColor: color }
+            : point;
+        }),
+        seeThroughDay,
+      ).map((point) => ({ ...point, time: point.time as UTCTimestamp })),
     );
-  }, [candles, barColors]);
+  }, [candles, barColors, seeThroughDay]);
+
+  // With the pre-market drawn behind, daily bodies turn see-through so a pre-market range
+  // inside a body still shows (ADR 0041). Wicks keep the full colour.
+  useEffect(() => {
+    candleSeries.current?.applyOptions({
+      upColor: seeThroughDay ? seeThrough(COLORS.up) : COLORS.up,
+      downColor: seeThroughDay ? seeThrough(COLORS.down) : COLORS.down,
+    });
+  }, [seeThroughDay]);
 
   useEffect(() => {
     dayMarketSeries.current?.setData(

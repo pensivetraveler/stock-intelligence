@@ -38,6 +38,47 @@ export const COLORS = {
   preLine: "#f0b429",
 };
 
+/** How opaque daily candle bodies are while the pre-market is shown behind them. */
+export const SEE_THROUGH_ALPHA = 0.55;
+
+/** `#rrggbb` or `rgb(a)(...)` with at most `alpha` opacity; other forms are kept. */
+export function seeThrough(color: string, alpha = SEE_THROUGH_ALPHA): string {
+  const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
+  if (hex) {
+    const [r, g, b] = hex.slice(1).map((part) => parseInt(part, 16));
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  const rgb =
+    /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i.exec(
+      color,
+    );
+  if (rgb) {
+    const own = rgb[4] === undefined ? 1 : Number(rgb[4]);
+    return `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, ${Math.min(own, alpha)})`;
+  }
+  return color;
+}
+
+/**
+ * Daily candles whose own colour (not final, Pine `barcolor()`) gets a see-through body
+ * so the pre-market candle behind stays visible (ADR 0041). Wicks keep the full colour.
+ */
+export function seeThroughCandles(
+  points: CandlePoint[],
+  on: boolean,
+): CandlePoint[] {
+  if (!on) return points;
+  return points.map((point) =>
+    point.color
+      ? {
+          ...point,
+          color: seeThrough(point.color),
+          wickColor: point.wickColor ?? point.color,
+        }
+      : point,
+  );
+}
+
 /** Day-market candles; bars not yet final stay grey like any other. */
 export function toDayMarketCandles(bars: PriceBar[]): CandlePoint[] {
   return toSeries(bars).candles;
