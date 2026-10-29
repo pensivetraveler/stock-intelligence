@@ -2309,3 +2309,18 @@
 - **검증:** `tests/review` 55개 통과. 새 테스트 2개: 저장된 오래된 거래가 새 API에서 점검되고 대기열이 비는지(변경을 되돌리면 실패), 실행기가 넣기·끝내기·실패를 저장소에 반영하는지. ruff·mypy 통과.
 - **미검증:** 실데이터로 앱을 껐다 켜서 확인하지 않았다.
 - **남은 위험:** 대기열은 처리 순서만 저장하고 진행 수(완료·실패)는 저장하지 않는다. 다시 시작하면 진행 줄의 완료 수가 0부터 센다.
+
+## 앱 강제 종료 시 API 정리 — 2026-10-29
+
+- **사용자 요청:** 잔여 작업 "강제 종료(SIGKILL·크래시) 때 API가 남는다"(SIW Agent·SIW Research 공통)를 처리한다.
+- **변경:**
+  - `services/api/parent_watch.py`: 환경변수 `SIW_PARENT_PID`가 있으면 API가 2초마다 그 프로세스가 있는지 본다. 없어지면 자기에게 SIGTERM을 보내 정상 종료와 같은 경로(lifespan 정리)로 끝난다. uvicorn이 끝나면 `uv`도 끝난다.
+  - `services/api/main.py`의 lifespan이 감시를 시작하고, 서버가 멈출 때 감시를 끝낸다.
+  - SIW Agent(`apps/desktop/src-tauri/src/lib.rs`)와 SIW Research(`apps/electron/api-process.cjs`)가 API를 띄울 때 자기 PID를 넘긴다.
+  - 변수가 없거나 1 이하·숫자가 아니면 감시하지 않는다. 터미널에서 띄운 API와 상주 실행기는 영향을 받지 않는다.
+- **검증:**
+  - `tests/api/test_parent_watch.py` 4개: 변수 해석, 부모가 사라지면 멈춤, 감시를 끝내면 멈추지 않음, 실제 부모 프로세스를 SIGKILL하면 자식이 SIGTERM으로 끝남. `tests/api` 44개 통과, ruff 통과.
+  - 실제 Electron 앱(포트 8799): 앱을 SIGKILL로 강제 종료하자 6초 안에 uv·uvicorn이 모두 없어지고 포트가 비었다(변경 전에는 남아서 `/health` 200). 정상 종료도 그대로 정리된다.
+  - `cargo test` 4개 통과.
+- **미검증:** SIW Agent `.app`을 실제로 강제 종료해 보지 않았다(8765에서 실제 데이터로 API를 띄우게 돼서). Python 쪽은 같은 경로다.
+- **남은 위험:** 부모 PID가 2초 안에 다른 프로세스에 재사용되면 API가 남는다. 강제 종료 뒤 최대 약 2초 동안 API가 응답한다.
