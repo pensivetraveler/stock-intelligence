@@ -1923,7 +1923,7 @@
   - 이미 실행 중인 API(PID 39055)가 있을 때: 앱을 열고 닫아도 39055는 그대로 8765에서 `/health` 200.
   - 사용자 승인으로 39055를 끈 뒤: 앱이 uv(12416)·uvicorn(12427)을 그룹 12416으로 띄움 → 8765 응답. 앱 종료 후 두 PID 모두 없음, `lsof -iTCP:8765` 결과 없음, api.log에 uvicorn 정상 종료(`Application shutdown complete`).
 - **미검증:** 상주 실행기 LaunchAgent는 이 Mac에 설치돼 있지 않아 종료 시 그대로 도는지 실제로 보지 못했다(코드상 그룹 밖 프로세스에는 신호를 보내지 않는다). 앱이 강제 종료(SIGKILL·크래시)되면 `RunEvent::Exit`가 오지 않아 API가 남는다.
-- **남은 위험:** SIW Research(`apps/electron/api-process.cjs`, `main.cjs`)도 `uv` 프로세스에만 신호를 보내 같은 결함이 있을 수 있다(미확인, 이 작업 범위 밖).
+- **남은 위험:** SIW Research(`apps/electron/api-process.cjs`, `main.cjs`)도 `uv` 프로세스에만 신호를 보내 같은 결함이 있을 수 있다(미확인, 이 작업 범위 밖). → 2026-10-29 점검에서 재현되지 않았다(아래 "SIW Research 종료 처리 점검").
 
 ## 일봉 차트의 프리마켓 고가 — 2026-10-26
 
@@ -2283,3 +2283,17 @@
   - 미리보기 실행은 기본 입력값으로만 한다. request.security 데이터는 미리보기 실행에 없다(요약에 "데이터 없음"으로 알린다).
   - 미리보기와 적용한 지표는 범례에 같은 이름으로 보인다(선 모양만 점선으로 다르다).
   - 저장된 내 Pine 지표·TradingView 코드·내장 지표에서 대화를 시작하는 것, 차트 이미지 첨부는 2단계다.
+
+## SIW Research 종료 처리 점검 — 2026-10-29
+
+- **사용자 요청:** SIW Agent에서 고친 결함(종료 시 uvicorn이 남음)이 SIW Research에도 있는지 점검한다.
+- **차이:** SIW Agent는 예전에 `child.kill()`(SIGKILL)을 보냈다. `uv`는 SIGKILL을 받으면 자식에게 아무것도 전달하지 못한다. SIW Research는 `before-quit`에서 `uv`에 SIGINT를 보내고, `uv`는 SIGINT·SIGTERM을 자식 uvicorn에 전달한다.
+- **확인(코드 변경 없음, 포트 8799에서 실행):**
+  - `ensureApi`로 API를 띄운 뒤 `uv`에 SIGINT 또는 SIGTERM을 보냈다(`uv` 0.12.23). 4초 안에 uv와 uvicorn이 모두 끝나고 포트가 비었다.
+  - 실제 Electron 앱(`electron .`, `SIW_API_URL=http://127.0.0.1:8799`)이 uv(51070)·uvicorn(51071)을 띄웠다. AppleScript로 앱을 종료하자 두 프로세스가 모두 없어지고 8799가 비었다.
+  - 같은 앱을 SIGKILL로 강제 종료하면 uv·uvicorn이 남아 `/health` 200으로 응답했다. 직접 정리했다.
+- **결론:** 정상 종료에는 결함이 없다. 강제 종료(SIGKILL·크래시) 때 API가 남는 것은 SIW Agent와 같은 한계다.
+- **남은 위험:**
+  - 정리는 `uv`의 신호 전달에 기대고 있다. `uv`가 바뀌거나 uvicorn이 reloader·worker를 띄우면 다시 확인해야 한다.
+  - 앱이 종료될 때 출력 파이프가 먼저 닫혀서, api.log에 uvicorn 종료 줄이 남지 않는다.
+  - 패키징한 `.app`으로는 확인하지 않았다(같은 `main.cjs`를 쓴다).
