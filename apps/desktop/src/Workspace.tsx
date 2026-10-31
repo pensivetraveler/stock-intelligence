@@ -37,12 +37,9 @@ import {
   stepForward,
   type ReplayState,
 } from "./replay";
-import {
-  type AssistantStart,
-  IndicatorAssistant,
-  type SavedScript,
-} from "./IndicatorAssistant";
+import { type AssistantStart, IndicatorAssistant } from "./IndicatorAssistant";
 import { renderBarsImage } from "./chart-image";
+import { pineScriptsOn } from "./pine-assistant";
 import type { IndicatorAssistantApi } from "./indicator-assistant-api";
 import {
   cleanParams,
@@ -882,24 +879,6 @@ export function Workspace({
       },
     };
   };
-  /** The Pine indicators on the workspace's charts, this chart's first. */
-  const assistantScripts = (index: number): SavedScript[] =>
-    layout.charts
-      .flatMap((config, at) =>
-        (config.indicators ?? []).flatMap((item) =>
-          item.type === "pine" && item.pine
-            ? [
-                {
-                  key: item.key,
-                  title: `${pineDefinition(item.pine).name.en} \u00b7 ${symbolOf(config.instrumentId)} ${config.timeframe}`,
-                  code: item.pine,
-                  sameChart: at === index,
-                },
-              ]
-            : [],
-        ),
-      )
-      .sort((a, b) => Number(b.sameChart) - Number(a.sameChart));
   /** A picture of the bars in view. They are already cut at the replay time. */
   const assistantImage = async (index: number) => {
     const bars = chartBars.current[index] ?? [];
@@ -2194,7 +2173,7 @@ export function Workspace({
             chart={() => assistantChart(assistant.chart)}
             onPreview={setAssistantPreview}
             initialStart={assistant.start}
-            scripts={assistantScripts(assistant.chart)}
+            scripts={pineScriptsOn(layout.charts, assistant.chart, symbolOf)}
             onTarget={(instanceKey) =>
               setAssistant((current) =>
                 current ? { ...current, instanceKey } : current,

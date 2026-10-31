@@ -43,6 +43,7 @@ import type { ChartSyncGroup } from "./chart-sync";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { FormulaFields } from "./FormulaEditor";
 import { PineFields } from "./PineEditor";
+import { isPineStrategy } from "./pine-assistant";
 import {
   monthlyBars,
   pineDefinition,
@@ -1706,8 +1707,11 @@ export function ChartPanel({
                                   })}
                                   {timeframeField(item.instance)}
                                   {onOpenAssistant &&
-                                  (item.instance.type === "pine" ||
-                                    INDICATOR_BY_ID.has(item.instance.type)) ? (
+                                  (item.instance.type === "pine"
+                                    ? !isPineStrategy(item.instance.pine ?? "")
+                                    : INDICATOR_BY_ID.has(
+                                        item.instance.type,
+                                      )) ? (
                                     <p className="bt-actions">
                                       <button
                                         type="button"

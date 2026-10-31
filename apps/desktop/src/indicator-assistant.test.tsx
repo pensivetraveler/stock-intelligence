@@ -8,7 +8,12 @@ import {
   nextRetry,
 } from "./indicator-assistant-api";
 import type { OhlcvBar } from "./indicators";
-import { pineReference, runForAssistant } from "./pine-assistant";
+import {
+  isPineStrategy,
+  pineReference,
+  pineScriptsOn,
+  runForAssistant,
+} from "./pine-assistant";
 
 const BARS: OhlcvBar[] = Array.from({ length: 60 }, (_, i) => {
   const close = 100 + Math.sin(i / 4) * 5;
@@ -302,6 +307,49 @@ describe("saved assistant link", () => {
       { key: "b", type: "pine", pine: GOOD, params: {}, assistant: "../x y" },
     ]);
     expect(dropped?.assistant).toBeUndefined();
+  });
+});
+
+describe("pineScriptsOn", () => {
+  const STRATEGY = '//@version=5\nstrategy("S")\nplot(close)';
+  const instance = (key: string, pine: string) => ({
+    key,
+    type: "pine",
+    params: {},
+    pine,
+  });
+
+  it("offers indicators on every chart, this one first, but never a strategy", () => {
+    const scripts = pineScriptsOn(
+      [
+        {
+          instrumentId: "a",
+          timeframe: "5m",
+          indicators: [
+            instance("other", GOOD),
+            { key: "ema", type: "ema", params: {} },
+          ],
+        },
+        {
+          instrumentId: "b",
+          timeframe: "1m",
+          indicators: [instance("mine", GOOD), instance("backtest", STRATEGY)],
+        },
+      ],
+      1,
+      (id) => id.toUpperCase(),
+    );
+    expect(scripts.map((script) => [script.key, script.sameChart])).toEqual([
+      ["mine", true],
+      ["other", false],
+    ]);
+    expect(scripts[0].title).toBe("Low touch \u00b7 B 1m");
+  });
+
+  it("tells a strategy from an indicator and a broken script", () => {
+    expect(isPineStrategy(STRATEGY)).toBe(true);
+    expect(isPineStrategy(GOOD)).toBe(false);
+    expect(isPineStrategy("not pine at all (")).toBe(false);
   });
 });
 

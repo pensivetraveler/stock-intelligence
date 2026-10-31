@@ -9,6 +9,7 @@ import {
   defaultParams,
   type IndicatorContext,
   type IndicatorDefinition,
+  type IndicatorInstance,
   type PriceSource,
   withSource,
 } from "./indicators";
@@ -21,6 +22,55 @@ import {
   type PineProgram,
   runPine,
 } from "./pine";
+
+/** A Pine indicator already on a chart, offered as a starting point. */
+export interface SavedScript {
+  key: string;
+  title: string;
+  code: string;
+  /** On the chart the assistant works on, so applying updates it. */
+  sameChart: boolean;
+}
+
+/**
+ * A strategy() script runs the chart's backtest. The assistant only writes indicators, so
+ * starting from one and applying would replace the strategy with an indicator.
+ */
+export function isPineStrategy(source: string): boolean {
+  try {
+    return compilePine(source).strategy !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** The Pine indicators on the workspace's charts, this chart's first; never strategies. */
+export function pineScriptsOn(
+  charts: {
+    instrumentId: string;
+    timeframe: string;
+    indicators?: IndicatorInstance[];
+  }[],
+  chart: number,
+  symbolOf: (instrumentId: string) => string,
+): SavedScript[] {
+  return charts
+    .flatMap((config, at) =>
+      (config.indicators ?? []).flatMap((item) =>
+        item.type === "pine" && item.pine && !isPineStrategy(item.pine)
+          ? [
+              {
+                key: item.key,
+                title: `${pineDefinition(item.pine).name.en} \u00b7 ${symbolOf(config.instrumentId)} ${config.timeframe}`,
+                code: item.pine,
+                sameChart: at === chart,
+              },
+            ]
+          : [],
+      ),
+    )
+    .sort((a, b) => Number(b.sameChart) - Number(a.sameChart));
+}
 
 /** The supported subset, sent once as the conversation's fixed system prompt. */
 export function pineReference(): string {

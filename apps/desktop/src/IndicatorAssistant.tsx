@@ -24,6 +24,7 @@ import {
   builtinDetail,
   pineReference,
   runForAssistant,
+  type SavedScript,
 } from "./pine-assistant";
 
 /** The chart a script is tried on: its bars and what Pine needs to know about it. */
@@ -32,15 +33,6 @@ export interface AssistantChart {
   timeframe: string;
   bars: OhlcvBar[];
   context: PineContext;
-}
-
-/** A Pine indicator already on a chart, offered as a starting point. */
-export interface SavedScript {
-  key: string;
-  title: string;
-  code: string;
-  /** On the chart the assistant works on, so applying updates it. */
-  sameChart: boolean;
 }
 
 /** Where a new conversation starts. */
