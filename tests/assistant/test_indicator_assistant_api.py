@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import Iterator
 from datetime import datetime, timezone
@@ -14,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from packages.contracts.validator import validate_document
 from services.api.main import create_app
-from services.assistant.indicator import MAX_RUNS, call_indicator_claude
+from services.assistant.indicator import MAX_IMAGES, MAX_RUNS, call_indicator_claude
 from services.review.store import ReviewStore
 from tests.review.test_conversation_api import Scripted as BaseScripted
 from tests.review.test_conversation_api import answer, tool_use
@@ -247,3 +248,115 @@ def test_request_body() -> None:
         "claude-haiku-5-5", "s", [], [], "k", transport=httpx.MockTransport(handler)
     )
     assert "fallbacks" not in json.loads(sent[1].content)
+
+
+PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + bytes(32)).decode()
+IMAGE = {
+    "png_base64": PNG,
+    "bars": 120,
+    "from_utc": "2026-10-28T13:30:00Z",
+    "to_utc": "2026-10-28T20:00:00Z",
+}
+
+
+def user_blocks(call: dict[str, Any], index: int = 0) -> list[dict[str, Any]]:
+    return [m for m in call["messages"] if m["role"] == "user"][index]["content"]
+
+
+def test_starting_points_tell_claude_where_the_code_came_from(
+    client: TestClient, scripted: Scripted
+) -> None:
+    scripted.turns += [answer("옮겼습니다.")]
+    code = '//@version=5\nindicator("X")\ntype Foo\nplot(close)'
+    started = client.post(
+        "/v1/indicator-assistant/conversations",
+        json={
+            **START,
+            "context": {**CONTEXT, "code": code},
+            "origin": {"kind": "tradingview", "detail": "line 3, column 1: type is not supported"},
+        },
+    )
+    assert started.status_code == 201, started.text
+    document = started.json()
+    validate_document(document)
+    assert document["events"][0]["origin"] == "tradingview"
+    context = json.loads(user_blocks(scripted.calls[0])[0]["text"])
+    assert context["editor_code"] == code
+    assert context["start_from"] == {
+        "kind": "tradingview",
+        "detail": "line 3, column 1: type is not supported",
+    }
+    assert "tradingview" in scripted.calls[0]["system"]
+
+
+def test_origin_is_only_for_the_first_request(client: TestClient, scripted: Scripted) -> None:
+    scripted.turns += [answer("네."), answer("네.")]
+    started = client.post(
+        "/v1/indicator-assistant/conversations",
+        json={**START, "origin": {"kind": "builtin", "detail": "RSI"}},
+    ).json()
+    later = client.post(
+        f"/v1/indicator-assistant/conversations/{started['conversation_id']}/messages",
+        json={"question": "기간을 7로", "context": CONTEXT, "origin": {"kind": "builtin"}},
+    )
+    assert later.status_code == 422
+
+
+def test_chart_image_is_sent_only_when_attached(client: TestClient, scripted: Scripted) -> None:
+    scripted.turns += [answer("봤습니다."), answer("네.")]
+    started = client.post("/v1/indicator-assistant/conversations", json={**START, "image": IMAGE})
+    assert started.status_code == 201, started.text
+    document = started.json()
+    validate_document(document)
+    assert document["events"][0]["has_image"] is True
+    # The bytes stay in the stored history for Claude; the screen's events never carry them.
+    assert PNG not in started.text
+    blocks = user_blocks(scripted.calls[0])
+    images = [block for block in blocks if block["type"] == "image"]
+    assert images == [
+        {
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/png", "data": PNG},
+        }
+    ]
+    assert any("120 bars" in block.get("text", "") for block in blocks)
+    # A later request without an image adds none, and the first is still in the history.
+    later = client.post(
+        f"/v1/indicator-assistant/conversations/{document['conversation_id']}/messages",
+        json={"question": "더 짧게", "context": CONTEXT},
+    )
+    assert later.status_code == 200, later.text
+    assert "has_image" not in later.json()["events"][-2]
+    assert [b for b in user_blocks(scripted.calls[1], 1) if b["type"] == "image"] == []
+    assert [b for b in user_blocks(scripted.calls[1], 0) if b["type"] == "image"] == images
+
+
+@pytest.mark.parametrize(
+    "png_base64",
+    ["not base64!!", "aGVsbG8gd29ybGQ=", "iVBORw0KGgo" + "A" * 6_000_100],
+    ids=["not-base64", "not-png", "too-long"],
+)
+def test_bad_images_are_refused_before_claude(
+    client: TestClient, scripted: Scripted, png_base64: str
+) -> None:
+    response = client.post(
+        "/v1/indicator-assistant/conversations",
+        json={**START, "image": {**IMAGE, "png_base64": png_base64}},
+    )
+    assert response.status_code == 422
+    assert scripted.calls == []
+
+
+def test_image_limit_per_conversation(client: TestClient, scripted: Scripted) -> None:
+    scripted.turns += [answer("네.") for _ in range(MAX_IMAGES)]
+    conversation = client.post(
+        "/v1/indicator-assistant/conversations", json={**START, "image": IMAGE}
+    ).json()["conversation_id"]
+    path = f"/v1/indicator-assistant/conversations/{conversation}/messages"
+    for _ in range(MAX_IMAGES - 1):
+        ok = client.post(path, json={"question": "또", "context": CONTEXT, "image": IMAGE})
+        assert ok.status_code == 200, ok.text
+    over = client.post(path, json={"question": "또", "context": CONTEXT, "image": IMAGE})
+    assert over.status_code == 409
+    assert "5" in over.json()["error"]["message"]
+    assert len(scripted.calls) == MAX_IMAGES

@@ -5,7 +5,13 @@
  */
 
 import type { OhlcvBar } from "./indicators";
-import { defaultParams } from "./indicators";
+import {
+  defaultParams,
+  type IndicatorContext,
+  type IndicatorDefinition,
+  type PriceSource,
+  withSource,
+} from "./indicators";
 import {
   compilePine,
   PINE_FUNCTIONS,
@@ -35,6 +41,44 @@ export function pineReference(): string {
     "Limits: 50,000 characters, 2,000,000 loop steps per run, 32 nested calls, 100,000 items per array.",
     "Errors are reported as line and column. No look-ahead: a bar never sees a later bar.",
   ].join("\n");
+}
+
+/**
+ * A built-in indicator as a starting point: there is no Pine source for it, so Claude gets
+ * what it is, its settings and what it computes on this chart to compare its script with.
+ */
+export function builtinDetail(
+  definition: IndicatorDefinition,
+  params: Record<string, number>,
+  source: PriceSource | undefined,
+  bars: OhlcvBar[],
+  context: IndicatorContext,
+): string {
+  const settings = definition.inputs.map(
+    (input) => `${input.label.en}=${params[input.key] ?? input.default}`,
+  );
+  const values = definition.compute(
+    definition.sourceInput ? withSource(bars, source) : bars,
+    { ...defaultParams(definition), ...params },
+    context,
+  );
+  const lines = [
+    `Built-in indicator: ${definition.name.en} (${definition.short}), ${definition.pane === "price" ? "on the price chart" : "in its own pane"}.`,
+    `Settings: ${settings.join(", ") || "none"}${definition.sourceInput ? `; source=${source ?? "close"}` : ""}.`,
+    ...(definition.levels?.length
+      ? [`Guide levels: ${definition.levels.join(", ")}.`]
+      : []),
+    ...definition.outputs.map((output) => {
+      const series = values[output.key] ?? [];
+      const present = series.filter(
+        (value): value is number => value !== null && Number.isFinite(value),
+      );
+      if (present.length === 0) return `Output '${output.label}': empty.`;
+      const last = series[series.length - 1];
+      return `Output '${output.label}' (${output.kind ?? "line"}): last ${typeof last === "number" ? number(last) : "na"}, min ${number(present.reduce((a, b) => Math.min(a, b)))}, max ${number(present.reduce((a, b) => Math.max(a, b)))}.`;
+    }),
+  ];
+  return lines.join("\n").slice(0, 4000);
 }
 
 export type AssistantRun =

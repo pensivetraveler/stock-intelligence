@@ -43,6 +43,23 @@ export interface ChartContext {
   code: string | null;
 }
 
+/** A picture of the bars in view; attached only when the investor chooses to. */
+export interface ChartImage {
+  png_base64: string;
+  bars: number;
+  from_utc: string;
+  to_utc: string;
+}
+
+/** What a first request starts from; the code itself goes as the editor's code. */
+export interface AssistantOrigin {
+  kind: NonNullable<AssistantEvent["origin"]>;
+  detail?: string;
+}
+
+/** Images a conversation can hold; each is sent again with every later turn. */
+export const MAX_IMAGES = 5;
+
 /** The result of running Claude's script on the chart, posted back to Claude. */
 export interface RunResult {
   ok: boolean;
@@ -50,7 +67,7 @@ export interface RunResult {
   summary?: string;
 }
 
-/** Claude writing Pine indicators with the investor (ADR 0042, indicators step 1). */
+/** Claude writing Pine indicators with the investor (ADR 0042, indicators steps 1-2). */
 export interface IndicatorAssistantApi {
   settings(): Promise<IndicatorAssistantSettings>;
   setModel(model: AssistantModel): Promise<IndicatorAssistantSettings>;
@@ -59,6 +76,7 @@ export interface IndicatorAssistantApi {
     language: "en" | "ko",
     reference: string,
     context: ChartContext,
+    extras?: { origin?: AssistantOrigin; image?: ChartImage },
   ): Promise<IndicatorConversation>;
   conversation(conversationId: string): Promise<IndicatorConversation>;
   /** `retry` only for a retry step; the request alone uses its model and effort. */
@@ -67,6 +85,7 @@ export interface IndicatorAssistantApi {
     question: string,
     context: ChartContext,
     retry?: RetryStep,
+    image?: ChartImage,
   ): Promise<IndicatorConversation>;
   sendRun(
     conversationId: string,
@@ -100,12 +119,15 @@ export function createIndicatorAssistantApi(
         { method: "PUT", body: { model } },
       );
     },
-    start(question, language, reference, context) {
+    start(question, language, reference, context, extras) {
       return callForKind<IndicatorConversation>(
         target,
         "/v1/indicator-assistant/conversations",
         "indicator_conversation",
-        { method: "POST", body: { question, language, reference, context } },
+        {
+          method: "POST",
+          body: { question, language, reference, context, ...(extras ?? {}) },
+        },
       );
     },
     conversation(conversationId) {
@@ -115,14 +137,19 @@ export function createIndicatorAssistantApi(
         "indicator_conversation",
       );
     },
-    ask(conversationId, question, context, retry) {
+    ask(conversationId, question, context, retry, image) {
       return callForKind<IndicatorConversation>(
         target,
         `${path(conversationId)}/messages`,
         "indicator_conversation",
         {
           method: "POST",
-          body: { question, context, ...(retry ?? {}) },
+          body: {
+            question,
+            context,
+            ...(retry ?? {}),
+            ...(image ? { image } : {}),
+          },
         },
       );
     },

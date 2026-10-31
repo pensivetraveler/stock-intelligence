@@ -37,7 +37,12 @@ import {
   stepForward,
   type ReplayState,
 } from "./replay";
-import { IndicatorAssistant } from "./IndicatorAssistant";
+import {
+  type AssistantStart,
+  IndicatorAssistant,
+  type SavedScript,
+} from "./IndicatorAssistant";
+import { renderBarsImage } from "./chart-image";
 import type { IndicatorAssistantApi } from "./indicator-assistant-api";
 import {
   cleanParams,
@@ -606,6 +611,7 @@ export function Workspace({
     instanceKey: string | null;
     conversationId: string | null;
     code: string;
+    start?: AssistantStart;
   } | null>(null);
   const [assistantPreview, setAssistantPreview] = useState<string | null>(null);
   const [assistantGeometry, setAssistantGeometry] = useState<WindowGeometry>(
@@ -615,6 +621,18 @@ export function Workspace({
       width: 460,
       height: Math.max(320, Math.min(760, window.innerHeight - 96)),
     }),
+  );
+  // The times each chart has in view, for a picture of what the investor is looking at.
+  const chartRanges = useRef<({ from: number; to: number } | undefined)[]>([]);
+  const onChartRanges = useMemo(
+    () =>
+      Array.from(
+        { length: CHART_SLOTS },
+        (_, index) => (range: { from: number; to: number }) => {
+          chartRanges.current[index] = range;
+        },
+      ),
+    [],
   );
   // The bars each chart computes indicators on, for Python indicator previews.
   const chartBars = useRef<OhlcvBar[][]>([]);
@@ -862,6 +880,42 @@ export function Workspace({
         timeframe: config.timeframe,
         priceDecimals: zone.priceDecimals,
       },
+    };
+  };
+  /** The Pine indicators on the workspace's charts, this chart's first. */
+  const assistantScripts = (index: number): SavedScript[] =>
+    layout.charts
+      .flatMap((config, at) =>
+        (config.indicators ?? []).flatMap((item) =>
+          item.type === "pine" && item.pine
+            ? [
+                {
+                  key: item.key,
+                  title: `${pineDefinition(item.pine).name.en} \u00b7 ${symbolOf(config.instrumentId)} ${config.timeframe}`,
+                  code: item.pine,
+                  sameChart: at === index,
+                },
+              ]
+            : [],
+        ),
+      )
+      .sort((a, b) => Number(b.sameChart) - Number(a.sameChart));
+  /** A picture of the bars in view. They are already cut at the replay time. */
+  const assistantImage = async (index: number) => {
+    const bars = chartBars.current[index] ?? [];
+    const range = chartRanges.current[index];
+    const inView = range
+      ? bars.filter((bar) => bar.time >= range.from && bar.time <= range.to)
+      : [];
+    const shown = inView.length > 0 ? inView : bars.slice(-200);
+    if (shown.length === 0) return null;
+    const utc = (time: number) =>
+      new Date(time * 1000).toISOString().replace(".000Z", "Z");
+    return {
+      png_base64: await renderBarsImage(shown, layout.charts[index].timeframe),
+      bars: shown.length,
+      from_utc: utc(shown[0].time),
+      to_utc: utc(shown[shown.length - 1].time),
     };
   };
   /** Saves the assistant's script: updates its indicator, or adds a new one. */
@@ -1532,6 +1586,7 @@ export function Workspace({
               customApi={customApi}
               customVersion={customVersion}
               onBars={onChartBars[index]}
+              onVisibleRange={onChartRanges[index]}
               onJournalChange={refreshJournal}
               magnet={tools[index].magnet}
               logScale={tools[index].logScale}
@@ -1564,12 +1619,22 @@ export function Workspace({
                 assistantApi
                   ? (instance) => {
                       setAssistantPreview(null);
+                      const pine = instance.type === "pine";
                       setAssistant({
                         session: Date.now(),
                         chart: index,
-                        instanceKey: instance.key,
+                        // A variation of a built-in is a new indicator beside it.
+                        instanceKey: pine ? instance.key : null,
                         conversationId: instance.assistant ?? null,
                         code: instance.pine ?? "",
+                        start: pine
+                          ? { kind: "saved", key: instance.key }
+                          : {
+                              kind: "builtin",
+                              id: instance.type,
+                              params: instance.params,
+                              source: instance.source,
+                            },
                       });
                     }
                   : undefined
@@ -2128,6 +2193,14 @@ export function Workspace({
             applied={assistant.instanceKey !== null}
             chart={() => assistantChart(assistant.chart)}
             onPreview={setAssistantPreview}
+            initialStart={assistant.start}
+            scripts={assistantScripts(assistant.chart)}
+            onTarget={(instanceKey) =>
+              setAssistant((current) =>
+                current ? { ...current, instanceKey } : current,
+              )
+            }
+            captureImage={() => assistantImage(assistant.chart)}
             onApply={(source, conversationId) =>
               applyAssistant(source, conversationId)
             }

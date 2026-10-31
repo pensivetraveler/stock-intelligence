@@ -76,8 +76,32 @@ const en = {
   "ia.title": "Make an indicator with Claude",
   "ia.open": "Make with Claude",
   "ia.continue": "Continue with Claude",
+  "ia.fix": "Fix with Claude",
+  "ia.vary": "Make a variation with Claude",
+  "ia.start": "Start from",
+  "ia.startNew": "A new indicator",
+  "ia.startSaved": "A Pine indicator on my charts",
+  "ia.startTradingView": "TradingView code",
+  "ia.startBuiltin": "A built-in indicator",
+  "ia.savedPick": "Indicator",
+  "ia.builtinPick": "Built-in indicator",
+  "ia.otherChart": "other chart, adds a copy here",
+  "ia.tradingViewNote":
+    "Paste the code in the code box below. Claude replaces what the app does not support and lists each change. You may leave the request empty.",
+  "ia.builtinNote":
+    "Claude gets its name, settings and computed summary, writes it in Pine and compares. Say what to change, or leave the request empty for a plain copy. It is added as a new indicator.",
+  "ia.portQuestion":
+    "Move this TradingView code to the app. Replace what is not supported and list each change.",
+  "ia.builtinQuestion": "Write this built-in indicator in Pine.",
+  "ia.imageAttach": "Attach chart image",
+  "ia.imageRemove": "Remove",
+  "ia.imageAlt": "Candles of the {bars} bars in view",
+  "ia.imageNote":
+    "Goes with the next request: candles of the {bars} bars in view. This picture shows prices to Claude; nothing else does.",
+  "ia.imageSent": "Chart image attached",
+  "ia.imageLimit": "A conversation can hold {max} images.",
   "ia.note":
-    "Describe the indicator. Claude writes Pine Script, the app runs it on this chart and sends back errors or a summary of the values (never the prices), and Claude fixes it up to five times. The last working script is previewed on the chart (dashed); nothing is saved until you apply it.",
+    "Describe the indicator. Claude writes Pine Script, the app runs it on this chart and sends back errors or a summary of the values (no prices, unless you attach a chart image), and Claude fixes it up to five times. The last working script is previewed on the chart (dashed); nothing is saved until you apply it.",
   "ia.request": "Request",
   "ia.placeholder":
     "e.g. Mark where the close falls below the lower 20-day Bollinger Band two bars in a row",
@@ -1593,8 +1617,32 @@ const ko: Record<MessageKey, string> = {
   "ia.title": "Claude와 지표 만들기",
   "ia.open": "Claude와 만들기",
   "ia.continue": "Claude와 이어서 고치기",
+  "ia.fix": "Claude와 고치기",
+  "ia.vary": "Claude와 변형 만들기",
+  "ia.start": "시작점",
+  "ia.startNew": "새 지표",
+  "ia.startSaved": "내 차트의 Pine 지표",
+  "ia.startTradingView": "TradingView 코드",
+  "ia.startBuiltin": "내장 지표",
+  "ia.savedPick": "지표",
+  "ia.builtinPick": "내장 지표",
+  "ia.otherChart": "다른 차트, 여기에 복사본 추가",
+  "ia.tradingViewNote":
+    "아래 코드 칸에 붙여 넣으세요. 앱이 지원하지 않는 부분은 Claude가 바꾸고, 바꾼 내용을 알려 줍니다. 요청은 비워 둬도 됩니다.",
+  "ia.builtinNote":
+    "Claude에 이름·설정·계산값 요약을 보내 Pine으로 쓰고 비교하게 합니다. 바꿀 점을 적거나, 그대로 옮기려면 요청을 비워 두세요. 새 지표로 추가됩니다.",
+  "ia.portQuestion":
+    "이 TradingView 코드를 앱으로 옮겨 주세요. 지원하지 않는 부분은 바꾸고, 바꾼 내용을 알려 주세요.",
+  "ia.builtinQuestion": "이 내장 지표를 Pine으로 써 주세요.",
+  "ia.imageAttach": "차트 이미지 첨부",
+  "ia.imageRemove": "빼기",
+  "ia.imageAlt": "보이는 봉 {bars}개의 캔들",
+  "ia.imageNote":
+    "다음 요청에 함께 보냅니다: 보이는 봉 {bars}개의 캔들. Claude가 가격을 볼 수 있는 것은 이 이미지뿐입니다.",
+  "ia.imageSent": "차트 이미지 첨부함",
+  "ia.imageLimit": "대화 하나에 이미지는 {max}개까지입니다.",
   "ia.note":
-    "원하는 지표를 설명하세요. Claude가 Pine Script를 쓰면 앱이 이 차트에서 실행해 오류나 계산값 요약(가격 값은 보내지 않음)을 돌려주고, Claude가 최대 5번까지 고칩니다. 마지막으로 실행된 스크립트는 차트에 점선으로 미리 보이며, 적용을 눌러야 저장됩니다.",
+    "원하는 지표를 설명하세요. Claude가 Pine Script를 쓰면 앱이 이 차트에서 실행해 오류나 계산값 요약(차트 이미지를 직접 첨부할 때 외에는 가격을 보내지 않음)을 돌려주고, Claude가 최대 5번까지 고칩니다. 마지막으로 실행된 스크립트는 차트에 점선으로 미리 보이며, 적용을 눌러야 저장됩니다.",
   "ia.request": "요청",
   "ia.placeholder": "예: 종가가 20일 볼린저밴드 하단을 2봉 연속 밑돌면 표시",
   "ia.send": "보내기",

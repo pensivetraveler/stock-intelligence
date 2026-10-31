@@ -10244,6 +10244,12 @@
               },
               "effort": {
                 "enum": ["medium", "high"]
+              },
+              "has_image": {
+                "type": "boolean"
+              },
+              "origin": {
+                "enum": ["saved", "tradingview", "builtin"]
               }
             }
           }

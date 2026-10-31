@@ -29,6 +29,7 @@ import {
 } from "./timeframes";
 import {
   cleanParams,
+  INDICATOR_BY_ID,
   instanceLookback,
   paramsText,
   renderIndicators,
@@ -167,6 +168,8 @@ interface ChartPanelProps {
   customVersion?: number;
   /** Told the bars indicators are computed on (warm-up included), e.g. for previews. */
   onBars?: (bars: OhlcvBar[]) => void;
+  /** Told the times in view (epoch seconds), e.g. for a picture of the chart. */
+  onVisibleRange?: (range: { from: number; to: number }) => void;
   /** Fills of the backtest run the user chose to show on the charts. */
   backtestFills?: BacktestFill[];
   /** The chart that the toolbars and the watchlist act on. */
@@ -232,6 +235,7 @@ export function ChartPanel({
   customApi,
   customVersion = 0,
   onBars,
+  onVisibleRange,
   backtestFills,
   active = false,
   onActivate,
@@ -1409,6 +1413,7 @@ export function ChartPanel({
               onToolDone={onToolDone}
               drawingsSelectable={!replayChoosing}
               onReachStart={loadOlder}
+              onVisibleRange={onVisibleRange}
             />
             {replayTime === null ? (
               <div className="chart-older">
@@ -1700,9 +1705,9 @@ export function ChartPanel({
                                     );
                                   })}
                                   {timeframeField(item.instance)}
-                                  {item.instance.type === "pine" &&
-                                  item.instance.assistant &&
-                                  onOpenAssistant ? (
+                                  {onOpenAssistant &&
+                                  (item.instance.type === "pine" ||
+                                    INDICATOR_BY_ID.has(item.instance.type)) ? (
                                     <p className="bt-actions">
                                       <button
                                         type="button"
@@ -1712,7 +1717,13 @@ export function ChartPanel({
                                           onOpenAssistant(item.instance);
                                         }}
                                       >
-                                        {t("ia.continue")}
+                                        {t(
+                                          item.instance.type !== "pine"
+                                            ? "ia.vary"
+                                            : item.instance.assistant
+                                              ? "ia.continue"
+                                              : "ia.fix",
+                                        )}
                                       </button>
                                     </p>
                                   ) : null}
