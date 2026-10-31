@@ -5,14 +5,27 @@ import { answerText } from "./answer-text";
 import { useI18n } from "./i18n";
 import {
   type AssistantEvent,
+  type AssistantOrigin,
   type ChartContext,
+  type ChartImage,
   type IndicatorAssistantApi,
+  MAX_IMAGES,
   type RetryStep,
   nextRetry,
 } from "./indicator-assistant-api";
-import type { OhlcvBar } from "./indicators";
+import {
+  INDICATORS,
+  INDICATOR_BY_ID,
+  type OhlcvBar,
+  type PriceSource,
+} from "./indicators";
 import { MAX_PINE_LENGTH, type PineContext } from "./pine";
-import { pineReference, runForAssistant } from "./pine-assistant";
+import {
+  builtinDetail,
+  pineReference,
+  runForAssistant,
+  type SavedScript,
+} from "./pine-assistant";
 
 /** The chart a script is tried on: its bars and what Pine needs to know about it. */
 export interface AssistantChart {
@@ -22,11 +35,25 @@ export interface AssistantChart {
   context: PineContext;
 }
 
+/** Where a new conversation starts. */
+export type AssistantStart =
+  | { kind: "new" }
+  | { kind: "saved"; key: string }
+  | { kind: "tradingview" }
+  | {
+      kind: "builtin";
+      id: string;
+      params?: Record<string, number>;
+      source?: PriceSource;
+    };
+
 /**
- * Claude writes a Pine indicator with the investor (ADR 0042, indicators step 1). Each
- * script Claude wants to try is run here on the chart's bars; the error or a summary of
- * the values goes back to Claude, which fixes and runs again (at most five fixes). The
- * last script that ran is drawn on the chart as a preview; only "Apply" saves it.
+ * Claude writes a Pine indicator with the investor (ADR 0042, indicators steps 1-2). It
+ * can start from a saved indicator, TradingView code or a built-in indicator. Each script
+ * Claude wants to try is run here on the chart's bars; the error or a summary of the
+ * values goes back to Claude, which fixes and runs again (at most five fixes). The last
+ * script that ran is drawn on the chart as a preview; only "Apply" saves it. A picture of
+ * the bars in view goes along only when the investor attaches one.
  */
 export function IndicatorAssistant({
   api,
@@ -36,6 +63,10 @@ export function IndicatorAssistant({
   chart,
   onPreview,
   onApply,
+  initialStart = { kind: "new" },
+  scripts = [],
+  onTarget,
+  captureImage,
 }: {
   api: IndicatorAssistantApi;
   /** A saved conversation to continue (an indicator made here earlier). */
@@ -46,12 +77,20 @@ export function IndicatorAssistant({
   chart: () => AssistantChart | null;
   onPreview: (source: string | null) => void;
   onApply: (source: string, conversationId: string | null) => void;
+  initialStart?: AssistantStart;
+  scripts?: SavedScript[];
+  /** The saved indicator that applying should update, if any. */
+  onTarget?: (instanceKey: string | null) => void;
+  /** Draws the bars in view; null when the chart has none. */
+  captureImage?: () => Promise<ChartImage | null>;
 }) {
   const { t, language } = useI18n();
   const [conversation, setConversation] =
     useState<IndicatorConversation | null>(null);
   const [question, setQuestion] = useState("");
   const [code, setCode] = useState(initialCode);
+  const [start, setStart] = useState<AssistantStart>(initialStart);
+  const [image, setImage] = useState<ChartImage | null>(null);
   const [busy, setBusy] = useState<"asking" | "running" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -89,6 +128,57 @@ export function IndicatorAssistant({
     bars: current.bars.length,
     code: code.trim() ? code : null,
   });
+
+  const chooseStart = (next: AssistantStart) => {
+    setStart(next);
+    const saved =
+      next.kind === "saved"
+        ? scripts.find((script) => script.key === next.key)
+        : undefined;
+    setCode(saved?.code ?? "");
+    onTarget?.(saved?.sameChart ? saved.key : null);
+    onPreview(null);
+  };
+
+  /** What the first request tells Claude about its starting point. */
+  const originNow = (current: AssistantChart): AssistantOrigin | undefined => {
+    if (start.kind === "saved") return { kind: "saved" };
+    if (start.kind === "tradingview") {
+      return {
+        kind: "tradingview",
+        detail:
+          checked && !checked.ok
+            ? checked.error.slice(0, 4000)
+            : "It runs in the app as it is.",
+      };
+    }
+    if (start.kind === "builtin") {
+      const definition = INDICATOR_BY_ID.get(start.id);
+      if (!definition) return undefined;
+      return {
+        kind: "builtin",
+        detail: builtinDetail(
+          definition,
+          start.params ?? {},
+          start.source,
+          current.bars,
+          current.context,
+        ),
+      };
+    }
+    return undefined;
+  };
+
+  const attachImage = async () => {
+    setProblem(null);
+    try {
+      const drawn = await captureImage?.();
+      if (drawn) setImage(drawn);
+      else setProblem(t("ia.noChart"));
+    } catch (error) {
+      fail(error);
+    }
+  };
 
   /** Runs every script Claude asks for and sends the result, until it answers. */
   const settle = async (state: IndicatorConversation) => {
@@ -130,15 +220,21 @@ export function IndicatorAssistant({
             text,
             contextNow(current),
             retry,
+            retry ? undefined : (image ?? undefined),
           )
         : await api.start(
             text,
             language === "ko" ? "ko" : "en",
             pineReference(),
             contextNow(current),
+            {
+              ...(image ? { image } : {}),
+              ...(originNow(current) ? { origin: originNow(current) } : {}),
+            },
           );
       setConversation(answered);
       setQuestion("");
+      if (!retry) setImage(null);
       await settle(answered);
     } catch (error) {
       fail(error);
@@ -165,10 +261,94 @@ export function IndicatorAssistant({
   const retry = conversation?.status === "stopped" ? nextRetry(events) : null;
   const waiting = conversation?.status === "needs_run";
   const runnable = checked?.ok === true;
+  // Nothing sent yet, and not reopening a saved conversation: the start can still change.
+  const choosing = !conversation && !conversationId;
+  const imagesUsed = events.filter((event) => event.has_image).length;
+  // Moving code or a built-in over needs no words; everything else does.
+  const fallbackQuestion =
+    choosing && start.kind === "tradingview" && code.trim()
+      ? t("ia.portQuestion")
+      : choosing && start.kind === "builtin"
+        ? t("ia.builtinQuestion")
+        : "";
+  const request =
+    choosing && start.kind === "tradingview" && !code.trim()
+      ? ""
+      : question.trim() || fallbackQuestion;
 
   return (
     <section className="ia-panel" aria-label={t("ia.title")}>
       <p className="workspace-note">{t("ia.note")}</p>
+      {choosing ? (
+        <div className="ia-start">
+          <label>
+            {t("ia.start")}
+            <select
+              aria-label={t("ia.start")}
+              value={start.kind}
+              onChange={(event) => {
+                const kind = event.target.value as AssistantStart["kind"];
+                if (kind === "saved") {
+                  chooseStart({ kind, key: scripts[0]?.key ?? "" });
+                } else if (kind === "builtin") {
+                  chooseStart({ kind, id: INDICATORS[0].id });
+                } else {
+                  chooseStart({ kind });
+                }
+              }}
+            >
+              <option value="new">{t("ia.startNew")}</option>
+              <option value="saved" disabled={scripts.length === 0}>
+                {t("ia.startSaved")}
+              </option>
+              <option value="tradingview">{t("ia.startTradingView")}</option>
+              <option value="builtin">{t("ia.startBuiltin")}</option>
+            </select>
+          </label>
+          {start.kind === "saved" ? (
+            <label>
+              {t("ia.savedPick")}
+              <select
+                value={start.key}
+                onChange={(event) =>
+                  chooseStart({ kind: "saved", key: event.target.value })
+                }
+              >
+                {scripts.map((script) => (
+                  <option key={script.key} value={script.key}>
+                    {script.sameChart
+                      ? script.title
+                      : `${script.title} (${t("ia.otherChart")})`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {start.kind === "builtin" ? (
+            <label>
+              {t("ia.builtinPick")}
+              <select
+                value={start.id}
+                onChange={(event) =>
+                  chooseStart({ kind: "builtin", id: event.target.value })
+                }
+              >
+                {INDICATORS.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {language === "ko" ? item.name.ko : item.name.en}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {start.kind === "tradingview" ? (
+            <p className="workspace-note">{t("ia.tradingViewNote")}</p>
+          ) : null}
+          {start.kind === "builtin" ? (
+            <p className="workspace-note">{t("ia.builtinNote")}</p>
+          ) : null}
+        </div>
+      ) : null}
       <div className="ia-events">
         {events.map((event, index) => (
           <AssistantEventView
@@ -238,23 +418,56 @@ export function IndicatorAssistant({
             if (
               event.key === "Enter" &&
               (event.metaKey || event.ctrlKey) &&
-              question.trim() &&
+              request &&
               busy === null
             ) {
-              void send(question.trim());
+              void send(request);
             }
           }}
         />
       </label>
+      {image ? (
+        <figure className="ia-image">
+          <img
+            src={`data:image/png;base64,${image.png_base64}`}
+            alt={t("ia.imageAlt", { bars: image.bars })}
+          />
+          <figcaption className="workspace-note">
+            {t("ia.imageNote", { bars: image.bars })}{" "}
+            <button
+              type="button"
+              className="tb-button"
+              onClick={() => setImage(null)}
+            >
+              {t("ia.imageRemove")}
+            </button>
+          </figcaption>
+        </figure>
+      ) : null}
       <p className="bt-actions">
         <button
           type="button"
           className="tb-button bt-primary"
-          disabled={busy !== null || !question.trim()}
-          onClick={() => void send(question.trim())}
+          disabled={busy !== null || !request}
+          onClick={() => void send(request)}
         >
           {busy !== null ? t("rp.sending") : t("ia.send")}
         </button>
+        {captureImage && !image ? (
+          <button
+            type="button"
+            className="tb-button"
+            disabled={busy !== null || imagesUsed >= MAX_IMAGES}
+            title={
+              imagesUsed >= MAX_IMAGES
+                ? t("ia.imageLimit", { max: MAX_IMAGES })
+                : undefined
+            }
+            onClick={() => void attachImage()}
+          >
+            {t("ia.imageAttach")}
+          </button>
+        ) : null}
       </p>
       {conversation && conversation.usage.output_tokens > 0 ? (
         <p className="workspace-note">
@@ -347,7 +560,14 @@ function AssistantEventView({
 }) {
   const { t } = useI18n();
   if (event.type === "question") {
-    return <p className="rv-bubble rv-asked">{event.text}</p>;
+    return (
+      <p className="rv-bubble rv-asked">
+        {event.text}
+        {event.has_image ? (
+          <small className="ia-attached">{t("ia.imageSent")}</small>
+        ) : null}
+      </p>
+    );
   }
   if (event.type === "answer") {
     return (

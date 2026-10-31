@@ -79,6 +79,8 @@ interface PriceChartProps {
   drawingsSelectable?: boolean;
   /** Called when the view is scrolled or zoomed out past the first bar. */
   onReachStart?: () => void;
+  /** Told the times in view (epoch seconds) whenever they change. */
+  onVisibleRange?: (range: { from: number; to: number }) => void;
 }
 
 const DAY_TICK: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
@@ -132,6 +134,7 @@ export function PriceChart({
   markers = [],
   onCandleClick,
   onReachStart,
+  onVisibleRange,
   onHover,
   magnet = false,
   logScale = false,
@@ -177,13 +180,15 @@ export function PriceChart({
   const clickHandler = useRef(onCandleClick);
   const hoverHandler = useRef(onHover);
   const reachStartHandler = useRef(onReachStart);
+  const visibleRangeHandler = useRef(onVisibleRange);
   const lastUserMove = useRef(-Infinity);
 
   useEffect(() => {
     clickHandler.current = onCandleClick;
     hoverHandler.current = onHover;
     reachStartHandler.current = onReachStart;
-  }, [onCandleClick, onHover, onReachStart]);
+    visibleRangeHandler.current = onVisibleRange;
+  }, [onCandleClick, onHover, onReachStart, onVisibleRange]);
 
   useEffect(() => {
     if (!container.current) {
@@ -262,6 +267,12 @@ export function PriceChart({
     chart.current = instance;
 
     const onRange = (range: { from: Time; to: Time } | null) => {
+      if (range !== null) {
+        visibleRangeHandler.current?.({
+          from: timeOf(range.from),
+          to: timeOf(range.to),
+        });
+      }
       if (range === null || applyingSyncedRange.current) {
         return;
       }
