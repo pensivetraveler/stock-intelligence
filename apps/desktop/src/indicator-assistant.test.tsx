@@ -8,7 +8,12 @@ import {
   nextRetry,
 } from "./indicator-assistant-api";
 import type { OhlcvBar } from "./indicators";
-import { pineReference, runForAssistant } from "./pine-assistant";
+import {
+  isPineStrategy,
+  pineReference,
+  pineScriptsOn,
+  runForAssistant,
+} from "./pine-assistant";
 
 const BARS: OhlcvBar[] = Array.from({ length: 60 }, (_, i) => {
   const close = 100 + Math.sin(i / 4) * 5;
@@ -302,5 +307,274 @@ describe("saved assistant link", () => {
       { key: "b", type: "pine", pine: GOOD, params: {}, assistant: "../x y" },
     ]);
     expect(dropped?.assistant).toBeUndefined();
+  });
+});
+
+describe("pineScriptsOn", () => {
+  const STRATEGY = '//@version=5\nstrategy("S")\nplot(close)';
+  const instance = (key: string, pine: string) => ({
+    key,
+    type: "pine",
+    params: {},
+    pine,
+  });
+
+  it("offers indicators on every chart, this one first, but never a strategy", () => {
+    const scripts = pineScriptsOn(
+      [
+        {
+          instrumentId: "a",
+          timeframe: "5m",
+          indicators: [
+            instance("other", GOOD),
+            { key: "ema", type: "ema", params: {} },
+          ],
+        },
+        {
+          instrumentId: "b",
+          timeframe: "1m",
+          indicators: [instance("mine", GOOD), instance("backtest", STRATEGY)],
+        },
+      ],
+      1,
+      (id) => id.toUpperCase(),
+    );
+    expect(scripts.map((script) => [script.key, script.sameChart])).toEqual([
+      ["mine", true],
+      ["other", false],
+    ]);
+    expect(scripts[0].title).toBe("Low touch \u00b7 B 1m");
+  });
+
+  it("tells a strategy from an indicator and a broken script", () => {
+    expect(isPineStrategy(STRATEGY)).toBe(true);
+    expect(isPineStrategy(GOOD)).toBe(false);
+    expect(isPineStrategy("not pine at all (")).toBe(false);
+  });
+});
+
+describe("IndicatorAssistant starting points and images", () => {
+  const chart = () => ({
+    symbol: "AAPL",
+    timeframe: "5m",
+    bars: BARS,
+    context: CONTEXT,
+  });
+  const answered = (over: Partial<IndicatorConversation> = {}) =>
+    conversation({
+      events: [
+        { type: "question", at_utc: AT, text: "q" },
+        { type: "answer", at_utc: AT, text: "Answered" },
+      ],
+      ...over,
+    });
+  const apiFor = (): IndicatorAssistantApi => ({
+    settings: vi.fn(),
+    setModel: vi.fn(),
+    conversation: vi.fn(),
+    sendRun: vi.fn(),
+    start: vi.fn().mockResolvedValue(answered()),
+    ask: vi.fn().mockResolvedValue(answered()),
+  });
+  const send = () =>
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  const SCRIPTS = [
+    { key: "here", title: "Mine", code: GOOD, sameChart: true },
+    { key: "there", title: "Theirs", code: GOOD, sameChart: false },
+  ];
+
+  it("moves TradingView code without a request and reports its first error", async () => {
+    const api = apiFor();
+    const pasted = '//@version=5\nindicator("X")\ntype Foo\nplot(close)';
+    render(
+      <IndicatorAssistant
+        api={api}
+        conversationId={null}
+        initialCode=""
+        applied={false}
+        chart={chart}
+        onPreview={vi.fn()}
+        onApply={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Start from"), {
+      target: { value: "tradingview" },
+    });
+    // Nothing to move yet, so nothing to send.
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Pine Script code" }),
+      {
+        target: { value: pasted },
+      },
+    );
+    send();
+    await screen.findByText("Answered");
+    const [question, , , context, extras] = vi.mocked(api.start).mock.calls[0]!;
+    expect(question).toContain("TradingView");
+    expect(context.code).toBe(pasted);
+    expect(extras?.origin?.kind).toBe("tradingview");
+    expect(extras?.origin?.detail).toMatch(/^line 3, column \d+:/);
+    expect(extras?.image).toBeUndefined();
+  });
+
+  it("starts from a built-in with its settings and values, never its bars", async () => {
+    const api = apiFor();
+    render(
+      <IndicatorAssistant
+        api={api}
+        conversationId={null}
+        initialCode=""
+        applied={false}
+        chart={chart}
+        onPreview={vi.fn()}
+        onApply={vi.fn()}
+        initialStart={{ kind: "builtin", id: "rsi", params: { length: 7 } }}
+      />,
+    );
+    send();
+    await screen.findByText("Answered");
+    const [, , , context, extras] = vi.mocked(api.start).mock.calls[0]!;
+    expect(context.code).toBeNull();
+    expect(extras?.origin?.kind).toBe("builtin");
+    const detail = extras?.origin?.detail ?? "";
+    expect(detail).toContain("Length=7");
+    expect(detail).toMatch(/Output '.+' \(line\): last [\d.]+, min [\d.]+/);
+    expect(detail).toContain("Guide levels: 70, 30");
+  });
+
+  it("loads a saved script; only one on this chart is updated by applying", () => {
+    const onTarget = vi.fn();
+    render(
+      <IndicatorAssistant
+        api={apiFor()}
+        conversationId={null}
+        initialCode=""
+        applied={false}
+        chart={chart}
+        onPreview={vi.fn()}
+        onApply={vi.fn()}
+        scripts={SCRIPTS}
+        onTarget={onTarget}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Start from"), {
+      target: { value: "saved" },
+    });
+    expect(onTarget).toHaveBeenLastCalledWith("here");
+    expect(
+      screen.getByRole("textbox", { name: "Pine Script code" }),
+    ).toHaveValue(GOOD);
+    fireEvent.change(screen.getByLabelText("Indicator"), {
+      target: { value: "there" },
+    });
+    expect(onTarget).toHaveBeenLastCalledWith(null);
+    fireEvent.change(screen.getByLabelText("Start from"), {
+      target: { value: "new" },
+    });
+    expect(
+      screen.getByRole("textbox", { name: "Pine Script code" }),
+    ).toHaveValue("");
+  });
+
+  it("hides the choice when reopening a saved conversation", async () => {
+    const api = apiFor();
+    vi.mocked(api.conversation).mockResolvedValue(answered());
+    render(
+      <IndicatorAssistant
+        api={api}
+        conversationId="conversation-1"
+        initialCode={GOOD}
+        applied
+        chart={chart}
+        onPreview={vi.fn()}
+        onApply={vi.fn()}
+        scripts={SCRIPTS}
+      />,
+    );
+    await screen.findByText("Answered");
+    expect(screen.queryByLabelText("Start from")).toBeNull();
+  });
+
+  it("sends a chart image once, only after it is attached", async () => {
+    const api = apiFor();
+    const image = {
+      png_base64: "aW1hZ2U=",
+      bars: 40,
+      from_utc: "2026-10-28T13:30:00Z",
+      to_utc: "2026-10-28T16:45:00Z",
+    };
+    const captureImage = vi.fn().mockResolvedValue(image);
+    render(
+      <IndicatorAssistant
+        api={api}
+        conversationId={null}
+        initialCode=""
+        applied={false}
+        chart={chart}
+        onPreview={vi.fn()}
+        onApply={vi.fn()}
+        captureImage={captureImage}
+      />,
+    );
+    const ask = (text: string) =>
+      fireEvent.change(screen.getByPlaceholderText(/Bollinger/), {
+        target: { value: text },
+      });
+    // Attached then removed: nothing goes.
+    fireEvent.click(screen.getByRole("button", { name: "Attach chart image" }));
+    await screen.findByAltText("Candles of the 40 bars in view");
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(screen.queryByAltText("Candles of the 40 bars in view")).toBeNull();
+    ask("first");
+    send();
+    await screen.findByText("Answered");
+    expect(vi.mocked(api.start).mock.calls[0]![4]).toEqual({});
+    // Attached: it goes with the next request and then leaves the panel.
+    fireEvent.click(screen.getByRole("button", { name: "Attach chart image" }));
+    await screen.findByAltText("Candles of the 40 bars in view");
+    ask("second");
+    send();
+    await waitFor(() => expect(api.ask).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.ask).mock.calls[0]![4]).toEqual(image);
+    await waitFor(() =>
+      expect(
+        screen.queryByAltText("Candles of the 40 bars in view"),
+      ).toBeNull(),
+    );
+    ask("third");
+    send();
+    await waitFor(() => expect(api.ask).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.ask).mock.calls[1]![4]).toBeUndefined();
+  });
+
+  it("stops offering images at the conversation's limit", async () => {
+    const api = apiFor();
+    vi.mocked(api.conversation).mockResolvedValue(
+      answered({
+        events: Array.from({ length: 5 }, () => ({
+          type: "question" as const,
+          at_utc: AT,
+          text: "q",
+          has_image: true,
+        })),
+      }),
+    );
+    render(
+      <IndicatorAssistant
+        api={api}
+        conversationId="conversation-1"
+        initialCode=""
+        applied={false}
+        chart={chart}
+        onPreview={vi.fn()}
+        onApply={vi.fn()}
+        captureImage={vi.fn()}
+      />,
+    );
+    await screen.findAllByText("Chart image attached");
+    expect(
+      screen.getByRole("button", { name: "Attach chart image" }),
+    ).toBeDisabled();
   });
 });

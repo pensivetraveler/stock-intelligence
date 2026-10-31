@@ -7075,6 +7075,8 @@ export interface IndicatorConversation {
     code?: string;
     ok?: boolean;
     effort?: "medium" | "high";
+    has_image?: boolean;
+    origin?: "saved" | "tradingview" | "builtin";
   }[];
   pending_run: {
     tool_use_id: string;

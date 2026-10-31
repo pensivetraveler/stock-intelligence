@@ -3508,6 +3508,42 @@ body {
   height: 60px;
 }
 
+.ia-panel select {
+  height: 28px;
+  border: 1px solid var(--term-line);
+  border-radius: 4px;
+  color: var(--term-text);
+  background: var(--term-bg);
+}
+
+.ia-start {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ia-start label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ia-image {
+  margin: 0;
+}
+
+.ia-image img {
+  display: block;
+  width: 100%;
+  border-radius: 4px;
+}
+
+.ia-attached {
+  display: block;
+  margin-top: 4px;
+  opacity: 0.75;
+}
+
 .ia-versions {
   display: grid;
   gap: 4px;

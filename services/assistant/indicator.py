@@ -1,4 +1,4 @@
-"""Claude writes Pine indicators with the investor (ADR 0042, indicators step 1).
+"""Claude writes Pine indicators with the investor (ADR 0042, indicators steps 1 and 2).
 
 The app holds the Pine interpreter, so Claude's `run_pine` tool is run by the app: the
 loop stops with the script to run and resumes when the app posts the result (errors with
@@ -8,8 +8,11 @@ stops and shows the error instead of asking Claude again.
 
 What is sent: the supported Pine subset (from the app, fixed for the conversation), the
 editor's code, and the chart's symbol, timeframe and bar count. Never bar values, account
-numbers, keys or record IDs. The history is append-only, as in the review conversations:
-thinking blocks are stored as returned and replayed unchanged.
+numbers, keys or record IDs. The investor may start from existing code (a saved indicator,
+TradingView code, a built-in indicator's description) and may attach a picture of the
+chart; the picture is the only thing that shows prices, and only when they choose it. The
+history is append-only, as in the review conversations: thinking blocks are stored as
+returned and replayed unchanged.
 """
 
 from __future__ import annotations
@@ -40,6 +43,8 @@ MAX_TOKENS = 16_000
 TIMEOUT_SECONDS = 180.0
 MAX_REFERENCE = 20_000
 MAX_CODE = 50_000
+# Every image is sent again with each later turn of the conversation.
+MAX_IMAGES = 5
 KEY_PREFIX = "indicator:"
 
 SYSTEM = """You write Pine Script indicators with an investor, for SIW Research: a charting
@@ -58,6 +63,18 @@ reference below, not all of TradingView's Pine. Rules:
 - When it is right, stop calling the tool and answer briefly in {language}: what it shows,
   its inputs and how to read it. Do not repeat the code; the app shows it.
 - Describe what the indicator measures; no buy or sell recommendations.
+- The context's "start_from" says where the request starts, when it does:
+  - "saved": editor_code is the investor's own indicator. Keep what they did not ask to
+    change.
+  - "tradingview": editor_code is TradingView Pine, and detail holds the app's first error
+    for it. Keep its behaviour, replace what the reference does not support, and list each
+    replacement and any change in behaviour in your answer. A strategy() script becomes an
+    indicator() showing the same signals; say so.
+  - "builtin": detail describes one of the app's built-in indicators, its settings and its
+    computed values on this chart. Reproduce it in Pine and compare your run's summary with
+    those values before changing anything the investor asked for. Say if they differ.
+- A chart image is a picture of candles only, of the bars the investor had in view. Use it
+  to understand the shape they mean. Do not read exact prices from it or hard-code them.
 
 Reference (supported Pine subset):
 {reference}"""
@@ -150,7 +167,7 @@ def call_indicator_claude(
     return message
 
 
-def context_text(context: dict[str, Any]) -> str:
+def context_text(context: dict[str, Any], origin: dict[str, Any] | None = None) -> str:
     """The chart and editor as they are now; sent with every request, after the history."""
     code = context.get("code")
     return json.dumps(
@@ -161,6 +178,7 @@ def context_text(context: dict[str, Any]) -> str:
                 "bars": context["bars"],
             },
             "editor_code": code[:MAX_CODE] if code else None,
+            **({"start_from": origin} if origin else {}),
         },
         ensure_ascii=False,
     )
@@ -171,6 +189,13 @@ def _utc(now: datetime) -> str:
 
 
 Call = Callable[[str, str, list[dict[str, Any]], list[dict[str, Any]], str], dict[str, Any]]
+
+
+def image_block(png_base64: str) -> dict[str, Any]:
+    return {
+        "type": "image",
+        "source": {"type": "base64", "media_type": "image/png", "data": png_base64},
+    }
 
 
 class IndicatorConversation:
@@ -203,9 +228,13 @@ class IndicatorConversation:
         context: dict[str, Any],
         model: str | None = None,
         effort: str | None = None,
+        image: dict[str, Any] | None = None,
+        origin: dict[str, Any] | None = None,
     ) -> None:
         if self.state.get("status") == "running":
             raise ConversationError("the previous request is still running")
+        if image is not None and self.state.get("images", 0) >= MAX_IMAGES:
+            raise ConversationError(f"a conversation can hold at most {MAX_IMAGES} chart images")
         if model is not None and model not in MODELS:
             raise ConversationError(f"model must be one of {', '.join(MODELS)}")
         if effort is not None and effort not in EFFORTS:
@@ -228,15 +257,39 @@ class IndicatorConversation:
             if pending
             else []
         )
+        attached = (
+            [
+                {
+                    "type": "text",
+                    "text": (
+                        f"Chart image: {context['symbol']} {context['timeframe']}, candles only, "
+                        f"{image['bars']} bars from {image['from_utc']} to {image['to_utc']}."
+                    ),
+                },
+                image_block(image["png_base64"]),
+            ]
+            if image
+            else []
+        )
         content = [
             *unrun,
-            {"type": "text", "text": context_text(context)},
+            {"type": "text", "text": context_text(context, origin)},
+            *attached,
             {"type": "text", "text": question},
         ]
         self.store.append_message(self.id, {"role": "user", "content": content})
         self._event(
-            {"type": "question", "text": question, "model": chosen, "effort": chosen_effort}
+            {
+                "type": "question",
+                "text": question,
+                "model": chosen,
+                "effort": chosen_effort,
+                **({"has_image": True} if image else {}),
+                **({"origin": origin["kind"]} if origin else {}),
+            }
         )
+        if image:
+            self.state["images"] = self.state.get("images", 0) + 1
         self.state.update(
             status="running",
             runs=0,
