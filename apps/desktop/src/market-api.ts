@@ -241,7 +241,11 @@ export async function callApi(
   init: { method?: string; body?: unknown } = {},
 ): Promise<unknown> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timeout = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
     const response = await fetcher(`${baseUrl}${path}`, {
       signal: controller.signal,
@@ -273,6 +277,12 @@ export async function callApi(
   } catch (error) {
     if (error instanceof MarketApiError) {
       throw error;
+    }
+    if (timedOut) {
+      throw new MarketApiError(
+        "The local API did not answer in time. Try again.",
+        "request_timeout",
+      );
     }
     throw new MarketApiError(
       error instanceof Error ? error.message : "Network error",

@@ -206,6 +206,9 @@ function describeError(t: Translate, error: unknown): string {
     return t("chart.notOffered");
   }
   if (error instanceof MarketApiError) {
+    if (error.code === "request_timeout") {
+      return t("common.requestTimedOut");
+    }
     return error.requestId
       ? t("chart.request", { message: error.message, id: error.requestId })
       : error.message;
@@ -1908,10 +1911,7 @@ export function ChartPanel({
         >
           {premarket.error
             ? t("chart.premarketFailed", {
-                error:
-                  premarket.error instanceof Error
-                    ? premarket.error.message
-                    : String(premarket.error),
+                error: describeError(t, premarket.error),
               })
             : t("chart.premarketNote", {
                 n: premarketShown.length,
@@ -1926,10 +1926,7 @@ export function ChartPanel({
         >
           {dayMarket.error
             ? t("chart.dayMarketFailed", {
-                error:
-                  dayMarket.error instanceof Error
-                    ? dayMarket.error.message
-                    : String(dayMarket.error),
+                error: describeError(t, dayMarket.error),
               })
             : t("chart.dayMarketNote", { n: dayMarketCandles.length })}
         </p>

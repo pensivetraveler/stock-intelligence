@@ -11,7 +11,11 @@ export async function checkApiHealth(
   timeoutMs: number,
 ): Promise<HealthResult> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timeout = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
     const response = await fetcher(`${apiBaseUrl}/health`, {
       signal: controller.signal,
@@ -30,7 +34,11 @@ export async function checkApiHealth(
     }
     return { state: "connected", message: "API is available" };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Network error";
+    const message = timedOut
+      ? "The API did not answer in time"
+      : error instanceof Error
+        ? error.message
+        : "Network error";
     return { state: "disconnected", message };
   } finally {
     window.clearTimeout(timeout);
