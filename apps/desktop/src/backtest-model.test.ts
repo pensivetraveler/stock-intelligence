@@ -184,6 +184,67 @@ describe("rule builder model", () => {
     expect(rulesDefinition(rulesDraftOf(definition)!)).toEqual(definition);
   });
 
+  it("keeps earlier bars, time conditions and stops through the form", () => {
+    const definition = {
+      type: "rules",
+      entry: {
+        all: [
+          {
+            op: "gt",
+            left: { price: "close" },
+            right: { price: "close", offset: 1 },
+          },
+          {
+            op: "gt",
+            left: {
+              indicator: "sma",
+              params: { length: 5 },
+              output: "value",
+              offset: 2,
+            },
+            right: { value: "10" },
+          },
+          { time: { from: "09:45", to: "15:30" } },
+        ],
+      },
+      exit: null,
+      stop_loss_pct: null,
+      take_profit_pct: null,
+      stop_loss_atr: { length: 20, mult: "1.5" },
+      trailing_stop: { mode: "atr", length: 10, mult: "3" },
+      sizing: { mode: "percent_equity", value: "20" },
+      max_positions: 5,
+    };
+    expect(rulesDefinition(rulesDraftOf(definition)!)).toEqual(definition);
+    const percentTrail = {
+      ...definition,
+      trailing_stop: { mode: "pct", value: "5" },
+    };
+    expect(rulesDefinition(rulesDraftOf(percentTrail)!)).toEqual(percentTrail);
+  });
+
+  it("leaves the new fields out of a strategy that does not use them", () => {
+    const definition = rulesDefinition(defaultRulesDraft());
+    expect(definition).not.toHaveProperty("stop_loss_atr");
+    expect(definition).not.toHaveProperty("trailing_stop");
+    expect((definition.entry as { left: object }).left).not.toHaveProperty(
+      "offset",
+    );
+    const saved = rulesDraftOf(definition)!;
+    expect(rulesDefinition(saved)).toEqual(definition);
+  });
+
+  it("offers stop multiples to the walk-forward grid", () => {
+    const definition = {
+      ...rulesDefinition(defaultRulesDraft()),
+      stop_loss_atr: { length: 14, mult: "2" },
+      trailing_stop: { mode: "pct", value: "5" },
+    };
+    const paths = tunablePaths(definition).map((item) => item.path);
+    expect(paths).toContain("/stop_loss_atr/mult");
+    expect(paths).toContain("/trailing_stop/value");
+  });
+
   it("formats ratios as percentages", () => {
     expect(percent("-0.133158")).toBe("-13.32%");
     expect(percent(null)).toBe("—");

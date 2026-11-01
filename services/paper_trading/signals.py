@@ -27,7 +27,10 @@ def rule_signals(
     clean = validate_definition(definition)
     if clean["type"] != "rules":
         raise StrategyError("paper runner: only rules strategies are offered for now")
-    if clean.get("stop_loss_pct") is not None or clean.get("take_profit_pct") is not None:
+    if any(
+        clean.get(name) is not None
+        for name in ("stop_loss_pct", "take_profit_pct", "stop_loss_atr", "trailing_stop")
+    ):
         # The backtest checks these inside each bar; the runner has no such order yet.
         raise StrategyError("paper runner: stop-loss and take-profit are not offered yet")
     final = [bar for bar in bars if bar.final]

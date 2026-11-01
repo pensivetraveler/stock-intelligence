@@ -34,7 +34,7 @@ from services.backtest.engine import (
 )
 from services.backtest.sandbox import SandboxError, StrategyProcess
 from services.backtest.store import BacktestStore
-from services.backtest.strategy import StrategyError
+from services.backtest.strategy import StrategyError, uses_time_conditions
 from services.backtest.walkforward import WalkForward, WalkForwardError, clean_spec
 from services.custom_indicators.store import CustomIndicatorStore
 from services.market_data.instruments import market_of
@@ -195,7 +195,14 @@ class BacktestRunner:
         self, strategy_id: str, version: int | None, request: dict[str, Any]
     ) -> dict[str, Any]:
         strategy = self.store.strategy(strategy_id, version)
-        run = self.store.create_run(strategy, validate_config(request))
+        config = validate_config(request)
+        definition = strategy["definition"]
+        if config["timeframe"] in ("1d", "1w") and (
+            uses_time_conditions(definition.get("entry"))
+            or uses_time_conditions(definition.get("exit"))
+        ):
+            raise RunConfigError("time conditions need intraday bars (a timeframe like 5m)")
+        run = self.store.create_run(strategy, config)
         self._wake.set()
         return run
 

@@ -5097,7 +5097,13 @@
                 ]
               },
               "exit_reason": {
-                "enum": ["signal", "stop_loss", "take_profit", "open_at_end"]
+                "enum": [
+                  "signal",
+                  "stop_loss",
+                  "trailing_stop",
+                  "take_profit",
+                  "open_at_end"
+                ]
               },
               "open_quantity": {
                 "$ref": "#/$defs/NonNegativeDecimalString"
