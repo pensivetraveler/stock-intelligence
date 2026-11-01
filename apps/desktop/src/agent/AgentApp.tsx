@@ -533,6 +533,7 @@ function PlanWizard({
   const [equity, setEquity] = useState("");
   const [buffer, setBuffer] = useState("50");
   const [settle, setSettle] = useState("60");
+  const [cancelAfter, setCancelAfter] = useState("");
   const [maxAge, setMaxAge] = useState("300");
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -599,6 +600,8 @@ function PlanWizard({
         fx_mode: fxMode,
         equity_basis: equity.trim() === "" ? null : equity.trim(),
         bar_settle_seconds: settle.trim() === "" ? null : Number(settle.trim()),
+        unfilled_cancel_seconds:
+          cancelAfter.trim() === "" ? null : Number(cancelAfter.trim()),
         max_signal_age_seconds: Number(maxAge.trim() || "300"),
       });
       setFormError(null);
@@ -728,6 +731,13 @@ function PlanWizard({
               />
             </label>
             <label>
+              {t("paper.approve.cancelAfter")}
+              <input
+                value={cancelAfter}
+                onChange={(event) => setCancelAfter(event.target.value)}
+              />
+            </label>
+            <label>
               {t("paper.approve.maxAge")}
               <input
                 value={maxAge}
@@ -766,6 +776,7 @@ function PlanWizard({
               buffer: buffer.trim() || "50",
               settle: settle.trim() || "—",
               age: maxAge.trim() || "300",
+              cancel: cancelAfter.trim() || "—",
             })}
           </dd>
         </dl>

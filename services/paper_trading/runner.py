@@ -43,6 +43,7 @@ from services.paper_trading.store import PaperOrderStore, _utc
 SizingMethod = Literal["shares", "cash", "percent_equity"]
 HUNDRED = Decimal(100)
 CENT = Decimal("0.01")
+MAX_CANCEL_ATTEMPTS = 3
 SUB_CENT = Decimal("0.0001")
 
 
@@ -77,9 +78,12 @@ class RunPlan:
     # source's own finality, 15 minutes for Alpaca, stays for charts and caches). None:
     # only the source's finality. A choice per strategy and plan (ADR 0037).
     bar_settle_seconds: int | None = None
+    # Seconds an accepted order may stay unfilled before the runner cancels it; the next
+    # bar then decides again. None: left to the user (ADR 0044, G1).
+    unfilled_cancel_seconds: int | None = None
 
     def approval_content(self) -> dict[str, Any]:
-        return {
+        content = {
             "strategy": {
                 "strategy_id": self.strategy.strategy_id,
                 "strategy_version": self.strategy.strategy_version,
@@ -106,6 +110,10 @@ class RunPlan:
             "max_signal_age_seconds": self.max_signal_age_seconds,
             "bar_settle_seconds": self.bar_settle_seconds,
         }
+        # Only when set, so that plans approved before this existed keep their approval ID.
+        if self.unfilled_cancel_seconds is not None:
+            content["unfilled_cancel_seconds"] = self.unfilled_cancel_seconds
+        return content
 
 
 def plan_from_approval(content: dict[str, Any], definition: dict[str, Any]) -> RunPlan:
@@ -153,6 +161,7 @@ def plan_from_approval(content: dict[str, Any], definition: dict[str, Any]) -> R
         equity_basis=number(content["equity_basis"]),
         max_signal_age_seconds=int(content["max_signal_age_seconds"]),
         bar_settle_seconds=content.get("bar_settle_seconds"),
+        unfilled_cancel_seconds=content.get("unfilled_cancel_seconds"),
     )
 
 
@@ -186,6 +195,8 @@ class StepReport:
     skipped: list[str] = field(default_factory=list)
     reconciled: int = 0
     fills: int = 0
+    cancel_requests: int = 0
+    cancelled: int = 0
 
 
 def bars_sha256(bars: Sequence[EngineBar]) -> str:
@@ -248,10 +259,15 @@ class PaperRunner:
             report.reconciled = self._reconcile(now, orders())
         if self.store.accepted_without_execution():
             report.fills = self._sync_fills(now, orders())
+        if self.store.accepted_without_execution():
+            report.cancelled = self._settle_cancelled(now, orders())
         status = self.store.status()
         if status["halted"]:
             report.halted = True
             return report
+        # After the halt check: the kill switch leaves unfilled orders as they are (ADR 0037).
+        if self.plan.unfilled_cancel_seconds is not None:
+            report.cancel_requests = self._cancel_stale(now, orders)
         for item in self.plan.instruments:
             snapshot = self.feed.snapshot(item.instrument_id, now)
             if snapshot is None or not snapshot.bars:
@@ -275,6 +291,10 @@ class PaperRunner:
             for signal in rule_signals(
                 self.plan.definition, item.instrument_id, item.time_zone, snapshot.bars, holding
             ):
+                if self._has_open_order(item.instrument_id, signal["side"], orders):
+                    # Not recorded as an intent, so a later bar decides again.
+                    report.skipped.append(f"{item.instrument_id}:open_order")
+                    continue
                 self._act(item, snapshot, signal, now, report, final_by)
         return report
 
@@ -547,6 +567,76 @@ class PaperRunner:
                     response_message="not in today's orders: never placed",
                 )
             self.store.record_submission(base)
+            settled += 1
+        return settled
+
+    def _has_open_order(
+        self, instrument_id: str, side: str, orders: Callable[[], list[BrokerOrder]]
+    ) -> bool:
+        """An earlier order of this instrument and side is still working at the broker."""
+        waiting = [
+            submission
+            for submission in self.store.accepted_without_execution()
+            if (intent := self.store.intent(submission["intent_id"])) is not None
+            and intent["instrument_id"] == instrument_id
+            and intent["side"] == side
+        ]
+        if not waiting:
+            return False
+        open_refs = {o.broker_order_ref for o in orders() if o.remaining_quantity > 0}
+        return any(str(s["broker_order_ref"]) in open_refs for s in waiting)
+
+    def _cancel_stale(self, now: datetime, orders: Callable[[], list[BrokerOrder]]) -> int:
+        """Cancel this plan's oldest order left unfilled too long, one per step.
+
+        Only orders the broker lists as still open today are touched. A cancel that fails
+        waits the same time again; after MAX_CANCEL_ATTEMPTS the kill switch goes on.
+        """
+        limit = timedelta(seconds=self.plan.unfilled_cancel_seconds or 0)
+        waiting = self.store.accepted_without_execution()
+        if not waiting:
+            return 0
+        by_ref = {order.broker_order_ref: order for order in orders()}
+        for submission in waiting:
+            reference = str(submission["broker_order_ref"])
+            order = by_ref.get(reference)
+            if order is None or order.remaining_quantity <= 0:
+                continue
+            intent = self.store.intent(submission["intent_id"])
+            if intent is None or intent["approval_id"] != self.approval_id:
+                continue
+            attempts = self.store.cancel_attempts(submission["submission_id"])
+            since = attempts[-1] if attempts else submission["requested_at_utc"]
+            if now - datetime.fromisoformat(since.replace("Z", "+00:00")) < limit:
+                continue
+            if len(attempts) >= MAX_CANCEL_ATTEMPTS:
+                self.store.halt(f"paper order {reference} cannot be cancelled", source="runner")
+                return 0
+            result = self.broker.cancel(reference, intent["instrument_id"], intent["symbol"])
+            self.store.record_cancel_attempt(submission["submission_id"], now, result)
+            return 1
+        return 0
+
+    def _settle_cancelled(self, now: datetime, orders: list[BrokerOrder]) -> int:
+        """Close orders the runner asked to cancel and the broker shows with nothing filled.
+
+        By quantities: the paper server's status text still said "accepted" after a cancel
+        (ADR 0037, P4). An order with fills is stored by `_sync_fills` instead.
+        """
+        by_ref = {order.broker_order_ref: order for order in orders}
+        settled = 0
+        for submission in self.store.accepted_without_execution():
+            order = by_ref.get(str(submission["broker_order_ref"]))
+            if (
+                order is None
+                or order.remaining_quantity > 0
+                or order.filled_quantity > 0
+                or not self.store.cancel_attempts(submission["submission_id"])
+            ):
+                continue
+            self.store.record_submission(
+                {**submission, "status": "cancelled", "responded_at_utc": _utc(now)}
+            )
             settled += 1
         return settled
 

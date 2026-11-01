@@ -63,6 +63,8 @@ class ApprovalRequest(BaseModel):
     # Per strategy: seconds after a bar's end before it counts as final for signals; None
     # keeps the data source's own finality (15 minutes for Alpaca).
     bar_settle_seconds: int | None = Field(default=None, ge=0, le=900)
+    # Seconds before the runner cancels an order still unfilled; None leaves it to the user.
+    unfilled_cancel_seconds: int | None = Field(default=None, ge=10, le=3_600)
 
 
 class ArmRequest(BaseModel):
@@ -250,6 +252,7 @@ def register_paper_routes(
                 equity_basis=_decimal(body.equity_basis, "equity_basis"),
                 max_signal_age_seconds=body.max_signal_age_seconds,
                 bar_settle_seconds=body.bar_settle_seconds,
+                unfilled_cancel_seconds=body.unfilled_cancel_seconds,
             )
         except ValueError as exc:
             return error_response(request, 422, "invalid_approval", str(exc))

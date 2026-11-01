@@ -1262,7 +1262,7 @@ const en = {
   "paper.wizard.cancel": "Cancel",
   "paper.wizard.advanced": "Advanced settings",
   "paper.wizard.advancedSummary":
-    "price buffer {buffer} bp · bar settle {settle} s · signal age ≤ {age} s",
+    "price buffer {buffer} bp · bar settle {settle} s · signal age ≤ {age} s · cancel unfilled after {cancel} s",
   "paper.wizard.missing1": "Choose a strategy and a Kiwoom demo key.",
   "paper.wizard.missing2": "Choose at least one instrument.",
   "paper.wizard.missing3": "Enter the exchange rate, or use the ECOS rate.",
@@ -1320,6 +1320,8 @@ const en = {
   "paper.approve.rate": "KRW per USD for the amount limit",
   "paper.approve.buffer": "Market-order price buffer (bp)",
   "paper.approve.equity": "Fixed equity for percent sizing (USD, optional)",
+  "paper.approve.cancelAfter":
+    "Cancel an unfilled order after (seconds; empty = leave it to you)",
   "paper.approve.settle":
     "Bar settle time (seconds after a bar ends before signals use it; empty = the data source's own, 15 minutes for Alpaca)",
   "paper.approve.maxAge": "Max signal age (seconds)",
@@ -2863,7 +2865,7 @@ const ko: Record<MessageKey, string> = {
   "paper.wizard.cancel": "취소",
   "paper.wizard.advanced": "고급 설정",
   "paper.wizard.advancedSummary":
-    "가격 버퍼 {buffer}bp · 봉 확정 대기 {settle}초 · 신호 나이 ≤ {age}초",
+    "가격 버퍼 {buffer}bp · 봉 확정 대기 {settle}초 · 신호 나이 ≤ {age}초 · 미체결 취소 {cancel}초",
   "paper.wizard.missing1": "전략과 키움 모의 키를 고르세요.",
   "paper.wizard.missing2": "종목을 하나 이상 고르세요.",
   "paper.wizard.missing3": "환율을 입력하거나 ECOS 환율을 쓰세요.",
@@ -2919,6 +2921,8 @@ const ko: Record<MessageKey, string> = {
   "paper.approve.rate": "금액 한도용 원/달러 환율",
   "paper.approve.buffer": "시장가 가격 버퍼(bp)",
   "paper.approve.equity": "비율 수량 계산용 고정 자산(달러, 선택)",
+  "paper.approve.cancelAfter":
+    "미체결 주문 취소(초 뒤, 비우면 사용자가 직접 취소)",
   "paper.approve.settle":
     "봉 확정 대기(봉이 끝난 뒤 신호에 쓰기까지 초, 비우면 데이터 출처 기준 — Alpaca 15분)",
   "paper.approve.maxAge": "신호 최대 나이(초)",
