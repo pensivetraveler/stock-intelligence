@@ -3,6 +3,7 @@
 // OS keychain. If it is already running (e.g. in a terminal) it is used as it is.
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
+const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 
@@ -15,6 +16,33 @@ async function healthy(apiUrl) {
   } catch {
     return false;
   }
+}
+
+function portInUse(apiUrl) {
+  const { hostname, port } = new URL(apiUrl);
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: hostname, port: Number(port) });
+    const finish = (inUse) => {
+      socket.destroy();
+      resolve(inUse);
+    };
+    socket.setTimeout(1500, () => finish(false));
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+  });
+}
+
+/** Why the API exited: the port held by something else is the one the user can fix. */
+async function startFailure(apiUrl, exitCode) {
+  if (await portInUse(apiUrl)) {
+    const { port } = new URL(apiUrl);
+    return (
+      `다른 프로그램이 포트 ${port}을 쓰고 있어 로컬 API를 시작하지 못했습니다. ` +
+      `그 프로그램을 끄고 앱을 다시 여세요.\n\n` +
+      `확인 명령: lsof -nP -iTCP:${port} -sTCP:LISTEN`
+    );
+  }
+  return `the local API stopped while starting (exit ${exitCode})`;
 }
 
 /** uv in the usual places: apps opened from Finder do not get the shell's PATH. */
@@ -72,9 +100,7 @@ async function ensureApi({ apiUrl, repoDir, log }) {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
-      throw new Error(
-        `the local API stopped while starting (exit ${child.exitCode})`,
-      );
+      throw new Error(await startFailure(apiUrl, child.exitCode));
     }
     if (await healthy(apiUrl)) return { started: true, process: child };
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -83,4 +109,4 @@ async function ensureApi({ apiUrl, repoDir, log }) {
   throw new Error("the local API did not answer within 60 seconds");
 }
 
-module.exports = { ensureApi, healthy };
+module.exports = { ensureApi, healthy, startFailure };
