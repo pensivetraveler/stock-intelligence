@@ -210,6 +210,8 @@ export interface BarsRequest {
   endUtc: string;
   /** Point-in-time cutoff: only bars this account could have had by then. */
   asOfUtc?: string;
+  /** Daily and weekly only, and never with `asOfUtc`. Unset means as traded. */
+  adjustment?: "split_adjusted";
 }
 
 function hasKind<T extends { kind: string }>(
@@ -328,6 +330,7 @@ export function createMarketApi(
     startUtc,
     endUtc,
     asOfUtc,
+    adjustment,
   }: BarsRequest) => {
     const query = new URLSearchParams({
       instrument_id: instrumentId,
@@ -335,6 +338,7 @@ export function createMarketApi(
       start_utc: startUtc,
       end_utc: endUtc,
       ...(asOfUtc ? { as_of_utc: asOfUtc } : {}),
+      ...(adjustment ? { adjustment } : {}),
     });
     return get<MarketBarsResponse>(
       `/v1/market/bars?${query.toString()}`,

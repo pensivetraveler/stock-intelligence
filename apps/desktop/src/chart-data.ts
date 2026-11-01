@@ -1,4 +1,6 @@
 import type { MarketBarsResponse, PriceBar } from "@siw/contracts/types";
+import { MarketApiError, type BarsRequest, type MarketApi } from "./market-api";
+import { isDailyTimeframe } from "./timeframes";
 import { US_ZONE, zoneFormat, type MarketZone } from "./market-zone";
 
 import { translateDynamic, translator, type Translate } from "./i18n";
@@ -201,4 +203,27 @@ export function summarize(
         .join(" · ") || t("summary.noBars"),
     lineage: `${coverage.source_id} · ${coverage.source_feed_scope} · ${coverage.adjustment} · ${coverage.dataset_revision} · ${coverage.verification_status}`,
   };
+}
+
+/**
+ * A chart's bars. Daily and weekly prices are split-adjusted, or a split would read as a
+ * crash to indicators and strategies; a source without adjusted prices gives them as traded.
+ * `coverage.adjustment` of the answer says which it was.
+ */
+export async function chartPriceBars(
+  api: Pick<MarketApi, "bars">,
+  request: BarsRequest,
+): Promise<MarketBarsResponse> {
+  if (!isDailyTimeframe(request.timeframe)) return api.bars(request);
+  try {
+    return await api.bars({ ...request, adjustment: "split_adjusted" });
+  } catch (error) {
+    if (
+      error instanceof MarketApiError &&
+      error.code === "invalid_market_data_query"
+    ) {
+      return api.bars(request);
+    }
+    throw error;
+  }
 }

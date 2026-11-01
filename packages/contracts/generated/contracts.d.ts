@@ -7187,6 +7187,10 @@ export interface StrategyResults {
     profit: string;
     assumed: boolean;
   }[];
+  prices?: {
+    splits_adjusted: boolean | null;
+    dividends_adjusted: boolean | null;
+  };
   concentration: {
     days_with_trades: number;
     /**

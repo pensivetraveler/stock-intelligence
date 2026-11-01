@@ -16,6 +16,7 @@ import {
   summarize,
   toDayMarketCandles,
   toSeries,
+  chartPriceBars,
 } from "./chart-data";
 import type { Drawing, DrawingTool } from "./drawings";
 import { barEnd, barsAsOf } from "./replay";
@@ -170,7 +171,8 @@ interface ChartPanelProps {
   /** Bumped when the list of Python indicator versions changes. */
   customVersion?: number;
   /** Told the bars indicators are computed on (warm-up included), e.g. for previews. */
-  onBars?: (bars: OhlcvBar[]) => void;
+  /** With what the prices include: `coverage.adjustment` of the bars shown. */
+  onBars?: (bars: OhlcvBar[], adjustment: string | undefined) => void;
   /** Told the times in view (epoch seconds), e.g. for a picture of the chart. */
   onVisibleRange?: (range: { from: number; to: number }) => void;
   /** Fills of the backtest run the user chose to show on the charts. */
@@ -297,7 +299,11 @@ export function ChartPanel({
           if (current) setLoad({ status: "closed", session });
           return;
         }
-        const response = await api.bars({ instrumentId, timeframe, ...range });
+        const response = await chartPriceBars(api, {
+          instrumentId,
+          timeframe,
+          ...range,
+        });
         if (current) setLoad({ status: "ready", session, response });
       } catch (error) {
         if (current) setLoad({ status: "error", error });
@@ -468,7 +474,12 @@ export function ChartPanel({
       try {
         if (isDailyTimeframe(timeframe)) {
           const range = olderDailyRange(timeframe, before);
-          bars = (await api.bars({ instrumentId, timeframe, ...range })).bars;
+          // As traded during replay, whose as-of bars cannot be adjusted.
+          bars = (
+            replayTime === null
+              ? await chartPriceBars(api, { instrumentId, timeframe, ...range })
+              : await api.bars({ instrumentId, timeframe, ...range })
+          ).bars;
           from = range.startUtc.slice(0, 10);
         } else {
           // Sessions without trades (a halt) are skipped, not taken for the start.
@@ -526,6 +537,7 @@ export function ChartPanel({
       });
     })();
   }, [
+    replayTime,
     api,
     canLoadOlder,
     instrumentId,
@@ -671,13 +683,20 @@ export function ChartPanel({
   // During replay everything below (chart, legend, indicators, markers, candle
   // clicks) sees only the bars that had closed by the replay time; once the API's
   // as-of answer arrives, only the bars it says were available by then.
+  const priceAdjustment =
+    load.status === "ready" ? load.response.coverage.adjustment : undefined;
   const bars = useMemo(() => {
     if (replayTime === null) return allBars;
+    // Bars adjusted before replay began must not join the as-traded as-of bars.
     const source = asOf
-      ? [...olderBars, ...historyBars, ...asOf.response.bars]
+      ? [
+          ...(priceAdjustment === "raw" ? olderBars : []),
+          ...historyBars,
+          ...asOf.response.bars,
+        ]
       : allBars;
     return source ? barsAsOf(source, replayTime) : null;
-  }, [allBars, olderBars, historyBars, replayTime, asOf]);
+  }, [allBars, olderBars, historyBars, replayTime, asOf, priceAdjustment]);
   const series = useMemo(() => (bars ? toSeries(bars) : null), [bars]);
 
   // The US day market (ADR 0030): its own request and series, never mixed into `bars`,
@@ -874,7 +893,14 @@ export function ChartPanel({
     ];
   }, [bars, warmup]);
   const warmupCount = ohlcv.length - (bars?.length ?? 0);
-  useEffect(() => onBars?.(ohlcv), [ohlcv, onBars]);
+  const shownAdjustment =
+    replayTime !== null && asOf
+      ? asOf.response.coverage.adjustment
+      : priceAdjustment;
+  useEffect(
+    () => onBars?.(ohlcv, shownAdjustment),
+    [ohlcv, onBars, shownAdjustment],
+  );
   // Each chart bar's end, for placing larger-timeframe values without look-ahead.
   const ohlcvEnds = useMemo<number[]>(() => {
     const shown = bars ?? [];
@@ -947,11 +973,16 @@ export function ChartPanel({
     async (request: (typeof higherRequests)[number]): Promise<PriceBar[]> => {
       const instrument = request.key.split("|")[0];
       if (!("sessions" in request) || request.sessions === undefined) {
-        const response = await api.bars({
+        const barsRequest = {
           instrumentId: instrument,
           timeframe: request.timeframe,
           ...request.range!,
-        });
+        };
+        // A daily chart's own prices are adjusted, so its higher timeframes must match.
+        const response = await (isDailyTimeframe(timeframe) &&
+        replayTime === null
+          ? chartPriceBars(api, barsRequest)
+          : api.bars(barsRequest));
         return response.bars;
       }
       const windows = await api.sessions(
@@ -972,7 +1003,7 @@ export function ChartPanel({
       }
       return bars;
     },
-    [api, sessionDate, sessionScope],
+    [api, sessionDate, sessionScope, timeframe, replayTime],
   );
   const [higherCache, setHigherCache] = useState<Record<string, HigherBars>>(
     {},

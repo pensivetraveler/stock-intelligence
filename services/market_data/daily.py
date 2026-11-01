@@ -10,7 +10,7 @@ Providers that serve daily bars implement `DailyBarsProvider`; the rest are told
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Literal, Protocol, runtime_checkable
@@ -23,6 +23,7 @@ from services.market_data.calendar import (
     SessionWindow,
     UsEquityCalendar,
 )
+from services.market_data.instruments import calendar_for
 from services.market_data.provider import (
     BarsQuery,
     BarsResult,
@@ -225,6 +226,20 @@ def _daily_bar(
         "dataset_revision": source.dataset_revision,
         "available_at_utc": utc_text(available_at),
     }
+
+
+def adjusted_bars(provider: object, query: BarsQuery, adjustment: str) -> BarsResult:
+    """Adjusted daily or weekly bars. Never as of a past time: adjustment uses later actions."""
+    if query.timeframe not in ("1d", "1w"):
+        raise InvalidBarsQueryError("adjusted prices are available for daily and weekly bars")
+    if query.as_of_utc is not None:
+        raise InvalidBarsQueryError("adjusted prices cannot be read as of a past time")
+    if not isinstance(provider, AdjustedDailyProvider):
+        raise InvalidBarsQueryError("adjusted prices are not available from this provider")
+    result = provider.get_adjusted_daily_bars(replace(query, timeframe="1d"), adjustment)
+    if query.timeframe == "1w":
+        return aggregate_weekly(query, result, calendar_for(query.instrument_id))
+    return result
 
 
 def aggregate_weekly(query: BarsQuery, daily: BarsResult, calendar: UsEquityCalendar) -> BarsResult:
