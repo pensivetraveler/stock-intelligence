@@ -81,10 +81,49 @@ export function runStrategy(
 const utc = (time: number) =>
   new Date(time * 1000).toISOString().replace(".000Z", "Z");
 
+/**
+ * How the trades crowd into days, in the exchange's time, over every trade rather than only
+ * the ones sent. Claude does not count this reliably from a list (pilot A, #SIW-2).
+ */
+export function concentrationOf(
+  trades: { entryTime: number }[],
+  timeZone: string | undefined,
+): StrategyResults["concentration"] {
+  const day = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const counts = new Map<string, number>();
+  for (const trade of trades) {
+    const date = day.format(new Date(trade.entryTime * 1000));
+    counts.set(date, (counts.get(date) ?? 0) + 1);
+  }
+  const top = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 3);
+  const inTop = top.reduce((sum, [, count]) => sum + count, 0);
+  return {
+    days_with_trades: counts.size,
+    top_days: top.map(([date, count]) => ({
+      date,
+      trades: count,
+    })) as StrategyResults["concentration"]["top_days"],
+    top3_share_percent:
+      trades.length === 0 ? "0.00" : ((inTop / trades.length) * 100).toFixed(2),
+  };
+}
+
 /** A backtest as it is kept with its version and sent to Claude. */
 export function resultsOf(
   report: StrategyReport,
-  chart: { symbol: string; timeframe: string; bars: OhlcvBar[] },
+  chart: {
+    symbol: string;
+    timeframe: string;
+    bars: OhlcvBar[];
+    context: PineContext;
+  },
   version: number | null,
 ): StrategyResults {
   const { bars } = chart;
@@ -117,6 +156,7 @@ export function resultsOf(
           open_profit: report.openPosition.openProfit,
         }
       : null,
+    concentration: concentrationOf(report.trades, chart.context.timeZone),
     trades: report.trades.slice(-MAX_SENT_TRADES).map((trade) => ({
       direction: trade.direction,
       qty: trade.qty,

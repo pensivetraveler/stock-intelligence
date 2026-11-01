@@ -45,7 +45,17 @@
             "profit": "-15.00",
             "assumed": false
           }
-        ]
+        ],
+        "concentration": {
+          "days_with_trades": 1,
+          "top_days": [
+            {
+              "date": "2026-10-30",
+              "trades": 1
+            }
+          ],
+          "top3_share_percent": "100.00"
+        }
       },
       "at_utc": "2026-11-01T12:00:00Z"
     },

@@ -91,7 +91,7 @@ const en = {
   "sr.resultsSent": "Backtest results sent ({trades} closed trades)",
   "sr.draftTitle": "What will be sent",
   "sr.draftNote":
-    "This backtest of the code below, on this chart: summary figures ({total} closed trades), the latest {trades} trades including open ones, and how many versions were tested. No bar values or account details.",
+    "This backtest of the code below, on this chart: summary figures ({total} closed trades), trades per day, the latest {trades} trades including open ones, and how many versions were tested. No bar values or account details.",
   "sr.sendDraft": "Send these results",
   "sr.cancelDraft": "Don't send",
   "sr.versions": "Backtests by version",
@@ -1678,7 +1678,7 @@ const ko: Record<MessageKey, string> = {
   "sr.resultsSent": "백테스트 결과 전송(청산 거래 {trades}건)",
   "sr.draftTitle": "보낼 내용",
   "sr.draftNote":
-    "아래 코드를 이 차트에서 백테스트한 결과입니다. 요약 수치(청산 거래 {total}건), 보유 중을 포함한 최근 거래 {trades}건, 시험한 버전 수를 보냅니다. 봉 값과 계좌 정보는 보내지 않습니다.",
+    "아래 코드를 이 차트에서 백테스트한 결과입니다. 요약 수치(청산 거래 {total}건), 일자별 거래 집중도, 보유 중을 포함한 최근 거래 {trades}건, 시험한 버전 수를 보냅니다. 봉 값과 계좌 정보는 보내지 않습니다.",
   "sr.sendDraft": "이 결과 보내기",
   "sr.cancelDraft": "보내지 않기",
   "sr.versions": "버전별 백테스트",

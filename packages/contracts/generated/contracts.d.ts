@@ -7172,4 +7172,43 @@ export interface StrategyResults {
     profit: string;
     assumed: boolean;
   }[];
+  concentration: {
+    days_with_trades: number;
+    /**
+     * @maxItems 3
+     */
+    top_days:
+      | []
+      | [
+          {
+            date: string;
+            trades: number;
+          },
+        ]
+      | [
+          {
+            date: string;
+            trades: number;
+          },
+          {
+            date: string;
+            trades: number;
+          },
+        ]
+      | [
+          {
+            date: string;
+            trades: number;
+          },
+          {
+            date: string;
+            trades: number;
+          },
+          {
+            date: string;
+            trades: number;
+          },
+        ];
+    top3_share_percent: string;
+  };
 }

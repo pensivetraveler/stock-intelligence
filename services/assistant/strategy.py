@@ -6,9 +6,9 @@ whether the script ran and how many trades it made, so a mistake can be fixed wi
 Claude tuning a strategy to its profit on its own. Profit and trades go to Claude only when
 the investor sends them, after seeing what will be sent.
 
-What the investor sends: summary figures and the latest trades of a backtest (times, prices,
-profit), and how many versions this conversation has tested. Never bar values, account
-numbers, keys or record IDs.
+What the investor sends: summary figures, how trades crowd into days and the latest trades of
+a backtest (times, prices, profit), and how many versions this conversation has tested. Never
+bar values, account numbers, keys or record IDs.
 """
 
 from __future__ import annotations
@@ -57,7 +57,9 @@ all of TradingView's Pine. Rules:
   - how far this number of trades can be trusted, plainly when it is small;
   - the risk of overfitting: every version tried on the same bars is tuned to them, so say how
     many versions were tested and that this chart's period alone cannot show the edge is real;
-  - fills marked as assumed, whose order inside a bar is not known.
+  - fills marked as assumed, whose order inside a bar is not known;
+  - concentration: it counts every trade by exchange day (the trade list may be partial). Say
+    so when a few days hold most of the trades, quoting the days and the share.
   Never state a number that was not sent. Never compute a new figure without showing how.
 - Describe what a strategy did; no recommendation to buy or sell anything.
 - The context's "start_from" says where the request starts, when it does:

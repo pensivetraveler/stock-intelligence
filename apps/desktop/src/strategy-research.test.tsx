@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { OhlcvBar } from "./indicators";
 import { pineReference } from "./pine-assistant";
 import {
+  concentrationOf,
   MAX_SENT_TRADES,
   pineStrategiesOn,
   resultsOf,
@@ -90,9 +91,44 @@ describe("resultsOf", () => {
     expect(results.version).toBe(2);
     expect(results.closed_trades).toBe(80);
     expect(results.trades).toHaveLength(MAX_SENT_TRADES);
+    // Counted over all 80 trades, not only the 50 that are sent.
+    expect(results.concentration.top_days[0]?.trades).toBe(80);
     expect(results.trades[MAX_SENT_TRADES - 1].entry_price).toBe("79");
     expect(results.from_utc).toBe("2023-11-14T22:13:20Z");
     expect(JSON.stringify(results)).not.toContain('"entryId"');
+  });
+});
+
+describe("concentrationOf", () => {
+  // 2026-10-13 is one exchange day in New York from 04:00 UTC to 04:00 UTC the next day.
+  const at = (iso: string) => ({ entryTime: Date.parse(iso) / 1000 });
+
+  it("counts every trade by exchange day and the share of the top three", () => {
+    const trades = [
+      ...Array.from({ length: 29 }, () => at("2026-10-13T14:00:00Z")),
+      at("2026-10-14T03:00:00Z"), // still the 13th in New York
+      at("2026-10-14T14:00:00Z"),
+      at("2026-10-15T14:00:00Z"),
+      at("2026-10-16T14:00:00Z"),
+      at("2026-10-19T14:00:00Z"),
+    ];
+    expect(concentrationOf(trades, "America/New_York")).toEqual({
+      days_with_trades: 5,
+      top_days: [
+        { date: "2026-10-13", trades: 30 },
+        { date: "2026-10-14", trades: 1 },
+        { date: "2026-10-15", trades: 1 },
+      ],
+      top3_share_percent: "94.12",
+    });
+  });
+
+  it("is empty without trades", () => {
+    expect(concentrationOf([], "America/New_York")).toEqual({
+      days_with_trades: 0,
+      top_days: [],
+      top3_share_percent: "0.00",
+    });
   });
 });
 

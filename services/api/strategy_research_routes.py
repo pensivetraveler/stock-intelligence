@@ -55,6 +55,21 @@ class OpenPosition(BaseModel):
     open_profit: str = Decimal
 
 
+class TradeDay(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    date: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    trades: int = Field(ge=1)
+
+
+class Concentration(BaseModel):
+    """Trades per exchange day over every trade, not only those sent."""
+
+    model_config = ConfigDict(extra="forbid")
+    days_with_trades: int = Field(ge=0)
+    top_days: list[TradeDay] = Field(max_length=3)
+    top3_share_percent: str = Decimal
+
+
 class Results(BaseModel):
     """One backtest of a Pine strategy on the chart. Amounts are decimal text."""
 
@@ -81,6 +96,7 @@ class Results(BaseModel):
     assumed_fills: int = Field(ge=0)
     skipped_orders: int = Field(ge=0)
     open_position: OpenPosition | None = None
+    concentration: Concentration
     trades: list[Trade] = Field(max_length=MAX_SENT_TRADES)
 
 
