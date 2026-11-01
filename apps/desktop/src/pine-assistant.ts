@@ -86,6 +86,7 @@ export function pineReference(
     "- Variables, var, := and += style assignment, tuples ([a, b] = f()), if/else (also as a value), switch, for ... to ... by, for x in xs, while, break, continue, the ternary operator.",
     "- User functions (f(x) => ...) with default and named arguments; method definitions and calls.",
     "- Type annotations (float, int, bool, string, color, float[], array<line>, line, label, box, table, chart.point) are accepted.",
+    "- and/or: before version 6 both sides always run; from version 6 the settled side is skipped, so keep ta.* calls outside the condition there.",
     "- x[n] reads n bars back; na, nz, fixnan. Strings with + and str.*; time, year...second, timestamp(), barstate.*, syminfo.*, timeframe.* (exchange time zone).",
     "Inputs: input, input.int, input.float, input.bool, input.source, input.string(options=[...]) and input.timeframe become settings; input.color, input.symbol and input.session stay at their defaults.",
     "Output: plot (line or histogram, colour per bar, linewidth, display.none), hline, plotshape, plotchar, plotarrow, bgcolor, barcolor, fill, line.*, label.*, box.*, table.*, linefill.*. overlay=true draws on the price chart, otherwise a separate pane.",
