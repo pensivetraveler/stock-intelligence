@@ -41,6 +41,9 @@ import { type AssistantStart, IndicatorAssistant } from "./IndicatorAssistant";
 import { renderBarsImage } from "./chart-image";
 import { pineScriptsOn } from "./pine-assistant";
 import type { IndicatorAssistantApi } from "./indicator-assistant-api";
+import { pineStrategiesOn } from "./strategy-research";
+import type { StrategyResearchApi } from "./strategy-research-api";
+import { StrategyResearch } from "./StrategyResearch";
 import {
   cleanParams,
   defaultParams,
@@ -168,6 +171,7 @@ interface WorkspaceProps {
   customApi?: CustomIndicatorApi;
   /** Claude writing Pine indicators (ADR 0042); without one it is not offered. */
   assistantApi?: IndicatorAssistantApi;
+  researchApi?: StrategyResearchApi;
 }
 
 type Panel =
@@ -333,6 +337,7 @@ export function Workspace({
   reviewApi,
   customApi,
   assistantApi,
+  researchApi,
   openOnToday = false,
 }: WorkspaceProps) {
   const { t } = useI18n();
@@ -609,6 +614,8 @@ export function Workspace({
     conversationId: string | null;
     code: string;
     start?: AssistantStart;
+    /** Strategy research (ADR 0042) rather than the indicator assistant. */
+    research?: boolean;
   } | null>(null);
   const [assistantPreview, setAssistantPreview] = useState<string | null>(null);
   const [assistantGeometry, setAssistantGeometry] = useState<WindowGeometry>(
@@ -1594,6 +1601,22 @@ export function Workspace({
                   ),
                 })
               }
+              onOpenResearch={
+                researchApi
+                  ? (instance) => {
+                      setAssistantPreview(null);
+                      setAssistant({
+                        session: Date.now(),
+                        chart: index,
+                        instanceKey: instance.key,
+                        conversationId: instance.assistant ?? null,
+                        code: instance.pine ?? "",
+                        start: { kind: "saved", key: instance.key },
+                        research: true,
+                      });
+                    }
+                  : undefined
+              }
               onOpenAssistant={
                 assistantApi
                   ? (instance) => {
@@ -2092,6 +2115,23 @@ export function Workspace({
               ],
             });
           }}
+          onResearch={
+            researchApi
+              ? () => {
+                  setPineOpen(false);
+                  setIndicatorsOpen(false);
+                  setAssistantPreview(null);
+                  setAssistant({
+                    session: Date.now(),
+                    chart: activeChart,
+                    instanceKey: null,
+                    conversationId: null,
+                    code: "",
+                    research: true,
+                  });
+                }
+              : undefined
+          }
           onAssistant={
             assistantApi
               ? () => {
@@ -2144,9 +2184,9 @@ export function Workspace({
         />
       ) : null}
 
-      {assistant && assistantApi ? (
+      {assistant && (assistant.research ? researchApi : assistantApi) ? (
         <FloatingWindow
-          title={`${t("ia.title")} \u00b7 ${symbolOf(layout.charts[assistant.chart].instrumentId)} \u00b7 ${layout.charts[assistant.chart].timeframe}`}
+          title={`${t(assistant.research ? "sr.title" : "ia.title")} \u00b7 ${symbolOf(layout.charts[assistant.chart].instrumentId)} \u00b7 ${layout.charts[assistant.chart].timeframe}`}
           geometry={assistantGeometry}
           onGeometryChange={setAssistantGeometry}
           actions={
@@ -2164,26 +2204,54 @@ export function Workspace({
             </button>
           }
         >
-          <IndicatorAssistant
-            key={assistant.session}
-            api={assistantApi}
-            conversationId={assistant.conversationId}
-            initialCode={assistant.code}
-            applied={assistant.instanceKey !== null}
-            chart={() => assistantChart(assistant.chart)}
-            onPreview={setAssistantPreview}
-            initialStart={assistant.start}
-            scripts={pineScriptsOn(layout.charts, assistant.chart, symbolOf)}
-            onTarget={(instanceKey) =>
-              setAssistant((current) =>
-                current ? { ...current, instanceKey } : current,
-              )
-            }
-            captureImage={() => assistantImage(assistant.chart)}
-            onApply={(source, conversationId) =>
-              applyAssistant(source, conversationId)
-            }
-          />
+          {assistant.research && researchApi ? (
+            <StrategyResearch
+              key={assistant.session}
+              api={researchApi}
+              conversationId={assistant.conversationId}
+              initialCode={assistant.code}
+              applied={assistant.instanceKey !== null}
+              chart={() => assistantChart(assistant.chart)}
+              scripts={pineStrategiesOn(
+                layout.charts,
+                assistant.chart,
+                symbolOf,
+              )}
+              initialStart={
+                assistant.start?.kind === "saved"
+                  ? assistant.start
+                  : { kind: "new" }
+              }
+              onTarget={(instanceKey) =>
+                setAssistant((current) =>
+                  current ? { ...current, instanceKey } : current,
+                )
+              }
+              onPreview={setAssistantPreview}
+              onApply={applyAssistant}
+            />
+          ) : assistantApi ? (
+            <IndicatorAssistant
+              key={assistant.session}
+              api={assistantApi}
+              conversationId={assistant.conversationId}
+              initialCode={assistant.code}
+              applied={assistant.instanceKey !== null}
+              chart={() => assistantChart(assistant.chart)}
+              onPreview={setAssistantPreview}
+              initialStart={assistant.start}
+              scripts={pineScriptsOn(layout.charts, assistant.chart, symbolOf)}
+              onTarget={(instanceKey) =>
+                setAssistant((current) =>
+                  current ? { ...current, instanceKey } : current,
+                )
+              }
+              captureImage={() => assistantImage(assistant.chart)}
+              onApply={(source, conversationId) =>
+                applyAssistant(source, conversationId)
+              }
+            />
+          ) : null}
         </FloatingWindow>
       ) : null}
 

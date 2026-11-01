@@ -144,12 +144,14 @@ export function PineDialog({
   onAdd,
   onClose,
   onAssistant,
+  onResearch,
 }: {
   target: string;
   onAdd: (source: string) => void;
   onClose: () => void;
   /** Write the indicator with Claude instead (ADR 0042). */
   onAssistant?: () => void;
+  onResearch?: () => void;
 }) {
   const { t } = useI18n();
   return (
@@ -178,6 +180,14 @@ export function PineDialog({
               {t("ia.open")}
             </button>
             <span className="workspace-note">{t("ia.title")}</span>
+          </p>
+        ) : null}
+        {onResearch ? (
+          <p className="bt-actions">
+            <button type="button" className="tb-button" onClick={onResearch}>
+              {t("sr.open")}
+            </button>
+            <span className="workspace-note">{t("sr.title")}</span>
           </p>
         ) : null}
         <PineFields

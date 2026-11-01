@@ -2403,3 +2403,22 @@
   - 손절·트레일링을 쓰는 전략은 SIW Agent에서 실행할 수 없다. 모의 실행기에 보호 주문이 없다.
   - 모의 실행기의 봉 조회는 기본 7일이라, 그보다 먼 `offset`은 값이 없어 조건이 거짓이 된다.
   - 시간대 조건은 봉 시작 시각 기준이다. 신호는 봉이 끝날 때 나고 체결은 다음 봉이므로, 끝 시각 근처의 신호는 구간 밖에서 체결될 수 있다.
+
+## 전략 연구 대화 — 2026-11-01
+
+- **사용자 결정:** [ADR 0042](decisions/0042-claude-assistants.md) "전략 연구 기획" 2단계를 진행한다.
+- **변경:**
+  - **API(`services/assistant/strategy.py`, `services/api/strategy_research_routes.py`):** `POST /v1/strategy-research/conversations`(시작), `GET …/{id}`, `POST …/{id}/messages`(후속·Opus 재시도), `POST …/{id}/runs`(실행 결과와 버전별 백테스트), `POST …/{id}/results`(결과 보내기). 대화는 `strategy:<id>`로 보조지표와 분리된다. 계약에 `StrategyConversation`, `StrategyResults`를 더했다.
+  - **보조지표 대화(`indicator.py`):** 도구와 기본 effort를 클래스 값으로 빼고, 실행 이벤트에 결과를 함께 저장할 수 있게 했다. 보조지표 동작은 그대로다.
+  - **화면(`StrategyResearch.tsx`, `strategy-research.ts`):** 차트 옆 떠 있는 창. Pine 편집기와 Pine 전략 설정에서 연다.
+  - **모델:** 회신 #SIW-2의 임시 배정(Sonnet 5.5 high, 재시도 Opus 5.5 high). 파일럿 A는 아직 실행하지 않았다.
+- **검증:**
+  - `./scripts/verify.sh` exit 0: pytest 946개, 계약 99개, 화면 346개.
+  - 새 테스트: API `tests/assistant/test_strategy_research_api.py`(실행 결과에 손익 없음, 결과 전송과 버전 수, 잘못된 결과 거절, Opus 재시도, 보조지표 대화와 분리, 키 없음), 화면 `strategy-research.test.tsx` 10개(요약에 손익 없음, 보낼 내용 표시와 취소, 실패 전달, 재시도).
+  - 브라우저 확인(합성 SYNTH 5분봉 102개, 실제 API와 화면, **Claude만 스크립트로 대체**): 요청 → 스크립트 실행 → 차트 미리보기와 전략 결과 → 결과 보내기(보낼 내용 표시) → 전송 → 차트에 추가 → 새로고침 → 전략 설정의 "Claude와 전략 연구 이어 하기"로 대화와 버전 표 복원. 기록된 요청을 확인했다: 실행 결과에는 "Closed trades: 1; open position: yes."까지만 있고 손익이 없다. 결과 전송에만 순손익 -0.13, 거래 2건, 시험한 버전 수 1이 있다. 모델과 effort는 `claude-sonnet-5-5`, `high`였다.
+- **미검증:** 실제 Claude 호출(파일럿 A 승인 대기), 전략 검토 답의 품질, 실제 종목 봉, TradingView 코드 시작점의 화면 흐름(자동 테스트 없음), Electron 앱 안의 동작.
+- **남은 위험:**
+  - 전략에 `currency`가 없으면 결과의 통화가 빈 값으로 간다. Claude는 금액의 통화를 모른다.
+  - "결과 보내기"는 편집기 코드를 기본 입력으로 다시 계산한다. 차트 지표 설정에서 입력을 바꾼 전략의 값과는 다를 수 있다.
+  - 보낸 결과는 대화에 남아 이후 턴마다 다시 나가므로 입력 토큰이 는다(캐시로 일부 줄어든다).
+  - 미리보기 전략은 체결 표시와 결과를 차트에 그리지만, 기존 전략을 고치는 중에는 원본과 미리보기 결과가 함께 보인다.

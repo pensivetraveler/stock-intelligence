@@ -551,11 +551,11 @@ export function IndicatorAssistant({
   );
 }
 
-function AssistantEventView({
+export function AssistantEventView({
   event,
   version,
 }: {
-  event: AssistantEvent;
+  event: Pick<AssistantEvent, "type" | "text" | "code" | "ok" | "has_image">;
   version: number;
 }) {
   const { t } = useI18n();

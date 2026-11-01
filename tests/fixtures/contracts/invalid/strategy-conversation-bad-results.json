@@ -1,0 +1,68 @@
+{
+  "kind": "strategy_conversation",
+  "schema_version": "0.1",
+  "conversation_id": "conv-1",
+  "model": "claude-sonnet-5-5",
+  "status": "idle",
+  "error": null,
+  "events": [
+    {
+      "type": "question",
+      "text": "이 백테스트를 검토해 주세요",
+      "model": "claude-sonnet-5-5",
+      "effort": "high",
+      "results": {
+        "symbol": "AAPL",
+        "timeframe": "5m",
+        "bars": 390,
+        "from_utc": "2026-10-30T13:30:00Z",
+        "to_utc": "2026-10-30T20:00:00Z",
+        "version": 1,
+        "currency": "USD",
+        "initial_capital": "100000.00",
+        "net_profit": "lots",
+        "net_profit_percent": "-1.23",
+        "gross_profit": "100.00",
+        "gross_loss": "1334.56",
+        "profit_factor": "0.075",
+        "closed_trades": 8,
+        "win_trades": 2,
+        "loss_trades": 6,
+        "win_rate": "25.00",
+        "max_drawdown": "1500.00",
+        "commission": "0.00",
+        "assumed_fills": 1,
+        "skipped_orders": 0,
+        "open_position": null,
+        "trades": [
+          {
+            "direction": "long",
+            "qty": "10",
+            "entry_time_utc": "2026-10-30T13:35:00Z",
+            "entry_price": "100.50",
+            "exit_time_utc": "2026-10-30T14:00:00Z",
+            "exit_price": "99.00",
+            "profit": "-15.00",
+            "assumed": false
+          }
+        ]
+      },
+      "at_utc": "2026-11-01T12:00:00Z"
+    },
+    {
+      "type": "answer",
+      "text": "근거: 거래 8건은 적습니다.",
+      "model": "claude-sonnet-5-5",
+      "at_utc": "2026-11-01T12:00:00Z"
+    }
+  ],
+  "pending_run": null,
+  "runs": 0,
+  "max_runs": 6,
+  "usage": {
+    "input_tokens": 1,
+    "output_tokens": 1,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0
+  }
+}

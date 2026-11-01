@@ -3548,3 +3548,19 @@ body {
   display: grid;
   gap: 4px;
 }
+
+.sr-draft {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--term-line);
+}
+
+.sr-draft pre {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.sr-versions {
+  width: 100%;
+}

@@ -158,6 +158,8 @@ interface ChartPanelProps {
   /** Ask the review Agent about this chart up to a candle's end. */
   /** Continue the Claude conversation that wrote a Pine indicator (ADR 0042). */
   onOpenAssistant?: (instance: IndicatorInstance) => void;
+  /** Opens strategy research on this Pine strategy. */
+  onOpenResearch?: (instance: IndicatorInstance) => void;
   onAskAgent?: (request: {
     instrumentId: string;
     timeframe: string;
@@ -233,6 +235,7 @@ export function ChartPanel({
   onJournalChange,
   onAskAgent,
   onOpenAssistant,
+  onOpenResearch,
   customApi,
   customVersion = 0,
   onBars,
@@ -1727,6 +1730,26 @@ export function ChartPanel({
                                             : item.instance.assistant
                                               ? "ia.continue"
                                               : "ia.fix",
+                                        )}
+                                      </button>
+                                    </p>
+                                  ) : null}
+                                  {onOpenResearch &&
+                                  item.instance.type === "pine" &&
+                                  isPineStrategy(item.instance.pine ?? "") ? (
+                                    <p className="bt-actions">
+                                      <button
+                                        type="button"
+                                        className="tb-button"
+                                        onClick={() => {
+                                          setEditing(null);
+                                          onOpenResearch(item.instance);
+                                        }}
+                                      >
+                                        {t(
+                                          item.instance.assistant
+                                            ? "sr.continue"
+                                            : "sr.open",
                                         )}
                                       </button>
                                     </p>
