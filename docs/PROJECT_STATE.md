@@ -2411,7 +2411,7 @@
   - **API(`services/assistant/strategy.py`, `services/api/strategy_research_routes.py`):** `POST /v1/strategy-research/conversations`(시작), `GET …/{id}`, `POST …/{id}/messages`(후속·Opus 재시도), `POST …/{id}/runs`(실행 결과와 버전별 백테스트), `POST …/{id}/results`(결과 보내기). 대화는 `strategy:<id>`로 보조지표와 분리된다. 계약에 `StrategyConversation`, `StrategyResults`를 더했다.
   - **보조지표 대화(`indicator.py`):** 도구와 기본 effort를 클래스 값으로 빼고, 실행 이벤트에 결과를 함께 저장할 수 있게 했다. 보조지표 동작은 그대로다.
   - **화면(`StrategyResearch.tsx`, `strategy-research.ts`):** 차트 옆 떠 있는 창. Pine 편집기와 Pine 전략 설정에서 연다.
-  - **모델:** 회신 #SIW-2의 임시 배정(Sonnet 5.5 high, 재시도 Opus 5.5 high). 배정 세션이 파일럿 A 결과로 작성·검토를 Sonnet 5.5 high로 확정했다(회신 #SIW-2). 사용자 확정과 실제 백테스트 5건 대조가 남았다. 변환은 임시 그대로다.
+  - **모델:** 회신 #SIW-2의 임시 배정(Sonnet 5.5 high, 재시도 Opus 5.5 high). 배정 세션이 파일럿 A 결과로 작성·검토를 Sonnet 5.5 high로 확정했고(회신 #SIW-2), 2026-11-01 사용자가 승인했다. 실제 백테스트 5건 대조가 남았다. 변환은 임시 그대로다.
 - **검증:**
   - `./scripts/verify.sh` exit 0: pytest 947개, 계약 99개, 화면 348개.
   - 새 테스트: API `tests/assistant/test_strategy_research_api.py`(실행 결과에 손익 없음, 결과 전송과 버전 수, 잘못된 결과 거절, Opus 재시도, 보조지표 대화와 분리, 키 없음), 화면 `strategy-research.test.tsx` 10개(요약에 손익 없음, 보낼 내용 표시와 취소, 실패 전달, 재시도).
