@@ -10697,6 +10697,9 @@
               },
               "results": {
                 "$ref": "#/$defs/StrategyResults"
+              },
+              "diagnostic": {
+                "type": "boolean"
               }
             }
           }
@@ -10715,6 +10718,9 @@
                 "code": {
                   "type": "string",
                   "maxLength": 50000
+                },
+                "diagnostic": {
+                  "type": "boolean"
                 }
               }
             },

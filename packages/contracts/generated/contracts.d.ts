@@ -7118,10 +7118,12 @@ export interface StrategyConversation {
     effort?: "medium" | "high";
     origin?: "saved" | "tradingview";
     results?: StrategyResults;
+    diagnostic?: boolean;
   }[];
   pending_run: {
     tool_use_id: string;
     code: string;
+    diagnostic?: boolean;
   } | null;
   runs: number;
   max_runs: number;

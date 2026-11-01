@@ -46,6 +46,7 @@ class ChartContext(BaseModel):
     timeframe: str = Field(min_length=1, max_length=20)
     bars: int = Field(ge=0, le=1_000_000)
     code: str | None = Field(default=None, max_length=MAX_CODE)
+    time_zone: str | None = Field(default=None, max_length=64)
 
 
 class ChartImage(BaseModel):

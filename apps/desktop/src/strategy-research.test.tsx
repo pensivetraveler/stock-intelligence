@@ -318,6 +318,51 @@ describe("StrategyResearch", () => {
     expect(onApply).toHaveBeenCalledWith(GOOD, "conv-1");
   });
 
+  it("runs a diagnostic without drawing it or counting it as a version", async () => {
+    const api = apiFor();
+    vi.mocked(api.start).mockResolvedValue(
+      conversation({
+        status: "needs_run",
+        pending_run: { tool_use_id: "d1", code: NEVER, diagnostic: true },
+        events: [
+          {
+            type: "code",
+            tool_use_id: "d1",
+            code: NEVER,
+            text: "why",
+            diagnostic: true,
+            at_utc: AT,
+          },
+        ],
+      }),
+    );
+    const { onPreview } = renderPanel(api);
+    fireEvent.change(screen.getByRole("textbox", { name: "Request" }), {
+      target: { value: "x" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(api.sendRun).toHaveBeenCalled());
+    const [, , result, kept] = vi.mocked(api.sendRun).mock.calls[0];
+    expect(result.ok).toBe(true);
+    expect(result.summary).toContain("no trades");
+    expect(kept).toBeUndefined();
+    expect(onPreview).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole<HTMLTextAreaElement>("textbox", {
+        name: "Pine Script code",
+      }).value,
+    ).toBe("");
+  });
+
+  it("tells Claude the chart's time zone", async () => {
+    const api = apiFor();
+    renderPanel(api);
+    await ask(api);
+    expect(vi.mocked(api.start).mock.calls[0][3].time_zone).toBe(
+      "America/New_York",
+    );
+  });
+
   it("reports a failed run back to Claude and draws nothing", async () => {
     const api = apiFor();
     const broken = '//@version=5\nstrategy("X")\nplot(ta.nope(close))';

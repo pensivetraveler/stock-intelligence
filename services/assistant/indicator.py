@@ -176,6 +176,7 @@ def context_text(context: dict[str, Any], origin: dict[str, Any] | None = None) 
                 "symbol": context["symbol"],
                 "timeframe": context["timeframe"],
                 "bars": context["bars"],
+                **({"time_zone": context["time_zone"]} if context.get("time_zone") else {}),
             },
             "editor_code": code[:MAX_CODE] if code else None,
             **({"start_from": origin} if origin else {}),
@@ -408,6 +409,10 @@ class IndicatorConversation:
         ):
             self.state[key] = self.state.get(key, 0) + int(usage.get(field) or 0)
 
+    def _script_fields(self, tool_input: dict[str, Any]) -> dict[str, Any]:
+        """What a subclass keeps about a script beyond its code."""
+        return {}
+
     def _tools(self, content: list[dict[str, Any]]) -> bool:
         """Takes the turn's first script to run; True when the app must run it."""
         pending: dict[str, Any] | None = None
@@ -437,15 +442,17 @@ class IndicatorConversation:
             script = str(code)[:MAX_CODE]
             self.state["runs"] = self.state.get("runs", 0) + 1
             explanation = str(tool_input.get("explanation") or "")
+            extra = self._script_fields(tool_input)
             self._event(
                 {
                     "type": "code",
                     "tool_use_id": block["id"],
                     "code": script,
                     "text": explanation[:2000],
+                    **extra,
                 }
             )
-            pending = {"tool_use_id": block["id"], "code": script}
+            pending = {"tool_use_id": block["id"], "code": script, **extra}
         if pending is not None:
             self.state.update(status="needs_run", pending={**pending, "others": others})
             self._save()

@@ -169,7 +169,11 @@ def register_strategy_research_routes(
             "events": review.events(conversation["conversation_id"]),
             "pending_run": None
             if not pending
-            else {"tool_use_id": pending["tool_use_id"], "code": pending["code"]},
+            else {
+                "tool_use_id": pending["tool_use_id"],
+                "code": pending["code"],
+                **({"diagnostic": True} if pending.get("diagnostic") else {}),
+            },
             "runs": state.get("runs", 0),
             "max_runs": MAX_RUNS,
             "usage": {

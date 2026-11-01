@@ -93,6 +93,9 @@ export function StrategyResearch({
     timeframe: current.timeframe,
     bars: current.bars.length,
     code: code.trim() ? code : null,
+    ...(current.context.timeZone
+      ? { time_zone: current.context.timeZone }
+      : {}),
   });
 
   const chooseStart = (next: Start) => {
@@ -124,6 +127,7 @@ export function StrategyResearch({
   // Scripts that ran on the chart, newest last: any can be loaded again.
   const versions = events.flatMap((event, index) =>
     event.type === "code" &&
+    !event.diagnostic &&
     events
       .slice(index + 1)
       .some(
@@ -146,14 +150,16 @@ export function StrategyResearch({
   /** Runs every script Claude asks for and sends the result, until it answers. */
   const settle = async (state: StrategyConversation) => {
     let next = state;
-    let tested = next.events.filter((e) => e.type === "run" && e.ok).length;
+    let tested = versions.length;
     while (next.status === "needs_run" && next.pending_run) {
       const current = chart();
       if (!current) throw new Error(t("ia.noChart"));
       setBusy("running");
       const pending = next.pending_run;
       const run = runStrategy(pending.code, current.bars, current.context);
-      if (run.ok) {
+      // A diagnostic only finds a cause: it is not a version and is not drawn.
+      const keep = run.ok && !pending.diagnostic;
+      if (keep) {
         tested += 1;
         setCode(pending.code);
         onPreview(pending.code);
@@ -165,7 +171,7 @@ export function StrategyResearch({
         run.ok
           ? { ok: true, summary: run.summary }
           : { ok: false, error: run.error },
-        run.ok ? resultsOf(run.report, current, tested) : undefined,
+        keep ? resultsOf(run.report, current, tested) : undefined,
       );
       setConversation(next);
     }

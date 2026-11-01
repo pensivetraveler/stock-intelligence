@@ -41,6 +41,8 @@ export interface ChartContext {
   timeframe: string;
   bars: number;
   code: string | null;
+  /** The zone of the script's time variables; sent by strategy research. */
+  time_zone?: string;
 }
 
 /** A picture of the bars in view; attached only when the investor chooses to. */
