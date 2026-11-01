@@ -5,7 +5,9 @@ One `step(now)`:
   2. settles submissions whose outcome is unknown against the broker's list of today's
      orders, before anything new is sent;
   3. stores the fills of closed paper orders;
-  4. unless halted, shows each approved instrument's latest final bar to the strategy and
+  4. judges each held position's protection on the final bars not judged yet, even under
+     the kill switch, and sells what reached a level (ADR 0044);
+  5. unless halted, shows each approved instrument's latest final bar to the strategy and
      turns its signals into intents → limit check → kill-switch check → paper order.
 
 The bar feed, the broker adapter and the clock come from outside, so the loop runs
@@ -25,7 +27,8 @@ from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo
 
 from services.backtest.data import EngineBar
-from services.backtest.strategy import fingerprint
+from services.backtest.protection import AtrHistory, ExitHit, ProtectionRules, entry_levels
+from services.backtest.strategy import fingerprint, validate_definition
 from services.paper_trading.brokers.base import BrokerOrder, OrderNotSupportedError, PaperBroker
 from services.paper_trading.intent import (
     FxRate,
@@ -37,14 +40,21 @@ from services.paper_trading.intent import (
     market_of,
 )
 from services.paper_trading.limits import PaperLimits, RunnerFacts
+from services.paper_trading.protection import ProtectionState, advance, open_state
 from services.paper_trading.signals import rule_signals
-from services.paper_trading.store import PaperOrderStore, _utc
+from services.paper_trading.store import PaperOrderStore, PaperStoreError, _utc
 
 SizingMethod = Literal["shares", "cash", "percent_equity"]
 HUNDRED = Decimal(100)
 CENT = Decimal("0.01")
 MAX_CANCEL_ATTEMPTS = 3
 SUB_CENT = Decimal("0.0001")
+PROTECTIVE_FIELDS = ("stop_loss_pct", "take_profit_pct", "stop_loss_atr", "trailing_stop")
+# A protective exit goes out past limits and is recorded (ADR 0044, decision 2), but these say
+# the order itself cannot be made or reach the broker.
+EXIT_STOPPING_REASONS = frozenset(
+    {"symbol_not_allowed", "market_not_supported", "invalid_quantity", "price_unavailable"}
+)
 
 
 @dataclass(frozen=True)
@@ -113,6 +123,10 @@ class RunPlan:
         # Only when set, so that plans approved before this existed keep their approval ID.
         if self.unfilled_cancel_seconds is not None:
             content["unfilled_cancel_seconds"] = self.unfilled_cancel_seconds
+        # The same: only a plan with protective exits has this, and they ask to be seen.
+        if any(self.definition.get(name) is not None for name in PROTECTIVE_FIELDS):
+            clean = validate_definition(self.definition)
+            content["protection"] = {name: clean.get(name) for name in PROTECTIVE_FIELDS}
         return content
 
 
@@ -184,6 +198,22 @@ class FeedSnapshot:
 class BarFeed(Protocol):
     def snapshot(self, instrument_id: str, now: datetime) -> FeedSnapshot | None: ...
 
+    def outside(self, instrument_id: str, since: int, now: datetime) -> Sequence[EngineBar]:
+        """Bars outside the regular session from `since`, for a position's protection."""
+        ...
+
+
+@dataclass(frozen=True)
+class ExitOrder:
+    """A protective exit for `_act`: what it reached, in which bar, on what bars known."""
+
+    hit: ExitHit
+    signal_bar: EngineBar
+    latest_bar: EngineBar  # the order's reference price: `signal_bar` may be old by now
+    session: str
+    bars: Sequence[EngineBar]
+    final_by: Literal["source", "settle"]
+
 
 @dataclass
 class StepReport:
@@ -233,12 +263,22 @@ class PaperRunner:
         self._fx_rate = fx_rate
         self.approval_id = store.record_approval(plan.approval_content())
         self._seen: dict[str, int] = {}  # last signal bar shown per instrument (epoch)
+        self._rules: ProtectionRules | None = None
 
     def _fx(self) -> FxRate | None:
         """The plan's fixed rate, or today's ECOS rate; None (orders blocked) if unknown."""
         if self.plan.fx_source == "fixed":
             return self.plan.fx
         return None if self._fx_rate is None else self._fx_rate()
+
+    def _protection_rules(self) -> ProtectionRules:
+        if self._rules is None:
+            self._rules = ProtectionRules.of(validate_definition(self.plan.definition))
+        return self._rules
+
+    def protects(self) -> bool:
+        """This plan's strategy has a stop, a target or a trailing stop."""
+        return self._protection_rules().active
 
     # -- one step --------------------------------------------------------------------
 
@@ -261,14 +301,18 @@ class PaperRunner:
             report.fills = self._sync_fills(now, orders())
         if self.store.accepted_without_execution():
             report.cancelled = self._settle_cancelled(now, orders())
-        status = self.store.status()
-        if status["halted"]:
-            report.halted = True
+        protecting = self.protects()
+        if protecting:
+            self._close_sold()
+        report.halted = self.store.status()["halted"]
+        if report.halted and not protecting:
             return report
         # After the halt check: the kill switch leaves unfilled orders as they are (ADR 0037).
-        if self.plan.unfilled_cancel_seconds is not None:
+        if not report.halted and self.plan.unfilled_cancel_seconds is not None:
             report.cancel_requests = self._cancel_stale(now, orders)
         for item in self.plan.instruments:
+            if report.halted and self._position(item.instrument_id) <= 0:
+                continue  # no bars are read under the kill switch without a position to protect
             snapshot = self.feed.snapshot(item.instrument_id, now)
             if snapshot is None or not snapshot.bars:
                 continue
@@ -282,8 +326,14 @@ class PaperRunner:
             final_by: Literal["source", "settle"] = (
                 "source" if snapshot.bars[len(settled) - 1].final else "settle"
             )
+            source_final = {bar.time for bar in snapshot.bars if bar.final}
             snapshot = replace(snapshot, bars=settled)
             last = snapshot.bars[-1]
+            if protecting and self._protect(item, snapshot, source_final, now, report, orders):
+                self._seen[item.instrument_id] = last.time
+                continue
+            if report.halted:
+                continue
             if self._seen.get(item.instrument_id, -1) >= last.time:
                 continue
             self._seen[item.instrument_id] = last.time
@@ -294,6 +344,10 @@ class PaperRunner:
                 if self._has_open_order(item.instrument_id, signal["side"], orders):
                     # Not recorded as an intent, so a later bar decides again.
                     report.skipped.append(f"{item.instrument_id}:open_order")
+                    continue
+                if signal["side"] == "buy" and not self._levels_known(item, snapshot):
+                    # As in a backtest: no entry while its stop cannot be placed.
+                    report.skipped.append(f"{item.instrument_id}:protection_atr_unknown")
                     continue
                 self._act(item, snapshot, signal, now, report, final_by)
         return report
@@ -309,6 +363,135 @@ class PaperRunner:
             bar if bar.final or _epoch(bar.end) > cutoff else replace(bar, final=True)
             for bar in bars
         ]
+
+    # -- protective exits (ADR 0044) -------------------------------------------------
+
+    def _levels_known(self, item: InstrumentPlan, snapshot: FeedSnapshot) -> bool:
+        rules = self._protection_rules()
+        if not rules.active:
+            return True
+        last = snapshot.bars[-1]
+        atr = AtrHistory(snapshot.bars, item.time_zone)
+        return entry_levels(rules, last.close, last.end, atr) is not None
+
+    def _close_sold(self) -> None:
+        for item in self.plan.instruments:
+            account = self.plan.broker_account_ref
+            state = self.store.active_protection(account, item.instrument_id)
+            if state is not None and self._position(item.instrument_id) <= 0:
+                self.store.close_protection(state.intent_id, "position_sold")
+
+    def _entry_state(
+        self, item: InstrumentPlan, snapshot: FeedSnapshot, report: StepReport
+    ) -> ProtectionState | None:
+        """Open the protection of a position this strategy bought. Holdings from elsewhere
+        are left alone (ADR 0044, decision 4), and the Agent screen warns about them."""
+        account = self.plan.broker_account_ref
+        fill = self.store.latest_buy(account, item.instrument_id)
+        entry = None if fill is None else self.store.intent(fill["intent_id"])
+        if (
+            fill is None
+            or entry is None
+            or entry["strategy"]["definition_sha256"] != self.plan.strategy.definition_sha256
+        ):
+            report.skipped.append(f"{item.instrument_id}:holding_without_protection")
+            return None
+
+        # The paper server's fill time is unverified (ADR 0037): keep it between the order
+        # and the moment the fill was seen, and use that moment when there is none.
+        def epoch(text: str) -> int:
+            return int(datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp())
+
+        seen = epoch(fill["synced_at_utc"])
+        reported = fill["executed_at_utc"]
+        fill_time = epoch(reported) if reported else seen
+        fill_time = max(epoch(entry["created_at_utc"]), min(fill_time, seen))
+        state = open_state(
+            self._protection_rules(),
+            fill["intent_id"],
+            item.instrument_id,
+            Decimal(fill["price"]),
+            fill_time,
+            snapshot.bars,
+            item.time_zone,
+        )
+        if state is None:
+            report.skipped.append(f"{item.instrument_id}:protection_atr_unknown")
+            return None
+        try:
+            self.store.open_protection(account, state)
+        except PaperStoreError:
+            report.skipped.append(f"{item.instrument_id}:protection_not_opened")
+            return None
+        return state
+
+    def _protect(
+        self,
+        item: InstrumentPlan,
+        snapshot: FeedSnapshot,
+        source_final: set[int],
+        now: datetime,
+        report: StepReport,
+        orders: Callable[[], list[BrokerOrder]],
+    ) -> bool:
+        """Judge a held position's protection. True when a level was reached in this pass."""
+        instrument = item.instrument_id
+        if self._position(instrument) <= 0:
+            return False
+        account = self.plan.broker_account_ref
+        state = self.store.active_protection(account, instrument)
+        if state is None:
+            state = self._entry_state(item, snapshot, report)
+            if state is None:
+                return False
+        else:
+            entry = self.store.intent(state.intent_id)
+            if (
+                entry is None
+                or entry["strategy"]["definition_sha256"] != self.plan.strategy.definition_sha256
+            ):
+                # Opened by another strategy: its rules are not this plan's to apply.
+                report.skipped.append(f"{instrument}:protection_of_another_strategy")
+                return False
+        since = state.entry_bar_time if state.last_bar_time is None else state.last_bar_time
+        raw = self.feed.outside(instrument, since, now)
+        source_final = source_final | {bar.time for bar in raw if bar.final}
+        outside = [bar for bar in self._settled(raw, now) if bar.final]
+        after, found = advance(
+            self._protection_rules(), state, snapshot.bars, item.time_zone, outside
+        )
+        if found is None:
+            if after != state:
+                self.store.save_protection(after)
+            return False
+        # Sent before the state is saved: after a crash the same bar is judged again, and
+        # its intent ID stops a second order. An order already out or unsettled is not
+        # joined by another; the next bar judges again.
+        if self._exit_is_clear(instrument, orders):
+            known = sorted((*snapshot.bars, *outside), key=lambda bar: bar.time)
+            hit_bar = next(bar for bar in known if bar.time == found.bar_time)
+            exit_order = ExitOrder(
+                found.hit,
+                hit_bar,
+                known[-1],
+                "extended" if hit_bar in outside else snapshot.session,
+                known,
+                "source" if hit_bar.time in source_final else "settle",
+            )
+            self._act(
+                item, snapshot, {"side": "sell"}, now, report, exit_order.final_by, exit_order
+            )
+        else:
+            report.skipped.append(f"{instrument}:exit_waits_for_open_order")
+        self.store.save_protection(after)
+        return True
+
+    def _exit_is_clear(self, instrument_id: str, orders: Callable[[], list[BrokerOrder]]) -> bool:
+        for submission in self.store.submissions("pending_response", "unknown"):
+            intent = self.store.intent(submission["intent_id"])
+            if intent is not None and intent["instrument_id"] == instrument_id:
+                return False
+        return not self._has_open_order(instrument_id, "sell", orders)
 
     # -- signals → orders ------------------------------------------------------------
 
@@ -364,11 +547,13 @@ class PaperRunner:
         now: datetime,
         report: StepReport,
         final_by: Literal["source", "settle"] = "source",
+        exit_order: ExitOrder | None = None,
     ) -> None:
         plan = self.plan
-        bar = snapshot.bars[-1]
+        bar = snapshot.bars[-1] if exit_order is None else exit_order.signal_bar
+        priced = bar if exit_order is None else exit_order.latest_bar
         bar_end = _epoch(bar.end)
-        sized = self._size(signal, item.instrument_id, bar.close)
+        sized = self._size(signal, item.instrument_id, priced.close)
         if isinstance(sized, str):
             report.skipped.append(f"{item.instrument_id}:{sized}")
             return
@@ -376,14 +561,17 @@ class PaperRunner:
         sizing = Sizing(
             method=method,
             input=value,
-            reference_price=bar.close,
-            reference_price_source=f"signal bar close ({snapshot.dataset_revision})",
-            reference_price_as_of_utc=bar_end,
+            reference_price=priced.close,
+            reference_price_source=(
+                f"{'signal' if exit_order is None else 'latest'} bar close "
+                f"({snapshot.dataset_revision})"
+            ),
+            reference_price_as_of_utc=_epoch(priced.end),
             fee_rate=plan.fee_rate,
             equity_basis=plan.equity_basis if method == "percent_equity" else None,
             basis_as_of_utc=None,
         )
-        order = self._order(signal, bar.close, quantity)
+        order = self._order(signal, priced.close, quantity)
         if isinstance(order, str):
             report.skipped.append(f"{item.instrument_id}:{order}")
             return
@@ -406,9 +594,9 @@ class PaperRunner:
             feed_scope=snapshot.feed_scope,
             dataset_revision=snapshot.dataset_revision,
             adjustment=snapshot.adjustment,
-            session=snapshot.session,
-            input_bar_count=len(snapshot.bars),
-            input_bars_sha256=bars_sha256(snapshot.bars),
+            session=snapshot.session if exit_order is None else exit_order.session,
+            input_bar_count=len(snapshot.bars) if exit_order is None else len(exit_order.bars),
+            input_bars_sha256=bars_sha256(snapshot.bars if exit_order is None else exit_order.bars),
             calendar_id=snapshot.calendar_id,
             calendar_version=snapshot.calendar_version,
             final_by=final_by,
@@ -423,8 +611,14 @@ class PaperRunner:
             symbol=item.symbol,
             side=signal["side"],
             data=data,
-            signal_summary=f"rules {signal['side']} signal at the bar close",
-            operands=[],
+            signal_summary=(
+                f"rules {signal['side']} signal at the bar close"
+                if exit_order is None
+                else f"protective exit: {exit_order.hit.reason}"
+            ),
+            operands=[]
+            if exit_order is None
+            else [("protective_level_reached_at", exit_order.hit.reference)],
             sizing=sizing,
             order=order,
             fx=self._fx() if market_of(item.instrument_id) == "us" else None,
@@ -432,17 +626,25 @@ class PaperRunner:
             facts=facts,
             created_at=now,
         )
-        if not self.store.record_intent(intent, result):
+        blocking = not result.passed and (
+            exit_order is None or bool(EXIT_STOPPING_REASONS.intersection(result.reasons))
+        )
+        if not self.store.record_intent(intent, result, blocking=blocking):
             return  # this signal was already handled (for example before a restart)
         report.intents += 1
-        if not result.passed:
+        if blocking:
             report.blocked += 1
             return
-        if (now - bar_end).total_seconds() > plan.max_signal_age_seconds:
+        # A protective exit does not expire: the position is still there after a restart.
+        if exit_order is None and (now - bar_end).total_seconds() > plan.max_signal_age_seconds:
             self.store.set_outcome(intent["intent_id"], "expired", "signal_too_old")
             report.expired += 1
             return
-        allowed, reason = self.store.may_submit(self.approval_id)
+        allowed, reason = (
+            self.store.may_submit(self.approval_id)
+            if exit_order is None
+            else self.store.may_exit(self.approval_id)
+        )
         if not allowed:
             self.store.set_outcome(intent["intent_id"], "blocked", reason)
             report.blocked += 1

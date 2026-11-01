@@ -2,11 +2,12 @@
 
 `uv run python -m services.paper_trading.service` — started by the SIW Agent user service.
 
-While disarmed it only writes heartbeats: no bars are read and no broker is called.
-Armed, it rebuilds the approved plan (the strategy must still hash to the approved
-SHA-256), opens the registered Kiwoom *demo* key whose account matches the plan, and runs
-`PaperRunner.step` every few seconds. The adapter offers only markets recorded as
-verified (P4), so before that every order is blocked by the limit check.
+While disarmed it only writes heartbeats: no bars are read and no broker is called. Under
+the kill switch the same holds, except for a plan with protective exits (ADR 0044). Armed,
+it rebuilds the approved plan (the strategy must still hash to the approved SHA-256), opens
+the registered Kiwoom *demo* key whose account matches the plan, and runs
+`PaperRunner.step` every few seconds. The adapter offers only markets recorded as verified
+(P4), so before that every order is blocked by the limit check.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ from services.paper_trading.runner import BarFeed, PaperRunner, plan_from_approv
 from services.paper_trading.store import PaperOrderStore
 
 LOG = logging.getLogger("siw.paper_runner")
+BLOCKED_REQUEST = "blocked request"
 
 
 def kiwoom_account_ref(app_key: str) -> str:
@@ -173,17 +175,24 @@ class RunnerService:
         """One loop pass; returns what it did, for the log."""
         self.store.heartbeat()
         status = self.store.status()
-        if status["halted"] or not status["armed"] or status["approval_id"] is None:
+        halted = status["halted"]
+        # A request that tried to leave the paper domain stops everything; any other halt
+        # still lets a position's protective exit out (ADR 0044, decision 1).
+        blocked = halted and str(status["halted_reason"]).startswith(BLOCKED_REQUEST)
+        if status["approval_id"] is None or blocked or not (status["armed"] or halted):
             self._runner = None
             return "idle"
         try:
             runner = self._runner_for(status["approval_id"])
             if runner is None:
                 return "no_runner"
+            if halted and not runner.protects():
+                self._runner = None
+                return "idle"
             report = runner.step(self._now())
         except (LiveDomainBlockedError, PaperOperationBlockedError) as exc:
             # A request tried to leave the paper domain or allowlist: stop everything.
-            self.store.halt(f"blocked request: {type(exc).__name__}", source="runner")
+            self.store.halt(f"{BLOCKED_REQUEST}: {type(exc).__name__}", source="runner")
             self.last_error = str(exc)[:200]
             return "halted"
         except Exception as exc:  # noqa: BLE001 - logged; the next pass tries again

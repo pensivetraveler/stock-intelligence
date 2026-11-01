@@ -326,10 +326,12 @@ def test_walk_forward_can_vary_the_stop_multiples() -> None:
         {"trailing_stop": {"mode": "atr", "length": 14, "mult": 2}},
     ],
 )
-def test_the_paper_runner_refuses_stops_it_cannot_run(extra: dict[str, Any]) -> None:
-    # Ignoring them would run the strategy without the protection it was tested with.
-    with pytest.raises(StrategyError, match="not offered"):
-        rule_signals({**CROSS, **extra}, "a", TZ, [], False)
+def test_the_paper_runner_takes_stops_only_with_market_orders(extra: dict[str, Any]) -> None:
+    assert rule_signals({**CROSS, **extra}, "a", TZ, [], False) == []
+    resting = {"type": "limit", "offset_pct": -1, "expire_bars": 1}
+    # Not tried together yet (ADR 0044): refused rather than run untested.
+    with pytest.raises(StrategyError, match="need market orders"):
+        rule_signals({**CROSS, **extra, "entry_order": resting}, "a", TZ, [], False)
 
 
 def test_paper_signals_match_the_backtest_bar_by_bar() -> None:

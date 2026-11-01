@@ -5,6 +5,7 @@ import type {
   PaperApprovalListResponse,
   PaperExecutionListResponse,
   PaperIntentListResponse,
+  PaperPositionListResponse,
   PaperRunnerStatus,
   SymbolSearchResponse,
 } from "@siw/contracts/types";
@@ -40,6 +41,8 @@ export interface PaperApi {
   approvals(): Promise<PaperApprovalListResponse>;
   intents(limit?: number): Promise<PaperIntentListResponse>;
   executions(limit?: number): Promise<PaperExecutionListResponse>;
+  /** Paper holdings with their protective state (ADR 0044). */
+  positions(): Promise<PaperPositionListResponse>;
   strategies(): Promise<BacktestStrategyListResponse>;
   credentials(): Promise<CredentialListResponse>;
   /** Listings by ticker or name, for choosing a plan's instruments (read-only). */
@@ -86,6 +89,12 @@ export function createPaperApi(
         target,
         `/v1/paper/executions?limit=${limit}`,
         "paper_execution_list_response",
+      ),
+    positions: () =>
+      callForKind<PaperPositionListResponse>(
+        target,
+        "/v1/paper/positions",
+        "paper_position_list_response",
       ),
     strategies: () =>
       callForKind<BacktestStrategyListResponse>(

@@ -36,26 +36,25 @@ class ProtectionState:
     levels: Levels
     last_bar_time: int | None = None  # the last bar judged
 
-    def to_json(self) -> str:
+    def document(self) -> dict[str, Any]:
         def text(value: Decimal | None) -> str | None:
             return None if value is None else format(value, "f")
 
-        return json.dumps(
-            {
-                "intent_id": self.intent_id,
-                "instrument_id": self.instrument_id,
-                "entry_price": format(self.entry_price, "f"),
-                "entry_time": self.entry_time,
-                "entry_bar_time": self.entry_bar_time,
-                "stop": text(self.levels.stop),
-                "target": text(self.levels.target),
-                "trail_stop": text(self.levels.trail_stop),
-                "trail_high": text(self.levels.trail_high),
-                "last_bar_time": self.last_bar_time,
-            },
-            separators=(",", ":"),
-            sort_keys=True,
-        )
+        return {
+            "intent_id": self.intent_id,
+            "instrument_id": self.instrument_id,
+            "entry_price": format(self.entry_price, "f"),
+            "entry_time": self.entry_time,
+            "entry_bar_time": self.entry_bar_time,
+            "stop": text(self.levels.stop),
+            "target": text(self.levels.target),
+            "trail_stop": text(self.levels.trail_stop),
+            "trail_high": text(self.levels.trail_high),
+            "last_bar_time": self.last_bar_time,
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.document(), separators=(",", ":"), sort_keys=True)
 
     @classmethod
     def from_json(cls, document: str) -> ProtectionState:
@@ -94,8 +93,16 @@ def open_state(
     time_zone: str,
 ) -> ProtectionState | None:
     """The state for a confirmed fill; None while an ATR the rules need is not known."""
-    started = [bar.time for bar in bars if bar.time <= fill_time]
-    entry_bar_time = started[-1] if started else fill_time
+    started = [bar for bar in bars if bar.time <= fill_time]
+    entry_bar_time = fill_time
+    if started:
+        # A bar that has not arrived yet, or a minute without trades, holds the fill: the
+        # bars already known all came before it and must not be judged.
+        last = started[-1]
+        length = last.end - last.time
+        entry_bar_time = (
+            last.time if fill_time < last.end else fill_time - (fill_time - last.end) % length
+        )
     levels = entry_levels(rules, fill_price, entry_bar_time, AtrHistory(bars, time_zone))
     if levels is None:
         return None
@@ -103,12 +110,23 @@ def open_state(
 
 
 def advance(
-    rules: ProtectionRules, state: ProtectionState, bars: Sequence[EngineBar], time_zone: str
+    rules: ProtectionRules,
+    state: ProtectionState,
+    bars: Sequence[EngineBar],
+    time_zone: str,
+    outside: Sequence[EngineBar] = (),
 ) -> tuple[ProtectionState, ProtectiveExit | None]:
-    """Judge the final bars not judged yet, oldest first, up to the first exit."""
+    """Judge the final bars not judged yet, oldest first, up to the first exit.
+
+    `outside` holds bars outside the regular session (ADR 0044, decision 3). They can reach
+    a level but move nothing: the backtest never saw such bars, so its ATR and its trailing
+    high come from regular bars alone.
+    """
     atr = AtrHistory(bars, time_zone)
     last = state.last_bar_time
-    for bar in bars:
+    regular = {bar.time for bar in bars}
+    timeline = sorted((*bars, *(b for b in outside if b.time not in regular)), key=lambda b: b.time)
+    for bar in timeline:
         if not bar.final or bar.time < state.entry_bar_time:
             continue
         if last is not None and bar.time <= last:
@@ -117,6 +135,7 @@ def advance(
         hit = exit_on_bar(state.levels, bar)
         if hit is not None:
             return replace(state, last_bar_time=bar.time), ProtectiveExit(hit, bar.time, inside)
-        levels = state.levels if inside else follow(rules, state.levels, bar, atr)
+        moves = bar.time in regular and not inside
+        levels = follow(rules, state.levels, bar, atr) if moves else state.levels
         state = replace(state, levels=levels, last_bar_time=bar.time)
     return state, None

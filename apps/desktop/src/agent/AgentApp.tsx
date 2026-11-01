@@ -4,6 +4,7 @@ import type {
   PaperApproval,
   PaperExecution,
   PaperIntentListResponse,
+  PaperPositionListResponse,
   PaperRunnerStatus,
 } from "@siw/contracts/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -19,6 +20,15 @@ import {
 } from "./runner-control";
 
 type IntentRow = PaperIntentListResponse["intents"][number];
+type PositionRow = PaperPositionListResponse["positions"][number];
+
+const PROTECTIVE_FIELDS = [
+  "stop_loss_pct",
+  "take_profit_pct",
+  "stop_loss_atr",
+  "trailing_stop",
+] as const;
+const EXIT_SUMMARY = "protective exit: ";
 
 interface AgentAppProps {
   apiBaseUrl?: string;
@@ -75,6 +85,7 @@ function AgentScreen({
   const [approvals, setApprovals] = useState<PaperApproval[]>([]);
   const [intents, setIntents] = useState<IntentRow[]>([]);
   const [executions, setExecutions] = useState<PaperExecution[]>([]);
+  const [positions, setPositions] = useState<PositionRow[]>([]);
   const [service, setService] = useState<RunnerServiceState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -82,17 +93,24 @@ function AgentScreen({
 
   const refresh = useCallback(async () => {
     try {
-      const [nextStatus, nextApprovals, nextIntents, nextExecutions] =
-        await Promise.all([
-          api.status(),
-          api.approvals(),
-          api.intents(),
-          api.executions(),
-        ]);
+      const [
+        nextStatus,
+        nextApprovals,
+        nextIntents,
+        nextExecutions,
+        nextPositions,
+      ] = await Promise.all([
+        api.status(),
+        api.approvals(),
+        api.intents(),
+        api.executions(),
+        api.positions(),
+      ]);
       setStatus(nextStatus);
       setApprovals(nextApprovals.approvals);
       setIntents(nextIntents.intents);
       setExecutions(nextExecutions.executions);
+      setPositions(nextPositions.positions);
       setError(null);
     } catch (caught) {
       setError(message(caught));
@@ -183,6 +201,7 @@ function AgentScreen({
         approvals={approvals}
         intents={intents}
         executions={executions}
+        protecting={positions.some((row) => row.protection !== null)}
         busy={busy}
         now={now}
         onRelease={() => act(() => api.release())}
@@ -206,6 +225,7 @@ function AgentScreen({
         onArm={(id) => act(() => api.arm(id))}
         onApproved={() => void refresh()}
       />
+      <PositionTable rows={positions} />
       <IntentTable rows={intents} />
       <ExecutionTable rows={executions} />
     </main>
@@ -264,6 +284,7 @@ function SummaryCards({
   approvals,
   intents,
   executions,
+  protecting,
   busy,
   now,
   onRelease,
@@ -273,6 +294,7 @@ function SummaryCards({
   approvals: PaperApproval[];
   intents: IntentRow[];
   executions: PaperExecution[];
+  protecting: boolean;
   busy: boolean;
   now: () => Date;
   onRelease: () => void;
@@ -318,6 +340,11 @@ function SummaryCards({
             {t("paper.release")}
           </button>
         )}
+        {status.halted && protecting && (
+          <span className="agent-warning">
+            {t("paper.protection.releaseNote")}
+          </span>
+        )}
       </div>
       <div
         className={`agent-tile ${stale ? "agent-tile-warning" : status.armed ? "agent-tile-active" : ""}`}
@@ -344,6 +371,11 @@ function SummaryCards({
           <button type="button" onClick={onDisarm} disabled={busy}>
             {t("paper.disarm")}
           </button>
+        )}
+        {status.armed && protecting && (
+          <span className="agent-muted">
+            {t("paper.protection.disarmNote")}
+          </span>
         )}
       </div>
       <div className="agent-tile">
@@ -561,11 +593,22 @@ function PlanWizard({
 
   const strategy = strategies.find((item) => item.strategy_id === strategyId);
   const key = keys.find((item) => item.credential_id === credentialId);
+  const protective = PROTECTIVE_FIELDS.filter(
+    (name) => strategy?.definition[name] != null,
+  );
+  const hasProtection = protective.length > 0;
+  // A stop needs a way to clear an unfilled sell; the user may still change the time.
+  useEffect(() => {
+    if (hasProtection) setCancelAfter((value) => value || "60");
+  }, [hasProtection]);
   const problem = (at: number): string | null => {
     if (at === 1 && (!strategy || !key)) return t("paper.wizard.missing1");
     if (at === 2 && chosen.length === 0) return t("paper.wizard.missing2");
     if (at === 3 && fxMode === "fixed" && rate.trim() === "") {
       return t("paper.wizard.missing3");
+    }
+    if (at === 3 && hasProtection && cancelAfter.trim() === "") {
+      return t("paper.wizard.missingCancel");
     }
     return null;
   };
@@ -779,6 +822,20 @@ function PlanWizard({
               cancel: cancelAfter.trim() || "—",
             })}
           </dd>
+          {hasProtection && (
+            <>
+              <dt>{t("paper.protection.title")}</dt>
+              <dd>
+                {protective
+                  .map(
+                    (name) =>
+                      `${t(`paper.protection.${name}`)} ${protectionValue(strategy?.definition[name])}`,
+                  )
+                  .join(" · ")}
+                <p className="agent-warning">{t("paper.protection.note")}</p>
+              </dd>
+            </>
+          )}
         </dl>
       )}
       {formError && (
@@ -923,12 +980,96 @@ function SymbolPicker({
   );
 }
 
+function protectionValue(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number")
+    return `${value}%`;
+  const setting = value as {
+    mode?: string;
+    value?: string;
+    length?: number;
+    mult?: string;
+  };
+  return setting.mode === "pct"
+    ? `${setting.value}%`
+    : `ATR(${setting.length}) × ${setting.mult}`;
+}
+
+function exitLabel(t: Translate, summary: string): string {
+  if (!summary.startsWith(EXIT_SUMMARY)) return "";
+  const reason = summary.slice(EXIT_SUMMARY.length);
+  const label =
+    reason === "stop_loss"
+      ? t("paper.exit.stop_loss")
+      : reason === "take_profit"
+        ? t("paper.exit.take_profit")
+        : reason === "trailing_stop"
+          ? t("paper.exit.trailing_stop")
+          : reason;
+  return ` · ${label}`;
+}
+
 function sideLabel(t: Translate, side: string): string {
   return side === "buy"
     ? t("paper.side.buy")
     : side === "sell"
       ? t("paper.side.sell")
       : side;
+}
+
+/** What is held, what protects it, and a warning for what nothing protects (ADR 0044). */
+function PositionTable({ rows }: { rows: PositionRow[] }) {
+  const { t } = useI18n();
+  return (
+    <section className="agent-card" aria-label={t("paper.positions")}>
+      <h2>{t("paper.positions")}</h2>
+      {rows.length === 0 ? (
+        <p className="agent-muted">{t("paper.positions.empty")}</p>
+      ) : (
+        <table className="agent-table">
+          <thead>
+            <tr>
+              <th>{t("paper.col.symbol")}</th>
+              <th>{t("paper.col.quantity")}</th>
+              <th>{t("paper.col.entry")}</th>
+              <th>{t("paper.col.stop")}</th>
+              <th>{t("paper.col.target")}</th>
+              <th>{t("paper.col.trail")}</th>
+              <th>{t("paper.col.protection")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={`${row.broker_account_ref}:${row.instrument_id}`}>
+                <td>{row.symbol}</td>
+                <td>{row.quantity}</td>
+                <td>{row.protection?.entry_price ?? "—"}</td>
+                <td>{priceText(row.protection?.stop)}</td>
+                <td>{priceText(row.protection?.target)}</td>
+                <td>{priceText(row.protection?.trail_stop)}</td>
+                <td>
+                  {row.protection === null ? (
+                    <span className="agent-warning">
+                      {t("paper.positions.unprotected")}
+                    </span>
+                  ) : row.watched ? (
+                    t("paper.positions.watched")
+                  ) : (
+                    <span className="agent-warning">
+                      {t("paper.positions.notWatched")}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+function priceText(value: string | null | undefined): string {
+  return value == null ? "—" : Number(value).toFixed(2);
 }
 
 function IntentTable({ rows }: { rows: IntentRow[] }) {
@@ -960,6 +1101,7 @@ function IntentTable({ rows }: { rows: IntentRow[] }) {
                   {intent.order.order_type} {intent.order.quantity} @{" "}
                   {intent.order.limit_price ??
                     `≤${intent.order.estimated_max_price ?? "?"}`}
+                  {exitLabel(t, intent.signal.summary)}
                 </td>
                 <td>
                   {intent.limit_check.passed

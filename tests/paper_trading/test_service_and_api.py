@@ -17,7 +17,12 @@ from services.backtest.data import EngineBar
 from services.backtest.jobs import BacktestRunner
 from services.backtest.store import BacktestStore
 from services.credentials.store import CredentialStore, MemorySecretBackend
-from services.market_data.provider import BarsQuery, BarsResult
+from services.market_data.provider import (
+    BarsQuery,
+    BarsResult,
+    ProviderUnavailableError,
+    validate_bars_query,
+)
 from services.paper_trading.brokers.kiwoom_paper import KiwoomPaperBroker
 from services.paper_trading.feed import ServiceBarFeed
 from services.paper_trading.paper_client import LiveDomainBlockedError
@@ -501,3 +506,110 @@ def test_approval_keeps_the_plans_settle_time_and_signal_age(client: Any) -> Non
     )
     too_long = _approval_body(test_client, credential_id, bar_settle_seconds=901)
     assert test_client.post("/v1/paper/approvals", json=too_long, headers=AGENT).status_code == 422
+
+
+# -- protective exits (ADR 0044) -------------------------------------------------------
+
+
+def _session_bars(query: BarsQuery) -> BarsResult:
+    """A pre-market, a regular and a post-market bar of 2026-10-23, whichever is asked."""
+    bars = []
+    for session, start, close in (
+        ("pre", datetime(2026, 10, 23, 8, 0, tzinfo=timezone.utc), "90"),
+        ("regular", datetime(2026, 10, 23, 14, 0, tzinfo=timezone.utc), "100"),
+        ("post", datetime(2026, 10, 23, 20, 30, tzinfo=timezone.utc), "110"),
+    ):
+        if query.start_utc <= start < query.end_utc:
+            bars.append(
+                {
+                    "interval_start_utc": _utc(start),
+                    "interval_end_utc": _utc(start + timedelta(minutes=1)),
+                    "open": close,
+                    "high": close,
+                    "low": close,
+                    "close": close,
+                    "volume": "100",
+                    "is_final": True,
+                    "session": session,
+                    "source_id": "synthetic",
+                    "source_feed_scope": "synthetic-1m",
+                }
+            )
+    return BarsResult(tuple(bars), {})
+
+
+def test_feed_takes_a_clock_with_fractions_of_a_second() -> None:
+    def strict(query: BarsQuery) -> BarsResult:
+        validate_bars_query(query)
+        return minute_bars(query)
+
+    moment = NOW.replace(microsecond=123456)
+    feed = ServiceBarFeed(strict)
+    assert feed.snapshot(AAPL, moment) is not None, feed.last_error
+
+
+def test_feed_reads_bars_outside_the_regular_session_apart() -> None:
+    late = datetime(2026, 10, 23, 21, 0, 0, 5, tzinfo=timezone.utc)
+    since = int(datetime(2026, 10, 23, 0, 0, tzinfo=timezone.utc).timestamp())
+    bars = ServiceBarFeed(_session_bars).outside(AAPL, since, late)
+    assert [bar.close for bar in bars] == [Decimal(90), Decimal(110)]
+
+
+def test_feed_gives_no_outside_bars_when_they_cannot_be_read() -> None:
+    def failing(query: BarsQuery) -> BarsResult:
+        raise ProviderUnavailableError("down")
+
+    feed = ServiceBarFeed(failing)
+    since = int(NOW.timestamp()) - 12 * 3600
+    assert feed.outside(AAPL, since, NOW) == []
+    assert feed.last_error is not None
+
+
+def _protected(test_client: TestClient, **fields: Any) -> dict[str, Any]:
+    response = test_client.post(
+        "/v1/backtests/strategies",
+        json={"name": "with a stop", "definition": {**RULES, "stop_loss_pct": "5", **fields}},
+    )
+    assert response.status_code in (200, 201), response.text
+    return dict(response.json())
+
+
+def test_approval_of_a_stop_needs_a_cancel_time_and_shows_the_stop(client: Any) -> None:
+    test_client, credential_id = client
+    test_client.strategy = _protected(test_client)
+    body = _approval_body(test_client, credential_id)
+    refused = test_client.post("/v1/paper/approvals", json=body, headers=AGENT)
+    assert refused.status_code == 422
+    assert refused.json()["error"]["code"] == "protection_needs_cancel"
+
+    body["unfilled_cancel_seconds"] = 60
+    approved = test_client.post("/v1/paper/approvals", json=body, headers=AGENT)
+    assert approved.status_code == 201, approved.text
+    validate_document(approved.json())
+    assert approved.json()["protection"]["stop_loss_pct"] == "5"
+
+
+def test_approval_without_stops_has_no_protection_field(client: Any) -> None:
+    test_client, credential_id = client
+    body = _approval_body(test_client, credential_id)
+    approved = test_client.post("/v1/paper/approvals", json=body, headers=AGENT)
+    assert "protection" not in approved.json()
+
+
+def test_stop_beside_a_resting_entry_is_refused_at_approval(client: Any) -> None:
+    test_client, credential_id = client
+    test_client.strategy = _protected(
+        test_client, entry_order={"type": "limit", "offset_pct": -1, "expire_bars": 1}
+    )
+    body = _approval_body(test_client, credential_id, unfilled_cancel_seconds=60)
+    refused = test_client.post("/v1/paper/approvals", json=body, headers=AGENT)
+    assert refused.status_code == 422
+    assert refused.json()["error"]["code"] == "strategy_not_supported"
+
+
+def test_positions_start_empty(client: Any) -> None:
+    test_client, _ = client
+    response = test_client.get("/v1/paper/positions")
+    assert response.status_code == 200
+    validate_document(response.json())
+    assert response.json()["positions"] == []

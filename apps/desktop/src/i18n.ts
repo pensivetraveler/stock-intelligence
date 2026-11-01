@@ -1339,6 +1339,35 @@ const en = {
   "paper.col.check": "Limit check",
   "paper.col.outcome": "Outcome",
   "paper.col.fill": "Fill",
+  "paper.col.quantity": "Quantity",
+  "paper.col.entry": "Entry",
+  "paper.col.stop": "Stop",
+  "paper.col.target": "Target",
+  "paper.col.trail": "Trailing stop",
+  "paper.col.protection": "Protection",
+  "paper.positions": "Holdings and protection",
+  "paper.positions.empty": "No paper holdings.",
+  "paper.positions.watched": "Watched by the runner",
+  "paper.positions.notWatched":
+    "Not watched: no running plan of this strategy, so no protective exit will be sent",
+  "paper.positions.unprotected":
+    "Not protected: the runner sends no stop for this holding",
+  "paper.protection.title": "Protective exits",
+  "paper.protection.stop_loss_pct": "Stop",
+  "paper.protection.take_profit_pct": "Target",
+  "paper.protection.stop_loss_atr": "ATR stop",
+  "paper.protection.trailing_stop": "Trailing stop",
+  "paper.protection.note":
+    "A stop is sent after the bar is final, about 2 minutes late, as an order that should fill at once, so it fills worse than the backtest. Bars outside the regular session can trigger it too, which the backtest never saw, and the paper server may refuse those orders. Under the kill switch these sells still go out, and limits do not stop them (they are recorded).",
+  "paper.protection.releaseNote":
+    "Releasing the kill switch also stops protective exits until you arm again.",
+  "paper.protection.disarmNote":
+    "Disarming also stops protective exits. To stop only new entries, use the kill switch.",
+  "paper.wizard.missingCancel":
+    "A strategy with stops needs a time to cancel unfilled orders (Advanced settings).",
+  "paper.exit.stop_loss": "stop",
+  "paper.exit.take_profit": "target",
+  "paper.exit.trailing_stop": "trailing stop",
   "paper.check.passed": "passed",
   "paper.executions": "Paper fills",
   "paper.executions.note":
@@ -2939,6 +2968,35 @@ const ko: Record<MessageKey, string> = {
   "paper.col.check": "한도 검사",
   "paper.col.outcome": "결과",
   "paper.col.fill": "체결",
+  "paper.col.quantity": "수량",
+  "paper.col.entry": "진입가",
+  "paper.col.stop": "손절가",
+  "paper.col.target": "익절가",
+  "paper.col.trail": "트레일링",
+  "paper.col.protection": "보호",
+  "paper.positions": "보유와 보호 상태",
+  "paper.positions.empty": "모의 보유 종목이 없습니다.",
+  "paper.positions.watched": "실행기가 감시 중",
+  "paper.positions.notWatched":
+    "감시 안 됨: 이 전략의 계획이 돌고 있지 않아 보호 청산이 나가지 않습니다",
+  "paper.positions.unprotected":
+    "보호 없음: 실행기가 이 보유분에 손절 주문을 내지 않습니다",
+  "paper.protection.title": "보호 청산",
+  "paper.protection.stop_loss_pct": "손절",
+  "paper.protection.take_profit_pct": "익절",
+  "paper.protection.stop_loss_atr": "ATR 손절",
+  "paper.protection.trailing_stop": "트레일링",
+  "paper.protection.note":
+    "손절은 봉이 확정된 뒤 약 2분 늦게, 바로 체결될 주문으로 나가므로 백테스트보다 불리하게 체결됩니다. 백테스트에 없던 정규장 밖 봉에서도 발동하며, 그 시간의 주문은 모의 서버가 거절할 수 있습니다. 킬 스위치가 켜져 있어도 이 매도는 나가고, 한도에 걸려도 막지 않고 기록합니다.",
+  "paper.protection.releaseNote":
+    "킬 스위치를 해제하면 다시 무장할 때까지 보호 청산도 멈춥니다.",
+  "paper.protection.disarmNote":
+    "무장을 해제하면 보호 청산도 멈춥니다. 신규 진입만 막으려면 킬 스위치를 쓰세요.",
+  "paper.wizard.missingCancel":
+    "손절이 든 전략은 미체결 주문 취소 시간이 필요합니다(고급 설정).",
+  "paper.exit.stop_loss": "손절",
+  "paper.exit.take_profit": "익절",
+  "paper.exit.trailing_stop": "트레일링",
   "paper.check.passed": "통과",
   "paper.executions": "모의 체결",
   "paper.executions.note":

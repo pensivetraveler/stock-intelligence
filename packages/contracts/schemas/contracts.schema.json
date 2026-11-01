@@ -178,6 +178,9 @@
       "$ref": "#/$defs/PaperExecutionListResponse"
     },
     {
+      "$ref": "#/$defs/PaperPositionListResponse"
+    },
+    {
       "$ref": "#/$defs/ReviewTradeListResponse"
     },
     {
@@ -7386,6 +7389,45 @@
             }
           ],
           "description": "Seconds after a bar's end after which the runner treats it as final for signals; null: the source's finality only"
+        },
+        "protection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "stop_loss_pct",
+            "take_profit_pct",
+            "stop_loss_atr",
+            "trailing_stop"
+          ],
+          "properties": {
+            "stop_loss_pct": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "take_profit_pct": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecimalString"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "stop_loss_atr": {
+              "type": ["object", "null"]
+            },
+            "trailing_stop": {
+              "type": ["object", "null"]
+            }
+          },
+          "description": "Protective exits of the approved strategy (ADR 0044); only when it has any."
         }
       },
       "description": "One user approval of a paper-trading plan; its ID is the SHA-256 of its content (ADR 0037)."
@@ -7494,6 +7536,146 @@
         }
       },
       "description": "Simulated paper fills; never real executions (ADR 0037)."
+    },
+    "PaperPositionListResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "positions"],
+      "properties": {
+        "kind": {
+          "const": "paper_position_list_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "positions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "broker_account_ref",
+              "instrument_id",
+              "symbol",
+              "quantity",
+              "protection",
+              "watched"
+            ],
+            "properties": {
+              "broker_account_ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "instrument_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "symbol": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              },
+              "quantity": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "protection": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "intent_id",
+                      "instrument_id",
+                      "entry_price",
+                      "entry_time",
+                      "entry_bar_time",
+                      "stop",
+                      "target",
+                      "trail_stop",
+                      "trail_high",
+                      "last_bar_time"
+                    ],
+                    "properties": {
+                      "intent_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "instrument_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "entry_price": {
+                        "$ref": "#/$defs/DecimalString"
+                      },
+                      "entry_time": {
+                        "type": "integer"
+                      },
+                      "entry_bar_time": {
+                        "type": "integer"
+                      },
+                      "stop": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/DecimalString"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "target": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/DecimalString"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "trail_stop": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/DecimalString"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "trail_high": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/DecimalString"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "last_bar_time": {
+                        "type": ["integer", "null"]
+                      }
+                    }
+                  }
+                ]
+              },
+              "watched": {
+                "type": "boolean",
+                "description": "The running plan is the strategy that opened this protection."
+              }
+            }
+          }
+        }
+      },
+      "description": "Paper holdings with their protective state; warns about what nothing protects (ADR 0044)."
     },
     "ReviewTradeExecution": {
       "type": "object",
@@ -10580,8 +10762,12 @@
           "additionalProperties": false,
           "required": ["splits_adjusted", "dividends_adjusted"],
           "properties": {
-            "splits_adjusted": { "type": ["boolean", "null"] },
-            "dividends_adjusted": { "type": ["boolean", "null"] }
+            "splits_adjusted": {
+              "type": ["boolean", "null"]
+            },
+            "dividends_adjusted": {
+              "type": ["boolean", "null"]
+            }
           }
         },
         "concentration": {

@@ -71,10 +71,13 @@ class PaperOrderStore:
             )
         return identifier
 
-    def record_intent(self, document: dict[str, Any], result: LimitResult) -> bool:
+    def record_intent(
+        self, document: dict[str, Any], result: LimitResult, *, blocking: bool = True
+    ) -> bool:
         """Store an intent once. False if the same intent was already recorded.
 
-        An intent that failed its limit check is stored as blocked, with its reasons.
+        An intent that failed its limit check is stored as blocked, with its reasons. With
+        `blocking` off (a protective exit, ADR 0044) the reasons are kept and it goes on.
         """
         validate_document(document)
         now = _utc(self._now())
@@ -97,10 +100,11 @@ class PaperOrderStore:
                     "INSERT INTO limit_events (intent_id, reasons_json, at_utc) VALUES (?, ?, ?)",
                     (document["intent_id"], json.dumps(list(result.reasons)), now),
                 )
-                db.execute(
-                    "INSERT INTO intent_outcomes VALUES (?, 'blocked', ?, ?)",
-                    (document["intent_id"], ",".join(result.reasons), now),
-                )
+                if blocking:
+                    db.execute(
+                        "INSERT INTO intent_outcomes VALUES (?, 'blocked', ?, ?)",
+                        (document["intent_id"], ",".join(result.reasons), now),
+                    )
         return True
 
     def intent(self, intent_id: str) -> dict[str, Any] | None:
@@ -262,6 +266,62 @@ class PaperOrderStore:
             )
             if updated.rowcount != 1:
                 raise PaperStoreError(f"no open protection for intent {intent_id}")
+
+    def latest_buy(self, broker_account_ref: str, instrument_id: str) -> dict[str, Any] | None:
+        """The newest paper buy fill of one account and instrument."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT document_json FROM paper_executions "
+                "WHERE broker_account_ref = ? AND instrument_id = ? "
+                "ORDER BY synced_at_utc DESC, execution_id",
+                (broker_account_ref, instrument_id),
+            ).fetchall()
+        documents = (dict(json.loads(row["document_json"])) for row in rows)
+        return next((item for item in documents if item["side"] == "buy"), None)
+
+    def positions(self) -> list[dict[str, Any]]:
+        """Shares held from paper fills, each with its protection, for the Agent screen.
+
+        `watched`: the runner's plan is the strategy that opened this protection, and it
+        runs (armed, or under the kill switch, which still sends protective exits).
+        """
+        with self._connect() as db:
+            rows = db.execute("SELECT document_json FROM paper_executions").fetchall()
+        held: dict[tuple[str, str], tuple[str, Decimal]] = {}
+        for row in rows:
+            fill = json.loads(row["document_json"])
+            key = (fill["broker_account_ref"], fill["instrument_id"])
+            quantity = Decimal(fill["quantity"])
+            before = held.get(key, (fill["symbol"], Decimal(0)))[1]
+            change = quantity if fill["side"] == "buy" else -quantity
+            held[key] = (fill["symbol"], before + change)
+        status = self.status()
+        running = status["armed"] or status["halted"]
+        plan = self.approval(status["approval_id"]) if status["approval_id"] and running else None
+        positions = []
+        for (account, instrument), (symbol, quantity) in sorted(held.items()):
+            if quantity <= 0:
+                continue
+            state = self.active_protection(account, instrument)
+            entry = None if state is None else self.intent(state.intent_id)
+            watched = (
+                plan is not None
+                and entry is not None
+                and plan["broker_account_ref"] == account
+                and plan["strategy"]["definition_sha256"] == entry["strategy"]["definition_sha256"]
+                and any(item["instrument_id"] == instrument for item in plan["instruments"])
+            )
+            positions.append(
+                {
+                    "broker_account_ref": account,
+                    "instrument_id": instrument,
+                    "symbol": symbol,
+                    "quantity": format(quantity.normalize(), "f"),
+                    "protection": None if state is None else state.document(),
+                    "watched": watched,
+                }
+            )
+        return positions
 
     def unknown_submission_count(self) -> int:
         with self._connect() as db:
@@ -483,6 +543,15 @@ class PaperOrderStore:
             return False, "not_armed"
         if self.unknown_submission_count() > 0:
             return False, "unknown_submission_pending"
+        return True, None
+
+    def may_exit(self, approval: str) -> tuple[bool, str | None]:
+        """A protective exit: the kill switch does not stop it (ADR 0044, decision 1). Only
+        disarming or releasing does, which is how the user stops every order."""
+        with self._connect() as db:
+            state = db.execute("SELECT * FROM control_state WHERE id = 1").fetchone()
+        if state["approval_id"] != approval or not (state["armed"] or state["halted"]):
+            return False, "not_armed"
         return True, None
 
     def status(self) -> dict[str, Any]:

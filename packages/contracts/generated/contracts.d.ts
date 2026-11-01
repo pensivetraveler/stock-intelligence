@@ -59,6 +59,7 @@ export type StockIntelligenceWorkstationContractsV01 =
   | PaperApprovalListResponse
   | PaperIntentListResponse
   | PaperExecutionListResponse
+  | PaperPositionListResponse
   | ReviewTradeListResponse
   | ReviewAnnotation
   | ReviewAssignmentResult
@@ -4031,6 +4032,19 @@ export interface PaperApproval {
    * Seconds after a bar's end after which the runner treats it as final for signals; null: the source's finality only
    */
   bar_settle_seconds: number | null;
+  /**
+   * Protective exits of the approved strategy (ADR 0044); only when it has any.
+   */
+  protection?: {
+    stop_loss_pct: DecimalString | null;
+    take_profit_pct: DecimalString | null;
+    stop_loss_atr: {
+      [k: string]: unknown;
+    } | null;
+    trailing_stop: {
+      [k: string]: unknown;
+    } | null;
+  };
 }
 export interface PaperApprovalListResponse {
   kind: "paper_approval_list_response";
@@ -4059,6 +4073,35 @@ export interface PaperExecutionListResponse {
   kind: "paper_execution_list_response";
   schema_version: SchemaVersion;
   executions: PaperExecution[];
+}
+/**
+ * Paper holdings with their protective state; warns about what nothing protects (ADR 0044).
+ */
+export interface PaperPositionListResponse {
+  kind: "paper_position_list_response";
+  schema_version: SchemaVersion;
+  positions: {
+    broker_account_ref: string;
+    instrument_id: string;
+    symbol: string;
+    quantity: DecimalString;
+    protection: null | {
+      intent_id: string;
+      instrument_id: string;
+      entry_price: DecimalString;
+      entry_time: number;
+      entry_bar_time: number;
+      stop: DecimalString | null;
+      target: DecimalString | null;
+      trail_stop: DecimalString | null;
+      trail_high: DecimalString | null;
+      last_bar_time: number | null;
+    };
+    /**
+     * The running plan is the strategy that opened this protection.
+     */
+    watched: boolean;
+  }[];
 }
 export interface ReviewTradeListResponse {
   kind: "review_trade_list";
