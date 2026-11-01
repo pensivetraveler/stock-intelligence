@@ -20,6 +20,7 @@ from packages.contracts.validator import validate_document
 from services.market_data.storage import MigrationRunner
 from services.paper_trading.brokers.base import SubmitResult
 from services.paper_trading.limits import LimitResult
+from services.paper_trading.protection import ProtectionState
 
 MIGRATIONS_DIR = Path(__file__).with_name("migrations")
 DATABASE_NAME = "paper_orders.sqlite3"
@@ -189,6 +190,78 @@ class PaperOrderStore:
                 (submission_id,),
             ).fetchall()
         return [str(row["requested_at_utc"]) for row in rows]
+
+    # Protective states (ADR 0044 G2)
+
+    def open_protection(self, broker_account_ref: str, state: ProtectionState) -> None:
+        """Keep a new position's levels; an open one for this instrument stays in the way."""
+        try:
+            with self._connect() as db:
+                db.execute(
+                    "INSERT INTO protection_states VALUES (?, ?, ?, 'open', ?, NULL, ?)",
+                    (
+                        state.intent_id,
+                        broker_account_ref,
+                        state.instrument_id,
+                        state.to_json(),
+                        _utc(self._now()),
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise PaperStoreError(
+                f"{state.instrument_id} already has protection, or this entry had it before"
+            ) from exc
+
+    def active_protection(
+        self, broker_account_ref: str, instrument_id: str
+    ) -> ProtectionState | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT state_json FROM protection_states WHERE broker_account_ref = ? "
+                "AND instrument_id = ? AND status = 'open'",
+                (broker_account_ref, instrument_id),
+            ).fetchone()
+        return None if row is None else ProtectionState.from_json(row["state_json"])
+
+    def save_protection(self, state: ProtectionState) -> None:
+        """Store the state after a bar. A stop never falls and bars never go back."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT state_json FROM protection_states WHERE intent_id = ? AND status = 'open'",
+                (state.intent_id,),
+            ).fetchone()
+            if row is None:
+                raise PaperStoreError(f"no open protection for intent {state.intent_id}")
+            before = ProtectionState.from_json(row["state_json"])
+            if before.levels.stop != state.levels.stop or before.levels.target != (
+                state.levels.target
+            ):
+                raise PaperStoreError("a position's stop and target are set at entry")
+            if (
+                before.levels.trail_stop is not None
+                and state.levels.trail_stop is not None
+                and state.levels.trail_stop < before.levels.trail_stop
+            ):
+                raise PaperStoreError("a trailing stop cannot move down")
+            if before.last_bar_time is not None and (
+                state.last_bar_time is None or state.last_bar_time < before.last_bar_time
+            ):
+                raise PaperStoreError("protection cannot go back to an earlier bar")
+            db.execute(
+                "UPDATE protection_states SET state_json = ?, updated_at_utc = ? "
+                "WHERE intent_id = ?",
+                (state.to_json(), _utc(self._now()), state.intent_id),
+            )
+
+    def close_protection(self, intent_id: str, reason: str) -> None:
+        with self._connect() as db:
+            updated = db.execute(
+                "UPDATE protection_states SET status = 'closed', closed_reason = ?, "
+                "updated_at_utc = ? WHERE intent_id = ? AND status = 'open'",
+                (reason, _utc(self._now()), intent_id),
+            )
+            if updated.rowcount != 1:
+                raise PaperStoreError(f"no open protection for intent {intent_id}")
 
     def unknown_submission_count(self) -> int:
         with self._connect() as db:
