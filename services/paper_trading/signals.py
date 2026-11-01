@@ -13,6 +13,7 @@ from typing import Any
 
 from services.backtest.data import EngineBar, InstrumentInput
 from services.backtest.engine import RuleSignals
+from services.backtest.protection import ProtectionRules
 from services.backtest.strategy import StrategyError, validate_definition
 
 
@@ -27,12 +28,12 @@ def rule_signals(
     clean = validate_definition(definition)
     if clean["type"] != "rules":
         raise StrategyError("paper runner: only rules strategies are offered for now")
-    if any(
-        clean.get(name) is not None
-        for name in ("stop_loss_pct", "take_profit_pct", "stop_loss_atr", "trailing_stop")
+    if ProtectionRules.of(clean).active and any(
+        (clean.get(name) or {"type": "market"})["type"] != "market"
+        for name in ("entry_order", "exit_order")
     ):
-        # The backtest checks these inside each bar; the runner has no such order yet.
-        raise StrategyError("paper runner: stop-loss and take-profit are not offered yet")
+        # Not tried together yet: resting orders beside the runner's protective sell.
+        raise StrategyError("paper runner: stop-loss and take-profit need market orders for now")
     final = [bar for bar in bars if bar.final]
     if not final or not bars[-1].final:
         return []

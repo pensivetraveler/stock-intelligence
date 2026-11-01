@@ -23,7 +23,8 @@ from pydantic import BaseModel, Field
 
 from packages.contracts.validator import validate_document
 from services.api.journal_routes import ErrorResponse
-from services.backtest.strategy import StrategyError
+from services.backtest.protection import ProtectionRules
+from services.backtest.strategy import StrategyError, validate_definition
 from services.credentials.store import CredentialStore, SecretStorageError
 from services.paper_trading.intent import FxRate, StrategyRef
 from services.paper_trading.limits import PaperLimits
@@ -170,6 +171,19 @@ def register_paper_routes(
             }
         )
 
+    @application.get("/v1/paper/positions", response_model=None)
+    def list_positions(request: Request) -> Response:
+        paper = store()
+        if paper is None:
+            return unavailable(request)
+        return respond(
+            {
+                "kind": "paper_position_list_response",
+                "schema_version": "0.1",
+                "positions": paper.positions(),
+            }
+        )
+
     @application.post("/v1/paper/approvals", response_model=None)
     def approve(request: Request, body: ApprovalRequest) -> Response:
         if not from_agent(request):
@@ -198,6 +212,17 @@ def register_paper_routes(
             rule_signals(strategy["definition"], instruments[0].instrument_id, "UTC", [], False)
         except StrategyError as exc:
             return error_response(request, 422, "strategy_not_supported", str(exc))
+        if (
+            ProtectionRules.of(validate_definition(strategy["definition"])).active
+            and body.unfilled_cancel_seconds is None
+        ):
+            # An unfilled protective sell would otherwise stop the position being judged again.
+            return error_response(
+                request,
+                422,
+                "protection_needs_cancel",
+                "A strategy with stops needs a time to cancel unfilled orders",
+            )
         record = next(
             (r for r in keys.list("kiwoom") if r.credential_id == body.credential_id), None
         )

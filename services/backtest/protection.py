@@ -35,6 +35,13 @@ class ProtectionRules:
     stop_atr: Mapping[str, Any] | None = None
     trailing: Mapping[str, Any] | None = None
 
+    @property
+    def active(self) -> bool:
+        return any(
+            value is not None
+            for value in (self.stop_pct, self.target_pct, self.stop_atr, self.trailing)
+        )
+
     @classmethod
     def of(cls, definition: Mapping[str, Any]) -> ProtectionRules:
         stop, target = definition.get("stop_loss_pct"), definition.get("take_profit_pct")

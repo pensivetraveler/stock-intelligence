@@ -400,7 +400,7 @@ Research에서 승인된 전략 버전을 "Agent에서 실행"으로 넘기는 �
   - adapter의 지원 시장은 `market_verifications` 표에 기록된 시장뿐이다(migration 0002). 기록은 P4에서 사용자 승인 아래 첫 모의 주문을 확인한 뒤에만 한다.
   - 모의 도메인 밖이나 허용목록 밖으로 나가려는 요청이 생기면 킬 스위치를 켠다. 그 밖의 오류는 기록하고 다음 회차에 다시 시도한다.
 - **API(`services/api/paper_routes.py`):** 주문 엔드포인트는 없다.
-  - 읽기: `GET /v1/paper/status`, `/v1/paper/approvals`, `/v1/paper/intents?limit=`, `/v1/paper/executions?limit=`.
+  - 읽기: `GET /v1/paper/status`, `/v1/paper/approvals`, `/v1/paper/intents?limit=`, `/v1/paper/executions?limit=`, `/v1/paper/positions`(ADR 0044 G3).
   - 시작 쪽(`POST /v1/paper/approvals`, `/arm`, `/release`)은 Tauri 출처(`tauri://localhost`)만 받고, 다른 출처는 403이다.
   - 멈추는 쪽(`POST /v1/paper/kill`, `/disarm`)은 어느 호출자든 받는다. 멈추는 것은 언제나 안전하기 때문이다.
   - 승인 요청: 전략 ID·버전, 종목(키움 거래소 코드가 있는 미국 상장만), 키움 `demo` 키의 credential ID, 한도(1건 기본 100만 원, 나머지 기본 없음), 시장가 버퍼(기본 50bp), 수수료율, 환율(사용자가 입력, 출처와 승인 시각 기록), 자산 비율용 고정 자산, 신호 최대 나이. 실행기가 돌릴 수 없는 전략(Python, 손절·익절)은 승인 단계에서 거부한다. 계좌 참조는 앱 키 해시이며 키 값은 응답에 없다.

@@ -50,8 +50,14 @@ def _bars(*closes: float, final: bool = True) -> list[EngineBar]:
 class Feed:
     def __init__(self) -> None:
         self.bars: list[EngineBar] = []
+        self.outside_bars: list[EngineBar] = []
+        self.reads = 0
+
+    def outside(self, instrument_id: str, since: int, now: datetime) -> list[EngineBar]:
+        return [bar for bar in self.outside_bars if bar.time >= since]
 
     def snapshot(self, instrument_id: str, now: datetime) -> FeedSnapshot | None:
+        self.reads += 1
         if not self.bars:
             return None
         return FeedSnapshot(
@@ -263,8 +269,13 @@ def test_limit_entry_is_priced_from_the_close(tmp_path: Path) -> None:
     assert (fake.orders[0].trde_tp, fake.orders[0].price) == ("00", "99.99")
 
 
-def test_stop_loss_strategies_are_refused(tmp_path: Path) -> None:
-    runner, _, feed, _ = _setup(tmp_path, definition={**DEFINITION, "stop_loss_pct": 5})
+def test_stops_with_resting_orders_are_refused(tmp_path: Path) -> None:
+    definition = {
+        **DEFINITION,
+        "stop_loss_pct": 5,
+        "entry_order": {"type": "limit", "offset_pct": -1, "expire_bars": 1},
+    }
+    runner, _, feed, _ = _setup(tmp_path, definition=definition)
     feed.bars = _bars(99, 101)
     with pytest.raises(StrategyError):
         runner.step(_end(feed))

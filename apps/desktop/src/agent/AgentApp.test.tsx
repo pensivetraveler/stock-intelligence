@@ -74,6 +74,11 @@ function fakeApi(changes: Partial<PaperApi> = {}): PaperApi {
       approvals: [APPROVAL],
     })),
     intents: vi.fn(async () => intents),
+    positions: vi.fn(async () => ({
+      kind: "paper_position_list_response" as const,
+      schema_version: "0.1" as const,
+      positions: [],
+    })),
     executions: vi.fn(async () => ({
       kind: "paper_execution_list_response" as const,
       schema_version: "0.1" as const,
@@ -266,7 +271,14 @@ describe("AgentApp", () => {
       strategies: vi.fn(async () => ({
         kind: "backtest_strategy_list_response" as const,
         schema_version: "0.1" as const,
-        strategies: [{ strategy_id: "strat-1", name: "Flow", version: 2 }],
+        strategies: [
+          {
+            strategy_id: "strat-1",
+            name: "Flow",
+            version: 2,
+            definition: { type: "rules" },
+          },
+        ],
       })) as unknown as PaperApi["strategies"],
       credentials: vi.fn(async () => ({
         kind: "credential_list_response" as const,
@@ -362,5 +374,120 @@ describe("paper API client", () => {
       ["http://api/v1/paper/kill", "POST"],
     ]);
     expect(Object.keys(api)).not.toContain("order");
+  });
+});
+
+describe("holdings and protection (ADR 0044)", () => {
+  it("shows a strategy's stop at approval and sends a cancel time", async () => {
+    const api = fakeApi({
+      strategies: vi.fn(async () => ({
+        kind: "backtest_strategy_list_response" as const,
+        schema_version: "0.1" as const,
+        strategies: [
+          {
+            strategy_id: "strat-2",
+            name: "Guarded",
+            version: 1,
+            definition: {
+              type: "rules",
+              stop_loss_pct: "5",
+              trailing_stop: { mode: "atr", length: 14, mult: "3" },
+            },
+          },
+        ],
+      })) as unknown as PaperApi["strategies"],
+      credentials: vi.fn(async () => ({
+        kind: "credential_list_response" as const,
+        schema_version: "0.1" as const,
+        storage: "keychain",
+        active_provider: "fake",
+        credentials: [
+          {
+            credential_id: "key-1",
+            provider: "kiwoom",
+            environment: "demo",
+            enabled: true,
+            label: "Kiwoom demo",
+          },
+        ],
+      })) as unknown as PaperApi["credentials"],
+    });
+    render(
+      <AgentApp
+        paperApi={api}
+        runnerControl={noControl}
+        languageStorage={null}
+        defaultLanguage="en"
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "New plan" }));
+    await screen.findByRole("option", { name: "Guarded (v1)" });
+    fireEvent.change(screen.getByLabelText(/Strategy/), {
+      target: { value: "strat-2" },
+    });
+    fireEvent.change(screen.getByLabelText(/Kiwoom demo key/), {
+      target: { value: "key-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.change(screen.getByLabelText("Search by ticker or name"), {
+      target: { value: "app" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /AAPL/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Clearing the cancel time is refused on this step, then the default comes back in.
+    const cancel = screen.getByLabelText(/Cancel an unfilled order/);
+    expect(cancel).toHaveValue("60");
+    fireEvent.change(cancel, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/cancel unfilled/);
+    fireEvent.change(cancel, { target: { value: "90" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText(/Stop 5%/)).toHaveTextContent(
+      "Trailing stop ATR(14) × 3",
+    );
+    expect(screen.getByText(/worse than the backtest/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() =>
+      expect(api.approve).toHaveBeenCalledWith(
+        expect.objectContaining({ unfilled_cancel_seconds: 90 }),
+      ),
+    );
+  });
+
+  const protection = {
+    intent_id: "a".repeat(64),
+    instrument_id: "us:aapl:xnas:2026",
+    entry_price: "101",
+    entry_time: 1,
+    entry_bar_time: 1,
+    stop: "95.95",
+    target: null,
+    trail_stop: null,
+    trail_high: null,
+    last_bar_time: null,
+  };
+  const row = {
+    broker_account_ref: "kiwoom-demo",
+    instrument_id: "us:aapl:xnas:2026",
+    symbol: "AAPL",
+    quantity: "3",
+  };
+
+  it("warns about a holding nothing protects or watches", async () => {
+    const api = fakeApi();
+    api.positions = vi.fn(async () => ({
+      kind: "paper_position_list_response" as const,
+      schema_version: "0.1" as const,
+      positions: [
+        { ...row, protection: null, watched: false },
+        { ...row, symbol: "MSFT", protection, watched: false },
+        { ...row, symbol: "SPY", protection, watched: true },
+      ],
+    }));
+    render(<AgentApp paperApi={api} pollMs={60_000} languageStorage={null} />);
+    expect(await screen.findByText(/보호 없음/)).toBeTruthy();
+    expect(screen.getByText(/감시 안 됨/)).toBeTruthy();
+    expect(screen.getByText("실행기가 감시 중")).toBeTruthy();
+    expect(screen.getAllByText("95.95").length).toBe(2);
   });
 });
