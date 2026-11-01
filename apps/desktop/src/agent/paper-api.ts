@@ -27,6 +27,8 @@ export interface ApprovalRequest {
   max_signal_age_seconds: number;
   /** Seconds after a bar's end before it counts as final; null keeps the source's own. */
   bar_settle_seconds: number | null;
+  /** Seconds before the runner cancels an unfilled order; null leaves it to the user. */
+  unfilled_cancel_seconds: number | null;
 }
 
 /**

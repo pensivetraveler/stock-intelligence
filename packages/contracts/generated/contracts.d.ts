@@ -3935,7 +3935,8 @@ export interface PaperOrderSubmission {
   broker_order_ref: string | null;
   response_code: string | null;
   response_message: string | null;
-  status: "pending_response" | "accepted" | "rejected" | "unknown";
+  status:
+    "pending_response" | "accepted" | "rejected" | "unknown" | "cancelled";
 }
 /**
  * A fill simulated by a broker's paper-trading server. Never a market fill and never summed with real ledgers (ADR 0037).
@@ -4022,6 +4023,10 @@ export interface PaperApproval {
   fx_source: "fixed" | "bok_ecos";
   equity_basis: NonNegativeDecimalString | null;
   max_signal_age_seconds: number;
+  /**
+   * Seconds an accepted order may stay unfilled before the runner cancels it. Absent: left to the user.
+   */
+  unfilled_cancel_seconds?: number;
   /**
    * Seconds after a bar's end after which the runner treats it as final for signals; null: the source's finality only
    */

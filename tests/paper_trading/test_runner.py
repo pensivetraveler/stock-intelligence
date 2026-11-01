@@ -10,11 +10,17 @@ from typing import Any
 import pytest
 
 from services.backtest.data import EngineBar
-from services.backtest.strategy import StrategyError
+from services.backtest.strategy import StrategyError, fingerprint
 from services.paper_trading.brokers.kiwoom_paper import KiwoomPaperBroker
 from services.paper_trading.intent import FxRate, StrategyRef
 from services.paper_trading.limits import PaperLimits
-from services.paper_trading.runner import FeedSnapshot, InstrumentPlan, PaperRunner, RunPlan
+from services.paper_trading.runner import (
+    FeedSnapshot,
+    InstrumentPlan,
+    PaperRunner,
+    RunPlan,
+    plan_from_approval,
+)
 from services.paper_trading.store import PaperOrderStore
 from tests.paper_trading.fake_kiwoom import FakeKiwoomPaper
 
@@ -336,3 +342,118 @@ def test_without_settle_time_the_latest_source_final_bar_is_used(tmp_path: Path)
     report = runner.step(_end(feed, 5))
     assert report.intents == 1  # decided on the 101 bar; the unfinished 99 bar is left out
     assert store.intents(1)[0]["intent"]["data"]["input_bar_count"] == 1
+
+
+# --- orders left unfilled (ADR 0044, G1) ------------------------------------------------
+
+
+def _open_order(tmp_path: Path, **changes: Any) -> tuple[PaperRunner, FakeKiwoomPaper, Feed, Any]:
+    runner, fake, feed, store = _setup(tmp_path, unfilled_cancel_seconds=120, **changes)
+    feed.bars = _bars(99, 101)
+    assert runner.step(_end(feed)).submitted == 1
+    return runner, fake, feed, store
+
+
+def test_an_order_left_unfilled_is_cancelled_and_a_later_bar_decides_again(tmp_path: Path) -> None:
+    runner, fake, feed, store = _open_order(tmp_path)
+    first = _end(feed)
+    assert runner.step(first + timedelta(seconds=119)).cancel_requests == 0
+    report = runner.step(first + timedelta(seconds=120))
+    assert report.cancel_requests == 1
+    assert fake.orders[0].cancelled
+    assert runner.step(first + timedelta(seconds=130)).cancelled == 1
+    (submission,) = store.submissions("cancelled")
+    assert submission["broker_order_ref"] == fake.orders[0].ord_no
+    assert not store.accepted_without_execution()
+    assert _api_ids(fake).count("ust20003") == 1
+    # Nothing was filled, and the next bar's signal makes a new order.
+    assert store.position_quantity(runner.plan.broker_account_ref, AAPL) == 0
+    feed.bars = _bars(99, 101, 102)
+    assert runner.step(_end(feed)).submitted == 1
+    assert len(fake.orders) == 2
+
+
+def test_a_partly_filled_order_keeps_its_fill_when_the_rest_is_cancelled(tmp_path: Path) -> None:
+    runner, fake, feed, store = _open_order(tmp_path)
+    order = fake.orders[0]
+    order.filled, order.fill_price, order.cntr_time = Decimal(1), Decimal("101"), "23:31:30"
+    later = _end(feed) + timedelta(seconds=120)
+    assert runner.step(later).cancel_requests == 1
+    assert runner.step(later + timedelta(seconds=5)).fills == 1
+    assert store.position_quantity(runner.plan.broker_account_ref, AAPL) == 1
+    assert not store.submissions("cancelled")
+
+
+def test_the_kill_switch_leaves_unfilled_orders_alone(tmp_path: Path) -> None:
+    runner, fake, feed, store = _open_order(tmp_path)
+    store.halt("test", source="test")
+    report = runner.step(_end(feed) + timedelta(minutes=10))
+    assert report.halted
+    assert report.cancel_requests == 0
+    assert "ust20003" not in _api_ids(fake)
+
+
+def test_without_the_setting_nothing_is_cancelled(tmp_path: Path) -> None:
+    runner, fake, feed, _store = _setup(tmp_path)
+    feed.bars = _bars(99, 101)
+    runner.step(_end(feed))
+    runner.step(_end(feed) + timedelta(hours=1))
+    assert "ust20003" not in _api_ids(fake)
+
+
+def test_only_this_plans_orders_are_cancelled(tmp_path: Path) -> None:
+    runner, fake, feed, store = _open_order(tmp_path)
+    other = PaperRunner(
+        store,
+        runner.broker,
+        feed,
+        replace(runner.plan, market_buffer_bps=Decimal("60")),
+    )
+    assert other.approval_id != runner.approval_id
+    assert other.step(_end(feed) + timedelta(minutes=10)).cancel_requests == 0
+    assert "ust20003" not in _api_ids(fake)
+
+
+def test_a_second_order_waits_while_one_is_open(tmp_path: Path) -> None:
+    runner, fake, feed, _store = _setup(tmp_path)
+    feed.bars = _bars(99, 101)
+    runner.step(_end(feed))
+    feed.bars = _bars(99, 101, 102)
+    report = runner.step(_end(feed))
+    assert report.submitted == 0
+    assert report.skipped == [f"{AAPL}:open_order"]
+    assert len(fake.orders) == 1
+
+
+def test_a_cancel_that_fails_stops_after_three_tries(tmp_path: Path) -> None:
+    runner, fake, feed, store = _open_order(tmp_path)
+    fake.reject_cancels = True
+    moment = _end(feed)
+    requests = 0
+    for _ in range(4):
+        moment += timedelta(seconds=120)
+        requests += runner.step(moment).cancel_requests
+    assert requests == 3
+    assert _api_ids(fake).count("ust20003") == 3
+    assert store.status()["halted"]
+    assert not fake.orders[0].cancelled
+
+
+def test_an_unknown_cancel_is_settled_from_the_order_list(tmp_path: Path) -> None:
+    runner, fake, feed, store = _open_order(tmp_path)
+    fake.drop_next_cancel = True
+    later = _end(feed) + timedelta(seconds=120)
+    assert runner.step(later).cancel_requests == 1
+    assert fake.orders[0].cancelled
+    assert runner.step(later + timedelta(seconds=5)).cancelled == 1
+    assert store.submissions("cancelled")
+
+
+def test_the_setting_is_part_of_the_approval_only_when_used(tmp_path: Path) -> None:
+    runner, *_ = _setup(tmp_path)
+    assert "unfilled_cancel_seconds" not in runner.plan.approval_content()
+    used = replace(runner.plan, unfilled_cancel_seconds=120)
+    content = used.approval_content()
+    assert content["unfilled_cancel_seconds"] == 120
+    content["strategy"]["definition_sha256"] = fingerprint(used.definition)
+    assert plan_from_approval(content, used.definition).unfilled_cancel_seconds == 120

@@ -18,6 +18,7 @@ from typing import Any
 
 from packages.contracts.validator import validate_document
 from services.market_data.storage import MigrationRunner
+from services.paper_trading.brokers.base import SubmitResult
 from services.paper_trading.limits import LimitResult
 
 MIGRATIONS_DIR = Path(__file__).with_name("migrations")
@@ -161,6 +162,33 @@ class PaperOrderStore:
                     "updated_at_utc = ? WHERE submission_id = ?",
                     (document["status"], _canonical(document), now, document["submission_id"]),
                 )
+
+    def record_cancel_attempt(
+        self, submission_id: str, requested_at: datetime, result: SubmitResult
+    ) -> None:
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO order_cancel_attempts (submission_id, requested_at_utc, status, "
+                "cancel_order_ref, response_code, response_message) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    submission_id,
+                    _utc(requested_at),
+                    result.status,
+                    result.broker_order_ref,
+                    result.response_code,
+                    result.response_message,
+                ),
+            )
+
+    def cancel_attempts(self, submission_id: str) -> list[str]:
+        """When the runner asked to cancel this order, oldest first."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT requested_at_utc FROM order_cancel_attempts WHERE submission_id = ? "
+                "ORDER BY attempt_id",
+                (submission_id,),
+            ).fetchall()
+        return [str(row["requested_at_utc"]) for row in rows]
 
     def unknown_submission_count(self) -> int:
         with self._connect() as db:

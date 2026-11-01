@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from services.paper_trading import store as store_module
 from services.paper_trading.__main__ import main as cli_main
 from services.paper_trading.limits import LimitResult
 from services.paper_trading.store import PaperOrderStore, PaperStoreError
@@ -121,3 +123,29 @@ def test_cli_halt_works_without_the_app(tmp_path: Path, capsys: pytest.CaptureFi
     assert status["halted_reason"] == "manual stop"
     assert cli_main(["release", "--data-dir", str(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out)["armed"] is False
+
+
+def test_submissions_from_before_cancelling_keep_their_rows() -> None:
+    """Migration 0003 rebuilds the table to allow `cancelled`."""
+    migrations = Path(store_module.__file__).with_name("migrations")
+    with closing(sqlite3.connect(":memory:")) as db:
+        db.executescript((migrations / "0001_paper_orders.sql").read_text())
+        db.execute(
+            "INSERT INTO order_submissions VALUES ('sub-1', 'intent-1', 'accepted', "
+            "'2026-10-23T14:00:00Z', '{}', '2026-10-23T14:00:01Z')"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("UPDATE order_submissions SET status = 'cancelled'")
+        db.executescript((migrations / "0003_order_cancels.sql").read_text())
+        assert db.execute("SELECT submission_id, status FROM order_submissions").fetchall() == [
+            ("sub-1", "accepted")
+        ]
+        db.execute("UPDATE order_submissions SET status = 'cancelled'")
+        indexes = {
+            row[0]
+            for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE tbl_name = 'order_submissions' "
+                "AND type = 'index' AND name NOT LIKE 'sqlite_%'"
+            )
+        }
+    assert indexes == {"order_submissions_status_idx", "order_submissions_requested_idx"}

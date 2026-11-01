@@ -41,6 +41,8 @@ class FakeKiwoomPaper:
     invalidate_next_token: bool = False
     pages: int = 1
     rate_limit_next_query: bool = False
+    reject_cancels: bool = False
+    drop_next_cancel: bool = False  # cancel the order, then lose the connection
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
@@ -98,8 +100,13 @@ class FakeKiwoomPaper:
                 json={"ord_no": order.ord_no, "return_code": 0, "return_msg": "주문입력 완료"},
             )
         if api_id == "ust20003":
+            if self.reject_cancels:
+                return httpx.Response(200, json={"return_code": 20, "return_msg": "취소 불가"})
             order = next(o for o in self.orders if o.ord_no == body["orig_ord_no"])
             order.cancelled = True
+            if self.drop_next_cancel:
+                self.drop_next_cancel = False
+                raise httpx.ReadTimeout("connection lost after sending", request=request)
             return httpx.Response(200, json={"ord_no": "000000999", "return_code": 0})
         if api_id == "ust21510":
             if self.rate_limit_next_query:

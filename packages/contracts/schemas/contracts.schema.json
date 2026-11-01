@@ -7027,7 +7027,13 @@
           ]
         },
         "status": {
-          "enum": ["pending_response", "accepted", "rejected", "unknown"]
+          "enum": [
+            "pending_response",
+            "accepted",
+            "rejected",
+            "unknown",
+            "cancelled"
+          ]
         }
       },
       "description": "One attempt to send a paper order to a broker's demo domain (ADR 0037)."
@@ -7361,6 +7367,12 @@
           "type": "integer",
           "minimum": 10,
           "maximum": 86400
+        },
+        "unfilled_cancel_seconds": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 3600,
+          "description": "Seconds an accepted order may stay unfilled before the runner cancels it. Absent: left to the user."
         },
         "bar_settle_seconds": {
           "anyOf": [
