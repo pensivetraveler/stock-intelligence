@@ -165,6 +165,17 @@ if ok or hour < 10
     ]);
   });
 
+  it("keeps the grouping that a condition's meaning depends on", () => {
+    const source = `//@version=5
+strategy("x")
+if not (close > open and volume > 100)
+    strategy.entry("L", strategy.long)
+strategy.exit("E", "L", stop=(close + open) * 0.5)`;
+    const found = pineConditions(source);
+    expect(found).toContain("not ((close > open) and (volume > 100))");
+    expect(found).toContain("strategy.exit stop=(close + open) * 0.5");
+  });
+
   it("lists each exit level and shorts, and ignores tests that place no order", () => {
     const source = `//@version=5
 strategy("x")

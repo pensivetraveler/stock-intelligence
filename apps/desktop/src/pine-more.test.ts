@@ -586,3 +586,42 @@ plot(up)`;
     for (const i of pivots) expect(full.plot0[i]).toBe(data[i - 3].high);
   });
 });
+
+describe("and/or by Pine version", () => {
+  const closes = [10, 11, 9, 12, 8, 13, 7, 14, 6, 15];
+  const series = closes.map((close, i) => ({
+    time: 1_700_000_000 + i * 60,
+    open: close,
+    high: close,
+    low: close,
+    close,
+    volume: 100,
+  }));
+  const values = (source: string) => {
+    const program = compilePine(source);
+    return runPine(program, series, {}).values[program.plots[0].key];
+  };
+  const inline = (version: number) => `//@version=${version}
+indicator("x")
+hit = close > 10 and ta.sma(close, 2) > 10
+plot(hit ? 1 : 0, "hit")`;
+  const hoisted = `//@version=5
+indicator("x")
+average = ta.sma(close, 2)
+hit = close > 10 and average > 10
+plot(hit ? 1 : 0, "hit")`;
+
+  it("runs both sides before version 6, so ta.* on the right sees every bar", () => {
+    expect(compilePine(inline(5)).version).toBe(5);
+    expect(values(inline(5))).toEqual(values(hoisted));
+  });
+
+  it("skips the settled side from version 6", () => {
+    expect(compilePine(inline(6)).version).toBe(6);
+    expect(values(inline(6))).not.toEqual(values(hoisted));
+  });
+
+  it("treats a script without a version line as before version 6", () => {
+    expect(compilePine('indicator("x")\nplot(close)').version).toBe(5);
+  });
+});

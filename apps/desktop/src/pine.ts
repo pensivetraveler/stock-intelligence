@@ -517,6 +517,8 @@ export interface PineRequestSpec {
 
 export interface PineProgram {
   body: Stmt[];
+  /** From `//@version=N`. Version 6 skips the settled side of `and`/`or`; earlier ones do not. */
+  version: number;
   title: string;
   short: string;
   overlay: boolean;
@@ -729,6 +731,7 @@ export function compilePine(source: string): PineProgram {
   const body = parsePine(source);
   const program: PineProgram = {
     body,
+    version: Number(/^\s*\/\/@version=(\d+)/m.exec(source)?.[1] ?? 5),
     title: "Pine",
     short: "Pine",
     overlay: false,
@@ -2739,17 +2742,13 @@ export function runPine(
         return n === null ? null : expr.op === "-" ? -n : n;
       }
       case "binary": {
-        if (expr.op === "and") {
-          return (
-            truthy(evaluate(expr.left, scopes, path, depth)) &&
-            truthy(evaluate(expr.right, scopes, path, depth))
-          );
-        }
-        if (expr.op === "or") {
-          return (
-            truthy(evaluate(expr.left, scopes, path, depth)) ||
-            truthy(evaluate(expr.right, scopes, path, depth))
-          );
+        if (expr.op === "and" || expr.op === "or") {
+          const first = truthy(evaluate(expr.left, scopes, path, depth));
+          // Before version 6 both sides always run, so ta.* on the right sees every bar.
+          if (program.version >= 6 && first === (expr.op === "or"))
+            return first;
+          const second = truthy(evaluate(expr.right, scopes, path, depth));
+          return expr.op === "and" ? first && second : first || second;
         }
         const left = evaluate(expr.left, scopes, path, depth);
         const right = evaluate(expr.right, scopes, path, depth);

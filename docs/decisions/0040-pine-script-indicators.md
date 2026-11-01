@@ -181,3 +181,10 @@ This keeps the separation of real, manual, scenario and backtest fills (AGENTS.m
 - Users need user-defined types, `matrix`, `map`, `polyline`, `plotcandle` or `plotbar`.
 - A strategy's chart backtest should be saved or compared with the backtest engine (ADR 0021). That needs a contract for its fills, not memory only.
 - Minute bars for `request.security` are wanted on daily charts.
+
+## `and`·`or` 평가와 Pine 버전 (2026-11-01)
+
+- **문제:** 해석기가 모든 버전에서 `and`·`or`의 결과가 정해지면 오른쪽을 건너뛰었다. Pine v6의 규칙이고, v5까지는 양쪽을 항상 평가한다. 그래서 `//@version=5` 스크립트에서 `close > a and volume > ta.sma(volume, 20)`의 `ta.sma`가 일부 봉을 보지 못해 값이 틀렸다. 규칙 전략 변환 파일럿에서 Pine과 규칙 엔진의 비교가 어긋나 찾았다.
+- **결정:** `//@version=N`을 읽어 6 이상만 건너뛴다. 줄이 없으면 5로 본다.
+- **영향:** v5 스크립트 중 `and`·`or` 오른쪽에 `ta.*`를 쓴 지표·전략의 값이 바뀐다. 이전 값이 틀린 것이다. v5에서 왼쪽으로 오른쪽을 막던 스크립트(`i < size and array.get(a, i)`)는 TradingView처럼 오류가 날 수 있다.
+- **출처:** [Pine Script v6 이전 안내](https://www.tradingview.com/pine-script-docs/migration-guides/to-pine-version-6/).

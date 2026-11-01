@@ -201,6 +201,12 @@ export function pineStrategiesOn(
 
 // --- conversion to rules (ADR 0042, step 3) ---------------------------------------------
 
+/** A sub-expression, in parentheses when dropping them could change what it means. */
+const grouped = (expr: Expr): string =>
+  expr.kind === "binary" || expr.kind === "ternary"
+    ? `(${exprText(expr)})`
+    : exprText(expr);
+
 function exprText(expr: Expr): string {
   switch (expr.kind) {
     case "number":
@@ -223,11 +229,11 @@ function exprText(expr: Expr): string {
     case "index":
       return `${exprText(expr.target)}[${exprText(expr.offset)}]`;
     case "unary":
-      return `${expr.op === "not" ? "not " : expr.op}${exprText(expr.operand)}`;
+      return `${expr.op === "not" ? "not " : expr.op}${grouped(expr.operand)}`;
     case "binary":
-      return `${exprText(expr.left)} ${expr.op} ${exprText(expr.right)}`;
+      return `${grouped(expr.left)} ${expr.op} ${grouped(expr.right)}`;
     case "ternary":
-      return `${exprText(expr.test)} ? ${exprText(expr.then)} : ${exprText(expr.otherwise)}`;
+      return `${grouped(expr.test)} ? ${grouped(expr.then)} : ${grouped(expr.otherwise)}`;
     case "tuple":
       return `[${expr.items.map(exprText).join(", ")}]`;
     case "block":
