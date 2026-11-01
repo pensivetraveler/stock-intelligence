@@ -1484,6 +1484,7 @@ def create_app(
         now=clock,
         converse=strategy_converse,
         convert=strategy_convert,
+        backtests=backtests.get,
     )
     register_agent_routes(
         application,

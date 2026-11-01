@@ -83,8 +83,7 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ReviewPeriodPayload
   | IndicatorConversation
   | IndicatorAssistantSettings
-  | StrategyConversation
-  | StrategyBacktestPreview;
+  | StrategyConversation;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -7116,7 +7115,9 @@ export interface StrategyConversation {
       | "run"
       | "stopped"
       | "error"
-      | "conversion";
+      | "conversion"
+      | "comparison"
+      | "conversion_saved";
     at_utc: UtcTimestamp;
     text?: string;
     model?: string | null;
@@ -7128,6 +7129,9 @@ export interface StrategyConversation {
     results?: StrategyResults;
     diagnostic?: boolean;
     conversion?: StrategyConversion;
+    comparison?: StrategyComparison;
+    strategy_id?: string;
+    strategy_version?: number;
   }[];
   pending_run: {
     tool_use_id: string;
@@ -7239,17 +7243,24 @@ export interface StrategyConversion {
   notes: string;
   complete: boolean;
   save_open: boolean;
+  code_sha256: string;
 }
-export interface StrategyBacktestPreview {
-  kind: "strategy_backtest_preview";
-  schema_version: SchemaVersion;
-  final_equity: string;
-  trades: {
-    entry_utc: string;
-    entry_price: string;
-    exit_utc: string | null;
-    exit_price: string | null;
-    exit_reason: string;
-    net_pnl: string;
-  }[];
+export interface StrategyComparison {
+  code_sha256: string;
+  definition_sha256: string;
+  bars_sha256: string;
+  bars: number;
+  engine_version: string;
+  fill_model_version: string;
+  time_zone: string;
+  initial_capital: number;
+  fee_rate: number;
+  fee_per_order: number;
+  slippage_bps: number;
+  pine_trades: number;
+  rule_trades: number;
+  pine_net: number;
+  rule_net: number;
+  entry_match: number;
+  blocks: ("trades_gap" | "net_gap" | "entry_match" | "too_few_trades")[];
 }

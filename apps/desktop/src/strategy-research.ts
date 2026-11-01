@@ -16,7 +16,10 @@ import {
 import { isPineStrategy, type SavedScript } from "./pine-assistant";
 import { type Expr, parsePine, type Stmt } from "./pine-parser";
 import type { StrategyReport, StrategySettings } from "./pine-strategy";
-import type { PreviewRequest, StrategyResults } from "./strategy-research-api";
+import type {
+  ComparisonRequest,
+  StrategyResults,
+} from "./strategy-research-api";
 
 /** Trades sent with results, newest kept; the totals still count every trade. */
 export const MAX_SENT_TRADES = 50;
@@ -366,17 +369,26 @@ export function pineConditions(source: string): string[] {
   return found;
 }
 
-/** What makes a Pine backtest comparable to the rules engine on the same bars. */
-export function previewRequest(
-  definition: object,
+/** What the API needs to run the rules beside this Pine backtest, on the same bars. */
+export function comparisonRequest(
+  code: string,
+  report: StrategyReport,
   settings: StrategySettings,
   chart: { bars: OhlcvBar[]; context: PineContext },
-): PreviewRequest {
+): ComparisonRequest {
   const { bars } = chart;
   const tick = 10 ** -(chart.context.priceDecimals ?? 2);
   const price = bars.length > 0 ? bars[bars.length - 1].close : 0;
   return {
-    definition,
+    code,
+    // Closed trades on both sides: open ones are valued differently.
+    pine: {
+      closed_trades: report.closedTrades,
+      net_profit: Number(report.netProfit),
+      entry_times: report.trades
+        .filter((trade) => trade.exitTime !== null)
+        .map((trade) => trade.entryTime),
+    },
     bars: bars.map(({ time, open, high, low, close, volume }) => ({
       time,
       open,
@@ -398,64 +410,5 @@ export function previewRequest(
         : 0,
     // Pine slips in ticks and the engine in basis points, at the latest price.
     slippage_bps: price > 0 ? (settings.slippage * tick * 10_000) / price : 0,
-  };
-}
-
-export interface BacktestComparison {
-  pineTrades: number;
-  ruleTrades: number;
-  pineNet: number;
-  ruleNet: number;
-  /** Share of closed Pine entries the rules also made at the same bar, in percent. */
-  entryMatch: number;
-  warnings: ("trades" | "net" | "entries")[];
-}
-
-// ADR 0042: hypotheses until the first real comparisons.
-const MAX_TRADES_GAP = 10;
-const MAX_NET_GAP = 20;
-const MIN_ENTRY_MATCH = 80;
-
-const gapPercent = (a: number, b: number) => {
-  const base = Math.max(Math.abs(a), Math.abs(b));
-  return base === 0 ? 0 : (Math.abs(a - b) / base) * 100;
-};
-
-/** Closed trades only on both sides: open ones are valued differently. */
-export function compareBacktests(
-  pine: StrategyReport,
-  rules: {
-    trades: { entry_utc: string; exit_utc: string | null; net_pnl: string }[];
-  },
-): BacktestComparison {
-  const closed = rules.trades.filter((trade) => trade.exit_utc !== null);
-  const ruleNet = closed.reduce((sum, trade) => sum + Number(trade.net_pnl), 0);
-  const pineClosed = pine.trades.filter((trade) => trade.exitTime !== null);
-  const entries = new Set(
-    rules.trades.map((trade) => Date.parse(trade.entry_utc)),
-  );
-  const matched = pineClosed.filter((trade) =>
-    entries.has(trade.entryTime * 1000),
-  ).length;
-  const pineNet = Number(pine.netProfit);
-  const entryMatch =
-    pineClosed.length === 0 && closed.length === 0
-      ? 100
-      : pineClosed.length === 0
-        ? 0
-        : (matched / pineClosed.length) * 100;
-  return {
-    pineTrades: pine.closedTrades,
-    ruleTrades: closed.length,
-    pineNet,
-    ruleNet,
-    entryMatch,
-    warnings: [
-      ...(gapPercent(pine.closedTrades, closed.length) > MAX_TRADES_GAP
-        ? (["trades"] as const)
-        : []),
-      ...(gapPercent(pineNet, ruleNet) > MAX_NET_GAP ? (["net"] as const) : []),
-      ...(entryMatch < MIN_ENTRY_MATCH ? (["entries"] as const) : []),
-    ],
   };
 }

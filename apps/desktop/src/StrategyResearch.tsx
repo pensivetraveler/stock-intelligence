@@ -2,20 +2,19 @@ import type { StrategyConversation } from "@siw/contracts/types";
 import { useEffect, useMemo, useState } from "react";
 
 import { type AssistantChart, AssistantEventView } from "./IndicatorAssistant";
-import { useI18n } from "./i18n";
+import { useI18n, type MessageKey } from "./i18n";
 import type { ChartContext } from "./indicator-assistant-api";
 import { MAX_PINE_LENGTH } from "./pine";
 import { compilePine } from "./pine";
 import { pineReference, type SavedScript } from "./pine-assistant";
 import {
-  type BacktestComparison,
-  compareBacktests,
+  comparisonRequest,
   pineConditions,
-  previewRequest,
   resultsOf,
   runStrategy,
 } from "./strategy-research";
 import type {
+  Comparison,
   Conversion,
   ResearchOrigin,
   StrategyResearchApi,
@@ -68,7 +67,7 @@ export function StrategyResearch({
   const [problem, setProblem] = useState<string | null>(null);
   // Results shown for checking, before they are sent.
   const [draft, setDraft] = useState<StrategyResults | null>(null);
-  const [comparison, setComparison] = useState<BacktestComparison | null>(null);
+  const [ruleName, setRuleName] = useState("");
 
   const fail = (error: unknown) =>
     setProblem(
@@ -260,8 +259,8 @@ export function StrategyResearch({
     }
   };
 
-  /** The latest conversion's rules, backtested on these bars beside the Pine script. */
-  const compare = async (definition: object) => {
+  /** The latest conversion's rules, run by the API on these bars beside the Pine script. */
+  const compare = async (conversationId: string) => {
     const current = chart();
     const run = current && runStrategy(code, current.bars, current.context);
     if (!current || !run?.ok) {
@@ -270,17 +269,18 @@ export function StrategyResearch({
     }
     const settings = compilePine(code).strategy;
     if (!settings) return;
-    const rules = await api.previewBacktest(
-      previewRequest(definition, settings, current),
+    setConversation(
+      await api.compare(
+        conversationId,
+        comparisonRequest(code, run.report, settings, current),
+      ),
     );
-    setComparison(compareBacktests(run.report, rules));
   };
 
   const convert = async () => {
     if (!conversation) return;
     setBusy("asking");
     setProblem(null);
-    setComparison(null);
     try {
       const converted = await api.convert(
         conversation.conversation_id,
@@ -292,7 +292,7 @@ export function StrategyResearch({
       const latest = [...converted.events]
         .reverse()
         .find((event) => event.type === "conversion")?.conversion;
-      if (latest?.definition) await compare(latest.definition);
+      if (latest?.definition) await compare(converted.conversation_id);
     } catch (error) {
       fail(error);
     } finally {
@@ -300,9 +300,30 @@ export function StrategyResearch({
     }
   };
 
-  const conversion = [...events]
-    .reverse()
-    .find((event) => event.type === "conversion")?.conversion;
+  const saveRules = async () => {
+    if (!conversation) return;
+    setBusy("asking");
+    setProblem(null);
+    try {
+      setConversation(
+        await api.saveRules(
+          conversation.conversation_id,
+          code,
+          ruleName.trim() || compilePine(code).title,
+        ),
+      );
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const latestEvent = (type: string) =>
+    [...events].reverse().find((event) => event.type === type);
+  const conversion = latestEvent("conversion")?.conversion;
+  const comparison = latestEvent("comparison")?.comparison ?? null;
+  const saved = latestEvent("conversion_saved");
 
   const retry =
     conversation?.status === "stopped" &&
@@ -373,7 +394,7 @@ export function StrategyResearch({
       ) : null}
       <div className="ia-events">
         {events.flatMap((event, index) =>
-          event.type === "conversion"
+          ["conversion", "comparison", "conversion_saved"].includes(event.type)
             ? []
             : [
                 <div key={index}>
@@ -518,14 +539,19 @@ export function StrategyResearch({
         <ConversionView
           conversion={conversion}
           comparison={comparison}
+          saved={saved?.strategy_id ? (saved.strategy_version ?? 1) : null}
+          name={ruleName}
+          onName={setRuleName}
+          busy={busy !== null}
           onCompare={
-            conversion.definition && busy === null
+            conversion.definition && conversation
               ? () => {
                   setProblem(null);
-                  void compare(conversion.definition as object).catch(fail);
+                  void compare(conversation.conversation_id).catch(fail);
                 }
               : null
           }
+          onSave={() => void saveRules()}
         />
       ) : null}
       {results.some(Boolean) ? (
@@ -642,13 +668,30 @@ export function StrategyResearch({
 function ConversionView({
   conversion,
   comparison,
+  saved,
+  name,
+  onName,
+  busy,
   onCompare,
+  onSave,
 }: {
   conversion: Conversion;
-  comparison: BacktestComparison | null;
+  comparison: Comparison | null;
+  saved: number | null;
+  name: string;
+  onName: (name: string) => void;
+  busy: boolean;
   onCompare: (() => void) | null;
+  onSave: () => void;
 }) {
   const { t } = useI18n();
+  // The API decides on saving; this only spares a request it would refuse.
+  const savable =
+    conversion.complete &&
+    !conversion.definition?.entry_order &&
+    !conversion.definition?.exit_order &&
+    comparison !== null &&
+    comparison.blocks.length === 0;
   return (
     <section className="sr-draft" aria-label={t("sr.conversion")}>
       <strong>{t("sr.conversion")}</strong>
@@ -705,36 +748,62 @@ function ConversionView({
           <tbody>
             <tr>
               <td>{t("pine.strategy.closed")}</td>
-              <td>{comparison.pineTrades}</td>
-              <td>{comparison.ruleTrades}</td>
+              <td>{comparison.pine_trades}</td>
+              <td>{comparison.rule_trades}</td>
             </tr>
             <tr>
               <td>{t("pine.strategy.netProfit")}</td>
-              <td>{comparison.pineNet.toFixed(2)}</td>
-              <td>{comparison.ruleNet.toFixed(2)}</td>
+              <td>{comparison.pine_net.toFixed(2)}</td>
+              <td>{comparison.rule_net.toFixed(2)}</td>
             </tr>
             <tr>
               <td>{t("sr.entryMatch")}</td>
-              <td colSpan={2}>{comparison.entryMatch.toFixed(0)}%</td>
+              <td colSpan={2}>{comparison.entry_match.toFixed(0)}%</td>
             </tr>
           </tbody>
         </table>
       ) : null}
-      {comparison?.warnings.map((warning) => (
-        <p key={warning} className="bt-problem" role="alert">
-          {t(`sr.warn.${warning}`)}
+      {comparison?.blocks.map((block) => (
+        <p key={block} className="bt-problem" role="alert">
+          {t(`sr.block.${block}` as MessageKey)}
         </p>
       ))}
+      {savable ? <p className="workspace-note">{t("sr.sameOnBars")}</p> : null}
       <p className="bt-actions">
         {onCompare ? (
-          <button type="button" className="tb-button" onClick={onCompare}>
+          <button
+            type="button"
+            className="tb-button"
+            disabled={busy}
+            onClick={onCompare}
+          >
             {t("sr.compareRun")}
           </button>
         ) : null}
-        <button type="button" className="tb-button bt-primary" disabled>
+      </p>
+      <label>
+        {t("sr.ruleName")}
+        <input
+          value={name}
+          maxLength={200}
+          disabled={!savable}
+          onChange={(event) => onName(event.target.value)}
+        />
+      </label>
+      <p className="bt-actions">
+        <button
+          type="button"
+          className="tb-button bt-primary"
+          disabled={!savable || busy}
+          onClick={onSave}
+        >
           {t("sr.saveRules")}
         </button>
-        <span className="workspace-note">{t("sr.saveClosed")}</span>
+        <span className="workspace-note">
+          {saved !== null
+            ? t("sr.saved", { version: saved })
+            : t(savable ? "sr.saveNote" : "sr.saveBlocked")}
+        </span>
       </p>
     </section>
   );

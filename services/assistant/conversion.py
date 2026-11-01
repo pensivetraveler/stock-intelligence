@@ -6,13 +6,15 @@ this code then checks that nothing was dropped and nothing was invented. `valida
 only checks the form, and a comparison of two backtests cannot show a condition that never
 fired, so this check is what stands against a silently missing condition.
 
-Nothing here saves a strategy. Model assignment #SIW-2: saving stays closed until the
-conversion pilot passes.
+Saving is decided here too (`save_blocks`), by code rather than by trust in a model: assignment
+#SIW-2 says the model is not the safeguard. Passing means the two behaved alike on these bars,
+not that the strategies are the same.
 """
 
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -21,7 +23,7 @@ import httpx
 
 from services.agents.commentary import API_URL, API_VERSION, LANGUAGES
 from services.backtest.indicators import INDICATORS
-from services.backtest.strategy import validate_definition
+from services.backtest.strategy import fingerprint, validate_definition
 from services.review.conversation import ConversationError
 
 # Assignment #SIW-2: Opus at high effort. No fallback: a refusal is shown as a failure rather
@@ -32,8 +34,15 @@ MAX_TOKENS = 16_000
 TIMEOUT_SECONDS = 180.0
 MAX_ATTEMPTS = 3
 MAX_CONDITIONS = 100
-# Saving a conversion needs the pilot (#SIW-2); the pilot's pass is what changes this.
-SAVE_OPEN = False
+SAVE_OPEN = True
+# ADR 0042. A smaller sample cannot show that two strategies behave alike: 2026-11-01 user
+# decision, both sides at least this many closed trades.
+MIN_COMPARISON_TRADES = 20
+MAX_TRADES_GAP_PERCENT = 10.0
+MAX_NET_GAP_PERCENT = 20.0
+MIN_ENTRY_MATCH_PERCENT = 80.0
+# The engine's orders expire and Pine's do not, so these never match the script exactly.
+UNMATCHED_FIELDS = ("entry_order", "exit_order")
 
 SYSTEM = """You convert a Pine strategy into the rules format of SIW Research's backtest engine
 and paper runner. A wrong conversion can run as a different strategy from the one the investor
@@ -97,6 +106,59 @@ SCHEMA: dict[str, Any] = {
         "notes": {"type": "string"},
     },
 }
+
+
+def code_hash(code: str) -> str:
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
+def _gap_percent(a: float, b: float) -> float:
+    base = max(abs(a), abs(b))
+    return 0.0 if base == 0 else abs(a - b) / base * 100
+
+
+def comparison_blocks(
+    pine_trades: int, rule_trades: int, pine_net: float, rule_net: float, entry_match: float
+) -> list[str]:
+    """Why this comparison does not support saving; too few trades is no evidence at all."""
+    blocks = []
+    if _gap_percent(pine_trades, rule_trades) > MAX_TRADES_GAP_PERCENT:
+        blocks.append("trades_gap")
+    if _gap_percent(pine_net, rule_net) > MAX_NET_GAP_PERCENT:
+        blocks.append("net_gap")
+    if entry_match < MIN_ENTRY_MATCH_PERCENT:
+        blocks.append("entry_match")
+    if min(pine_trades, rule_trades) < MIN_COMPARISON_TRADES:
+        blocks.append("too_few_trades")
+    return blocks
+
+
+def save_blocks(
+    conversion: dict[str, Any] | None, comparison: dict[str, Any] | None, code: str
+) -> list[str]:
+    """Everything that stops this script's conversion from being saved; empty when it can be."""
+    if conversion is None or conversion.get("definition") is None:
+        return ["no_rules"]
+    blocks = []
+    if (
+        not conversion["complete"]
+        or conversion["problems"]
+        or any(item["status"] != "mapped" for item in conversion["mapping"])
+    ):
+        blocks.append("conversion_open")
+    definition = conversion["definition"]
+    if any(definition.get(name) is not None for name in UNMATCHED_FIELDS):
+        blocks.append("unmatched_order_terms")
+    digest = code_hash(code)
+    if conversion.get("code_sha256") != digest:
+        blocks.append("code_changed")
+    if comparison is None:
+        return [*blocks, "no_comparison"]
+    if comparison["code_sha256"] != digest or comparison["definition_sha256"] != fingerprint(
+        definition
+    ):
+        blocks.append("comparison_stale")
+    return [*blocks, *comparison["blocks"]]
 
 
 def indicator_catalogue() -> str:
@@ -308,6 +370,7 @@ def convert(
         problems.insert(0, f"the rules are invalid: {error}")
     return (
         {
+            "code_sha256": code_hash(code),
             "definition": definition,
             "mapping": mapping,
             "problems": [problem[:1000] for problem in problems],

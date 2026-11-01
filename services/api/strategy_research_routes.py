@@ -7,6 +7,8 @@ scripts are run by the app, which posts each result back; profit goes to Claude 
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -34,7 +36,8 @@ from services.assistant.strategy import (
 )
 from services.backtest.data import EngineBar, InstrumentInput
 from services.backtest.engine import Backtest, EngineConfig, RuleSignals
-from services.backtest.strategy import StrategyError, validate_definition
+from services.backtest.jobs import BacktestRunner
+from services.backtest.strategy import fingerprint, validate_definition
 from services.review.conversation import ConversationError
 from services.review.store import ConversationNotFoundError, ReviewStore
 
@@ -135,6 +138,10 @@ class ResultsRequest(BaseModel):
     results: Results
 
 
+def _utc(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
 class ConvertRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     code: str = Field(min_length=1, max_length=MAX_CODE)
@@ -143,7 +150,7 @@ class ConvertRequest(BaseModel):
     language: Literal["en", "ko"] = "ko"
 
 
-class PreviewBar(BaseModel):
+class ComparisonBar(BaseModel):
     model_config = ConfigDict(extra="forbid")
     time: int = Field(ge=0)
     open: float
@@ -153,18 +160,34 @@ class PreviewBar(BaseModel):
     volume: float = Field(ge=0)
 
 
-class PreviewRequest(BaseModel):
-    """A rules strategy backtested on the chart's own bars; nothing is stored."""
+class PineSide(BaseModel):
+    """The Pine backtest, which only the app can run."""
 
     model_config = ConfigDict(extra="forbid")
-    definition: dict[str, Any]
-    bars: list[PreviewBar] = Field(min_length=1, max_length=20_000)
+    closed_trades: int = Field(ge=0)
+    net_profit: float
+    entry_times: list[int] = Field(max_length=20_000)
+
+
+class ComparisonRequest(BaseModel):
+    """The latest conversion's rules, run here on the chart's own bars; nothing is saved."""
+
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(min_length=1, max_length=MAX_CODE)
+    pine: PineSide
+    bars: list[ComparisonBar] = Field(min_length=1, max_length=20_000)
     time_zone: str = Field(min_length=1, max_length=64)
     currency: str = Field(default="USD", max_length=10)
     initial_capital: float = Field(gt=0)
     fee_rate: float = Field(default=0, ge=0, le=0.1)
     fee_per_order: float = Field(default=0, ge=0)
     slippage_bps: float = Field(default=0, ge=0, le=1000)
+
+
+class SaveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(min_length=1, max_length=MAX_CODE)
+    name: str = Field(min_length=1, max_length=200)
 
 
 class StrategyRunRequest(RunRequest):
@@ -181,6 +204,7 @@ def register_strategy_research_routes(
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     converse: Callable[..., dict[str, Any]] = call_indicator_claude,
     convert: Callable[..., dict[str, Any]] = conversion.call_convert_claude,
+    backtests: Callable[[], BacktestRunner | None] = lambda: None,
 ) -> None:
     def unavailable(request: Request) -> JSONResponse:
         return error_response(
@@ -355,61 +379,132 @@ def register_strategy_research_routes(
         )
         return respond(document(review, review.conversation(runner.id)))
 
-    @application.post("/v1/strategy-research/backtest-preview", response_model=None)
-    def backtest_preview(request: Request, body: PreviewRequest) -> Response:
-        try:
-            clean = validate_definition(body.definition)
-            if clean["type"] != "rules":
-                raise StrategyError("only rules strategies can be previewed")
-            times = [bar.time for bar in body.bars]
-            step = times[-1] - times[-2] if len(times) > 1 else 60
-            bars = [
-                EngineBar(
-                    bar.time,
-                    times[index + 1] if index + 1 < len(times) else bar.time + step,
-                    Dec(str(bar.open)),
-                    Dec(str(bar.high)),
-                    Dec(str(bar.low)),
-                    Dec(str(bar.close)),
-                    Dec(str(bar.volume)),
-                    True,
-                )
-                for index, bar in enumerate(body.bars)
-            ]
-            inputs = [InstrumentInput("chart", body.time_zone, bars)]
-            results = Backtest(
-                "preview",
-                clean,
-                inputs,
-                EngineConfig(
-                    Dec(str(body.initial_capital)),
-                    body.currency,
-                    Dec(str(body.fee_rate)),
-                    Dec(str(body.fee_per_order)),
-                    Dec(str(body.slippage_bps)),
-                ),
-                RuleSignals(clean, inputs),
-            ).run()
-        except StrategyError as exc:
-            return error_response(request, 422, "invalid_strategy_definition", str(exc))
-        return respond(
-            {
-                "kind": "strategy_backtest_preview",
-                "schema_version": "0.1",
-                "final_equity": results["final_equity"],
-                "trades": [
-                    {
-                        "entry_utc": trade["entry_utc"],
-                        "entry_price": trade["entry_price"],
-                        "exit_utc": trade["exit_utc"],
-                        "exit_price": trade["exit_price"],
-                        "exit_reason": trade["exit_reason"],
-                        "net_pnl": trade["net_pnl"],
-                    }
-                    for trade in results["trades"]
-                ],
-            }
+    def latest(review: ReviewStore, conversation_id: str, kind: str) -> dict[str, Any] | None:
+        found_event = next(
+            (e for e in reversed(review.events(conversation_id)) if e["type"] == kind), None
         )
+        return None if found_event is None else found_event[kind]
+
+    @application.post(
+        "/v1/strategy-research/conversations/{conversation_id}/comparison", response_model=None
+    )
+    def compare_rules(request: Request, conversation_id: str, body: ComparisonRequest) -> Response:
+        result = found(request, conversation_id)
+        if isinstance(result, JSONResponse):
+            return result
+        review, _conversation = result
+        converted = latest(review, conversation_id, "conversion")
+        definition = None if converted is None else converted["definition"]
+        if definition is None:
+            return error_response(
+                request, 409, "no_rules_to_compare", "This conversation has no converted rules"
+            )
+        clean = validate_definition(definition)
+        times = [bar.time for bar in body.bars]
+        step = times[-1] - times[-2] if len(times) > 1 else 60
+        bars = [
+            EngineBar(
+                bar.time,
+                times[index + 1] if index + 1 < len(times) else bar.time + step,
+                Dec(str(bar.open)),
+                Dec(str(bar.high)),
+                Dec(str(bar.low)),
+                Dec(str(bar.close)),
+                Dec(str(bar.volume)),
+                True,
+            )
+            for index, bar in enumerate(body.bars)
+        ]
+        inputs = [InstrumentInput("chart", body.time_zone, bars)]
+        results = Backtest(
+            "comparison",
+            clean,
+            inputs,
+            EngineConfig(
+                Dec(str(body.initial_capital)),
+                body.currency,
+                Dec(str(body.fee_rate)),
+                Dec(str(body.fee_per_order)),
+                Dec(str(body.slippage_bps)),
+            ),
+            RuleSignals(clean, inputs),
+        ).run()
+        closed = [trade for trade in results["trades"] if trade["exit_utc"] is not None]
+        rule_net = float(sum(Dec(trade["net_pnl"]) for trade in closed))
+        entries = {
+            int(datetime.fromisoformat(trade["entry_utc"].replace("Z", "+00:00")).timestamp())
+            for trade in results["trades"]
+        }
+        pine_entries = body.pine.entry_times
+        if not pine_entries:
+            entry_match = 100.0 if not closed else 0.0
+        else:
+            entry_match = sum(1 for time in pine_entries if time in entries) / len(pine_entries)
+            entry_match *= 100
+        comparison = {
+            "code_sha256": conversion.code_hash(body.code),
+            "definition_sha256": fingerprint(clean),
+            "bars_sha256": hashlib.sha256(
+                json.dumps([bar.model_dump() for bar in body.bars], sort_keys=True).encode()
+            ).hexdigest(),
+            "bars": len(bars),
+            "engine_version": results["engine_version"],
+            "fill_model_version": results["fill_model_version"],
+            "time_zone": body.time_zone,
+            "initial_capital": body.initial_capital,
+            "fee_rate": body.fee_rate,
+            "fee_per_order": body.fee_per_order,
+            "slippage_bps": body.slippage_bps,
+            "pine_trades": body.pine.closed_trades,
+            "rule_trades": len(closed),
+            "pine_net": body.pine.net_profit,
+            "rule_net": rule_net,
+            "entry_match": entry_match,
+            "blocks": conversion.comparison_blocks(
+                body.pine.closed_trades, len(closed), body.pine.net_profit, rule_net, entry_match
+            ),
+        }
+        review.append_event(
+            conversation_id,
+            {"type": "comparison", "comparison": comparison, "at_utc": _utc(now())},
+        )
+        return respond(document(review, review.conversation(conversation_id)))
+
+    @application.post(
+        "/v1/strategy-research/conversations/{conversation_id}/save", response_model=None
+    )
+    def save_rules(request: Request, conversation_id: str, body: SaveRequest) -> Response:
+        result = found(request, conversation_id)
+        if isinstance(result, JSONResponse):
+            return result
+        review, _conversation = result
+        converted = latest(review, conversation_id, "conversion")
+        blocks = conversion.save_blocks(
+            converted, latest(review, conversation_id, "comparison"), body.code
+        )
+        if blocks:
+            return error_response(request, 409, "conversion_not_savable", ", ".join(blocks))
+        jobs = backtests()
+        if jobs is None:
+            return error_response(
+                request,
+                503,
+                "backtest_storage_unconfigured",
+                "Set SIW_DATA_DIR to keep backtests; nothing was stored",
+            )
+        assert converted is not None  # save_blocks refuses a missing conversion
+        saved = jobs.store.save_strategy(body.name, converted["definition"])
+        # Only saved. Walk-forward and paper orders stay the investor's own next steps.
+        review.append_event(
+            conversation_id,
+            {
+                "type": "conversion_saved",
+                "strategy_id": saved["strategy_id"],
+                "strategy_version": saved["version"],
+                "at_utc": _utc(now()),
+            },
+        )
+        return respond(document(review, review.conversation(conversation_id)))
 
     @application.post(
         "/v1/strategy-research/conversations/{conversation_id}/runs", response_model=None

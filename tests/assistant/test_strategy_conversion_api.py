@@ -1,4 +1,4 @@
-"""Pine to rules: nothing dropped, nothing invented, nothing saved (ADR 0042 step 3)."""
+"""Pine to rules: nothing dropped, nothing invented, saved only on evidence (ADR 0042 step 3)."""
 
 from __future__ import annotations
 
@@ -18,9 +18,13 @@ from services.assistant.conversion import (
     SAVE_OPEN,
     call_convert_claude,
     check_mapping,
+    code_hash,
+    comparison_blocks,
     rule_parts,
+    save_blocks,
     system_prompt,
 )
+from services.backtest.strategy import fingerprint
 from services.review.store import ReviewStore
 from tests.assistant.test_indicator_assistant_api import Scripted
 from tests.review.test_conversation_api import answer
@@ -144,18 +148,13 @@ def test_a_complete_conversion_saves_nothing(client: TestClient, converter: Conv
     result = latest(document)
     assert result["complete"] is True
     assert result["problems"] == []
-    assert result["save_open"] is False and SAVE_OPEN is False
+    assert result["save_open"] is SAVE_OPEN
     assert result["definition"]["entry"]["op"] == "cross_above"
     assert [item["condition"] for item in result["mapping"]] == CONDITIONS
     assert document["usage"]["output_tokens"] >= 20
     sent = converter.calls[0]["messages"][0]["content"]
     assert CODE in sent and "2. quantity: the default of 1 share" in sent
     assert client.get("/v1/backtests/strategies").json().get("strategies", []) == []
-
-
-def test_there_is_no_route_that_saves_a_conversion(client: TestClient) -> None:
-    routes = {route.path for route in client.app.routes}  # type: ignore[attr-defined]
-    assert not [path for path in routes if "strategy-research" in path and "save" in path]
 
 
 def test_a_dropped_condition_stops_it(client: TestClient, converter: Converter) -> None:
@@ -286,39 +285,271 @@ def test_rule_parts_and_mapping_helpers() -> None:
     ]
 
 
-# --- backtest preview --------------------------------------------------------------------
+# --- comparison ---------------------------------------------------------------------------
 
 BARS = [
     {"time": 1_760_000_000 + i * 300, "open": c, "high": c, "low": c, "close": c, "volume": 100}
     for i, c in enumerate([9.0, 11.0, 12.0, 13.0, 9.0, 8.0])
 ]
-PREVIEW = {
-    "definition": {
-        "type": "rules",
-        "entry": {"op": "gt", "left": {"price": "close"}, "right": {"value": 10}},
-        "exit": {"op": "lt", "left": {"price": "close"}, "right": {"value": 10}},
-        "sizing": {"mode": "fixed_shares", "value": 1},
-    },
-    "bars": BARS,
-    "time_zone": "America/New_York",
-    "initial_capital": 1000,
+ABOVE = {"op": "gt", "left": {"price": "close"}, "right": {"value": 10}}
+BELOW = {"op": "lt", "left": {"price": "close"}, "right": {"value": 10}}
+SIMPLE = {
+    "type": "rules",
+    "entry": ABOVE,
+    "exit": BELOW,
+    "sizing": {"mode": "fixed_shares", "value": 1},
+    "max_positions": 1,
 }
+SIMPLE_MAP = [
+    {"index": 0, "status": "mapped", "rule_paths": ["/entry"], "reason": ""},
+    {"index": 1, "status": "mapped", "rule_paths": ["/exit"], "reason": ""},
+    {"index": 2, "status": "mapped", "rule_paths": ["/sizing"], "reason": ""},
+]
+# Signal on the 11 close, fill at the next open of 12; exit signal on 9, fill at 8.
+FIRST_ENTRY = BARS[2]["time"]
 
 
-def test_the_preview_runs_on_the_given_bars_and_stores_nothing(client: TestClient) -> None:
-    response = client.post("/v1/strategy-research/backtest-preview", json=PREVIEW)
+def comparison_request(trades: int = 1, net: float = -4.0, **extra: Any) -> dict[str, Any]:
+    return {
+        "code": CODE,
+        "pine": {"closed_trades": trades, "net_profit": net, "entry_times": [FIRST_ENTRY]},
+        "bars": BARS,
+        "time_zone": "America/New_York",
+        "initial_capital": 1000,
+        **extra,
+    }
+
+
+def converted(client: TestClient, converter: Converter) -> str:
+    converter.replies.append(reply(SIMPLE, SIMPLE_MAP))
+    path = conversation(client)
+    response = client.post(
+        f"{BASE}/{path}/convert", json={"code": CODE, "conditions": CONDITIONS, "language": "ko"}
+    )
+    assert response.status_code == 200, response.text
+    return path
+
+
+def test_the_comparison_runs_the_rules_on_the_given_bars_and_records_its_basis(
+    client: TestClient, converter: Converter
+) -> None:
+    path = converted(client, converter)
+    response = client.post(f"{BASE}/{path}/comparison", json=comparison_request())
     assert response.status_code == 200, response.text
     document = response.json()
     validate_document(document)
-    (trade,) = document["trades"]
-    # Signal on the 11 close, fill at the next open of 12; exit signal on 9, fill at 8.
-    assert (float(trade["entry_price"]), float(trade["exit_price"])) == (12.0, 8.0)
-    assert float(trade["net_pnl"]) == -4.0
+    event = next(e for e in reversed(document["events"]) if e["type"] == "comparison")
+    result = event["comparison"]
+    assert (result["pine_trades"], result["rule_trades"], result["rule_net"]) == (1, 1, -4.0)
+    assert result["entry_match"] == 100
+    assert result["bars"] == len(BARS)
+    assert result["code_sha256"] == code_hash(CODE)
+    assert result["engine_version"] and result["fill_model_version"]
+    assert result["blocks"] == ["too_few_trades"]
     assert client.get("/v1/backtests/runs").json().get("runs", []) == []
 
 
-def test_the_preview_refuses_a_bad_definition(client: TestClient) -> None:
-    bad = {**PREVIEW, "definition": {"type": "rules", "entry": {"op": "nope"}}}
-    response = client.post("/v1/strategy-research/backtest-preview", json=bad)
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "invalid_strategy_definition"
+def test_there_is_nothing_to_compare_without_rules(client: TestClient) -> None:
+    response = client.post(f"{BASE}/{conversation(client)}/comparison", json=comparison_request())
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "no_rules_to_compare"
+
+
+# --- the save gate: pilot B's outcomes, kept as the fixed test the assignment asked for -------
+
+
+def result_of(definition: Any = SIMPLE, complete: bool = True) -> dict[str, Any]:
+    return {
+        "code_sha256": code_hash(CODE),
+        "definition": definition,
+        "mapping": [{"status": "mapped"}] if complete else [{"status": "unconvertible"}],
+        "problems": [] if complete else ["open"],
+        "complete": complete,
+    }
+
+
+def compared(
+    pine: int,
+    rules: int,
+    pine_net: float,
+    rule_net: float,
+    match: float,
+    definition: dict[str, Any] = SIMPLE,
+) -> dict[str, Any]:
+    return {
+        "code_sha256": code_hash(CODE),
+        "definition_sha256": fingerprint(definition),
+        "blocks": comparison_blocks(pine, rules, pine_net, rule_net, match),
+    }
+
+
+# Case: Pine trades, rule trades, Pine net, rule net, entry match; from pilot B's recheck.
+PASSING = {
+    "S3": (65, 65, 2.19, 2.19, 100),
+    "S4": (32, 32, 2.45, 2.45, 100),
+    "S5": (79, 79, -1.61, -1.61, 100),
+    "S7": (94, 94, 4.15, 4.15, 100),
+    "S8": (220, 220, 0.04, 0.04, 100),
+    "S9": (121, 121, 0.86, 0.86, 100),
+    "S10": (71, 71, 41.85, 41.85, 100),
+    "B1": (51, 51, 9.67, 9.67, 100),
+    "B4": (26, 26, 2.89, 2.89, 100),
+}
+# They behaved alike, on too few trades for that to count (user decision: 20).
+TOO_FEW = {
+    "S1": (14, 14, 3.86, 3.86, 100),
+    "S2": (4, 4, 3.27, 3.27, 100),
+    "S6": (6, 6, 8.92, 8.92, 100),
+}
+COMPLETE_BUT_DIFFERENT = {
+    "B2": (3, 4, -1.0, 3.27, 100),
+    "B3": (93, 91, 10.82, 7.29, 98),
+}
+OPEN = {
+    "U4": (2, 0, 10.48, 0.0, 50),
+    "M1": (130, 65, -19.79, -7.3, 50),
+    "M2": (132, 117, 1.52, 1.15, 99),
+    "B6": (117, 0, 1.3, 0.0, 1),
+}
+
+
+@pytest.mark.parametrize("case", PASSING)
+def test_cases_that_behaved_alike_can_be_saved(case: str) -> None:
+    assert save_blocks(result_of(), compared(*PASSING[case]), CODE) == []
+
+
+@pytest.mark.parametrize("case", TOO_FEW)
+def test_too_few_trades_is_not_evidence(case: str) -> None:
+    assert save_blocks(result_of(), compared(*TOO_FEW[case]), CODE) == ["too_few_trades"]
+
+
+# The same three on 19,500 synthetic bars: the minimum only stops too little evidence.
+ON_LONGER_BARS = {
+    "S1": (198, 198, -18.78, -18.78, 100),
+    "S2": (53, 53, -10.26, -10.26, 100),
+    "S6": (48, 48, -27.58, -27.56, 100),
+}
+
+
+@pytest.mark.parametrize("case", ON_LONGER_BARS)
+def test_a_longer_chart_clears_too_few_trades(case: str) -> None:
+    assert save_blocks(result_of(), compared(*ON_LONGER_BARS[case]), CODE) == []
+
+
+def test_zero_against_zero_does_not_pass() -> None:
+    assert "too_few_trades" in comparison_blocks(0, 0, 0.0, 0.0, 100.0)
+
+
+@pytest.mark.parametrize("case", COMPLETE_BUT_DIFFERENT)
+def test_a_complete_conversion_that_behaves_differently_is_blocked(case: str) -> None:
+    assert save_blocks(result_of(), compared(*COMPLETE_BUT_DIFFERENT[case]), CODE)
+
+
+@pytest.mark.parametrize("case", OPEN)
+def test_an_open_conversion_is_blocked(case: str) -> None:
+    blocks = save_blocks(result_of(complete=False), compared(*OPEN[case]), CODE)
+    assert "conversion_open" in blocks
+
+
+def test_b5_sonnet_invented_an_expiry_and_is_blocked_even_if_the_numbers_agree() -> None:
+    limit = {**SIMPLE, "entry_order": {"type": "limit", "offset_pct": "-1", "expire_bars": 1}}
+    agreeing = compared(30, 30, 5.0, 5.0, 100, limit)
+    assert save_blocks(result_of(limit), agreeing, CODE) == ["unmatched_order_terms"]
+    actual = compared(22, 0, 2.08, 0.0, 0, limit)
+    assert "unmatched_order_terms" in save_blocks(result_of(limit), actual, CODE)
+
+
+def test_changed_code_or_rules_void_the_comparison() -> None:
+    good = compared(30, 30, 5.0, 5.0, 100)
+    assert "code_changed" in save_blocks(result_of(), good, CODE + "\n")
+    assert "comparison_stale" in save_blocks(result_of(), good, CODE + "\n")
+    other = {**SIMPLE, "exit": ABOVE}
+    assert "comparison_stale" in save_blocks(result_of(other), good, CODE)
+    assert save_blocks(result_of(), None, CODE) == ["no_comparison"]
+    assert save_blocks(None, good, CODE) == ["no_rules"]
+
+
+# --- saving --------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def saving(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, converter: Converter
+) -> Iterator[TestClient]:
+    monkeypatch.setenv("SIW_DATA_DIR", str(tmp_path))
+    import services.api.main as main
+
+    original = main._claude_key
+    main._claude_key = lambda _credentials: "test-key-not-real"  # type: ignore[assignment]
+    script = Scripted()
+    script.turns += [answer("좋습니다")]
+    app = create_app(
+        review_store=ReviewStore(tmp_path / "review-test.sqlite3", lambda: NOW),
+        strategy_converse=script,
+        strategy_convert=converter,
+        clock=lambda: NOW,
+    )
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        main._claude_key = original  # type: ignore[assignment]
+
+
+def many_bars() -> tuple[list[dict[str, Any]], list[int]]:
+    bars, entries = [], []
+    time = 1_760_000_000
+    for _cycle in range(25):
+        for close in (9.0, 11.0, 12.0, 13.0, 9.0, 8.0):
+            bars.append(
+                {
+                    "time": time,
+                    "open": close,
+                    "high": close,
+                    "low": close,
+                    "close": close,
+                    "volume": 100,
+                }
+            )
+            if close == 12.0:
+                entries.append(time)
+            time += 300
+    return bars, entries
+
+
+def test_a_conversion_that_passes_saves_a_strategy_and_starts_nothing(
+    saving: TestClient, converter: Converter
+) -> None:
+    path = converted(saving, converter)
+    bars, entries = many_bars()
+    request = comparison_request(25, -100.0, bars=bars)
+    request["pine"]["entry_times"] = entries
+    compared_doc = saving.post(f"{BASE}/{path}/comparison", json=request).json()
+    assert (
+        next(e for e in reversed(compared_doc["events"]) if e["type"] == "comparison")[
+            "comparison"
+        ]["blocks"]
+        == []
+    )
+    response = saving.post(f"{BASE}/{path}/save", json={"code": CODE, "name": "교차 전략"})
+    assert response.status_code == 200, response.text
+    document = response.json()
+    validate_document(document)
+    event = next(e for e in reversed(document["events"]) if e["type"] == "conversion_saved")
+    assert event["strategy_version"] == 1
+    strategy = saving.get(f"/v1/backtests/strategies/{event['strategy_id']}").json()
+    assert strategy["name"] == "교차 전략"
+    assert strategy["definition"]["entry"]["op"] == "gt"
+    assert saving.get("/v1/backtests/runs").json().get("runs", []) == []
+
+
+def test_saving_is_refused_with_its_reasons(saving: TestClient, converter: Converter) -> None:
+    path = converted(saving, converter)
+    response = saving.post(f"{BASE}/{path}/save", json={"code": CODE, "name": "x"})
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "conversion_not_savable"
+    assert "no_comparison" in response.json()["error"]["message"]
+    saving.post(f"{BASE}/{path}/comparison", json=comparison_request())
+    refused = saving.post(f"{BASE}/{path}/save", json={"code": CODE, "name": "x"})
+    assert "too_few_trades" in refused.json()["error"]["message"]
+    assert saving.get("/v1/backtests/strategies").json().get("strategies", []) == []

@@ -1,7 +1,4 @@
-import type {
-  StrategyBacktestPreview,
-  StrategyConversation,
-} from "@siw/contracts/types";
+import type { StrategyConversation } from "@siw/contracts/types";
 
 import type { ChartContext, RunResult } from "./indicator-assistant-api";
 import { callForKind, type ApiTarget } from "./market-api";
@@ -11,9 +8,12 @@ export type StrategyResults = NonNullable<ResearchEvent["results"]>;
 
 export type Conversion = NonNullable<ResearchEvent["conversion"]>;
 
-/** A rules strategy backtested on the chart's own bars; nothing is stored. */
-export interface PreviewRequest {
-  definition: object;
+export type Comparison = NonNullable<ResearchEvent["comparison"]>;
+
+/** The Pine backtest beside the chart's own bars; the API runs the rules on them. */
+export interface ComparisonRequest {
+  code: string;
+  pine: { closed_trades: number; net_profit: number; entry_times: number[] };
   bars: {
     time: number;
     open: number;
@@ -73,7 +73,16 @@ export interface StrategyResearchApi {
     conditions: string[],
     language: "en" | "ko",
   ): Promise<StrategyConversation>;
-  previewBacktest(request: PreviewRequest): Promise<StrategyBacktestPreview>;
+  compare(
+    conversationId: string,
+    request: ComparisonRequest,
+  ): Promise<StrategyConversation>;
+  /** Refused unless every condition in ADR 0042 holds; the API decides, not this screen. */
+  saveRules(
+    conversationId: string,
+    code: string,
+    name: string,
+  ): Promise<StrategyConversation>;
 }
 
 export function createStrategyResearchApi(
@@ -129,13 +138,14 @@ export function createStrategyResearchApi(
         language,
       });
     },
-    previewBacktest(request) {
-      return callForKind<StrategyBacktestPreview>(
-        target,
-        "/v1/strategy-research/backtest-preview",
-        "strategy_backtest_preview",
-        { method: "POST", body: request },
+    compare(conversationId, request) {
+      return post(
+        `${path(conversationId)}/comparison`,
+        request as unknown as Record<string, unknown>,
       );
+    },
+    saveRules(conversationId, code, name) {
+      return post(`${path(conversationId)}/save`, { code, name });
     },
     sendRun(conversationId, toolUseId, result, results) {
       return post(`${path(conversationId)}/runs`, {
