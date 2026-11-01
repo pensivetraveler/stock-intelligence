@@ -4,6 +4,7 @@ import { version as APP_VERSION } from "../package.json";
 import { checkApiHealth, type ApiConnectionState } from "./api-health";
 import { createAgentApi } from "./agent-api";
 import { createIndicatorAssistantApi } from "./indicator-assistant-api";
+import { createStrategyResearchApi } from "./strategy-research-api";
 import { createReviewApi } from "./review-api";
 import { createBacktestApi } from "./backtest-api";
 import { createCredentialApi } from "./credential-api";
@@ -75,6 +76,10 @@ function AppContent({
   );
   const reviewApi = useMemo(
     () => createReviewApi(apiBaseUrl, fetcher),
+    [apiBaseUrl, fetcher],
+  );
+  const researchApi = useMemo(
+    () => createStrategyResearchApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
   );
   const assistantApi = useMemo(
@@ -149,6 +154,7 @@ function AppContent({
             reviewApi={reviewApi}
             customApi={customApi}
             assistantApi={assistantApi}
+            researchApi={researchApi}
             openOnToday
           />
         ) : (

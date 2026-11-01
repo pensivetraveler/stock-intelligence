@@ -73,21 +73,33 @@ export function pineScriptsOn(
 }
 
 /** The supported subset, sent once as the conversation's fixed system prompt. */
-export function pineReference(): string {
+export function pineReference(
+  mode: "indicator" | "strategy" = "indicator",
+): string {
+  const strategy = mode === "strategy";
   const functions = PINE_FUNCTIONS.filter(
-    (name) => name !== "strategy" && !name.startsWith("strategy."),
+    (name) =>
+      strategy || (name !== "strategy" && !name.startsWith("strategy.")),
   );
   return [
-    "Language: Pine v5/v6 indicator() scripts (//@version=5 or 6).",
+    `Language: Pine v5/v6 ${strategy ? "strategy()" : "indicator()"} scripts (//@version=5 or 6).`,
     "- Variables, var, := and += style assignment, tuples ([a, b] = f()), if/else (also as a value), switch, for ... to ... by, for x in xs, while, break, continue, the ternary operator.",
     "- User functions (f(x) => ...) with default and named arguments; method definitions and calls.",
     "- Type annotations (float, int, bool, string, color, float[], array<line>, line, label, box, table, chart.point) are accepted.",
     "- x[n] reads n bars back; na, nz, fixnan. Strings with + and str.*; time, year...second, timestamp(), barstate.*, syminfo.*, timeframe.* (exchange time zone).",
     "Inputs: input, input.int, input.float, input.bool, input.source, input.string(options=[...]) and input.timeframe become settings; input.color, input.symbol and input.session stay at their defaults.",
     "Output: plot (line or histogram, colour per bar, linewidth, display.none), hline, plotshape, plotchar, plotarrow, bgcolor, barcolor, fill, line.*, label.*, box.*, table.*, linefill.*. overlay=true draws on the price chart, otherwise a separate pane.",
+    ...(strategy
+      ? [
+          "Strategy settings: strategy(title, overlay, initial_capital, default_qty_type (strategy.fixed, strategy.cash, strategy.percent_of_equity), default_qty_value, commission_type, commission_value, slippage (ticks), pyramiding, process_orders_on_close, close_entries_rule, currency). The default quantity is 1 share; percent and cash quantities round down to whole shares.",
+          "Orders: strategy.entry and strategy.order (id, direction strategy.long or strategy.short, qty, limit, stop, comment), strategy.exit (id, from_entry, qty, qty_percent, profit, limit, loss, stop, trail_points, trail_price, trail_offset, comment), strategy.close, strategy.close_all, strategy.cancel.",
+          "Fills: an order placed on a bar fills from the next bar on: market orders at its open, limit and stop orders when the bar's range reaches them. process_orders_on_close or immediately=true fills market orders at the close. Inside a bar prices are assumed to go open, nearer of high and low, the other, close; fills that depend on that order are marked assumed.",
+          "Variables: strategy.position_size, position_avg_price, equity, netprofit, openprofit, grossprofit, grossloss, initial_capital, closedtrades, opentrades, wintrades, losstrades, eventrades, max_drawdown.",
+        ]
+      : []),
     `Functions: ${functions.join(", ")}.`,
     "request.security works on the chart, but the assistant's test run has no other symbol or timeframe data; avoid it unless asked.",
-    "Not supported: time(...) and time_close(...) called as functions (use the time variable, year, month, dayofweek, hour and timestamp()), strategy() and strategy.* in this assistant, user-defined types (type), import/export libraries, matrix, map, polyline and anything not listed above. alertcondition, alert and log.* are accepted but do nothing in the app.",
+    `Not supported: time(...) and time_close(...) called as functions (use the time variable, year, month, dayofweek, hour and timestamp()), ${strategy ? "indicator() in this assistant" : "strategy() and strategy.* in this assistant"}, user-defined types (type), import/export libraries, matrix, map, polyline and anything not listed above. alertcondition, alert and log.* are accepted but do nothing in the app.`,
     "Limits: 50,000 characters, 2,000,000 loop steps per run, 32 nested calls, 100,000 items per array.",
     "Errors are reported as line and column. No look-ahead: a bar never sees a later bar.",
   ].join("\n");

@@ -248,6 +248,9 @@
     },
     {
       "$ref": "#/$defs/IndicatorAssistantSettings"
+    },
+    {
+      "$ref": "#/$defs/StrategyConversation"
     }
   ],
   "$defs": {
@@ -10256,6 +10259,444 @@
               },
               "origin": {
                 "enum": ["saved", "tradingview", "builtin"]
+              }
+            }
+          }
+        },
+        "pending_run": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["tool_use_id", "code"],
+              "properties": {
+                "tool_use_id": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "code": {
+                  "type": "string",
+                  "maxLength": 50000
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_runs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "input_tokens",
+            "output_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens"
+          ],
+          "properties": {
+            "input_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "output_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_read_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cache_write_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "StrategyResults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "symbol",
+        "timeframe",
+        "bars",
+        "from_utc",
+        "to_utc",
+        "version",
+        "currency",
+        "initial_capital",
+        "net_profit",
+        "net_profit_percent",
+        "gross_profit",
+        "gross_loss",
+        "profit_factor",
+        "closed_trades",
+        "win_trades",
+        "loss_trades",
+        "win_rate",
+        "max_drawdown",
+        "commission",
+        "assumed_fills",
+        "skipped_orders",
+        "open_position",
+        "trades",
+        "concentration"
+      ],
+      "properties": {
+        "symbol": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "timeframe": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20
+        },
+        "bars": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "from_utc": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "to_utc": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "currency": {
+          "type": "string",
+          "maxLength": 10
+        },
+        "initial_capital": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "maxLength": 40
+        },
+        "net_profit": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "maxLength": 40
+        },
+        "net_profit_percent": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "maxLength": 40
+        },
+        "gross_profit": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "maxLength": 40
+        },
+        "gross_loss": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "maxLength": 40
+        },
+        "max_drawdown": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "maxLength": 40
+        },
+        "commission": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "maxLength": 40
+        },
+        "profit_factor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "win_rate": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "closed_trades": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "win_trades": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "loss_trades": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "assumed_fills": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped_orders": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_position": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["size", "average_price", "open_profit"],
+              "properties": {
+                "size": {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                "average_price": {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                  "maxLength": 40
+                },
+                "open_profit": {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                  "maxLength": 40
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trades": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "direction",
+              "qty",
+              "entry_time_utc",
+              "entry_price",
+              "exit_time_utc",
+              "exit_price",
+              "profit",
+              "assumed"
+            ],
+            "properties": {
+              "direction": {
+                "enum": ["long", "short"]
+              },
+              "qty": {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "maxLength": 40
+              },
+              "entry_time_utc": {
+                "type": "string",
+                "maxLength": 30
+              },
+              "entry_price": {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "maxLength": 40
+              },
+              "exit_time_utc": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "exit_price": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "profit": {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "maxLength": 40
+              },
+              "assumed": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "concentration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["days_with_trades", "top_days", "top3_share_percent"],
+          "properties": {
+            "days_with_trades": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "top_days": {
+              "type": "array",
+              "maxItems": 3,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["date", "trades"],
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "trades": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            },
+            "top3_share_percent": {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+              "maxLength": 40
+            }
+          }
+        }
+      }
+    },
+    "StrategyConversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "conversation_id",
+        "model",
+        "status",
+        "error",
+        "events",
+        "pending_run",
+        "runs",
+        "max_runs",
+        "usage"
+      ],
+      "properties": {
+        "kind": {
+          "const": "strategy_conversation"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "conversation_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "model": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "status": {
+          "enum": ["idle", "running", "needs_run", "stopped", "failed"]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "at_utc"],
+            "properties": {
+              "type": {
+                "enum": [
+                  "question",
+                  "answer",
+                  "code",
+                  "run",
+                  "stopped",
+                  "error"
+                ]
+              },
+              "at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 40000
+              },
+              "model": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tool_use_id": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "code": {
+                "type": "string",
+                "maxLength": 50000
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "effort": {
+                "enum": ["medium", "high"]
+              },
+              "origin": {
+                "enum": ["saved", "tradingview"]
+              },
+              "results": {
+                "$ref": "#/$defs/StrategyResults"
               }
             }
           }

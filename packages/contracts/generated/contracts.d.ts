@@ -82,7 +82,8 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ReviewPeriodCommentaryList
   | ReviewPeriodPayload
   | IndicatorConversation
-  | IndicatorAssistantSettings;
+  | IndicatorAssistantSettings
+  | StrategyConversation;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -7098,4 +7099,116 @@ export interface IndicatorAssistantSettings {
   model: "claude-sonnet-5-5" | "claude-opus-5-5" | "claude-haiku-5-5";
   retry_model: "claude-sonnet-5-5" | "claude-opus-5-5" | "claude-haiku-5-5";
   models: ("claude-sonnet-5-5" | "claude-opus-5-5" | "claude-haiku-5-5")[];
+}
+export interface StrategyConversation {
+  kind: "strategy_conversation";
+  schema_version: SchemaVersion;
+  conversation_id: Identifier;
+  model: Identifier;
+  status: "idle" | "running" | "needs_run" | "stopped" | "failed";
+  error: string | null;
+  events: {
+    type: "question" | "answer" | "code" | "run" | "stopped" | "error";
+    at_utc: UtcTimestamp;
+    text?: string;
+    model?: string | null;
+    tool_use_id?: string;
+    code?: string;
+    ok?: boolean;
+    effort?: "medium" | "high";
+    origin?: "saved" | "tradingview";
+    results?: StrategyResults;
+  }[];
+  pending_run: {
+    tool_use_id: string;
+    code: string;
+  } | null;
+  runs: number;
+  max_runs: number;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+  };
+}
+export interface StrategyResults {
+  symbol: string;
+  timeframe: string;
+  bars: number;
+  from_utc: string;
+  to_utc: string;
+  version: number | null;
+  currency: string;
+  initial_capital: string;
+  net_profit: string;
+  net_profit_percent: string;
+  gross_profit: string;
+  gross_loss: string;
+  max_drawdown: string;
+  commission: string;
+  profit_factor: string | null;
+  win_rate: string | null;
+  closed_trades: number;
+  win_trades: number;
+  loss_trades: number;
+  assumed_fills: number;
+  skipped_orders: number;
+  open_position: {
+    size: string;
+    average_price: string;
+    open_profit: string;
+  } | null;
+  /**
+   * @maxItems 50
+   */
+  trades: {
+    direction: "long" | "short";
+    qty: string;
+    entry_time_utc: string;
+    entry_price: string;
+    exit_time_utc: string | null;
+    exit_price: string | null;
+    profit: string;
+    assumed: boolean;
+  }[];
+  concentration: {
+    days_with_trades: number;
+    /**
+     * @maxItems 3
+     */
+    top_days:
+      | []
+      | [
+          {
+            date: string;
+            trades: number;
+          },
+        ]
+      | [
+          {
+            date: string;
+            trades: number;
+          },
+          {
+            date: string;
+            trades: number;
+          },
+        ]
+      | [
+          {
+            date: string;
+            trades: number;
+          },
+          {
+            date: string;
+            trades: number;
+          },
+          {
+            date: string;
+            trades: number;
+          },
+        ];
+    top3_share_percent: string;
+  };
 }

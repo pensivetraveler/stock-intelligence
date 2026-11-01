@@ -34,6 +34,7 @@ from services.api.journal_routes import register_import_routes, register_journal
 from services.api.paper_routes import register_paper_routes
 from services.api.parent_watch import parent_pid_from_env, start_parent_watch
 from services.api.review_routes import register_review_routes
+from services.api.strategy_research_routes import register_strategy_research_routes
 from services.assistant.indicator import call_indicator_claude
 from services.backtest.jobs import BacktestRunner
 from services.backtest.store import BacktestStore
@@ -604,6 +605,7 @@ def create_app(
     review_convert: Callable[..., dict[str, Any]] = convert_principles,
     review_period_ask: Callable[..., dict[str, Any]] = ask_period_commentary,
     indicator_converse: Callable[..., dict[str, Any]] = call_indicator_claude,
+    strategy_converse: Callable[..., dict[str, Any]] = call_indicator_claude,
     indicator_store: CustomIndicatorStore | None = None,
     public_sources: PublicSources | None = None,
     clock: Callable[[], datetime] = _utc_now,
@@ -1471,6 +1473,14 @@ def create_app(
         api_key=lambda: _claude_key(credentials.get()),
         now=clock,
         converse=indicator_converse,
+    )
+    register_strategy_research_routes(
+        application,
+        store=review.get,
+        error_response=_error_response,
+        api_key=lambda: _claude_key(credentials.get()),
+        now=clock,
+        converse=strategy_converse,
     )
     register_agent_routes(
         application,

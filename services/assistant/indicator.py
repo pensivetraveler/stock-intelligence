@@ -201,6 +201,9 @@ def image_block(png_base64: str) -> dict[str, Any]:
 class IndicatorConversation:
     """Runs one request until Claude answers, pausing whenever a script must be run."""
 
+    tools = TOOLS
+    default_effort = EFFORT
+
     def __init__(
         self,
         store: ReviewStore,
@@ -230,6 +233,8 @@ class IndicatorConversation:
         effort: str | None = None,
         image: dict[str, Any] | None = None,
         origin: dict[str, Any] | None = None,
+        extra_text: str | None = None,
+        results: dict[str, Any] | None = None,
     ) -> None:
         if self.state.get("status") == "running":
             raise ConversationError("the previous request is still running")
@@ -240,7 +245,7 @@ class IndicatorConversation:
         if effort is not None and effort not in EFFORTS:
             raise ConversationError(f"effort must be one of {', '.join(EFFORTS)}")
         chosen = model or self.model
-        chosen_effort = effort or EFFORT
+        chosen_effort = effort or self.default_effort
         # A script left unrun (the app was closed or the investor moved on) is answered
         # first, so every tool call keeps its result.
         pending = self.state.get("pending") if self.state.get("status") == "needs_run" else None
@@ -275,6 +280,7 @@ class IndicatorConversation:
             *unrun,
             {"type": "text", "text": context_text(context, origin)},
             *attached,
+            *([{"type": "text", "text": extra_text}] if extra_text else []),
             {"type": "text", "text": question},
         ]
         self.store.append_message(self.id, {"role": "user", "content": content})
@@ -286,6 +292,7 @@ class IndicatorConversation:
                 "effort": chosen_effort,
                 **({"has_image": True} if image else {}),
                 **({"origin": origin["kind"]} if origin else {}),
+                **({"results": results} if results else {}),
             }
         )
         if image:
@@ -301,7 +308,14 @@ class IndicatorConversation:
         self._save()
         self._run()
 
-    def add_run(self, tool_use_id: str, ok: bool, error: str | None, summary: str | None) -> None:
+    def add_run(
+        self,
+        tool_use_id: str,
+        ok: bool,
+        error: str | None,
+        summary: str | None,
+        results: dict[str, Any] | None = None,
+    ) -> None:
         pending = self.state.get("pending")
         if self.state.get("status") != "needs_run" or not pending:
             raise ConversationError("no script run is awaited")
@@ -326,6 +340,8 @@ class IndicatorConversation:
                 "tool_use_id": tool_use_id,
                 "ok": ok,
                 "text": (summary if ok else error) or "",
+                # Kept for the investor; what Claude gets is the tool result above.
+                **({"results": results} if results else {}),
             }
         )
         self.store.append_message(
@@ -344,10 +360,12 @@ class IndicatorConversation:
 
     def _run(self) -> None:
         model = self.state.get("request_model") or self.model
-        effort = self.state.get("request_effort") or EFFORT
+        effort = self.state.get("request_effort") or self.default_effort
         for _step in range(MAX_STEPS):
             try:
-                message = self.call(model, self.system, TOOLS, self.store.messages(self.id), effort)
+                message = self.call(
+                    model, self.system, self.tools, self.store.messages(self.id), effort
+                )
             except ConversationError as exc:
                 self._fail(str(exc))
                 return
