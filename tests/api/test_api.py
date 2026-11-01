@@ -487,3 +487,37 @@ async def test_market_sessions_limits_the_count(params: dict[str, object]) -> No
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+ADJUSTED_PARAMS = {
+    "instrument_id": "us:aapl:xnas:2026",
+    "start_utc": "2026-10-05T00:00:00Z",
+    "end_utc": "2026-10-10T00:00:00Z",
+    "timeframe": "1d",
+    "adjustment": "split_adjusted",
+}
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {},  # the fixture provider has no adjusted prices
+        {"timeframe": "5m"},
+        {"as_of_utc": "2026-10-09T00:00:00Z"},
+    ],
+)
+async def test_adjusted_bars_are_refused_where_they_cannot_be_right(
+    change: dict[str, str],
+) -> None:
+    async with client() as test_client:
+        response = await test_client.get("/v1/market/bars", params={**ADJUSTED_PARAMS, **change})
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_market_data_query"
+
+
+async def test_an_unknown_adjustment_is_refused() -> None:
+    async with client() as test_client:
+        response = await test_client.get(
+            "/v1/market/bars", params={**ADJUSTED_PARAMS, "adjustment": "secret"}
+        )
+    assert response.status_code == 422

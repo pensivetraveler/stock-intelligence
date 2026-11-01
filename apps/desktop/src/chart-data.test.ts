@@ -1,9 +1,11 @@
 import type { MarketBarsResponse, PriceBar } from "@siw/contracts/types";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { MarketApiError } from "./market-api";
 import {
+  chartPriceBars,
   COLORS,
   exchangeTime,
   seeThrough,
@@ -89,5 +91,54 @@ describe("see-through daily bodies over the pre-market (ADR 0041)", () => {
         wickColor: COLORS.uncertain,
       },
     ]);
+  });
+});
+
+describe("chartPriceBars", () => {
+  const REQUEST = {
+    instrumentId: "us:aapl:xnas:2026",
+    startUtc: "2020-01-01T00:00:00Z",
+    endUtc: "2021-01-01T00:00:00Z",
+  };
+  const answer = {} as MarketBarsResponse;
+
+  it("asks for split-adjusted daily and weekly bars", async () => {
+    for (const timeframe of ["1d", "1w"] as const) {
+      const bars = vi.fn().mockResolvedValue(answer);
+      await chartPriceBars({ bars }, { ...REQUEST, timeframe });
+      expect(bars).toHaveBeenCalledWith({
+        ...REQUEST,
+        timeframe,
+        adjustment: "split_adjusted",
+      });
+    }
+  });
+
+  it("leaves intraday bars as traded", async () => {
+    const bars = vi.fn().mockResolvedValue(answer);
+    await chartPriceBars({ bars }, { ...REQUEST, timeframe: "5m" });
+    expect(bars).toHaveBeenCalledWith({ ...REQUEST, timeframe: "5m" });
+  });
+
+  it("uses prices as traded when the source has no adjusted ones", async () => {
+    const bars = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new MarketApiError("nope", "invalid_market_data_query", null),
+      )
+      .mockResolvedValueOnce(answer);
+    await expect(
+      chartPriceBars({ bars }, { ...REQUEST, timeframe: "1d" }),
+    ).resolves.toBe(answer);
+    expect(bars).toHaveBeenLastCalledWith({ ...REQUEST, timeframe: "1d" });
+  });
+
+  it("does not hide a provider failure behind unadjusted prices", async () => {
+    const failure = new MarketApiError("down", "provider_unavailable", null);
+    const bars = vi.fn().mockRejectedValue(failure);
+    await expect(
+      chartPriceBars({ bars }, { ...REQUEST, timeframe: "1d" }),
+    ).rejects.toBe(failure);
+    expect(bars).toHaveBeenCalledTimes(1);
   });
 });

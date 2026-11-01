@@ -2534,6 +2534,14 @@
 - **검증:** Electron `node --test` 8건 통과, `./scripts/verify.sh` 통과. 포트를 비운 뒤 설치된 SIW Research의 API가 8765에서 기동해 `/version`이 응답했다. 새 문구가 실제 오류 창에 뜨는 것과 앱 화면은 확인하지 못했다(설치된 앱은 재빌드 전).
 - **남은 위험:** SIW Agent(Tauri)도 8765를 고정해서 쓰며, 다른 프로그램이 잡으면 오류 창 없이 연결 오류 화면만 보인다.
 
+## 차트 일·주봉 분할 수정과 전략 결과의 가격 기준 — 2026-11-01
+
+- **문제:** 실제 AAPL 일봉에서 Pine 전략에 2020-09-01 청산 -86,827의 가짜 손실이 났다. 차트는 항상 비수정 가격을 받았다(실제 백테스트 대조에서 발견).
+- **변경:** `GET /v1/market/bars`에 `adjustment`(일·주봉, 기본 `raw`, `as_of_utc`와 함께 쓰면 거절)를 더했다. 일·주봉 차트는 `split_adjusted`를 요청하고, 공급원에 없으면 비수정으로 돌아간다. 리플레이와 분봉은 비수정 그대로다. 전략 결과에 `prices`(`splits_adjusted`, `dividends_adjusted`)를 넣었다. 결정은 [ADR 0021](decisions/0021-backtest-engine.md) "chart prices".
+- **남은 위험:** 수정 봉은 캐시하지 않아 일봉 차트를 열 때마다 공급원을 호출한다. 분할 전 체결 표시는 수정 캔들과 어긋난다.
+- **검증:** `./scripts/verify.sh` 통과(pytest 1001개, 계약 99개, 화면 365개). 새 API로 AAPL 2020-08-28 종가가 499.23(비수정)에서 124.81(`split_adjusted`)로, 분할 전후가 이어지는 것을 확인했다. 브라우저에서 실제 AAPL 일봉이 `adjustment=split_adjusted`로 요청되고 데이터 줄에 표시된다. 리플레이 중 동작은 브라우저로 확인하지 않았다.
+- **모델 재측정(회신 #SIW-2 조건):** Sonnet 5.5 high, 프롬프트 지시 없이 `prices`만 추가해 R2·R4를 각 2회, $0.20. R2 배당 미반영 2/2, R4 분할 가짜 손실 2/2, 권고 0건, 보내지 않은 숫자는 계산식을 보인 값뿐이다(판정자 1명).
+
 ## SIW Agent Linux 이식 — 2026-11-01
 
 - **사용자 결정:** 미니PC를 검토하며 SIW Agent를 Linux로 이식하기로 했다([ADR 0045](decisions/0045-agent-on-linux.md)).

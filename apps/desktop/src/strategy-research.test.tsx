@@ -11,6 +11,7 @@ import {
   MAX_SENT_TRADES,
   pineConditions,
   pineStrategiesOn,
+  pricesOf,
   resultsOf,
   runStrategy,
 } from "./strategy-research";
@@ -98,6 +99,24 @@ describe("resultsOf", () => {
     expect(results.concentration.top_days[0]?.trades).toBe(80);
     expect(results.trades[MAX_SENT_TRADES - 1].entry_price).toBe("79");
     expect(results.from_utc).toBe("2023-11-14T22:13:20Z");
+    // The chart did not say what its prices include: not guessed.
+    expect(results.prices).toEqual({
+      splits_adjusted: null,
+      dividends_adjusted: null,
+    });
+    expect(pricesOf("raw")).toEqual({
+      splits_adjusted: false,
+      dividends_adjusted: false,
+    });
+    // Split-adjusted prices still leave dividends out.
+    expect(pricesOf("split_adjusted")).toEqual({
+      splits_adjusted: true,
+      dividends_adjusted: false,
+    });
+    expect(pricesOf("fully_adjusted")).toEqual({
+      splits_adjusted: true,
+      dividends_adjusted: true,
+    });
     expect(JSON.stringify(results)).not.toContain('"entryId"');
   });
 });

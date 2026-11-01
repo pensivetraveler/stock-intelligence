@@ -56,6 +56,7 @@ RESULTS: dict[str, Any] = {
         "top_days": [{"date": "2026-10-30", "trades": 6}, {"date": "2026-10-29", "trades": 1}],
         "top3_share_percent": "87.50",
     },
+    "prices": {"splits_adjusted": True, "dividends_adjusted": False},
     "trades": [
         {
             "direction": "long",
@@ -172,6 +173,10 @@ def test_results_are_sent_with_the_versions_tested(client: TestClient, scripted:
     assert sent["backtest_results"]["net_profit"] == "-1234.56"
     assert sent["backtest_results"]["trades"][0]["profit"] == "-15.00"
     assert sent["backtest_results"]["concentration"]["top3_share_percent"] == "87.50"
+    assert sent["backtest_results"]["prices"] == {
+        "splits_adjusted": True,
+        "dividends_adjusted": False,
+    }
     assert sent["versions_tested_in_this_conversation"] == 1
     question = next(e for e in reversed(document["events"]) if e["type"] == "question")
     assert question["results"]["closed_trades"] == 8
@@ -249,6 +254,8 @@ def test_a_script_left_unrun_is_answered_before_results(
         {"net_profit": "lots"},
         {"account": "12345678"},
         {"concentration": None},
+        {"prices": None},
+        {"prices": {"splits_adjusted": True}},
     ],
 )
 def test_bad_results_are_refused_before_claude(

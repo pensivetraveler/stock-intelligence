@@ -1173,6 +1173,8 @@ export interface PineContext extends IndicatorContext {
   timeframe?: string;
   /** Price decimals: `syminfo.mintick` is 10^-decimals. */
   priceDecimals?: number;
+  /** `coverage.adjustment` of the bars: what their prices include. */
+  adjustment?: string;
   /** Each bar's end (epoch seconds), to align request.security values. */
   ends?: number[];
   /** Data for request.security, by `pineRequestKey`. */

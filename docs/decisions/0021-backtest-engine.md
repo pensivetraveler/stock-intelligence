@@ -137,6 +137,15 @@ On 2026-10-21 the user chose:
   - **Through the backtest loader (2018 Samsung, daily):** raw prices give a first-to-last close ratio of 0.0152 and a suspected split on 2018-05-03. Split-adjusted prices give 0.7585, with no suspected split and only the `adjusted_prices` warning. Weekly results match.
 - **Localized warnings:** results also carry `warning_details` (`code`, `instrument_id`, `count`, `dates`). The screen words them in its own language; results stored before this have only the English `warnings` text.
 
+## Follow-up (2026-11-01): chart prices
+
+- **Problem:** the chart always asked for prices as traded. Real AAPL daily bars fall from 499.23 to 129.04 on 2020-08-31 (4:1 split), so a Pine strategy on the chart booked a loss of -86,827 that never happened, and indicators read a crash. This screen already defaulted to `split_adjusted`, so the same strategy could differ between the two.
+- **Decision:** `GET /v1/market/bars` takes `adjustment` for `1d` and `1w` (default `raw`). Daily and weekly charts ask for `split_adjusted` and fall back to prices as traded when the source has none; `coverage.adjustment` of the answer, shown in the chart's data line, says which it was.
+- **Replay stays as traded:** adjusting uses actions that happened later, so `adjustment` is refused with `as_of_utc`. Bars loaded adjusted before replay began are left out once the as-of answer arrives.
+- **Intraday stays as traded:** no source here gives adjusted intraday bars.
+- **Strategy results:** they carry `prices` with `splits_adjusted` and `dividends_adjusted` apart, from `coverage.adjustment`. `split_adjusted` prices still leave dividends out.
+- **Trade-off:** adjusted bars are never cached, so each daily chart load calls the provider. Fills before a split are at traded prices, so their markers sit away from the adjusted candles.
+
 ## Follow-up (2026-10-22): start date plus a number of bars
 
 The user asked for runs on 5,000 bars from a chosen point, in any past window rather than only up to today.

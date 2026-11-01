@@ -119,6 +119,23 @@ export function concentrationOf(
   };
 }
 
+/** Splits and dividends apart: `split_adjusted` prices still leave dividends out. */
+export function pricesOf(adjustment: string | undefined): {
+  splits_adjusted: boolean | null;
+  dividends_adjusted: boolean | null;
+} {
+  switch (adjustment) {
+    case "raw":
+      return { splits_adjusted: false, dividends_adjusted: false };
+    case "split_adjusted":
+      return { splits_adjusted: true, dividends_adjusted: false };
+    case "fully_adjusted":
+      return { splits_adjusted: true, dividends_adjusted: true };
+    default:
+      return { splits_adjusted: null, dividends_adjusted: null };
+  }
+}
+
 /** A backtest as it is kept with its version and sent to Claude. */
 export function resultsOf(
   report: StrategyReport,
@@ -161,6 +178,7 @@ export function resultsOf(
         }
       : null,
     concentration: concentrationOf(report.trades, chart.context.timeZone),
+    prices: pricesOf(chart.context.adjustment),
     trades: report.trades.slice(-MAX_SENT_TRADES).map((trade) => ({
       direction: trade.direction,
       qty: trade.qty,

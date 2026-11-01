@@ -78,6 +78,14 @@ class Concentration(BaseModel):
     top3_share_percent: str = Decimal
 
 
+class Prices(BaseModel):
+    """What the chart's prices include; null when the source does not say."""
+
+    model_config = ConfigDict(extra="forbid")
+    splits_adjusted: bool | None
+    dividends_adjusted: bool | None
+
+
 class Results(BaseModel):
     """One backtest of a Pine strategy on the chart. Amounts are decimal text."""
 
@@ -105,6 +113,7 @@ class Results(BaseModel):
     skipped_orders: int = Field(ge=0)
     open_position: OpenPosition | None = None
     concentration: Concentration
+    prices: Prices
     trades: list[Trade] = Field(max_length=MAX_SENT_TRADES)
 
 

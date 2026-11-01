@@ -640,11 +640,16 @@ export function Workspace({
   );
   // The bars each chart computes indicators on, for Python indicator previews.
   const chartBars = useRef<OhlcvBar[][]>([]);
+  const chartAdjustments = useRef<(string | undefined)[]>([]);
   const onChartBars = useMemo(
     () =>
-      Array.from({ length: CHART_SLOTS }, (_, index) => (items: OhlcvBar[]) => {
-        chartBars.current[index] = items;
-      }),
+      Array.from(
+        { length: CHART_SLOTS },
+        (_, index) => (items: OhlcvBar[], adjustment: string | undefined) => {
+          chartBars.current[index] = items;
+          chartAdjustments.current[index] = adjustment;
+        },
+      ),
     [],
   );
   const [customEditor, setCustomEditor] = useState<{
@@ -883,6 +888,7 @@ export function Workspace({
         symbol,
         timeframe: config.timeframe,
         priceDecimals: zone.priceDecimals,
+        adjustment: chartAdjustments.current[index],
       },
     };
   };

@@ -10563,6 +10563,15 @@
             }
           }
         },
+        "prices": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["splits_adjusted", "dividends_adjusted"],
+          "properties": {
+            "splits_adjusted": { "type": ["boolean", "null"] },
+            "dividends_adjusted": { "type": ["boolean", "null"] }
+          }
+        },
         "concentration": {
           "type": "object",
           "additionalProperties": false,

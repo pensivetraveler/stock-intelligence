@@ -49,6 +49,7 @@ from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
 from services.market_data.broker_common import BrokerConfigError, instrument_listing
 from services.market_data.calendar import CalendarError, UsEquityCalendar
+from services.market_data.daily import adjusted_bars
 from services.market_data.instruments import market_of, parse_instrument
 from services.market_data.kiwoom_account import NEW_YORK as KIWOOM_NEW_YORK
 from services.market_data.kiwoom_account import (
@@ -1543,16 +1544,20 @@ def create_app(
         end_utc: Annotated[datetime, Query()],
         timeframe: Annotated[str, Query(pattern=r"^([1-9][0-9]{0,2}m|1d|1w)$")] = "1m",
         as_of_utc: Annotated[datetime | None, Query()] = None,
+        adjustment: Annotated[Literal["raw", "split_adjusted", "fully_adjusted"], Query()] = "raw",
     ) -> Response:
         try:
-            result = MarketBarsService(provider.get()).get_bars(
-                BarsQuery(
-                    instrument_id=instrument_id,
-                    timeframe=timeframe,
-                    start_utc=start_utc,
-                    end_utc=end_utc,
-                    as_of_utc=as_of_utc,
-                )
+            query = BarsQuery(
+                instrument_id=instrument_id,
+                timeframe=timeframe,
+                start_utc=start_utc,
+                end_utc=end_utc,
+                as_of_utc=as_of_utc,
+            )
+            result = (
+                MarketBarsService(provider.get()).get_bars(query)
+                if adjustment == "raw"
+                else adjusted_bars(provider.get(), query, adjustment)
             )
         except InstrumentNotFoundError:
             return _error_response(
