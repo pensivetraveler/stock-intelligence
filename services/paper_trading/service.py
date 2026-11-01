@@ -1,6 +1,6 @@
 """The resident paper-order runner process (ADR 0037 §6).
 
-`uv run python -m services.paper_trading.service` — started by the SIW Agent LaunchAgent.
+`uv run python -m services.paper_trading.service` — started by the SIW Agent user service.
 
 While disarmed it only writes heartbeats: no bars are read and no broker is called.
 Armed, it rebuilds the approved plan (the strategy must still hash to the approved
@@ -200,7 +200,7 @@ class RunnerService:
 def load_env_file(path: Path) -> None:
     """KEY=VALUE lines from the repository's .env, without replacing what is already set.
 
-    The LaunchAgent starts the runner without a shell, so this is how it gets the same
+    The user service starts the runner without a shell, so this is how it gets the same
     settings as the API (which uvicorn reads with --env-file). Values are never logged.
     """
     for line in path.read_text(encoding="utf-8").splitlines():
