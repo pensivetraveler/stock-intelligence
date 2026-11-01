@@ -86,7 +86,7 @@ const en = {
   "sr.block.net_gap": "Net profit differs by more than 20%.",
   "sr.block.entry_match": "Fewer than 80% of the Pine entries match.",
   "sr.block.too_few_trades":
-    "Not enough to compare: both sides need at least 20 closed trades. Try a longer chart.",
+    "Not enough to compare: both sides need at least 20 closed trades. Load earlier bars on the chart, then press Compare again.",
   "sr.convert": "Convert to rules",
   "sr.convertNote":
     "Claude (Opus) converts this script to a rules strategy. It costs more than a chat request. Nothing is saved.",
@@ -1705,7 +1705,7 @@ const ko: Record<MessageKey, string> = {
   "sr.block.net_gap": "순손익 차이가 20%를 넘습니다.",
   "sr.block.entry_match": "일치하는 Pine 진입이 80% 미만입니다.",
   "sr.block.too_few_trades":
-    "비교 근거가 부족합니다. 양쪽 모두 청산 거래가 20건 이상이어야 합니다. 차트 기간을 늘려 보세요.",
+    '비교 근거가 부족합니다. 양쪽 모두 청산 거래가 20건 이상이어야 합니다. 차트에서 이전 봉을 더 불러온 뒤 "다시 비교"를 누르세요.',
   "sr.convert": "규칙 전략으로 변환",
   "sr.convertNote":
     "Claude(Opus)가 이 스크립트를 규칙 전략으로 바꿉니다. 대화 요청보다 비용이 더 듭니다. 저장되지는 않습니다.",

@@ -423,6 +423,19 @@ def test_too_few_trades_is_not_evidence(case: str) -> None:
     assert save_blocks(result_of(), compared(*TOO_FEW[case]), CODE) == ["too_few_trades"]
 
 
+# The same three on 19,500 synthetic bars: the minimum only stops too little evidence.
+ON_LONGER_BARS = {
+    "S1": (198, 198, -18.78, -18.78, 100),
+    "S2": (53, 53, -10.26, -10.26, 100),
+    "S6": (48, 48, -27.58, -27.56, 100),
+}
+
+
+@pytest.mark.parametrize("case", ON_LONGER_BARS)
+def test_a_longer_chart_clears_too_few_trades(case: str) -> None:
+    assert save_blocks(result_of(), compared(*ON_LONGER_BARS[case]), CODE) == []
+
+
 def test_zero_against_zero_does_not_pass() -> None:
     assert "too_few_trades" in comparison_blocks(0, 0, 0.0, 0.0, 100.0)
 
