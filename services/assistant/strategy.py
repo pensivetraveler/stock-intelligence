@@ -17,6 +17,7 @@ import json
 from typing import Any
 
 from services.agents.commentary import LANGUAGES
+from services.assistant import conversion as conversion_module
 from services.assistant.indicator import (
     MAX_REFERENCE,
     MAX_RUNS,
@@ -45,10 +46,15 @@ all of TradingView's Pine. Rules:
   chart and returns an error with its line and column, or says it ran and how many trades it
   made. A strategy with no trades usually has a mistake. Fix it and run again.
 - At most {limit} runs per request. Prefer one careful script over many quick tries.
+- A script run only to find a cause (for example why there are no trades) has purpose
+  "diagnostic". It is not a version: it is not drawn on the chart or counted as tested. Use
+  purpose "strategy" for every script the investor could keep.
+- The chart's "time_zone" is the zone of hour, minute and the other time variables. Use them
+  directly when it is the zone asked for; add no input to convert between zones.
 - Never look ahead: no negative history offsets, no lookahead on current values.
 - You do not see profit or trades until the investor sends them. Do not guess them, and do
   not claim that a version is better without them.
-- The investor sees the last script that ran as a preview on the chart and decides whether to
+- The investor sees the last strategy that ran as a preview on the chart and decides whether to
   add it. Do not say it was added. When it is right, stop calling the tool and answer briefly
   in {language}: its conditions, its inputs and how orders fill. Do not repeat the code.
 - When the investor sends results, answer in {language} under these headings: evidence (only
@@ -79,6 +85,18 @@ STRATEGY_TOOLS: list[dict[str, Any]] = [
             "the first error (line and column) or, when it runs, its title, inputs and number "
             "of trades. Profit is not returned."
         ),
+        "input_schema": {
+            **TOOLS[0]["input_schema"],
+            "required": ["code", "explanation", "purpose"],
+            "properties": {
+                **TOOLS[0]["input_schema"]["properties"],
+                "purpose": {
+                    "type": "string",
+                    "enum": ["strategy", "diagnostic"],
+                    "description": "diagnostic: run only to find a cause; not a version.",
+                },
+            },
+        },
     }
 ]
 
@@ -103,8 +121,38 @@ class StrategyConversation(IndicatorConversation):
     tools = STRATEGY_TOOLS
     default_effort = EFFORT
 
+    def _script_fields(self, tool_input: dict[str, Any]) -> dict[str, Any]:
+        return {"diagnostic": True} if tool_input.get("purpose") == "diagnostic" else {}
+
+    def convert(
+        self,
+        code: str,
+        conditions: list[str],
+        language: str,
+        call: conversion_module.Call,
+    ) -> None:
+        """Converts the script to rules. It is apart from the chat: Claude's history is not
+        sent and does not grow, and a failure is recorded without stopping the conversation."""
+        try:
+            result, usage = conversion_module.convert(code, conditions, language, call)
+        except ConversationError as exc:
+            self._event({"type": "error", "text": str(exc)})
+            return
+        for item in usage:
+            self._count(item)
+        self._save()
+        self._event({"type": "conversion", "model": conversion_module.MODEL, "conversion": result})
+
     def send_results(self, question: str, context: dict[str, Any], results: dict[str, Any]) -> None:
+        events = self.store.events(self.id)
+        diagnostic = {
+            event["tool_use_id"]
+            for event in events
+            if event["type"] == "code" and event.get("diagnostic")
+        }
         tested = sum(
-            1 for event in self.store.events(self.id) if event["type"] == "run" and event["ok"]
+            1
+            for event in events
+            if event["type"] == "run" and event["ok"] and event["tool_use_id"] not in diagnostic
         )
         self.ask(question, context, extra_text=results_text(results, tested), results=results)

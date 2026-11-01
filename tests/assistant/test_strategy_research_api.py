@@ -191,6 +191,44 @@ def test_results_count_only_versions_that_ran(client: TestClient, scripted: Scri
     assert json.loads(text)["versions_tested_in_this_conversation"] == 1
 
 
+def test_diagnostic_runs_are_not_versions(client: TestClient, scripted: Scripted) -> None:
+    diagnostic = tool_use(
+        ("t2", "run_pine", {"code": CODE, "explanation": "why", "purpose": "diagnostic"})
+    )
+    scripted.turns += [run("t1"), diagnostic, answer("원인"), answer("검토")]
+    started = client.post(BASE, json=START).json()
+    path = f"{BASE}/{started['conversation_id']}"
+    assert "diagnostic" not in started["pending_run"]
+    second = client.post(f"{path}/runs", json={"tool_use_id": "t1", "ok": True, "summary": "ran"})
+    document = second.json()
+    validate_document(document)
+    assert document["pending_run"]["diagnostic"] is True
+    client.post(f"{path}/runs", json={"tool_use_id": "t2", "ok": True, "summary": "ran"})
+    client.post(
+        f"{path}/results", json={"question": "검토", "context": CONTEXT, "results": RESULTS}
+    )
+    blocks = scripted.calls[-1]["messages"][-1]["content"]
+    text = next(b["text"] for b in blocks if "backtest_results" in b.get("text", ""))
+    assert json.loads(text)["versions_tested_in_this_conversation"] == 1
+
+
+def test_the_tool_requires_a_purpose_and_the_chart_says_its_time_zone(
+    client: TestClient, scripted: Scripted
+) -> None:
+    scripted.turns += [run("t1")]
+    client.post(
+        BASE,
+        json={**START, "context": {**CONTEXT, "time_zone": "America/New_York"}},
+    )
+    first = scripted.calls[0]
+    schema = first["tools"][0]["input_schema"]
+    assert schema["required"] == ["code", "explanation", "purpose"]
+    assert schema["additionalProperties"] is False
+    assert json.loads(first["messages"][0]["content"][0]["text"])["chart"]["time_zone"] == (
+        "America/New_York"
+    )
+
+
 def test_a_script_left_unrun_is_answered_before_results(
     client: TestClient, scripted: Scripted
 ) -> None:

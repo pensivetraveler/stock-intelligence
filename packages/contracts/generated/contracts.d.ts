@@ -83,7 +83,8 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ReviewPeriodPayload
   | IndicatorConversation
   | IndicatorAssistantSettings
-  | StrategyConversation;
+  | StrategyConversation
+  | StrategyBacktestPreview;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -7108,7 +7109,14 @@ export interface StrategyConversation {
   status: "idle" | "running" | "needs_run" | "stopped" | "failed";
   error: string | null;
   events: {
-    type: "question" | "answer" | "code" | "run" | "stopped" | "error";
+    type:
+      | "question"
+      | "answer"
+      | "code"
+      | "run"
+      | "stopped"
+      | "error"
+      | "conversion";
     at_utc: UtcTimestamp;
     text?: string;
     model?: string | null;
@@ -7118,10 +7126,13 @@ export interface StrategyConversation {
     effort?: "medium" | "high";
     origin?: "saved" | "tradingview";
     results?: StrategyResults;
+    diagnostic?: boolean;
+    conversion?: StrategyConversion;
   }[];
   pending_run: {
     tool_use_id: string;
     code: string;
+    diagnostic?: boolean;
   } | null;
   runs: number;
   max_runs: number;
@@ -7211,4 +7222,34 @@ export interface StrategyResults {
         ];
     top3_share_percent: string;
   };
+}
+export interface StrategyConversion {
+  definition: {
+    type: "rules";
+    [k: string]: unknown;
+  } | null;
+  mapping: {
+    index: number;
+    condition: string;
+    status: "mapped" | "unconvertible";
+    rule_paths: string[];
+    reason: string;
+  }[];
+  problems: string[];
+  notes: string;
+  complete: boolean;
+  save_open: boolean;
+}
+export interface StrategyBacktestPreview {
+  kind: "strategy_backtest_preview";
+  schema_version: SchemaVersion;
+  final_equity: string;
+  trades: {
+    entry_utc: string;
+    entry_price: string;
+    exit_utc: string | null;
+    exit_price: string | null;
+    exit_reason: string;
+    net_pnl: string;
+  }[];
 }

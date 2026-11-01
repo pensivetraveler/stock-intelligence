@@ -3564,3 +3564,9 @@ body {
 .sr-versions {
   width: 100%;
 }
+
+.sr-problems {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--term-down, #e05);
+}

@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
+from decimal import Decimal as Dec
 from typing import Any, Literal
 
 from fastapi import FastAPI, Request
@@ -20,7 +21,8 @@ from starlette.responses import Response
 from packages.contracts.validator import validate_document
 from services.api.indicator_assistant_routes import ChartContext, RunRequest
 from services.api.journal_routes import ErrorResponse
-from services.assistant.indicator import MAX_REFERENCE, MAX_RUNS, call_indicator_claude
+from services.assistant import conversion
+from services.assistant.indicator import MAX_CODE, MAX_REFERENCE, MAX_RUNS, call_indicator_claude
 from services.assistant.strategy import (
     DEFAULT_MODEL,
     EFFORT,
@@ -30,6 +32,9 @@ from services.assistant.strategy import (
     StrategyConversation,
     system_prompt,
 )
+from services.backtest.data import EngineBar, InstrumentInput
+from services.backtest.engine import Backtest, EngineConfig, RuleSignals
+from services.backtest.strategy import StrategyError, validate_definition
 from services.review.conversation import ConversationError
 from services.review.store import ConversationNotFoundError, ReviewStore
 
@@ -130,6 +135,38 @@ class ResultsRequest(BaseModel):
     results: Results
 
 
+class ConvertRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(min_length=1, max_length=MAX_CODE)
+    # The script's conditions, listed by the app's parser rather than by Claude.
+    conditions: list[str] = Field(min_length=1, max_length=conversion.MAX_CONDITIONS)
+    language: Literal["en", "ko"] = "ko"
+
+
+class PreviewBar(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    time: int = Field(ge=0)
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float = Field(ge=0)
+
+
+class PreviewRequest(BaseModel):
+    """A rules strategy backtested on the chart's own bars; nothing is stored."""
+
+    model_config = ConfigDict(extra="forbid")
+    definition: dict[str, Any]
+    bars: list[PreviewBar] = Field(min_length=1, max_length=20_000)
+    time_zone: str = Field(min_length=1, max_length=64)
+    currency: str = Field(default="USD", max_length=10)
+    initial_capital: float = Field(gt=0)
+    fee_rate: float = Field(default=0, ge=0, le=0.1)
+    fee_per_order: float = Field(default=0, ge=0)
+    slippage_bps: float = Field(default=0, ge=0, le=1000)
+
+
 class StrategyRunRequest(RunRequest):
     # Kept with the version for the investor; Claude does not get it from a run.
     results: Results | None = None
@@ -143,6 +180,7 @@ def register_strategy_research_routes(
     api_key: Callable[[], str | None] = lambda: None,
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     converse: Callable[..., dict[str, Any]] = call_indicator_claude,
+    convert: Callable[..., dict[str, Any]] = conversion.call_convert_claude,
 ) -> None:
     def unavailable(request: Request) -> JSONResponse:
         return error_response(
@@ -169,7 +207,11 @@ def register_strategy_research_routes(
             "events": review.events(conversation["conversation_id"]),
             "pending_run": None
             if not pending
-            else {"tool_use_id": pending["tool_use_id"], "code": pending["code"]},
+            else {
+                "tool_use_id": pending["tool_use_id"],
+                "code": pending["code"],
+                **({"diagnostic": True} if pending.get("diagnostic") else {}),
+            },
             "runs": state.get("runs", 0),
             "max_runs": MAX_RUNS,
             "usage": {
@@ -291,6 +333,83 @@ def register_strategy_research_routes(
         except ConversationError as exc:
             return error_response(request, 409, "conversation_busy", str(exc))
         return respond(document(review, review.conversation(runner.id)))
+
+    @application.post(
+        "/v1/strategy-research/conversations/{conversation_id}/convert", response_model=None
+    )
+    def convert_rules(request: Request, conversation_id: str, body: ConvertRequest) -> Response:
+        result = found(request, conversation_id)
+        if isinstance(result, JSONResponse):
+            return result
+        review, conversation = result
+        runner = loop(request, review, conversation)
+        if isinstance(runner, JSONResponse):
+            return runner
+        key = api_key()
+        assert key is not None  # `loop` has checked it
+        runner.convert(
+            body.code,
+            body.conditions,
+            body.language,
+            lambda system, messages: convert(system, messages, key),
+        )
+        return respond(document(review, review.conversation(runner.id)))
+
+    @application.post("/v1/strategy-research/backtest-preview", response_model=None)
+    def backtest_preview(request: Request, body: PreviewRequest) -> Response:
+        try:
+            clean = validate_definition(body.definition)
+            if clean["type"] != "rules":
+                raise StrategyError("only rules strategies can be previewed")
+            times = [bar.time for bar in body.bars]
+            step = times[-1] - times[-2] if len(times) > 1 else 60
+            bars = [
+                EngineBar(
+                    bar.time,
+                    times[index + 1] if index + 1 < len(times) else bar.time + step,
+                    Dec(str(bar.open)),
+                    Dec(str(bar.high)),
+                    Dec(str(bar.low)),
+                    Dec(str(bar.close)),
+                    Dec(str(bar.volume)),
+                    True,
+                )
+                for index, bar in enumerate(body.bars)
+            ]
+            inputs = [InstrumentInput("chart", body.time_zone, bars)]
+            results = Backtest(
+                "preview",
+                clean,
+                inputs,
+                EngineConfig(
+                    Dec(str(body.initial_capital)),
+                    body.currency,
+                    Dec(str(body.fee_rate)),
+                    Dec(str(body.fee_per_order)),
+                    Dec(str(body.slippage_bps)),
+                ),
+                RuleSignals(clean, inputs),
+            ).run()
+        except StrategyError as exc:
+            return error_response(request, 422, "invalid_strategy_definition", str(exc))
+        return respond(
+            {
+                "kind": "strategy_backtest_preview",
+                "schema_version": "0.1",
+                "final_equity": results["final_equity"],
+                "trades": [
+                    {
+                        "entry_utc": trade["entry_utc"],
+                        "entry_price": trade["entry_price"],
+                        "exit_utc": trade["exit_utc"],
+                        "exit_price": trade["exit_price"],
+                        "exit_reason": trade["exit_reason"],
+                        "net_pnl": trade["net_pnl"],
+                    }
+                    for trade in results["trades"]
+                ],
+            }
+        )
 
     @application.post(
         "/v1/strategy-research/conversations/{conversation_id}/runs", response_model=None
