@@ -32,6 +32,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "targets": ["app"]
+    "targets": ["app"],
+    "linux": {
+      "deb": {
+        "depends": ["fonts-noto-cjk"]
+      }
+    }
   }
 }

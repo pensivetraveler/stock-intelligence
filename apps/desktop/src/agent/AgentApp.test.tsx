@@ -178,7 +178,7 @@ describe("AgentApp", () => {
     await waitFor(() => expect(api.release).toHaveBeenCalled());
   });
 
-  it("stops the LaunchAgent when the API cannot record the kill switch", async () => {
+  it("stops the runner service when the API cannot record the kill switch", async () => {
     const stop = vi.fn(async () => ({
       installed: true,
       running: false,

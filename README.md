@@ -109,7 +109,7 @@ pnpm dev
 - `Trading Terminal`, `Trade Review` 템플릿은 `Apply to both charts`를 눌러야만 적용된다. 각 차트의 종목·날짜는 유지한 채 설정을 복사하고, `Undo`로 되돌릴 수 있다([ADR 0010](docs/decisions/0010-named-workspaces-and-layout-templates.md)).
 - 종목 목록은 `GET /v1/market/instruments`에서 받는다. `SYNTH`는 `uv run python -m services.market_data.synthetic && pnpm format`으로 다시 생성하는, 실존하지 않는 합성 데이터다.
 
-Tauri 2 전제조건을 설치한 환경에서는 `pnpm desktop:tauri`를 사용한다.
+Tauri 2 전제조건을 설치한 환경에서는 `pnpm desktop:tauri`를 사용한다. SIW Agent를 Linux(Ubuntu 24.04)에서 돌리는 방법은 [ADR 0045](docs/decisions/0045-agent-on-linux.md)에 있다.
 
 ### 거래 기록(수동·가상)
 

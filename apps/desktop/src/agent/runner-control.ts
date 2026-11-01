@@ -1,5 +1,5 @@
 /**
- * The resident runner's LaunchAgent, through the SIW Agent shell (Tauri commands).
+ * The resident runner's user service (LaunchAgent, or systemd on Linux), through the SIW Agent shell (Tauri commands).
  * Outside Tauri (a browser, the Research app) there is no control and every call
  * reports that.
  */

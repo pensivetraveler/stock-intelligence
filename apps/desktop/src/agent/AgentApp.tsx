@@ -130,7 +130,7 @@ function AgentScreen({
   };
 
   // The kill switch is recorded through the API; if the API does not answer, the
-  // shell stops the runner's LaunchAgent instead (ADR 0037 §5).
+  // shell stops the runner's user service instead (ADR 0037 §5).
   const kill = () =>
     act(async () => {
       try {
