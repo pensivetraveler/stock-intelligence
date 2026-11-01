@@ -3,8 +3,8 @@
 //! - Starts the local API from this repository when nothing answers on 127.0.0.1:8765,
 //!   and stops only an API it started itself. `uv run` keeps uvicorn as a child process,
 //!   so the API runs in its own process group and quitting stops the whole group.
-//! - Installs, stops and removes the resident paper-order runner as a user LaunchAgent.
-//!   The plist names the repository and the runner command only; no keys are written.
+//! - Installs, stops and removes the resident paper-order runner as a user service: a
+//!   LaunchAgent on macOS (`launchd`), a systemd user service on Linux (`systemd`, ADR 0045).
 //!
 //! The shell never sends orders and holds no keys: the runner reads its demo key from
 //! the keychain itself.
@@ -20,6 +20,16 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::{Manager, RunEvent};
 
+#[cfg(any(target_os = "macos", test))]
+mod launchd;
+#[cfg(any(target_os = "linux", test))]
+mod systemd;
+
+#[cfg(target_os = "macos")]
+use launchd as service;
+#[cfg(target_os = "linux")]
+use systemd as service;
+
 const API_ADDR: &str = "127.0.0.1:8765";
 pub const RUNNER_LABEL: &str = "com.pensivetraveler.siw.agent.runner";
 
@@ -28,12 +38,12 @@ struct ApiChild(Mutex<Option<Child>>);
 
 #[derive(Serialize, Debug, PartialEq)]
 pub struct RunnerServiceState {
-    installed: bool,
-    running: bool,
-    detail: String,
+    pub(crate) installed: bool,
+    pub(crate) running: bool,
+    pub(crate) detail: String,
 }
 
-fn home() -> PathBuf {
+pub(crate) fn home() -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".into()))
 }
 
@@ -47,8 +57,7 @@ pub fn repo_dir() -> Option<PathBuf> {
         let path = PathBuf::from(value);
         return is_repo(&path).then_some(path);
     }
-    let settings = home().join("Library/Application Support/com.pensivetraveler.siw.agent/settings.json");
-    if let Ok(text) = std::fs::read_to_string(settings) {
+    if let Ok(text) = std::fs::read_to_string(service::settings_path()) {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
             if let Some(dir) = value.get("repo_dir").and_then(|v| v.as_str()) {
                 let path = PathBuf::from(dir);
@@ -63,7 +72,8 @@ pub fn repo_dir() -> Option<PathBuf> {
     is_repo(&built).then_some(built)
 }
 
-/// uv in the usual places: apps opened from Finder do not get the shell's PATH.
+/// uv in the usual places: apps opened from Finder or a Linux launcher do not get the
+/// shell's PATH.
 fn find_uv() -> Option<PathBuf> {
     [".local/bin/uv", ".cargo/bin/uv"]
         .iter()
@@ -95,7 +105,7 @@ fn ensure_api() -> Option<Child> {
     }
     let repo = repo_dir()?;
     let uv = find_uv()?;
-    let logs = home().join("Library/Logs/siw-agent");
+    let logs = service::log_dir();
     let _ = std::fs::create_dir_all(&logs);
     let log = std::fs::File::create(logs.join("api.log")).ok()?;
     let mut command = Command::new(uv);
@@ -122,7 +132,7 @@ fn spawn_group(command: &mut Command) -> std::io::Result<Child> {
 
 /// Stops the process group led by `child`: SIGTERM so uvicorn shuts down cleanly, then
 /// SIGKILL for whatever is left after `grace`. Only that group is signalled, so an API
-/// the shell did not start and the resident runner LaunchAgent are never touched.
+/// the shell did not start and the resident runner service are never touched.
 fn stop_group(child: &mut Child, grace: Duration) {
     let Ok(pgid) = libc::pid_t::try_from(child.id()) else {
         return;
@@ -148,16 +158,8 @@ fn stop_group(child: &mut Child, grace: Duration) {
     let _ = child.wait();
 }
 
-fn plist_path() -> PathBuf {
-    home().join(format!("Library/LaunchAgents/{RUNNER_LABEL}.plist"))
-}
-
-fn xml_escape(text: &str) -> String {
-    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
-}
-
-/// The runner's LaunchAgent: started at login, restarted after a crash, never given keys.
-pub fn runner_plist(uv: &Path, repo: &Path, log_dir: &Path) -> String {
+/// What `uv` runs for the resident runner, from the repository, on either service manager.
+pub(crate) fn runner_arguments(uv: &Path, repo: &Path) -> Vec<String> {
     let mut arguments = vec![
         uv.display().to_string(),
         "run".into(),
@@ -168,62 +170,12 @@ pub fn runner_plist(uv: &Path, repo: &Path, log_dir: &Path) -> String {
     if repo.join(".env").is_file() {
         arguments.extend(["--env-file".into(), ".env".into()]);
     }
-    let program = arguments
-        .iter()
-        .map(|argument| format!("    <string>{}</string>\n", xml_escape(argument)))
-        .collect::<String>();
-    let repo_text = xml_escape(&repo.display().to_string());
-    let cache = xml_escape(&repo.join(".uv-cache").display().to_string());
-    let log = xml_escape(&log_dir.join("runner.log").display().to_string());
-    format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>{RUNNER_LABEL}</string>
-  <key>ProgramArguments</key>
-  <array>
-{program}  </array>
-  <key>WorkingDirectory</key>
-  <string>{repo_text}</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>UV_CACHE_DIR</key>
-    <string>{cache}</string>
-  </dict>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <dict>
-    <key>SuccessfulExit</key>
-    <false/>
-  </dict>
-  <key>ThrottleInterval</key>
-  <integer>30</integer>
-  <key>StandardOutPath</key>
-  <string>{log}</string>
-  <key>StandardErrorPath</key>
-  <string>{log}</string>
-</dict>
-</plist>
-"#
-    )
+    arguments
 }
 
-fn gui_domain() -> String {
-    let uid = Command::new("id")
-        .arg("-u")
-        .output()
-        .ok()
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .map(|text| text.trim().to_string())
-        .unwrap_or_default();
-    format!("gui/{uid}")
-}
-
-fn launchctl(arguments: &[&str]) -> (bool, String) {
-    match Command::new("/bin/launchctl").args(arguments).output() {
+/// Runs a service-manager tool: whether it succeeded, and what it printed.
+pub(crate) fn run_tool(command: &mut Command) -> (bool, String) {
+    match command.output() {
         Ok(output) => (
             output.status.success(),
             String::from_utf8_lossy(&output.stdout).into_owned()
@@ -233,57 +185,28 @@ fn launchctl(arguments: &[&str]) -> (bool, String) {
     }
 }
 
-fn service_state(detail: String) -> RunnerServiceState {
-    let target = format!("{}/{RUNNER_LABEL}", gui_domain());
-    let (loaded, printed) = launchctl(&["print", &target]);
-    RunnerServiceState {
-        installed: plist_path().is_file(),
-        running: loaded && printed.contains("state = running"),
-        detail,
-    }
-}
-
 #[tauri::command]
 fn runner_state() -> RunnerServiceState {
-    service_state(String::new())
+    service::state(String::new())
 }
 
 #[tauri::command]
 fn runner_install() -> Result<RunnerServiceState, String> {
     let repo = repo_dir().ok_or("the repository was not found (set SIW_REPO_DIR)")?;
     let uv = find_uv().ok_or("uv was not found")?;
-    let logs = home().join("Library/Logs/siw-agent");
+    let logs = service::log_dir();
     std::fs::create_dir_all(&logs).map_err(|e| e.to_string())?;
-    let plist = plist_path();
-    if let Some(parent) = plist.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(&plist, runner_plist(&uv, &repo, &logs)).map_err(|e| e.to_string())?;
-    let domain = gui_domain();
-    let _ = launchctl(&["bootout", &format!("{domain}/{RUNNER_LABEL}")]);
-    let (ok, output) = launchctl(&["bootstrap", &domain, &plist.display().to_string()]);
-    Ok(service_state(if ok { String::new() } else { output }))
+    service::install(&uv, &repo, &logs)
 }
 
 #[tauri::command]
 fn runner_stop() -> RunnerServiceState {
-    let (_, output) = launchctl(&["bootout", &format!("{}/{RUNNER_LABEL}", gui_domain())]);
-    let state = service_state(String::new());
-    if state.running {
-        service_state(output)
-    } else {
-        state
-    }
+    service::stop()
 }
 
 #[tauri::command]
 fn runner_uninstall() -> Result<RunnerServiceState, String> {
-    let _ = launchctl(&["bootout", &format!("{}/{RUNNER_LABEL}", gui_domain())]);
-    let plist = plist_path();
-    if plist.is_file() {
-        std::fs::remove_file(&plist).map_err(|e| e.to_string())?;
-    }
-    Ok(service_state(String::new()))
+    service::uninstall()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -319,19 +242,6 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn plist_runs_the_runner_without_keys() {
-        let repo = std::env::temp_dir().join("siw-plist-test");
-        let _ = std::fs::create_dir_all(&repo);
-        let text = runner_plist(Path::new("/opt/homebrew/bin/uv"), &repo, Path::new("/tmp/logs"));
-        assert!(text.contains("<string>services.paper_trading.service</string>"));
-        assert!(text.contains(&format!("<string>{RUNNER_LABEL}</string>")));
-        assert!(text.contains("<key>KeepAlive</key>"));
-        for secret in ["APP_KEY", "SECRET", "app_key", "secretkey"] {
-            assert!(!text.contains(secret), "{secret}");
-        }
-    }
 
     fn alive(pid: libc::pid_t) -> bool {
         unsafe { libc::kill(pid, 0) == 0 }
@@ -382,10 +292,5 @@ mod tests {
             std::thread::sleep(Duration::from_millis(50));
         }
         assert_ne!(unsafe { libc::killpg(pgid, 0) }, 0, "group {pgid} survived");
-    }
-
-    #[test]
-    fn xml_is_escaped() {
-        assert_eq!(xml_escape("a&b<c>\"d\""), "a&amp;b&lt;c&gt;&quot;d&quot;");
     }
 }

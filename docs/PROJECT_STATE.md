@@ -2533,3 +2533,16 @@
 - **조치:** API가 시작 중 종료했을 때 포트가 사용 중이면, 다른 프로그램이 포트를 쓰고 있다고 알리고 확인 명령(`lsof`)을 보여 준다(`apps/electron/api-process.cjs`). 희석 분석기는 그쪽 세션이 기본 포트를 8775로 옮겼다.
 - **검증:** Electron `node --test` 8건 통과, `./scripts/verify.sh` 통과. 포트를 비운 뒤 설치된 SIW Research의 API가 8765에서 기동해 `/version`이 응답했다. 새 문구가 실제 오류 창에 뜨는 것과 앱 화면은 확인하지 못했다(설치된 앱은 재빌드 전).
 - **남은 위험:** SIW Agent(Tauri)도 8765를 고정해서 쓰며, 다른 프로그램이 잡으면 오류 창 없이 연결 오류 화면만 보인다.
+
+## SIW Agent Linux 이식 — 2026-11-01
+
+- **사용자 결정:** 미니PC를 검토하며 SIW Agent를 Linux로 이식하기로 했다([ADR 0045](decisions/0045-agent-on-linux.md)).
+- **변경:**
+  - `apps/desktop/src-tauri/src/`: 상주 실행기 관리를 `launchd.rs`와 `systemd.rs`로 나눴다. macOS 동작은 코드를 옮겼을 뿐 그대로다.
+  - Linux: systemd 사용자 서비스, XDG 경로의 설정·로그, `.deb` 의존성 `fonts-noto-cjk`.
+  - 화면 문구 "상주 실행기(LaunchAgent)"를 "상주 실행기"로 바꿨다.
+  - CI에 `agent-linux` 작업(빌드, Rust 테스트, 실제 사용자 서비스 시험)을 더했다.
+- **결정:** linger와 자동 로그인을 쓰지 않는다. 재부팅 뒤 로그인할 때까지 실행기는 멈추고 주문도 나가지 않는다.
+- **검증:** ADR 0045 검증 절. Ubuntu 24.04 컨테이너에서 빌드·서비스·키링·앱 기동을 확인했고, Mac에서 `cargo test`와 `./scripts/verify.sh`를 돌렸다.
+- **미검증:** 실제 미니PC와 Ubuntu 데스크톱, 잠긴 키링의 비밀번호 창, 재부팅 뒤 로그인 흐름, 이 변경 뒤 macOS 앱에서 서비스 설치 실행, Linux에서 키움 모의 호출.
+- **남은 위험:** 전략 버전을 Mac에서 미니PC로 옮기는 경로와 원격 킬 스위치가 없다.

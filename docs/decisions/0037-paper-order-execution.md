@@ -239,7 +239,7 @@ kiwoom-spec MCP 서버(공식 REST 스펙 색인, 읽기 전용)의 `spec_search
 
 ### 6. 실행 구조: API와 상주 실행기
 
-**결정:** 실행기는 API와 분리한 **상주** 프로세스다(사용자 결정: 상주). SIW Agent 앱을 꺼도 계속 돈다. macOS의 사용자 LaunchAgent로 둔다.
+**결정:** 실행기는 API와 분리한 **상주** 프로세스다(사용자 결정: 상주). SIW Agent 앱을 꺼도 계속 돈다. macOS의 사용자 LaunchAgent로 둔다. Linux에서는 systemd 사용자 서비스로 같은 일을 한다([ADR 0045](0045-agent-on-linux.md)).
 
 ```
 launchd (사용자 LaunchAgent: com.pensivetraveler.siw.agent.runner)
