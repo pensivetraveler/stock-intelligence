@@ -2534,8 +2534,6 @@
 - **검증:** Electron `node --test` 8건 통과, `./scripts/verify.sh` 통과. 포트를 비운 뒤 설치된 SIW Research의 API가 8765에서 기동해 `/version`이 응답했다. 새 문구가 실제 오류 창에 뜨는 것과 앱 화면은 확인하지 못했다(설치된 앱은 재빌드 전).
 - **남은 위험:** SIW Agent(Tauri)도 8765를 고정해서 쓰며, 다른 프로그램이 잡으면 오류 창 없이 연결 오류 화면만 보인다.
 
-
-
 ## SIW Agent Linux 이식 — 2026-11-01
 
 - **사용자 결정:** 미니PC를 검토하며 SIW Agent를 Linux로 이식하기로 했다([ADR 0045](decisions/0045-agent-on-linux.md)).
