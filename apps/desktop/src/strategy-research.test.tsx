@@ -6,12 +6,11 @@ import type { OhlcvBar } from "./indicators";
 import { pineReference } from "./pine-assistant";
 import { DEFAULT_STRATEGY } from "./pine-strategy";
 import {
-  compareBacktests,
+  comparisonRequest,
   concentrationOf,
   MAX_SENT_TRADES,
   pineConditions,
   pineStrategiesOn,
-  previewRequest,
   resultsOf,
   runStrategy,
 } from "./strategy-research";
@@ -193,52 +192,10 @@ strategy.exit("E", "S", stop=close * 1.1, limit=close * 0.9)`;
   });
 });
 
-describe("compareBacktests", () => {
-  const report = runStrategy(GOOD, BARS, CONTEXT);
-  if (!report.ok) throw new Error(report.error);
-  const pine = report.report;
-  const closed = pine.trades.filter((trade) => trade.exitTime !== null);
-  const iso = (time: number) => new Date(time * 1000).toISOString();
-  const same = {
-    trades: closed.map((trade) => ({
-      entry_utc: iso(trade.entryTime),
-      exit_utc: iso(trade.exitTime as number),
-      net_pnl: trade.profit,
-    })),
-  };
-
-  it("has no warning when the two agree", () => {
-    const result = compareBacktests(pine, same);
-    expect(result.warnings).toEqual([]);
-    expect(result.entryMatch).toBe(100);
-    expect(result.ruleTrades).toBe(pine.closedTrades);
-    // Trade profits are rounded to cents, so the sum can be a cent or so off.
-    expect(Math.abs(result.ruleNet - Number(pine.netProfit))).toBeLessThan(
-      0.05,
-    );
-  });
-
-  it("warns on trade count, net profit and entries", () => {
-    const result = compareBacktests(pine, {
-      trades: [{ entry_utc: iso(1), exit_utc: iso(2), net_pnl: "99999" }],
-    });
-    expect(result.warnings).toEqual(["trades", "net", "entries"]);
-  });
-
-  it("does not count open rule trades", () => {
-    const result = compareBacktests(pine, {
-      trades: [
-        ...same.trades,
-        { entry_utc: iso(1), exit_utc: null, net_pnl: "99999" },
-      ],
-    });
-    expect(result.ruleTrades).toBe(pine.closedTrades);
-    expect(result.warnings).toEqual([]);
-  });
-});
-
-describe("previewRequest", () => {
-  it("carries the Pine costs and the chart's bars", () => {
+describe("comparisonRequest", () => {
+  it("carries the Pine backtest, its costs and the chart's bars", () => {
+    const run = runStrategy(GOOD, BARS, CONTEXT);
+    if (!run.ok) throw new Error(run.error);
     const settings = {
       ...DEFAULT_STRATEGY,
       initialCapital: 5000,
@@ -247,7 +204,11 @@ describe("previewRequest", () => {
       slippage: 2,
       currency: "",
     };
-    const request = previewRequest({ type: "rules" }, settings, CHART);
+    const request = comparisonRequest(GOOD, run.report, settings, CHART);
+    expect(request.code).toBe(GOOD);
+    expect(request.pine.closed_trades).toBe(run.report.closedTrades);
+    // Closed trades only: open ones are valued differently.
+    expect(request.pine.entry_times).toHaveLength(run.report.closedTrades);
     expect(request.initial_capital).toBe(5000);
     expect(request.fee_rate).toBeCloseTo(0.0005);
     expect(request.fee_per_order).toBe(0);
@@ -360,7 +321,67 @@ const CONVERTED = conversation({
         problems: ["condition 1 cannot be converted"],
         notes: "",
         complete: false,
-        save_open: false,
+        save_open: true,
+        code_sha256: "a".repeat(64),
+      },
+    },
+  ],
+});
+
+const COMPARISON = {
+  code_sha256: "a".repeat(64),
+  definition_sha256: "b".repeat(64),
+  bars_sha256: "c".repeat(64),
+  bars: 120,
+  engine_version: "siw-backtest-1",
+  fill_model_version: "next-open-slippage-v1",
+  time_zone: "America/New_York",
+  initial_capital: 100000,
+  fee_rate: 0,
+  fee_per_order: 0,
+  slippage_bps: 0,
+  pine_trades: 5,
+  rule_trades: 1,
+  pine_net: 1,
+  rule_net: 9,
+  entry_match: 20,
+  blocks: ["trades_gap", "entry_match"] as const,
+};
+const COMPARED = conversation({
+  events: [
+    ...CONVERTED.events,
+    {
+      type: "comparison",
+      at_utc: AT,
+      comparison: { ...COMPARISON, blocks: [...COMPARISON.blocks] },
+    },
+  ],
+});
+const PASSED = conversation({
+  events: [
+    ...(ANSWERED.events ?? []),
+    {
+      type: "conversion",
+      at_utc: AT,
+      conversion: {
+        code_sha256: "a".repeat(64),
+        definition: { type: "rules", entry: {} },
+        mapping: [],
+        problems: [],
+        notes: "",
+        complete: true,
+        save_open: true,
+      },
+    },
+    {
+      type: "comparison",
+      at_utc: AT,
+      comparison: {
+        ...COMPARISON,
+        pine_trades: 30,
+        rule_trades: 30,
+        entry_match: 100,
+        blocks: [],
       },
     },
   ],
@@ -391,14 +412,8 @@ function apiFor(): StrategyResearchApi {
     sendResults: vi.fn(() => Promise.resolve(ANSWERED)),
     sendRun: vi.fn(() => Promise.resolve(ANSWERED)),
     convert: vi.fn(() => Promise.resolve(CONVERTED)),
-    previewBacktest: vi.fn(() =>
-      Promise.resolve({
-        kind: "strategy_backtest_preview" as const,
-        schema_version: "0.1" as const,
-        final_equity: "100000.00",
-        trades: [],
-      }),
-    ),
+    compare: vi.fn(() => Promise.resolve(COMPARED)),
+    saveRules: vi.fn(() => Promise.resolve(COMPARED)),
   };
 }
 
@@ -532,12 +547,12 @@ describe("StrategyResearch", () => {
     );
   });
 
-  it("converts with the parser's conditions, compares, and cannot save", async () => {
+  it("converts with the parser's conditions, compares, and shows why it cannot save", async () => {
     const api = apiFor();
     renderPanel(api);
     await ask(api);
     fireEvent.click(screen.getByRole("button", { name: "Convert to rules" }));
-    await screen.findByRole("region", { name: "Conversion to rules" });
+    await screen.findByRole("table", { name: "Pine and rules on these bars" });
     const [id, code, conditions, language] = vi.mocked(api.convert).mock
       .calls[0];
     expect([id, code, language]).toEqual(["conv-1", GOOD, "en"]);
@@ -546,15 +561,15 @@ describe("StrategyResearch", () => {
     expect(
       screen.getByText("condition 1 cannot be converted"),
     ).toBeInTheDocument();
+    expect(vi.mocked(api.compare).mock.calls[0][1].code).toBe(GOOD);
+    expect(
+      screen.getByText("Fewer than 80% of the Pine entries match."),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole<HTMLButtonElement>("button", {
         name: "Save as a rules strategy",
       }).disabled,
     ).toBe(true);
-    await screen.findByRole("table", { name: "Pine and rules on these bars" });
-    expect(api.previewBacktest).toHaveBeenCalled();
-    const alerts = screen.getAllByRole("alert").map((a) => a.textContent);
-    expect(alerts.join()).toContain("Fewer than 80%");
   });
 
   it("does not compare when there are no rules", async () => {
@@ -581,7 +596,39 @@ describe("StrategyResearch", () => {
     await ask(api);
     fireEvent.click(screen.getByRole("button", { name: "Convert to rules" }));
     await screen.findByRole("region", { name: "Conversion to rules" });
-    expect(api.previewBacktest).not.toHaveBeenCalled();
+    expect(api.compare).not.toHaveBeenCalled();
+  });
+
+  it("saves only on request, says what passing means, and starts nothing else", async () => {
+    const api = apiFor();
+    vi.mocked(api.convert).mockResolvedValue(PASSED);
+    vi.mocked(api.compare).mockResolvedValue(PASSED);
+    vi.mocked(api.saveRules).mockResolvedValue(
+      conversation({
+        events: [
+          ...PASSED.events,
+          {
+            type: "conversion_saved",
+            at_utc: AT,
+            strategy_id: "strategy-1",
+            strategy_version: 3,
+          },
+        ],
+      }),
+    );
+    renderPanel(api);
+    await ask(api);
+    fireEvent.click(screen.getByRole("button", { name: "Convert to rules" }));
+    await screen.findByText(/behaved alike on these bars/);
+    expect(api.saveRules).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Name of the rules strategy"), {
+      target: { value: "Cross" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save as a rules strategy" }),
+    );
+    await screen.findByText(/version 3/);
+    expect(api.saveRules).toHaveBeenCalledWith("conv-1", GOOD, "Cross");
   });
 
   it("reports a failed run back to Claude and draws nothing", async () => {

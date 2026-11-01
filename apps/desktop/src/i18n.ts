@@ -73,6 +73,20 @@ const en = {
   "pine.summaryStrategy": "A strategy: its backtest shows under the chart.",
   "pine.exampleIndicator": "Indicator example",
   "pine.exampleStrategy": "Strategy example",
+  "sr.ruleName": "Name of the rules strategy",
+  "sr.sameOnBars":
+    "The two behaved alike on these bars. That does not prove they are the same strategy.",
+  "sr.saveNote":
+    "Saving only adds a rules strategy. Walk-forward and paper orders stay your own next steps.",
+  "sr.saveBlocked":
+    "Saving needs a complete conversion and a comparison with nothing listed above.",
+  "sr.saved":
+    "Saved as a rules strategy, version {version}. Nothing else was started.",
+  "sr.block.trades_gap": "The number of trades differs by more than 10%.",
+  "sr.block.net_gap": "Net profit differs by more than 20%.",
+  "sr.block.entry_match": "Fewer than 80% of the Pine entries match.",
+  "sr.block.too_few_trades":
+    "Not enough to compare: both sides need at least 20 closed trades. Try a longer chart.",
   "sr.convert": "Convert to rules",
   "sr.convertNote":
     "Claude (Opus) converts this script to a rules strategy. It costs more than a chat request. Nothing is saved.",
@@ -91,10 +105,6 @@ const en = {
   "sr.entryMatch": "Pine entries the rules also made",
   "sr.compareRun": "Compare again",
   "sr.saveRules": "Save as a rules strategy",
-  "sr.saveClosed": "Saving stays closed until the conversion pilot has passed.",
-  "sr.warn.trades": "The number of trades differs by more than 10%.",
-  "sr.warn.net": "Net profit differs by more than 20%.",
-  "sr.warn.entries": "Fewer than 80% of the Pine entries match.",
   "sr.title": "Research a strategy with Claude",
   "sr.open": "Research with Claude",
   "sr.continue": "Continue research with Claude",
@@ -1682,6 +1692,20 @@ const ko: Record<MessageKey, string> = {
     "전략 스크립트입니다. 백테스트 결과가 차트 아래에 나옵니다.",
   "pine.exampleIndicator": "지표 예제",
   "pine.exampleStrategy": "전략 예제",
+  "sr.ruleName": "규칙 전략 이름",
+  "sr.sameOnBars":
+    "이 봉에서 같게 동작했습니다. 두 전략이 같다는 증명은 아닙니다.",
+  "sr.saveNote":
+    "규칙 전략으로 저장만 합니다. 워크포워드와 모의 주문은 직접 시작해야 합니다.",
+  "sr.saveBlocked":
+    "변환이 완료되고, 위에 표시된 항목 없이 비교를 통과해야 저장할 수 있습니다.",
+  "sr.saved":
+    "규칙 전략 버전 {version}으로 저장했습니다. 그 밖에 시작된 것은 없습니다.",
+  "sr.block.trades_gap": "거래 수 차이가 10%를 넘습니다.",
+  "sr.block.net_gap": "순손익 차이가 20%를 넘습니다.",
+  "sr.block.entry_match": "일치하는 Pine 진입이 80% 미만입니다.",
+  "sr.block.too_few_trades":
+    "비교 근거가 부족합니다. 양쪽 모두 청산 거래가 20건 이상이어야 합니다. 차트 기간을 늘려 보세요.",
   "sr.convert": "규칙 전략으로 변환",
   "sr.convertNote":
     "Claude(Opus)가 이 스크립트를 규칙 전략으로 바꿉니다. 대화 요청보다 비용이 더 듭니다. 저장되지는 않습니다.",
@@ -1699,10 +1723,6 @@ const ko: Record<MessageKey, string> = {
   "sr.entryMatch": "규칙도 같은 봉에 진입한 Pine 진입",
   "sr.compareRun": "다시 비교",
   "sr.saveRules": "규칙 전략으로 저장",
-  "sr.saveClosed": "변환 파일럿을 통과하기 전에는 저장할 수 없습니다.",
-  "sr.warn.trades": "거래 수 차이가 10%를 넘습니다.",
-  "sr.warn.net": "순손익 차이가 20%를 넘습니다.",
-  "sr.warn.entries": "일치하는 Pine 진입이 80% 미만입니다.",
   "sr.title": "Claude와 전략 연구",
   "sr.open": "Claude와 전략 연구",
   "sr.continue": "Claude와 전략 연구 이어 하기",

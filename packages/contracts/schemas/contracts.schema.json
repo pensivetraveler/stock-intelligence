@@ -251,9 +251,6 @@
     },
     {
       "$ref": "#/$defs/StrategyConversation"
-    },
-    {
-      "$ref": "#/$defs/StrategyBacktestPreview"
     }
   ],
   "$defs": {
@@ -10661,7 +10658,9 @@
                   "run",
                   "stopped",
                   "error",
-                  "conversion"
+                  "conversion",
+                  "comparison",
+                  "conversion_saved"
                 ]
               },
               "at_utc": {
@@ -10707,6 +10706,17 @@
               },
               "conversion": {
                 "$ref": "#/$defs/StrategyConversion"
+              },
+              "comparison": {
+                "$ref": "#/$defs/StrategyComparison"
+              },
+              "strategy_id": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "strategy_version": {
+                "type": "integer",
+                "minimum": 1
               }
             }
           }
@@ -10783,7 +10793,8 @@
         "problems",
         "notes",
         "complete",
-        "save_open"
+        "save_open",
+        "code_sha256"
       ],
       "properties": {
         "definition": {
@@ -10850,78 +10861,94 @@
         },
         "save_open": {
           "type": "boolean"
+        },
+        "code_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       }
     },
-    "StrategyBacktestPreview": {
+    "StrategyComparison": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "schema_version", "final_equity", "trades"],
+      "required": [
+        "code_sha256",
+        "definition_sha256",
+        "bars_sha256",
+        "bars",
+        "engine_version",
+        "fill_model_version",
+        "time_zone",
+        "initial_capital",
+        "fee_rate",
+        "fee_per_order",
+        "slippage_bps",
+        "pine_trades",
+        "rule_trades",
+        "pine_net",
+        "rule_net",
+        "entry_match",
+        "blocks"
+      ],
       "properties": {
-        "kind": {
-          "const": "strategy_backtest_preview"
-        },
-        "schema_version": {
-          "$ref": "#/$defs/SchemaVersion"
-        },
-        "final_equity": {
+        "code_sha256": {
           "type": "string",
-          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
-          "maxLength": 40
+          "pattern": "^[0-9a-f]{64}$"
         },
-        "trades": {
+        "definition_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bars_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bars": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "engine_version": {
+          "type": "string"
+        },
+        "fill_model_version": {
+          "type": "string"
+        },
+        "time_zone": {
+          "type": "string"
+        },
+        "initial_capital": {
+          "type": "number"
+        },
+        "fee_rate": {
+          "type": "number"
+        },
+        "fee_per_order": {
+          "type": "number"
+        },
+        "slippage_bps": {
+          "type": "number"
+        },
+        "pine_trades": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rule_trades": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pine_net": {
+          "type": "number"
+        },
+        "rule_net": {
+          "type": "number"
+        },
+        "entry_match": {
+          "type": "number"
+        },
+        "blocks": {
           "type": "array",
           "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "entry_utc",
-              "entry_price",
-              "exit_utc",
-              "exit_price",
-              "exit_reason",
-              "net_pnl"
-            ],
-            "properties": {
-              "entry_utc": {
-                "type": "string"
-              },
-              "entry_price": {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
-                "maxLength": 40
-              },
-              "exit_utc": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "exit_price": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
-                    "maxLength": 40
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "exit_reason": {
-                "type": "string"
-              },
-              "net_pnl": {
-                "type": "string",
-                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
-                "maxLength": 40
-              }
-            }
+            "enum": ["trades_gap", "net_gap", "entry_match", "too_few_trades"]
           }
         }
       }
