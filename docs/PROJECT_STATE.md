@@ -2454,3 +2454,23 @@
   - 브라우저 확인(합성 SYNTH, 실제 API와 화면, **Claude만 스크립트로 대체**): TradingView 시작점에서 코드 없이는 보낼 수 없고, `type`이 든 코드를 붙이면 "line 3, column 1" 오류가 보이며, 요청을 비워도 보낼 수 있었다. 요청에 `start_from`의 첫 오류와 `time_zone`이 들어갔다.
 - **미검증:** 실제 Claude가 `purpose`와 시간대를 따르는지(모델 재호출 없음). 시험 중 한 번 차트 요청이 시간 초과되어 "signal is aborted without reason"이 그대로 보였다. 이번 변경과 무관하며 고치지 않았다.
 - **Electron:** 같은 화면 빌드를 쓰지만 앱을 띄워 조작하지 않았다.
+
+## 규칙 전략 변환 — 2026-11-01
+
+- **사용자 결정:** 잔여 작업을 모두 진행한다. [ADR 0042](decisions/0042-claude-assistants.md) "전략 연구 기획" 3단계.
+- **변경:**
+  - **`services/assistant/conversion.py`:** 변환 프롬프트와 호출(Opus 5.5 high, 대체 없음, 구조화 출력), 대조 `check_mapping`.
+  - **API:** `POST /v1/strategy-research/conversations/{id}/convert`, `POST /v1/strategy-research/backtest-preview`(저장 없음). 계약에 `StrategyConversion`, `StrategyBacktestPreview`를 더했다.
+  - **화면:** "규칙 전략으로 변환", 조건별 규칙 위치, 변환을 막는 항목, 같은 봉 비교와 경고(거래 수 10%, 순손익 20%, 진입 일치 80%). 저장 버튼은 비활성이다.
+  - **앱(`strategy-research.ts`):** `pineConditions`(파서로 조건 나열), `previewRequest`, `compareBacktests`.
+- **저장 없음:** 회신 #SIW-2 조건대로 파일럿 B 전까지 변환 결과를 저장하는 경로를 만들지 않았다. 그래서 변환한 전략은 워크포워드와 SIW Agent로 이어지지 않는다.
+- **검증:**
+  - `./scripts/verify.sh` exit 0: pytest 966개, 계약 100개, 화면 359개.
+  - 새 테스트: API `tests/assistant/test_strategy_conversion_api.py`(빠진 조건, 더해진 조건, 그룹 안의 더해진 조건, 변환 불가와 사유, 없는 포인터, 잘못된 정의의 재시도와 중단, 정의 없음, 거절, Opus·대체 없음 요청 형식, 저장 경로 없음, 비교 실행), 화면(조건 나열, 비교 경고, 변환 화면).
+  - 브라우저 확인(합성 SYNTH 5분봉 102개, 실제 API·화면·엔진, **변환 답만 스크립트로 대체**): 파서가 나열한 조건 5개가 규칙 위치와 함께 보였고, EMA 5/20 전략의 Pine과 규칙 엔진 비교는 거래 1건·순손익 -0.13으로 같고 진입 일치 100%였다. 저장 버튼은 비활성이고 이유가 보였다.
+- **미검증:** 실제 Claude 변환(파일럿 B 대기), 실제 종목 봉, Electron 앱.
+- **남은 위험:**
+  - `pineConditions`는 주문을 지키는 `if`의 조건과 주문 호출만 나열한다. 삼항식이나 사용자 함수 안에 숨은 조건은 `if`에 쓰인 이름 하나로만 나온다. Claude가 코드를 함께 보지만 코드로 대조되지는 않는다.
+  - 포인터 대조는 위치만 본다. 조건의 뜻이 같은지는 비교 백테스트와 파일럿 B의 정답 대조로 본다.
+  - 비교는 Pine의 슬리피지(틱)를 마지막 가격 기준 bp로 바꾼 근삿값이고, `cash_per_contract` 수수료는 옮기지 않는다.
+  - Pine과 엔진은 한 봉의 손절·익절 순서 가정이 다르다. 차이가 있으면 경고로 드러나지만 원인은 알려 주지 않는다.

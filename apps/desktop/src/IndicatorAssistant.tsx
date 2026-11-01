@@ -555,7 +555,9 @@ export function AssistantEventView({
   event,
   version,
 }: {
-  event: Pick<AssistantEvent, "type" | "text" | "code" | "ok" | "has_image">;
+  event: Pick<AssistantEvent, "text" | "code" | "ok" | "has_image"> & {
+    type: string;
+  };
   version: number;
 }) {
   const { t } = useI18n();

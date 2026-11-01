@@ -251,6 +251,9 @@
     },
     {
       "$ref": "#/$defs/StrategyConversation"
+    },
+    {
+      "$ref": "#/$defs/StrategyBacktestPreview"
     }
   ],
   "$defs": {
@@ -10657,7 +10660,8 @@
                   "code",
                   "run",
                   "stopped",
-                  "error"
+                  "error",
+                  "conversion"
                 ]
               },
               "at_utc": {
@@ -10700,6 +10704,9 @@
               },
               "diagnostic": {
                 "type": "boolean"
+              },
+              "conversion": {
+                "$ref": "#/$defs/StrategyConversion"
               }
             }
           }
@@ -10762,6 +10769,158 @@
             "cache_write_tokens": {
               "type": "integer",
               "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "StrategyConversion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "definition",
+        "mapping",
+        "problems",
+        "notes",
+        "complete",
+        "save_open"
+      ],
+      "properties": {
+        "definition": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["type"],
+              "properties": {
+                "type": {
+                  "const": "rules"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mapping": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "index",
+              "condition",
+              "status",
+              "rule_paths",
+              "reason"
+            ],
+            "properties": {
+              "index": {
+                "type": "integer"
+              },
+              "condition": {
+                "type": "string"
+              },
+              "status": {
+                "enum": ["mapped", "unconvertible"]
+              },
+              "rule_paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "problems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "save_open": {
+          "type": "boolean"
+        }
+      }
+    },
+    "StrategyBacktestPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "final_equity", "trades"],
+      "properties": {
+        "kind": {
+          "const": "strategy_backtest_preview"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "final_equity": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "maxLength": 40
+        },
+        "trades": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "entry_utc",
+              "entry_price",
+              "exit_utc",
+              "exit_price",
+              "exit_reason",
+              "net_pnl"
+            ],
+            "properties": {
+              "entry_utc": {
+                "type": "string"
+              },
+              "entry_price": {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "maxLength": 40
+              },
+              "exit_utc": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "exit_price": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "exit_reason": {
+                "type": "string"
+              },
+              "net_pnl": {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "maxLength": 40
+              }
             }
           }
         }

@@ -17,6 +17,7 @@ import json
 from typing import Any
 
 from services.agents.commentary import LANGUAGES
+from services.assistant import conversion as conversion_module
 from services.assistant.indicator import (
     MAX_REFERENCE,
     MAX_RUNS,
@@ -122,6 +123,25 @@ class StrategyConversation(IndicatorConversation):
 
     def _script_fields(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         return {"diagnostic": True} if tool_input.get("purpose") == "diagnostic" else {}
+
+    def convert(
+        self,
+        code: str,
+        conditions: list[str],
+        language: str,
+        call: conversion_module.Call,
+    ) -> None:
+        """Converts the script to rules. It is apart from the chat: Claude's history is not
+        sent and does not grow, and a failure is recorded without stopping the conversation."""
+        try:
+            result, usage = conversion_module.convert(code, conditions, language, call)
+        except ConversationError as exc:
+            self._event({"type": "error", "text": str(exc)})
+            return
+        for item in usage:
+            self._count(item)
+        self._save()
+        self._event({"type": "conversion", "model": conversion_module.MODEL, "conversion": result})
 
     def send_results(self, question: str, context: dict[str, Any], results: dict[str, Any]) -> None:
         events = self.store.events(self.id)

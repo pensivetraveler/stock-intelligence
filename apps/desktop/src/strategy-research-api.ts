@@ -1,10 +1,34 @@
-import type { StrategyConversation } from "@siw/contracts/types";
+import type {
+  StrategyBacktestPreview,
+  StrategyConversation,
+} from "@siw/contracts/types";
 
 import type { ChartContext, RunResult } from "./indicator-assistant-api";
 import { callForKind, type ApiTarget } from "./market-api";
 
 export type ResearchEvent = StrategyConversation["events"][number];
 export type StrategyResults = NonNullable<ResearchEvent["results"]>;
+
+export type Conversion = NonNullable<ResearchEvent["conversion"]>;
+
+/** A rules strategy backtested on the chart's own bars; nothing is stored. */
+export interface PreviewRequest {
+  definition: object;
+  bars: {
+    time: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }[];
+  time_zone: string;
+  currency: string;
+  initial_capital: number;
+  fee_rate: number;
+  fee_per_order: number;
+  slippage_bps: number;
+}
 
 /** What a first request starts from; the code itself goes as the editor's code. */
 export interface ResearchOrigin {
@@ -42,6 +66,14 @@ export interface StrategyResearchApi {
     result: RunResult,
     results?: StrategyResults,
   ): Promise<StrategyConversation>;
+  /** `conditions` are the app parser's, so Claude cannot leave one out unnoticed. */
+  convert(
+    conversationId: string,
+    code: string,
+    conditions: string[],
+    language: "en" | "ko",
+  ): Promise<StrategyConversation>;
+  previewBacktest(request: PreviewRequest): Promise<StrategyBacktestPreview>;
 }
 
 export function createStrategyResearchApi(
@@ -89,6 +121,21 @@ export function createStrategyResearchApi(
         context,
         results,
       });
+    },
+    convert(conversationId, code, conditions, language) {
+      return post(`${path(conversationId)}/convert`, {
+        code,
+        conditions,
+        language,
+      });
+    },
+    previewBacktest(request) {
+      return callForKind<StrategyBacktestPreview>(
+        target,
+        "/v1/strategy-research/backtest-preview",
+        "strategy_backtest_preview",
+        { method: "POST", body: request },
+      );
     },
     sendRun(conversationId, toolUseId, result, results) {
       return post(`${path(conversationId)}/runs`, {

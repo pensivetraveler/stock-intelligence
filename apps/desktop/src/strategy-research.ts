@@ -14,8 +14,9 @@ import {
   runPine,
 } from "./pine";
 import { isPineStrategy, type SavedScript } from "./pine-assistant";
-import type { StrategyReport } from "./pine-strategy";
-import type { StrategyResults } from "./strategy-research-api";
+import { type Expr, parsePine, type Stmt } from "./pine-parser";
+import type { StrategyReport, StrategySettings } from "./pine-strategy";
+import type { PreviewRequest, StrategyResults } from "./strategy-research-api";
 
 /** Trades sent with results, newest kept; the totals still count every trade. */
 export const MAX_SENT_TRADES = 50;
@@ -196,4 +197,259 @@ export function pineStrategiesOn(
       ),
     )
     .sort((a, b) => Number(b.sameChart) - Number(a.sameChart));
+}
+
+// --- conversion to rules (ADR 0042, step 3) ---------------------------------------------
+
+function exprText(expr: Expr): string {
+  switch (expr.kind) {
+    case "number":
+      return String(expr.value);
+    case "string":
+      return JSON.stringify(expr.value);
+    case "bool":
+      return String(expr.value);
+    case "na":
+      return "na";
+    case "name":
+      return expr.name;
+    case "call":
+      return `${expr.name}(${[
+        ...expr.args.map(exprText),
+        ...Object.entries(expr.named).map(
+          ([name, value]) => `${name}=${exprText(value)}`,
+        ),
+      ].join(", ")})`;
+    case "index":
+      return `${exprText(expr.target)}[${exprText(expr.offset)}]`;
+    case "unary":
+      return `${expr.op === "not" ? "not " : expr.op}${exprText(expr.operand)}`;
+    case "binary":
+      return `${exprText(expr.left)} ${expr.op} ${exprText(expr.right)}`;
+    case "ternary":
+      return `${exprText(expr.test)} ? ${exprText(expr.then)} : ${exprText(expr.otherwise)}`;
+    case "tuple":
+      return `[${expr.items.map(exprText).join(", ")}]`;
+    case "block":
+      return "<block>";
+  }
+}
+
+const childStatements = (statement: Stmt): Stmt[] => {
+  switch (statement.kind) {
+    case "if":
+      return [...statement.body, ...statement.otherwise];
+    case "for":
+    case "forin":
+    case "while":
+    case "function":
+      return statement.body;
+    case "switch":
+      return statement.cases.flatMap((item) => item.body);
+    default:
+      return [];
+  }
+};
+
+function placesOrders(statement: Stmt): boolean {
+  if (statement.kind === "expr" && statement.value.kind === "call") {
+    if (statement.value.name.startsWith("strategy.")) return true;
+  }
+  return childStatements(statement).some(placesOrders);
+}
+
+/**
+ * The conditions of a Pine strategy, from the parser and not from Claude: each order call with
+ * its levels, and each test guarding an order, split at `and`/`or` and through the boolean
+ * variables it names. Claude must account for every one of them when converting.
+ */
+export function pineConditions(source: string): string[] {
+  const body = parsePine(source);
+  const found: string[] = [];
+  const add = (text: string) => {
+    if (!found.includes(text)) found.push(text);
+  };
+  const declared = new Map<string, Expr>();
+  const declare = (statements: Stmt[]) => {
+    for (const statement of statements) {
+      if (
+        statement.kind === "declare" &&
+        statement.names.length === 1 &&
+        !declared.has(statement.names[0])
+      ) {
+        declared.set(statement.names[0], statement.value);
+      }
+    }
+  };
+  declare(body);
+  const isLogical = (expr: Expr) =>
+    (expr.kind === "binary" &&
+      ["and", "or", "<", ">", "<=", ">=", "==", "!="].includes(expr.op)) ||
+    (expr.kind === "unary" && expr.op === "not") ||
+    (expr.kind === "call" && /^ta\.cross/.test(expr.name));
+  const test = (expr: Expr, seen: Set<string>) => {
+    if (expr.kind === "binary" && (expr.op === "and" || expr.op === "or")) {
+      test(expr.left, seen);
+      test(expr.right, seen);
+      return;
+    }
+    if (expr.kind === "name" && !seen.has(expr.name)) {
+      const value = declared.get(expr.name);
+      if (value && isLogical(value)) {
+        test(value, new Set(seen).add(expr.name));
+        return;
+      }
+    }
+    add(exprText(expr));
+  };
+  const order = (call: Extract<Expr, { kind: "call" }>) => {
+    const levels = Object.keys(call.named).filter((name) =>
+      [
+        "profit",
+        "limit",
+        "loss",
+        "stop",
+        "trail_points",
+        "trail_price",
+        "trail_offset",
+        "qty",
+        "qty_percent",
+      ].includes(name),
+    );
+    if (call.name === "strategy.exit" && levels.length > 0) {
+      for (const name of levels) {
+        add(`strategy.exit ${name}=${exprText(call.named[name])}`);
+      }
+      return;
+    }
+    add(exprText(call));
+  };
+  const settings = (call: Extract<Expr, { kind: "call" }>) => {
+    const named = (name: string) =>
+      call.named[name] ? exprText(call.named[name]) : null;
+    const type = named("default_qty_type");
+    const value = named("default_qty_value");
+    add(
+      type || value
+        ? `quantity: ${type ?? "strategy.fixed"} ${value ?? "1"}`
+        : "quantity: the default of 1 share",
+    );
+    for (const name of ["pyramiding", "process_orders_on_close"]) {
+      const setting = named(name);
+      if (setting !== null && setting !== "0" && setting !== "false") {
+        add(`strategy ${name}=${setting}`);
+      }
+    }
+  };
+  const walk = (statements: Stmt[]) => {
+    declare(statements);
+    for (const statement of statements) {
+      if (statement.kind === "if" && placesOrders(statement)) {
+        test(statement.test, new Set());
+      }
+      if (statement.kind === "expr" && statement.value.kind === "call") {
+        if (statement.value.name === "strategy") settings(statement.value);
+        else if (statement.value.name.startsWith("strategy.")) {
+          order(statement.value);
+        }
+      }
+      walk(childStatements(statement));
+    }
+  };
+  walk(body);
+  return found;
+}
+
+/** What makes a Pine backtest comparable to the rules engine on the same bars. */
+export function previewRequest(
+  definition: object,
+  settings: StrategySettings,
+  chart: { bars: OhlcvBar[]; context: PineContext },
+): PreviewRequest {
+  const { bars } = chart;
+  const tick = 10 ** -(chart.context.priceDecimals ?? 2);
+  const price = bars.length > 0 ? bars[bars.length - 1].close : 0;
+  return {
+    definition,
+    bars: bars.map(({ time, open, high, low, close, volume }) => ({
+      time,
+      open,
+      high,
+      low,
+      close,
+      volume,
+    })),
+    time_zone: chart.context.timeZone ?? "UTC",
+    currency: settings.currency || "USD",
+    initial_capital: settings.initialCapital,
+    fee_rate:
+      settings.commissionType === "percent"
+        ? settings.commissionValue / 100
+        : 0,
+    fee_per_order:
+      settings.commissionType === "cash_per_order"
+        ? settings.commissionValue
+        : 0,
+    // Pine slips in ticks and the engine in basis points, at the latest price.
+    slippage_bps: price > 0 ? (settings.slippage * tick * 10_000) / price : 0,
+  };
+}
+
+export interface BacktestComparison {
+  pineTrades: number;
+  ruleTrades: number;
+  pineNet: number;
+  ruleNet: number;
+  /** Share of closed Pine entries the rules also made at the same bar, in percent. */
+  entryMatch: number;
+  warnings: ("trades" | "net" | "entries")[];
+}
+
+// ADR 0042: hypotheses until the first real comparisons.
+const MAX_TRADES_GAP = 10;
+const MAX_NET_GAP = 20;
+const MIN_ENTRY_MATCH = 80;
+
+const gapPercent = (a: number, b: number) => {
+  const base = Math.max(Math.abs(a), Math.abs(b));
+  return base === 0 ? 0 : (Math.abs(a - b) / base) * 100;
+};
+
+/** Closed trades only on both sides: open ones are valued differently. */
+export function compareBacktests(
+  pine: StrategyReport,
+  rules: {
+    trades: { entry_utc: string; exit_utc: string | null; net_pnl: string }[];
+  },
+): BacktestComparison {
+  const closed = rules.trades.filter((trade) => trade.exit_utc !== null);
+  const ruleNet = closed.reduce((sum, trade) => sum + Number(trade.net_pnl), 0);
+  const pineClosed = pine.trades.filter((trade) => trade.exitTime !== null);
+  const entries = new Set(
+    rules.trades.map((trade) => Date.parse(trade.entry_utc)),
+  );
+  const matched = pineClosed.filter((trade) =>
+    entries.has(trade.entryTime * 1000),
+  ).length;
+  const pineNet = Number(pine.netProfit);
+  const entryMatch =
+    pineClosed.length === 0 && closed.length === 0
+      ? 100
+      : pineClosed.length === 0
+        ? 0
+        : (matched / pineClosed.length) * 100;
+  return {
+    pineTrades: pine.closedTrades,
+    ruleTrades: closed.length,
+    pineNet,
+    ruleNet,
+    entryMatch,
+    warnings: [
+      ...(gapPercent(pine.closedTrades, closed.length) > MAX_TRADES_GAP
+        ? (["trades"] as const)
+        : []),
+      ...(gapPercent(pineNet, ruleNet) > MAX_NET_GAP ? (["net"] as const) : []),
+      ...(entryMatch < MIN_ENTRY_MATCH ? (["entries"] as const) : []),
+    ],
+  };
 }

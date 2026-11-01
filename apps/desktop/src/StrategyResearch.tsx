@@ -5,9 +5,18 @@ import { type AssistantChart, AssistantEventView } from "./IndicatorAssistant";
 import { useI18n } from "./i18n";
 import type { ChartContext } from "./indicator-assistant-api";
 import { MAX_PINE_LENGTH } from "./pine";
+import { compilePine } from "./pine";
 import { pineReference, type SavedScript } from "./pine-assistant";
-import { resultsOf, runStrategy } from "./strategy-research";
+import {
+  type BacktestComparison,
+  compareBacktests,
+  pineConditions,
+  previewRequest,
+  resultsOf,
+  runStrategy,
+} from "./strategy-research";
 import type {
+  Conversion,
   ResearchOrigin,
   StrategyResearchApi,
   StrategyResults,
@@ -59,6 +68,7 @@ export function StrategyResearch({
   const [problem, setProblem] = useState<string | null>(null);
   // Results shown for checking, before they are sent.
   const [draft, setDraft] = useState<StrategyResults | null>(null);
+  const [comparison, setComparison] = useState<BacktestComparison | null>(null);
 
   const fail = (error: unknown) =>
     setProblem(
@@ -250,6 +260,50 @@ export function StrategyResearch({
     }
   };
 
+  /** The latest conversion's rules, backtested on these bars beside the Pine script. */
+  const compare = async (definition: object) => {
+    const current = chart();
+    const run = current && runStrategy(code, current.bars, current.context);
+    if (!current || !run?.ok) {
+      setProblem(run && !run.ok ? run.error : t("ia.noChart"));
+      return;
+    }
+    const settings = compilePine(code).strategy;
+    if (!settings) return;
+    const rules = await api.previewBacktest(
+      previewRequest(definition, settings, current),
+    );
+    setComparison(compareBacktests(run.report, rules));
+  };
+
+  const convert = async () => {
+    if (!conversation) return;
+    setBusy("asking");
+    setProblem(null);
+    setComparison(null);
+    try {
+      const converted = await api.convert(
+        conversation.conversation_id,
+        code,
+        pineConditions(code),
+        language === "ko" ? "ko" : "en",
+      );
+      setConversation(converted);
+      const latest = [...converted.events]
+        .reverse()
+        .find((event) => event.type === "conversion")?.conversion;
+      if (latest?.definition) await compare(latest.definition);
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const conversion = [...events]
+    .reverse()
+    .find((event) => event.type === "conversion")?.conversion;
+
   const retry =
     conversation?.status === "stopped" &&
     !events.some(
@@ -318,21 +372,25 @@ export function StrategyResearch({
         </div>
       ) : null}
       <div className="ia-events">
-        {events.map((event, index) => (
-          <div key={index}>
-            <AssistantEventView
-              event={event}
-              version={versions.indexOf(event) + 1}
-            />
-            {event.type === "question" && event.results ? (
-              <small className="ia-attached">
-                {t("sr.resultsSent", {
-                  trades: event.results.closed_trades,
-                })}
-              </small>
-            ) : null}
-          </div>
-        ))}
+        {events.flatMap((event, index) =>
+          event.type === "conversion"
+            ? []
+            : [
+                <div key={index}>
+                  <AssistantEventView
+                    event={event}
+                    version={versions.indexOf(event) + 1}
+                  />
+                  {event.type === "question" && event.results ? (
+                    <small className="ia-attached">
+                      {t("sr.resultsSent", {
+                        trades: event.results.closed_trades,
+                      })}
+                    </small>
+                  ) : null}
+                </div>,
+              ],
+        )}
         {busy !== null ? (
           <p className="workspace-note" role="status">
             {busy === "running"
@@ -446,7 +504,30 @@ export function StrategyResearch({
         >
           {t("sr.sendResults")}
         </button>
+        <button
+          type="button"
+          className="tb-button"
+          disabled={busy !== null || !conversation || !runnable}
+          title={t("sr.convertNote")}
+          onClick={() => void convert()}
+        >
+          {t("sr.convert")}
+        </button>
       </p>
+      {conversion ? (
+        <ConversionView
+          conversion={conversion}
+          comparison={comparison}
+          onCompare={
+            conversion.definition && busy === null
+              ? () => {
+                  setProblem(null);
+                  void compare(conversion.definition as object).catch(fail);
+                }
+              : null
+          }
+        />
+      ) : null}
       {results.some(Boolean) ? (
         <table className="bt-table sr-versions" aria-label={t("sr.versions")}>
           <thead>
@@ -552,6 +633,108 @@ export function StrategyResearch({
         >
           {applied ? t("sr.applyUpdate") : t("sr.apply")}
         </button>
+      </p>
+    </section>
+  );
+}
+
+/** Where each Pine condition went, what stops the conversion, and how the rules behaved. */
+function ConversionView({
+  conversion,
+  comparison,
+  onCompare,
+}: {
+  conversion: Conversion;
+  comparison: BacktestComparison | null;
+  onCompare: (() => void) | null;
+}) {
+  const { t } = useI18n();
+  return (
+    <section className="sr-draft" aria-label={t("sr.conversion")}>
+      <strong>{t("sr.conversion")}</strong>
+      <p className={conversion.complete ? "workspace-note" : "bt-problem"}>
+        {t(conversion.complete ? "sr.conversionComplete" : "sr.conversionOpen")}
+      </p>
+      <table className="bt-table sr-versions">
+        <thead>
+          <tr>
+            <th>{t("sr.condition")}</th>
+            <th>{t("sr.conditionWhere")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {conversion.mapping.map((item) => (
+            <tr key={item.index}>
+              <td>{item.condition}</td>
+              <td>
+                {item.status === "mapped"
+                  ? item.rule_paths.join(", ")
+                  : `${t("sr.unconvertible")}: ${item.reason}`}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {conversion.problems.length > 0 ? (
+        <ul className="sr-problems" aria-label={t("sr.problems")}>
+          {conversion.problems.map((problem) => (
+            <li key={problem}>{problem}</li>
+          ))}
+        </ul>
+      ) : null}
+      {conversion.notes ? (
+        <p className="workspace-note">{conversion.notes}</p>
+      ) : null}
+      {conversion.definition ? (
+        <details>
+          <summary>{t("sr.ruleJson")}</summary>
+          <pre className="bt-logs">
+            {JSON.stringify(conversion.definition, null, 2)}
+          </pre>
+        </details>
+      ) : null}
+      {comparison ? (
+        <table className="bt-table sr-versions" aria-label={t("sr.compare")}>
+          <thead>
+            <tr>
+              <th />
+              <th>Pine</th>
+              <th>{t("sr.rules")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{t("pine.strategy.closed")}</td>
+              <td>{comparison.pineTrades}</td>
+              <td>{comparison.ruleTrades}</td>
+            </tr>
+            <tr>
+              <td>{t("pine.strategy.netProfit")}</td>
+              <td>{comparison.pineNet.toFixed(2)}</td>
+              <td>{comparison.ruleNet.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td>{t("sr.entryMatch")}</td>
+              <td colSpan={2}>{comparison.entryMatch.toFixed(0)}%</td>
+            </tr>
+          </tbody>
+        </table>
+      ) : null}
+      {comparison?.warnings.map((warning) => (
+        <p key={warning} className="bt-problem" role="alert">
+          {t(`sr.warn.${warning}`)}
+        </p>
+      ))}
+      <p className="bt-actions">
+        {onCompare ? (
+          <button type="button" className="tb-button" onClick={onCompare}>
+            {t("sr.compareRun")}
+          </button>
+        ) : null}
+        <button type="button" className="tb-button bt-primary" disabled>
+          {t("sr.saveRules")}
+        </button>
+        <span className="workspace-note">{t("sr.saveClosed")}</span>
       </p>
     </section>
   );
