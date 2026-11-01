@@ -14,6 +14,7 @@ results. Fills stay in the result document; nothing is written to any ledger.
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -22,7 +23,7 @@ from decimal import ROUND_DOWN, ROUND_HALF_EVEN, Decimal
 from typing import Any, Protocol
 
 from services.backtest.data import EngineBar, InstrumentInput
-from services.backtest.indicators import Bar, Series
+from services.backtest.indicators import Bar, Series, compute
 from services.backtest.sandbox import StrategyProcess
 from services.backtest.strategy import (
     CustomLookup,
@@ -111,6 +112,9 @@ class Position:
     target: Decimal | None
     # Filled inside a bar (limit or stop): that bar's earlier prices may predate the entry.
     intrabar_entry: bool = False
+    # The trailing stop's level and the highest price it has followed so far.
+    trail_stop: Decimal | None = None
+    trail_high: Decimal | None = None
 
 
 class SignalSource(Protocol):
@@ -143,6 +147,8 @@ def _operands(condition: dict[str, Any] | None) -> Iterator[dict[str, Any]]:
             for item in condition[group]:
                 yield from _operands(item)
             return
+    if "time" in condition:
+        return
     yield condition["left"]
     yield condition["right"]
 
@@ -412,7 +418,50 @@ class Backtest:
         sl, tp = definition.get("stop_loss_pct"), definition.get("take_profit_pct")
         self.stop_pct = None if sl is None else Decimal(sl) / HUNDRED
         self.target_pct = None if tp is None else Decimal(tp) / HUNDRED
+        self.stop_atr: dict[str, Any] | None = definition.get("stop_loss_atr")
+        self.trailing: dict[str, Any] | None = definition.get("trailing_stop")
+        self._atr: dict[tuple[str, int], tuple[list[int], Series]] = {}
         self.max_positions = int(definition.get("max_positions", 10))
+
+    # --- protective stops ---------------------------------------------------------
+
+    def _atr_before(self, instrument_id: str, length: int, time: int) -> Decimal | None:
+        """ATR of the last final bar that started before `time`, so never a later bar's."""
+        key = (instrument_id, length)
+        if key not in self._atr:
+            item = next(i for i in self.inputs if i.instrument_id == instrument_id)
+            final = [bar for bar in item.bars if bar.final]
+            self._atr[key] = (
+                [bar.time for bar in final],
+                compute("atr", _indicator_bars(final), {"length": length}, item.time_zone)["value"],
+            )
+        times, series = self._atr[key]
+        index = bisect.bisect_left(times, time) - 1
+        value = series[index] if index >= 0 else None
+        return None if value is None else Decimal(str(value))
+
+    def _trail_level(self, instrument_id: str, high: Decimal, time: int) -> Decimal | None:
+        """Where the trailing stop sits under `high`, knowing only bars before `time`."""
+        assert self.trailing is not None
+        if self.trailing["mode"] == "pct":
+            return high * (1 - Decimal(self.trailing["value"]) / HUNDRED)
+        atr = self._atr_before(instrument_id, self.trailing["length"], time)
+        return None if atr is None else high - Decimal(self.trailing["mult"]) * atr
+
+    def _entry_stops(
+        self, instrument_id: str, price: Decimal, time: int
+    ) -> tuple[Decimal | None, Decimal | None] | None:
+        """(stop, trailing stop) for a fill at `price`; None while an ATR is not known yet."""
+        stop = None if self.stop_pct is None else price * (1 - self.stop_pct)
+        if self.stop_atr is not None:
+            atr = self._atr_before(instrument_id, self.stop_atr["length"], time)
+            if atr is None:
+                return None
+            stop = price - Decimal(self.stop_atr["mult"]) * atr
+        if self.trailing is None:
+            return stop, None
+        trail = self._trail_level(instrument_id, price, time)
+        return None if trail is None else (stop, trail)
 
     # --- book keeping -------------------------------------------------------------
 
@@ -551,6 +600,11 @@ class Backtest:
         if triggered is None:
             return False
         reference, price, reason = triggered
+        stops = self._entry_stops(order.instrument_id, price, bar.time)
+        if stops is None:
+            # Better no position than one without the stop the strategy asked for.
+            self._reject(order, "stop_unavailable")
+            return True
         notes: list[str] = []
         if order.quantity is not None:
             quantity = order.quantity
@@ -579,9 +633,11 @@ class Backtest:
             quantity,
             notional + fee,
             trade,
-            None if self.stop_pct is None else price * (1 - self.stop_pct),
+            stops[0],
             None if self.target_pct is None else price * (1 + self.target_pct),
             intrabar_entry=reference != bar.open,
+            trail_stop=stops[1],
+            trail_high=None if stops[1] is None else price,
         )
         self._record_fill(order, quantity, price, fee, bar.time, reason, reference, notes)
         return True
@@ -590,9 +646,12 @@ class Backtest:
         position = self.positions.get(instrument_id)
         if position is None:
             return
-        stop_hit = position.stop is not None and bar.low <= position.stop
+        levels = [level for level in (position.stop, position.trail_stop) if level is not None]
+        stop = max(levels) if levels else None
+        stop_hit = stop is not None and bar.low <= stop
         target_hit = position.target is not None and bar.high >= position.target
         if not stop_hit and not target_hit:
+            self._follow(instrument_id, position, bar)
             return
         order = self._new_order(instrument_id, "sell", bar.time)
         notes: list[str] = []
@@ -600,10 +659,11 @@ class Backtest:
             # Entered inside this bar: its low or high may have come before the entry.
             notes.append("same_bar_as_entry")
         if stop_hit:
-            assert position.stop is not None
+            assert stop is not None
             # A gap through the stop fills at the open, not at the stop.
-            reference = min(bar.open, position.stop)
-            reason = "stop_loss"
+            reference = min(bar.open, stop)
+            trailing = position.trail_stop == stop and position.stop != stop
+            reason = "trailing_stop" if trailing else "stop_loss"
             if target_hit:
                 # The order of high and low inside a bar is unknown: assume the stop.
                 notes.append("ambiguous_stop_target")
@@ -612,6 +672,18 @@ class Backtest:
             reference = max(bar.open, position.target)
             reason = "take_profit"
         self._sell(order, position.quantity, reference, bar.time, reason, notes)
+
+    def _follow(self, instrument_id: str, position: Position, bar: EngineBar) -> None:
+        """Raise the trailing stop after a bar: its high can only move the stop for later
+        bars, because a bar's low may have come first. The stop never moves down."""
+        if position.trail_high is None or position.trail_stop is None or not bar.final:
+            return
+        if position.intrabar_entry and position.trade.entry_time == bar.time:
+            return  # this bar's high may have come before the entry
+        position.trail_high = max(position.trail_high, bar.high)
+        level = self._trail_level(instrument_id, position.trail_high, bar.time + 1)
+        if level is not None:
+            position.trail_stop = max(position.trail_stop, level)
 
     # --- signals --------------------------------------------------------------------
 

@@ -83,8 +83,10 @@ export type OperandDraft =
       indicator: string;
       params: Record<string, number>;
       output: string;
+      /** This many bars back; absent means the current bar. */
+      offset?: number;
     }
-  | { kind: "price"; price: PriceField }
+  | { kind: "price"; price: PriceField; offset?: number }
   | { kind: "value"; value: string };
 
 export interface ConditionDraft {
@@ -92,7 +94,11 @@ export interface ConditionDraft {
   left: OperandDraft;
   op: Comparison;
   right: OperandDraft;
+  /** Set on a time-of-day condition, which then has no comparison of its own. */
+  time?: { from: string; to: string };
 }
+
+export type TrailingMode = "none" | "pct" | "atr";
 
 export type OrderKind = "market" | "limit" | "stop";
 /** How an entry or exit is ordered (ADR 0031): offset from the signal bar's close. */
@@ -116,6 +122,12 @@ export interface RulesDraft {
   exit: ConditionDraft[];
   stopLossPct: string;
   takeProfitPct: string;
+  stopAtrLength?: string;
+  stopAtrMult?: string;
+  trailingMode?: TrailingMode;
+  trailingValue?: string;
+  trailingLength?: string;
+  trailingMult?: string;
   sizingMode: SizingMode;
   sizingValue: string;
   maxPositions: string;
@@ -135,6 +147,17 @@ export function indicatorOperand(id: string): OperandDraft {
 
 let keys = 0;
 export const conditionKey = () => `c${++keys}`;
+
+/** The regular US session, as a starting point for a time-of-day condition. */
+export function timeCondition(): ConditionDraft {
+  return {
+    key: conditionKey(),
+    left: { kind: "price", price: "close" },
+    op: "gt",
+    right: { kind: "value", value: "0" },
+    time: { from: "09:30", to: "16:00" },
+  };
+}
 
 /** A moving-average crossover: a working strategy to start from. */
 export function defaultRulesDraft(): RulesDraft {
@@ -179,15 +202,18 @@ def on_bar(ctx):
 `;
 
 function operandJson(operand: OperandDraft): Record<string, unknown> {
+  if (operand.kind === "value") return { value: operand.value };
+  // Left out on the current bar, so saved strategies keep their fingerprints.
+  const back = operand.offset ? { offset: operand.offset } : {};
   if (operand.kind === "indicator") {
     return {
       indicator: operand.indicator,
       params: operand.params,
       output: operand.output,
+      ...back,
     };
   }
-  if (operand.kind === "price") return { price: operand.price };
-  return { value: operand.value };
+  return { price: operand.price, ...back };
 }
 
 function group(
@@ -195,16 +221,43 @@ function group(
   conditions: ConditionDraft[],
 ): Record<string, unknown> | null {
   if (conditions.length === 0) return null;
-  const items = conditions.map((condition) => ({
-    op: condition.op,
-    left: operandJson(condition.left),
-    right: operandJson(condition.right),
-  }));
+  const items = conditions.map((condition) =>
+    condition.time
+      ? { time: condition.time }
+      : {
+          op: condition.op,
+          left: operandJson(condition.left),
+          right: operandJson(condition.right),
+        },
+  );
   return items.length === 1 ? items[0] : { [mode]: items };
 }
 
 const optionalNumber = (text: string) =>
   text.trim() === "" ? null : text.trim();
+
+function protectiveStops(draft: RulesDraft): Record<string, unknown> {
+  const stops: Record<string, unknown> = {};
+  if (draft.stopAtrMult?.trim()) {
+    stops.stop_loss_atr = {
+      length: Number(draft.stopAtrLength ?? 14),
+      mult: draft.stopAtrMult.trim(),
+    };
+  }
+  if (draft.trailingMode === "pct") {
+    stops.trailing_stop = {
+      mode: "pct",
+      value: (draft.trailingValue ?? "").trim(),
+    };
+  } else if (draft.trailingMode === "atr") {
+    stops.trailing_stop = {
+      mode: "atr",
+      length: Number(draft.trailingLength ?? 14),
+      mult: (draft.trailingMult ?? "").trim(),
+    };
+  }
+  return stops;
+}
 
 function orderJson(order: OrderDraft | undefined): Record<string, unknown> {
   if (!order || order.type === "market") return {};
@@ -236,6 +289,7 @@ export function rulesDefinition(draft: RulesDraft): StrategyDefinition {
     take_profit_pct: optionalNumber(draft.takeProfitPct),
     sizing: { mode: draft.sizingMode, value: draft.sizingValue.trim() },
     max_positions: Number(draft.maxPositions),
+    ...protectiveStops(draft),
     // Market orders are left out, so saved strategies keep their fingerprints.
     ...(draft.entryOrder?.type && draft.entryOrder.type !== "market"
       ? { entry_order: orderJson(draft.entryOrder) }
@@ -249,6 +303,7 @@ export function rulesDefinition(draft: RulesDraft): StrategyDefinition {
 function operandDraft(value: unknown): OperandDraft | null {
   if (typeof value !== "object" || value === null) return null;
   const item = value as Record<string, unknown>;
+  const back = typeof item.offset === "number" ? { offset: item.offset } : {};
   if (typeof item.indicator === "string") {
     if (!INDICATOR_BY_ID.has(item.indicator)) return null;
     const base = indicatorOperand(item.indicator);
@@ -257,10 +312,11 @@ function operandDraft(value: unknown): OperandDraft | null {
       ...base,
       params: { ...base.params, ...(item.params as Record<string, number>) },
       output: typeof item.output === "string" ? item.output : base.output,
+      ...back,
     };
   }
   if (typeof item.price === "string") {
-    return { kind: "price", price: item.price as PriceField };
+    return { kind: "price", price: item.price as PriceField, ...back };
   }
   if ("value" in item) return { kind: "value", value: String(item.value) };
   return null;
@@ -278,6 +334,13 @@ function conditionsOf(
   for (const entry of list) {
     if (typeof entry !== "object" || entry === null) return null;
     const comparison = entry as Record<string, unknown>;
+    if (typeof comparison.time === "object" && comparison.time !== null) {
+      items.push({
+        ...timeCondition(),
+        time: comparison.time as { from: string; to: string },
+      });
+      continue;
+    }
     // Nested groups are valid for the engine but too deep for this form.
     if (!COMPARISONS.includes(comparison.op as Comparison)) return null;
     const left = operandDraft(comparison.left);
@@ -297,6 +360,12 @@ function conditionsOf(
 export function rulesDraftOf(
   definition: Record<string, unknown>,
 ): RulesDraft | null {
+  const stopAtr = definition.stop_loss_atr as
+    { length: number; mult: string } | undefined;
+  const trailing = definition.trailing_stop as
+    | { mode: "pct"; value: string }
+    | { mode: "atr"; length: number; mult: string }
+    | undefined;
   const entry = conditionsOf(definition.entry);
   const exit = conditionsOf(definition.exit);
   const sizing = definition.sizing as { mode: SizingMode; value: string };
@@ -308,6 +377,12 @@ export function rulesDraftOf(
     exit: exit.items,
     stopLossPct: String(definition.stop_loss_pct ?? ""),
     takeProfitPct: String(definition.take_profit_pct ?? ""),
+    stopAtrLength: String(stopAtr?.length ?? 14),
+    stopAtrMult: stopAtr?.mult ?? "",
+    trailingMode: trailing?.mode ?? "none",
+    trailingValue: trailing?.mode === "pct" ? trailing.value : "",
+    trailingLength: String(trailing?.mode === "atr" ? trailing.length : 14),
+    trailingMult: trailing?.mode === "atr" ? trailing.mult : "",
     sizingMode: sizing.mode,
     sizingValue: String(sizing.value),
     maxPositions: String(definition.max_positions ?? 10),
@@ -465,9 +540,13 @@ export function tunablePaths(definition: unknown): TunablePath[] {
       if (
         pythonSetting ||
         (isNumber(value) &&
-          ["value", "stop_loss_pct", "take_profit_pct", "offset_pct"].includes(
-            key,
-          ))
+          [
+            "value",
+            "stop_loss_pct",
+            "take_profit_pct",
+            "offset_pct",
+            "mult",
+          ].includes(key))
       ) {
         found.push({
           path: `${path}/${key}`,
