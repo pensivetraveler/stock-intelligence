@@ -9,11 +9,13 @@ import {
   PRICES,
   ruleIndicatorIds,
   SIZING_MODES,
+  timeCondition,
   type ConditionDraft,
   type OperandDraft,
   type OrderDraft,
   type OrderKind,
   type RulesDraft,
+  type TrailingMode,
 } from "./backtest-model";
 import { useI18n, type MessageKey } from "./i18n";
 
@@ -52,7 +54,12 @@ function OperandEditor({
           <select
             aria-label={t("bt.indicator", { side: label })}
             value={operand.indicator}
-            onChange={(event) => onChange(indicatorOperand(event.target.value))}
+            onChange={(event) =>
+              onChange({
+                ...indicatorOperand(event.target.value),
+                ...(operand.offset ? { offset: operand.offset } : {}),
+              } as OperandDraft)
+            }
           >
             {ruleIndicatorIds(operand.indicator).map((id) => (
               <option key={id} value={id}>
@@ -105,7 +112,7 @@ function OperandEditor({
           value={operand.price}
           onChange={(event) =>
             onChange({
-              kind: "price",
+              ...operand,
               price: event.target.value as (typeof PRICES)[number],
             })
           }
@@ -128,6 +135,54 @@ function OperandEditor({
           }
         />
       ) : null}
+      {operand.kind === "value" ? null : (
+        <input
+          type="number"
+          className="bt-param"
+          aria-label={t("bt.barsBack", { side: label })}
+          title={t("bt.barsBackHint")}
+          min={0}
+          max={500}
+          placeholder={t("bt.barsBackShort")}
+          value={operand.offset ?? ""}
+          onChange={(event) =>
+            onChange({
+              ...operand,
+              offset: Number(event.target.value) || undefined,
+            })
+          }
+        />
+      )}
+    </span>
+  );
+}
+
+/** A bar's start in the exchange's local time, from inclusive and to exclusive. */
+function TimeFields({
+  n,
+  time,
+  onChange,
+}: {
+  n: number;
+  time: { from: string; to: string };
+  onChange: (time: { from: string; to: string }) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <span className="bt-operand" role="group" title={t("bt.timeHint")}>
+      {t("bt.timeCondition")}
+      <input
+        type="time"
+        aria-label={t("bt.timeFrom", { n })}
+        value={time.from}
+        onChange={(event) => onChange({ ...time, from: event.target.value })}
+      />
+      <input
+        type="time"
+        aria-label={t("bt.timeTo", { n })}
+        value={time.to}
+        onChange={(event) => onChange({ ...time, to: event.target.value })}
+      />
     </span>
   );
 }
@@ -167,32 +222,42 @@ function ConditionList({
       </label>
       {conditions.map((condition, index) => (
         <div key={condition.key} className="bt-condition">
-          <OperandEditor
-            label={t("bt.left", { n: index + 1 })}
-            operand={condition.left}
-            onChange={(left) => replace(index, { ...condition, left })}
-          />
-          <select
-            aria-label={t("bt.comparison", { n: index + 1 })}
-            value={condition.op}
-            onChange={(event) =>
-              replace(index, {
-                ...condition,
-                op: event.target.value as ConditionDraft["op"],
-              })
-            }
-          >
-            {COMPARISONS.map((op) => (
-              <option key={op} value={op}>
-                {t(`bt.op.${op}` as MessageKey)}
-              </option>
-            ))}
-          </select>
-          <OperandEditor
-            label={t("bt.right", { n: index + 1 })}
-            operand={condition.right}
-            onChange={(right) => replace(index, { ...condition, right })}
-          />
+          {condition.time ? (
+            <TimeFields
+              n={index + 1}
+              time={condition.time}
+              onChange={(time) => replace(index, { ...condition, time })}
+            />
+          ) : (
+            <>
+              <OperandEditor
+                label={t("bt.left", { n: index + 1 })}
+                operand={condition.left}
+                onChange={(left) => replace(index, { ...condition, left })}
+              />
+              <select
+                aria-label={t("bt.comparison", { n: index + 1 })}
+                value={condition.op}
+                onChange={(event) =>
+                  replace(index, {
+                    ...condition,
+                    op: event.target.value as ConditionDraft["op"],
+                  })
+                }
+              >
+                {COMPARISONS.map((op) => (
+                  <option key={op} value={op}>
+                    {t(`bt.op.${op}` as MessageKey)}
+                  </option>
+                ))}
+              </select>
+              <OperandEditor
+                label={t("bt.right", { n: index + 1 })}
+                operand={condition.right}
+                onChange={(right) => replace(index, { ...condition, right })}
+              />
+            </>
+          )}
           <button
             type="button"
             className="tb-button"
@@ -224,6 +289,13 @@ function ConditionList({
         }
       >
         {t("bt.addCondition")}
+      </button>
+      <button
+        type="button"
+        className="tb-button"
+        onClick={() => onChange(mode, [...conditions, timeCondition()])}
+      >
+        {t("bt.addTimeCondition")}
       </button>
     </fieldset>
   );
@@ -346,6 +418,81 @@ export function RuleBuilder({
             }
           />
         </label>
+        <label>
+          {t("bt.stopAtrLength")}
+          <input
+            inputMode="numeric"
+            value={draft.stopAtrLength ?? "14"}
+            onChange={(event) =>
+              onChange({ ...draft, stopAtrLength: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          {t("bt.stopAtrMult")}
+          <input
+            inputMode="decimal"
+            value={draft.stopAtrMult ?? ""}
+            placeholder="—"
+            onChange={(event) =>
+              onChange({ ...draft, stopAtrMult: event.target.value })
+            }
+          />
+        </label>
+        <label>
+          {t("bt.trailing")}
+          <select
+            value={draft.trailingMode ?? "none"}
+            onChange={(event) =>
+              onChange({
+                ...draft,
+                trailingMode: event.target.value as TrailingMode,
+              })
+            }
+          >
+            {(["none", "pct", "atr"] as TrailingMode[]).map((mode) => (
+              <option key={mode} value={mode}>
+                {t(`bt.trailing.${mode}` as MessageKey)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {draft.trailingMode === "pct" ? (
+          <label>
+            {t("bt.trailingValue")}
+            <input
+              inputMode="decimal"
+              value={draft.trailingValue ?? ""}
+              onChange={(event) =>
+                onChange({ ...draft, trailingValue: event.target.value })
+              }
+            />
+          </label>
+        ) : null}
+        {draft.trailingMode === "atr" ? (
+          <>
+            <label>
+              {t("bt.trailingLength")}
+              <input
+                inputMode="numeric"
+                value={draft.trailingLength ?? "14"}
+                onChange={(event) =>
+                  onChange({ ...draft, trailingLength: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              {t("bt.trailingMult")}
+              <input
+                inputMode="decimal"
+                value={draft.trailingMult ?? ""}
+                onChange={(event) =>
+                  onChange({ ...draft, trailingMult: event.target.value })
+                }
+              />
+            </label>
+          </>
+        ) : null}
         <label>
           {t("bt.sizing")}
           <select

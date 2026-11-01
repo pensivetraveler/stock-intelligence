@@ -2933,7 +2933,8 @@ export interface BacktestResults {
     quantity: NonNegativeDecimalString;
     exit_utc: UtcTimestamp | null;
     exit_price: NonNegativeDecimalString | null;
-    exit_reason: "signal" | "stop_loss" | "take_profit" | "open_at_end";
+    exit_reason:
+      "signal" | "stop_loss" | "trailing_stop" | "take_profit" | "open_at_end";
     open_quantity: NonNegativeDecimalString;
     net_pnl: DecimalString;
     return: DecimalString | null;

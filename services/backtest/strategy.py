@@ -11,8 +11,10 @@ import json
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from services.backtest.indicators import INDICATORS, Bar, Series, compute
 from services.custom_indicators.runner import IndicatorError, clean_params
@@ -23,6 +25,9 @@ SIZING_MODES = ("percent_equity", "fixed_cash", "fixed_shares")
 MAX_CODE_BYTES = 100_000
 MAX_DEPTH = 6
 MAX_CONDITIONS = 40
+MAX_BARS_BACK = 500
+MAX_ATR_LENGTH = 500
+CLOCK_TIME = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
 CUSTOM_TYPE = re.compile(r"^py:([A-Za-z0-9_-]{1,64})@([1-9][0-9]{0,8})$")
 
 # A saved Python indicator version (ADR 0023) by ID and version; raises LookupError.
@@ -87,6 +92,19 @@ def _custom_operand(value: dict[str, Any], custom: CustomLookup | None) -> dict[
 
 
 def _operand(value: object, custom: CustomLookup | None = None) -> dict[str, Any]:
+    """An operand, optionally `offset` bars back; absent keeps old fingerprints."""
+    if not isinstance(value, dict) or "offset" not in value:
+        return _current_operand(value, custom)
+    offset = value["offset"]
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 1 <= offset <= MAX_BARS_BACK:
+        raise StrategyError(f"offset must be a whole number from 1 to {MAX_BARS_BACK}")
+    if "value" in value:
+        raise StrategyError("a fixed value has no earlier bar")
+    rest = {name: item for name, item in value.items() if name != "offset"}
+    return {**_current_operand(rest, custom), "offset": offset}
+
+
+def _current_operand(value: object, custom: CustomLookup | None = None) -> dict[str, Any]:
     if not isinstance(value, dict) or len(value) == 0:
         raise StrategyError("an operand must be an indicator, a price or a value")
     if "indicator" in value and str(value.get("indicator")).startswith("py:"):
@@ -126,6 +144,20 @@ def _operand(value: object, custom: CustomLookup | None = None) -> dict[str, Any
     raise StrategyError("an operand must be an indicator, a price or a value")
 
 
+def _time_window(value: object) -> dict[str, str]:
+    """A bar's start in the exchange's local time: `from` <= start < `to`, same day."""
+    if not isinstance(value, dict) or set(value) != {"from", "to"}:
+        raise StrategyError("a time condition needs exactly from and to")
+    start, end = value["from"], value["to"]
+    if not isinstance(start, str) or not isinstance(end, str):
+        raise StrategyError("time condition from and to must look like 09:30")
+    if not CLOCK_TIME.fullmatch(start) or not CLOCK_TIME.fullmatch(end):
+        raise StrategyError("time condition from and to must look like 09:30")
+    if start >= end:
+        raise StrategyError("time condition from must be before to")
+    return {"from": start, "to": end}
+
+
 def _condition(
     value: object, depth: int, counter: list[int], custom: CustomLookup | None
 ) -> dict[str, Any]:
@@ -142,6 +174,10 @@ def _condition(
             if set(value) != {group} or not isinstance(items, list) or not items:
                 raise StrategyError(f"{group!r} must be the only field and a non-empty list")
             return {group: [_condition(item, depth + 1, counter, custom) for item in items]}
+    if "time" in value:
+        if set(value) != {"time"}:
+            raise StrategyError("'time' must be the only field of its condition")
+        return {"time": _time_window(value["time"])}
     if set(value) != {"op", "left", "right"} or value["op"] not in COMPARISONS:
         raise StrategyError(f"a comparison needs op ({', '.join(COMPARISONS)}), left and right")
     return {
@@ -185,6 +221,54 @@ def _risk(definition: dict[str, Any], clean: dict[str, Any]) -> None:
     clean["max_positions"] = limit
 
 
+def _atr_distance(value: dict[str, Any], what: str) -> dict[str, Any]:
+    length = value.get("length")
+    if isinstance(length, bool) or not isinstance(length, int) or not 1 <= length <= MAX_ATR_LENGTH:
+        raise StrategyError(f"{what} length must be a whole number from 1 to {MAX_ATR_LENGTH}")
+    return {
+        "length": length,
+        "mult": _decimal(value.get("mult"), f"{what} mult", Decimal("0.01"), Decimal(100)),
+    }
+
+
+def _protective_stops(definition: dict[str, Any], clean: dict[str, Any]) -> None:
+    """ATR and trailing stops; left out when unused, so saved strategies keep fingerprints."""
+    atr = definition.get("stop_loss_atr")
+    if atr is not None:
+        if clean["stop_loss_pct"] is not None:
+            raise StrategyError("use stop_loss_pct or stop_loss_atr, not both")
+        if not isinstance(atr, dict) or set(atr) != {"length", "mult"}:
+            raise StrategyError("stop_loss_atr needs exactly length and mult")
+        clean["stop_loss_atr"] = _atr_distance(atr, "stop_loss_atr")
+    trailing = definition.get("trailing_stop")
+    if trailing is None:
+        return
+    mode = trailing.get("mode") if isinstance(trailing, dict) else None
+    if mode == "pct":
+        if set(trailing) != {"mode", "value"}:
+            raise StrategyError("a pct trailing_stop needs exactly mode and value")
+        clean["trailing_stop"] = {
+            "mode": "pct",
+            "value": _decimal(
+                trailing["value"], "trailing_stop value", Decimal("0.01"), Decimal(100)
+            ),
+        }
+    elif mode == "atr":
+        if set(trailing) != {"mode", "length", "mult"}:
+            raise StrategyError("an atr trailing_stop needs exactly mode, length and mult")
+        clean["trailing_stop"] = {"mode": "atr", **_atr_distance(trailing, "trailing_stop")}
+    else:
+        raise StrategyError("trailing_stop mode must be pct or atr")
+
+
+def uses_time_conditions(condition: dict[str, Any] | None) -> bool:
+    if condition is None:
+        return False
+    if "time" in condition:
+        return True
+    return any(uses_time_conditions(item) for g in ("all", "any") for item in condition.get(g, []))
+
+
 def validate_definition(definition: object, custom: CustomLookup | None = None) -> dict[str, Any]:
     """Return the normalized definition, or raise StrategyError.
 
@@ -197,6 +281,7 @@ def validate_definition(definition: object, custom: CustomLookup | None = None) 
     if kind == "rules":
         allowed = {"type", "entry", "exit", "stop_loss_pct", "take_profit_pct"}
         allowed |= {"sizing", "max_positions", "entry_order", "exit_order"}
+        allowed |= {"stop_loss_atr", "trailing_stop"}
         extra = set(definition) - allowed
         if extra:
             raise StrategyError(f"unexpected fields: {', '.join(sorted(extra))}")
@@ -220,6 +305,7 @@ def validate_definition(definition: object, custom: CustomLookup | None = None) 
             if name in definition:
                 clean[name] = _order(definition[name], name.replace("_", " "))
         _risk(definition, clean)
+        _protective_stops(definition, clean)
     elif kind == "python":
         extra = set(definition) - {"type", "code", "params", "stop_loss_pct", "take_profit_pct"}
         extra -= {"max_positions"}
@@ -275,6 +361,7 @@ class RuleEvaluator:
         return self._cache[key]
 
     def _value(self, operand: dict[str, Any], i: int) -> float | None:
+        i -= operand.get("offset", 0)
         if i < 0:
             return None
         series = self._series(operand)
@@ -284,11 +371,17 @@ class RuleEvaluator:
             return float(getattr(self.bars[i], operand["price"]))
         return float(operand["value"])
 
+    def _in_window(self, window: dict[str, str], i: int) -> bool:
+        start = datetime.fromtimestamp(self.bars[i].time, ZoneInfo(self.time_zone))
+        return window["from"] <= start.strftime("%H:%M") < window["to"]
+
     def holds(self, condition: dict[str, Any], i: int) -> bool:
         if "all" in condition:
             return all(self.holds(item, i) for item in condition["all"])
         if "any" in condition:
             return any(self.holds(item, i) for item in condition["any"])
+        if "time" in condition:
+            return self._in_window(condition["time"], i)
         left, right = self._value(condition["left"], i), self._value(condition["right"], i)
         if left is None or right is None:
             return False

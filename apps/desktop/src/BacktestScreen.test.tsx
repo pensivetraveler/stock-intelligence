@@ -190,6 +190,42 @@ describe("backtest screen", () => {
     });
   });
 
+  it("saves an earlier bar, a time condition and a trailing stop", async () => {
+    const api = fakeApi();
+    renderScreen(api);
+    fireEvent.change(
+      screen.getAllByLabelText("Condition 1 left bars back")[0],
+      {
+        target: { value: "2" },
+      },
+    );
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Add time condition" })[0],
+    );
+    fireEvent.change(screen.getAllByLabelText("Condition 2 from")[0], {
+      target: { value: "09:45" },
+    });
+    fireEvent.change(screen.getByLabelText("ATR stop multiple"), {
+      target: { value: "1.5" },
+    });
+    fireEvent.change(screen.getByLabelText("Trailing stop"), {
+      target: { value: "pct" },
+    });
+    fireEvent.change(screen.getByLabelText("Trailing %"), {
+      target: { value: "5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save and run" }));
+    await waitFor(() => expect(api.saveStrategy).toHaveBeenCalled());
+    const [, definition] = vi.mocked(api.saveStrategy).mock.calls[0];
+    const { all } = definition.entry as {
+      all: [{ left: { offset: number } }, { time: object }];
+    };
+    expect(all[0].left.offset).toBe(2);
+    expect(all[1].time).toEqual({ from: "09:45", to: "16:00" });
+    expect(definition.stop_loss_atr).toEqual({ length: 14, mult: "1.5" });
+    expect(definition.trailing_stop).toEqual({ mode: "pct", value: "5" });
+  });
+
   it("refuses to mix currencies in one run", () => {
     renderScreen(fakeApi());
     fireEvent.click(screen.getByLabelText("005930"));
