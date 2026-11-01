@@ -844,6 +844,20 @@ describe("chart workspace", () => {
     expect(screen.queryByRole("button", { name: "Pre-market" })).toBeNull();
   });
 
+  it("says a chart request timed out in the user's words", async () => {
+    const api = fakeApi();
+    api.bars = () =>
+      Promise.reject(
+        new MarketApiError(
+          "The local API did not answer in time. Try again.",
+          "request_timeout",
+        ),
+      );
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    const alerts = await screen.findAllByText(/did not answer in time/);
+    expect(alerts[0]).toHaveTextContent(/data source may be slow/);
+  });
+
   it("explains a closed day instead of drawing an empty chart", async () => {
     const storage = memoryStorage();
     storage.setItem(

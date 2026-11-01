@@ -1655,6 +1655,8 @@ const en = {
     "Check the items; nothing changes until you save a new version.",
   "pdc.saved": "Saved as a new principles version.",
   "common.requestFailed": "Request failed",
+  "common.requestTimedOut":
+    "The local API did not answer in time. The data source may be slow; try again.",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -3279,6 +3281,8 @@ const ko: Record<MessageKey, string> = {
     "항목을 확인하세요. 새 버전으로 저장하기 전에는 바뀌지 않습니다.",
   "pdc.saved": "새 원칙 버전으로 저장했습니다.",
   "common.requestFailed": "요청 실패",
+  "common.requestTimedOut":
+    "로컬 API가 제한 시간 안에 응답하지 않았습니다. 데이터 출처가 느릴 수 있으니 다시 시도하세요.",
 };
 
 export const DICTIONARIES: Record<Language, Record<MessageKey, string>> = {

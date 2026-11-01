@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createMarketApi, MarketApiError } from "./market-api";
+import { callApi, createMarketApi, MarketApiError } from "./market-api";
 
 function json(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -71,6 +71,24 @@ describe("market API client", () => {
       message: "must align",
       requestId: "r-1",
     });
+  });
+
+  it("says a request timed out, not the browser's abort text", async () => {
+    const fetcher: typeof fetch = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(
+            new DOMException("signal is aborted without reason", "AbortError"),
+          ),
+        );
+      });
+    const failure = await callApi(
+      { baseUrl: "http://api", fetcher, timeoutMs: 1 },
+      "/slow",
+    ).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(MarketApiError);
+    expect((failure as MarketApiError).code).toBe("request_timeout");
+    expect((failure as MarketApiError).message).not.toMatch(/aborted/);
   });
 
   it("rejects a response of the wrong kind", async () => {
