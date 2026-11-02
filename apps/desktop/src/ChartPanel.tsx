@@ -7,6 +7,7 @@ import type {
   PriceBar,
   ScenarioDefinition,
   SessionWindow,
+  FilingSplitsResponse,
 } from "@siw/contracts/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -218,6 +219,30 @@ function describeError(t: Translate, error: unknown): string {
 }
 
 /** Change of the bar from its open, for the legend only (display, not accounting). */
+/** Filing readings with their standing: never an instruction to change a price. */
+function filingSplitsNote(
+  t: Translate,
+  { rows, differences, compared_with }: FilingSplitsResponse,
+): string {
+  const confirmed = rows
+    .filter((row) => row.status === "confirmed")
+    .map((row) => `${row.effective} ${row.numerator}:${row.denominator}`);
+  const unresolved = rows.filter((row) => row.status === "conflict").length;
+  return [
+    confirmed.length > 0
+      ? t("chart.filingSplits", { rows: confirmed.join(", ") })
+      : t("chart.filingSplitsNone"),
+    ...(unresolved > 0
+      ? [t("chart.filingSplitsUnresolved", { n: unresolved })]
+      : []),
+    compared_with === null
+      ? t("chart.filingSplitsNotCompared")
+      : differences.length > 0
+        ? t("chart.filingSplitsDiffer", { n: differences.length })
+        : t("chart.filingSplitsSame"),
+  ].join(" ");
+}
+
 function barChange(bar: PriceBar): { text: string; rising: boolean } {
   const open = Number(bar.open);
   const delta = Number(bar.close) - open;
@@ -758,6 +783,31 @@ export function ChartPanel({
     config.premarketHigh === true &&
     timeframe === "1d" &&
     instrumentId.startsWith("us:");
+  // Filing readings name future splits, so a replay asks for none (ADR 0046).
+  const filingSplitsWanted =
+    isDailyTimeframe(timeframe) &&
+    instrumentId.startsWith("us:") &&
+    replayTime === null;
+  const [filingSplits, setFilingSplits] = useState<FilingSplitsResponse | null>(
+    null,
+  );
+  useEffect(() => {
+    let current = true;
+    setFilingSplits(null);
+    if (!filingSplitsWanted) {
+      return;
+    }
+    api
+      .filingSplits(instrumentId)
+      .then((response) => {
+        if (current) setFilingSplits(response);
+      })
+      // Only a note: a chart loses nothing when this cannot be read.
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [api, instrumentId, filingSplitsWanted]);
   const [premarket, setPremarket] = useState<{
     bars: PriceBar[];
     /** The same days as traded, to scale these over adjusted daily candles. */
@@ -1943,6 +1993,11 @@ export function ChartPanel({
                   ? [t("chart.premarketAdjusted")]
                   : []),
               ].join(" ")}
+        </p>
+      ) : null}
+      {filingSplits?.status === "found" ? (
+        <p className="workspace-note" role="status">
+          {filingSplitsNote(t, filingSplits)}
         </p>
       ) : null}
       {dayMarketWanted && dayMarket ? (

@@ -84,7 +84,7 @@ That contract will keep to this: readers never use `LocalMarketDataStore`, they 
 
 Each step ships and is checked alone, and a backup comes before any move.
 
-1. The folder and `CONTRACT.json`. The analyzer stops its server, backs up and moves `data/service` to `dilution/`, adds `user_version` and sets `DILUTION_SERVICE_DATA` in the run environment (it is not read from `.env`), once its user approves. SIW then reads confirmed splits.
+1. **Done (2026-11-02).** The analyzer moved `data/service` to `dilution/` and set `user_version` to 1. It finds `DILUTION_SERVICE_DATA` in the environment, then in `.env`, then falls back to its repository, so a run that forgets the setting does not start an empty folder. SIW reads confirmed splits (below).
 2. Shared SEC responses and the lock. The analyzer needs a setting for its cache path, fixed today, and the 0.2 second interval. Copy `www.sec.gov` (1.1 GB) and `data.sec.gov` (55 MB) keeping mtimes, confirm both programs read them, then remove the originals. The 465 old-format files at the top of `.cache/sec` are not read by current code and stay behind.
 3. Market data moves to `market/`, **after the decision on `stock-intelligence-40`**. Cached 1-minute parts that disagree make `read_composed` fail today, and a reader would inherit that failure.
 4. `identity/`, the last because it needs a mapping design.
@@ -110,3 +110,14 @@ Each step ships and is checked alone, and a backup comes before any move.
 - a third program needs this data, which would justify a service instead of a folder;
 - readers need bars that SIW has not cached, which raises who fetches them;
 - the layout changes often enough that both programs keep breaking on `CONTRACT.json`.
+
+## Step 1 in SIW (2026-11-02)
+
+- **Setting:** `STOCK_SHARED_DATA` in `.env`. Unset, the API answers `unavailable` and nothing is read.
+- **Reader:** `read_filing_splits` in `services/market_data/filing_splits.py` is the only code that opens the file. It opens it with `mode=ro`, refuses any `user_version` but 1, and keeps not checked, none found and found apart.
+- **API:** `GET /v1/market/filing-splits?instrument_id=`. Alpaca's splits (`/v1/corporate-actions`, by `ex_date`) are asked for only when the analyzer has rows, and kept in memory for 6 hours.
+- **Chart:** US daily and weekly charts show a note labelled as filing readings, not cross-checked. A replay does not ask, because the readings name future splits. No price, backtest or Agent uses them.
+- **Comparison:** only inside the period the analyzer read. A filing's effective date and Alpaca's ex-date count as one split within 3 calendar days and the same ratio. That margin is a judgement from CDT's 2025-05-19 and 2025-05-20; it is not a rule from either source.
+- **Differences:** `ratio_differs`, `filing_only`, `provider_only`, and `filing_unconfirmed` when Alpaca's split matches a reading the analyzer left in `conflict` or `scheduled`.
+- **Export:** `uv run --env-file .env python -m services.market_data.filing_splits export` writes `siw/split-disagreements.json` and `CONTRACT.json`. It runs by hand; nothing schedules it.
+- **Limits:** a renamed ticker is asked of Alpaca only under its current symbol. Delisted instruments use their ticker part as is, so a reused ticker could match another issuer's readings.

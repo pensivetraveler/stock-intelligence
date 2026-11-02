@@ -50,6 +50,17 @@ from services.market_data.bars_service import MarketBarsService
 from services.market_data.broker_common import BrokerConfigError, instrument_listing
 from services.market_data.calendar import CalendarError, UsEquityCalendar
 from services.market_data.daily import adjusted_bars
+from services.market_data.filing_splits import (
+    FilingSplits,
+    FilingSplitsUnavailable,
+    ProviderSplit,
+    compare_splits,
+    difference_document,
+    filing_split_document,
+    read_filing_splits,
+    shared_data_dir,
+    splits_path,
+)
 from services.market_data.instruments import market_of, parse_instrument
 from services.market_data.kiwoom_account import NEW_YORK as KIWOOM_NEW_YORK
 from services.market_data.kiwoom_account import (
@@ -132,6 +143,7 @@ from services.review.period_ai import ask_period_commentary
 from services.review.store import ReviewStore
 
 LOG = logging.getLogger("siw.api")
+FILING_COMPARE_SECONDS = 6 * 3600
 APP_NAME = "stock-intelligence-workstation-api"
 # US tickers start with a letter; Korean KRX codes are six characters starting with a digit.
 REALTIME_SYMBOL = re.compile(r"^([A-Z][A-Z0-9.]{0,9}|[0-9][0-9A-Z]{5})$")
@@ -841,6 +853,73 @@ def create_app(
             "schema_version": "0.1",
             "instruments": provider.get().instruments(),
         }
+        validate_document(document)
+        return JSONResponse(content=document)
+
+    filing_compared: dict[str, tuple[float, list[ProviderSplit]]] = {}
+
+    def provider_splits(ticker: str, filing: FilingSplits) -> list[ProviderSplit] | None:
+        """Alpaca's splits for the period the analyzer read, or None without an answer."""
+        cached = filing_compared.get(ticker)
+        if cached is not None and time.monotonic() - cached[0] < FILING_COMPARE_SECONDS:
+            return cached[1]
+        try:
+            adapter = boats()
+            if adapter is None or not hasattr(adapter, "split_actions"):
+                return None
+            assert filing.filings_from is not None and filing.as_of is not None
+            actions: list[ProviderSplit] = adapter.split_actions(
+                ticker, filing.filings_from, filing.as_of
+            )
+        except (MarketDataError, SecretStorageError):
+            return None
+        filing_compared[ticker] = (time.monotonic(), actions)
+        return actions
+
+    @application.get("/v1/market/filing-splits", response_model=None)
+    def market_filing_splits(
+        instrument_id: Annotated[str, Query(min_length=1, max_length=64)],
+    ) -> Response:
+        """Splits read from filings by the dilution analyzer, next to Alpaca's (ADR 0046).
+
+        Evidence only: no price depends on this, and a difference names neither side wrong.
+        """
+        parts = instrument_id.split(":")
+        ticker = parts[1].upper() if len(parts) == 4 and parts[0] == "us" else None
+        root = shared_data_dir()
+        document: dict[str, Any] = {
+            "kind": "filing_splits_response",
+            "schema_version": "0.1",
+            "instrument_id": instrument_id,
+            "status": "not_checked" if ticker else "unavailable",
+            "filings_from": None,
+            "as_of": None,
+            "rows": [],
+            "compared_with": None,
+            "differences": [],
+        }
+        if root is None:
+            document["status"] = "unavailable"
+        elif ticker is not None:
+            try:
+                filing = read_filing_splits(splits_path(root), ticker)
+            except FilingSplitsUnavailable as exc:
+                LOG.warning("filing splits unavailable: %s", exc)
+                document["status"] = "unavailable"
+            else:
+                document.update(
+                    status=filing.status,
+                    filings_from=filing.filings_from.isoformat() if filing.filings_from else None,
+                    as_of=filing.as_of.isoformat() if filing.as_of else None,
+                    rows=[filing_split_document(row) for row in filing.rows],
+                )
+                if filing.status == "found":
+                    actions = provider_splits(ticker, filing)
+                    if actions is not None:
+                        document["compared_with"] = "alpaca-corporate-actions"
+                        document["differences"] = [
+                            difference_document(item) for item in compare_splits(filing, actions)
+                        ]
         validate_document(document)
         return JSONResponse(content=document)
 
