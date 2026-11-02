@@ -922,6 +922,8 @@ const en = {
   "chart.premarketLine": "PM High",
   "chart.premarketNote":
     "Pre-market (04:00–09:30 ET, from minute bars, not part of the daily bars): {n} of the newest {sessions} sessions as see-through amber candles behind the daily candles; grey while not final. Days with no pre-market trade have none.",
+  "chart.premarketAdjusted":
+    "Candles before a split are scaled by that day's split ratio to match the daily candles; they differ from what traded.",
   "chart.premarketFailed": "Pre-market bars could not be loaded: {error}",
   "session.overnight": "day market",
   "chart.loading": "Loading bars…",
@@ -2564,6 +2566,8 @@ const ko: Record<MessageKey, string> = {
   "chart.premarketLine": "PM 고가",
   "chart.premarketNote":
     "프리마켓(동부 04:00–09:30, 분봉에서 계산, 일봉에는 포함하지 않음): 최근 {sessions}세션 중 {n}일을 일봉 뒤에 반투명 주황 캔들로 표시합니다. 미확정 캔들은 회색입니다. 프리마켓 거래가 없는 날은 표시하지 않습니다.",
+  "chart.premarketAdjusted":
+    "분할 전 캔들은 일봉에 맞춰 그날의 분할 비율로 환산했으며, 실제 거래된 가격과 다릅니다.",
   "chart.premarketFailed": "프리마켓 봉을 불러오지 못했습니다: {error}",
   "session.overnight": "데이마켓",
   "chart.loading": "캔들을 불러오는 중…",

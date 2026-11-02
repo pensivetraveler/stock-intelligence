@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { premarketBars, premarketRange } from "./premarket-high";
+import { premarketBars, premarketRange, splitFactors } from "./premarket-high";
 
 const fixtures = resolve(
   import.meta.dirname,
@@ -96,5 +96,60 @@ describe("pre-market bars", () => {
         final: false,
       },
     ]);
+  });
+});
+
+describe("pre-market candles over split-adjusted daily candles", () => {
+  const daily = (date: string, close: string): PriceBar => ({
+    ...fixture<PriceBar>("price-bar.json"),
+    timeframe: "1d",
+    interval_start_utc: `${date}T13:30:00Z`,
+    interval_end_utc: `${date}T20:00:00Z`,
+    close,
+  });
+  const before = seconds("2020-08-28T13:30:00Z");
+  const after = seconds("2020-08-31T13:30:00Z");
+  const factors = splitFactors(
+    [daily("2020-08-28", "124.8075"), daily("2020-08-31", "129.04")],
+    [daily("2020-08-28", "499.23"), daily("2020-08-31", "129.04")],
+  );
+  const pre = (date: string, high: string) =>
+    preBar(`${date}T08:00:00Z`, `${date}T13:30:00Z`, high);
+
+  it("takes each session's ratio from its own daily bars", () => {
+    expect(factors.get(before)).toBeCloseTo(0.25, 10);
+    expect(factors.get(after)).toBe(1);
+  });
+
+  it("treats the rounding of adjusted prices as no split", () => {
+    const rounded = splitFactors(
+      [daily("2020-08-28", "0.51")],
+      [daily("2020-08-28", "0.5123")],
+    );
+    expect(rounded.get(before)).toBe(1);
+  });
+
+  it("scales a candle before a split and leaves one after it as traded", () => {
+    const bars = premarketBars(
+      [pre("2020-08-28", "500"), pre("2020-08-31", "130")],
+      [before, after],
+      factors,
+    );
+    expect(bars[0].high).toBeCloseTo(125, 8);
+    expect(bars[0].adjusted).toBe(true);
+    expect(bars[1].high).toBe(130);
+    expect(bars[1].adjusted).toBeUndefined();
+  });
+
+  it("draws no candle for a session whose ratio is not known", () => {
+    expect(
+      premarketBars([pre("2020-08-28", "500")], [before], new Map()),
+    ).toEqual([]);
+  });
+
+  it("leaves candles as traded when the daily candles are", () => {
+    const [bar] = premarketBars([pre("2020-08-28", "500")], [before], null);
+    expect(bar.high).toBe(500);
+    expect(bar.adjusted).toBeUndefined();
   });
 });
