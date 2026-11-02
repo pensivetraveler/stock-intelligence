@@ -17,12 +17,14 @@ import httpx
 
 from services.public_sources.cache import PublicSourceCache, SourceRecord, utc_text
 from services.public_sources.http import (
+    MIN_AGE,
     TIMEOUT_SECONDS,
     RateLimiter,
     SourceConfigError,
     SourceError,
     needs_fetch,
 )
+from services.public_sources.shared_sec import SharedSecFiles
 
 TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/{name}"
@@ -106,11 +108,13 @@ class SecEdgar:
         user_agent: str | None,
         client: httpx.Client,
         limiter: RateLimiter,
+        shared: SharedSecFiles | None = None,
     ) -> None:
         self._cache = cache
         self._user_agent = (user_agent or "").strip()
         self._client = client
         self._limiter = limiter
+        self._shared = shared
         self.notes: list[str] = []
         self.requests = 0
 
@@ -120,6 +124,24 @@ class SecEdgar:
                 "sec_user_agent_missing",
                 "Set SIW_SEC_USER_AGENT (a name and a contact e-mail) before SEC requests",
             )
+        if self._shared is None:
+            return self._download(url)
+        # Refetching was decided already: a download this recent answers it (ADR 0046).
+        recent = self._shared.fresh(url, MIN_AGE)
+        if recent is not None:
+            return recent
+        try:
+            with self._shared.request_turn():
+                body = self._download(url)
+        except (OSError, TimeoutError) as exc:
+            raise SourceError(f"the shared SEC request limit is unavailable: {exc}") from exc
+        try:
+            self._shared.store(url, body)
+        except OSError as exc:
+            self.notes.append(f"The SEC response could not be shared: {type(exc).__name__}")
+        return body
+
+    def _download(self, url: str) -> bytes:
         self._limiter.wait()
         self.requests += 1
         try:
