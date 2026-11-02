@@ -184,6 +184,11 @@ def _partition(bar: dict[str, Any]) -> str:
     return f"session_date={_session_date(bar)}"
 
 
+def _bar_values(bar: dict[str, Any]) -> dict[str, Any]:
+    """A bar without the time this fetch made it available, which differs per fetch."""
+    return {name: value for name, value in bar.items() if name != "available_at_utc"}
+
+
 class StorageError(RuntimeError):
     """Base error for local market-data persistence."""
 
@@ -503,8 +508,11 @@ class LocalMarketDataStore:
         - the candidates span several revisions (no implicit choice),
         - they leave any part of the range uncovered,
         - one result has a bar for a minute another settled as having none,
-        - any bar is not final.
-        Bars that differ for the same minute are an integrity error, not a choice.
+        - any bar is not final,
+        - two results hold different values for one minute (a provider correction): the
+          fresh fetch stands alone and nothing is stitched from either side.
+        Results fetched at different times only differ in `available_at_utc`: that is the
+        same bar, and the earliest time is when this system first had it.
         """
         cutoff = _format_utc(query.as_of_utc) if query.as_of_utc is not None else None
         with self._connect() as connection:
@@ -548,8 +556,12 @@ class LocalMarketDataStore:
                         continue
                     key = cast(str, bar["interval_start_utc"])
                     existing = bars_by_start.setdefault(key, bar)
-                    if existing != bar:
-                        raise CacheIntegrityError("cached results disagree on one interval")
+                    if existing == bar:
+                        continue
+                    if _bar_values(existing) != _bar_values(bar):
+                        return None
+                    if cast(str, bar["available_at_utc"]) < cast(str, existing["available_at_utc"]):
+                        bars_by_start[key] = bar
         bars = tuple(bars_by_start[key] for key in sorted(bars_by_start))
         if not all(cast(bool, bar["is_final"]) for bar in bars):
             return None

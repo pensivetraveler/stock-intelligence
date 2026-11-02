@@ -925,6 +925,8 @@ const en = {
   "chart.premarketAdjusted":
     "Candles before a split are scaled by that day's split ratio to match the daily candles; they differ from what traded.",
   "chart.premarketFailed": "Pre-market bars could not be loaded: {error}",
+  "chart.premarketPartlyFailed":
+    "{n} sessions could not be loaded and are not shown.",
   "chart.filingSplits":
     "Splits read from filings, not cross-checked: {rows}. Prices are not changed by these.",
   "chart.filingSplitsNone":
@@ -2578,6 +2580,8 @@ const ko: Record<MessageKey, string> = {
   "chart.premarketAdjusted":
     "분할 전 캔들은 일봉에 맞춰 그날의 분할 비율로 환산했으며, 실제 거래된 가격과 다릅니다.",
   "chart.premarketFailed": "프리마켓 봉을 불러오지 못했습니다: {error}",
+  "chart.premarketPartlyFailed":
+    "{n}개 세션은 불러오지 못해 표시하지 않았습니다.",
   "chart.filingSplits":
     "공시 판독값, 미대조 병합·분할: {rows}. 이 값으로 가격을 바꾸지 않습니다.",
   "chart.filingSplitsNone": "공시 판독값, 미대조 병합·분할: 확정된 값 없음.",
