@@ -52,3 +52,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0043-meritz-open-api.md`: (accepted, 실계좌 확인 전) 메리츠증권 Open API 읽기 전용 연동 — 키별 공유 세션(MAC 주소는 키와 함께 저장, 허용 목록에 주문 경로 없음), 해외주식 체결내역 → 증권사 원장(체결 시각은 확인 전까지 한국 시간으로 보고 세션 밖은 제외), 계좌 잔고·현금·미체결, 일봉·현재가(시세 출처 선택), 실시간 시세 중계(토스와 섞지 않음)
 - `0044-paper-protective-orders.md`: (proposed) SIW Agent 보호 주문 — 모의투자에서 손절·익절·트레일링을 확정 봉 감시로 시작, 킬 스위치·한도·세션 밖 처리는 사용자 결정 필요
 - `0045-agent-on-linux.md`: (accepted) SIW Agent의 Linux 실행 — Ubuntu 24.04, systemd 사용자 서비스, 재부팅 뒤에는 로그인해야 키링이 열리고 실행기가 뜸(linger 없음), `agent-linux` CI
+- `0046-shared-data-space.md`: (proposed) 주식 희석 분석기와 공동 데이터 공간 — 저장소 밖 폴더 하나(`STOCK_SHARED_DATA`), 데이터마다 쓰는 프로그램은 하나, SEC 원문과 요청 한도 공유, 희석 결과·병합 장부는 읽기만, 시세는 SIW만 받고 쓰며 분석기는 읽기 전용(캐시 결함 결정 뒤), 아직 옮긴 것 없음
