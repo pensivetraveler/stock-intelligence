@@ -7,13 +7,13 @@
 
 The user wants SIW and `stock-dilution-analyzer` to use one data space, market data included. Both run on the same machine and today keep everything apart:
 
-| Data | SIW | Dilution analyzer |
-| --- | --- | --- |
-| SEC filings | `public_sources.sqlite3`: parsed records with `first_observed_utc` (ADR 0024). Absent from `data/` so far | `.cache/sec`: 1.1 GB of raw responses, one file per URL |
-| Splits and reverse splits | Alpaca adjustment, suspected split dates | `data/service/splits.sqlite`: read from filings, with `status` and `unresolved`, made for chart programs (its #85) |
-| Ticker identity | `symbols/`, instrument ids such as `us:nvda:xnas:2026` | `tickers` table, by CIK |
-| Dilution results | none | `data/service/results`, a versioned JSON contract |
-| Market data | `metadata.sqlite3` (43 MB), `bars/` (17 MB), `ticks/` (6.5 MB) | none |
+| Data                      | SIW                                                                                                       | Dilution analyzer                                                                                                  |
+| ------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| SEC filings               | `public_sources.sqlite3`: parsed records with `first_observed_utc` (ADR 0024). Absent from `data/` so far | `.cache/sec`: 1.1 GB of raw responses, one file per URL                                                            |
+| Splits and reverse splits | Alpaca adjustment, suspected split dates                                                                  | `data/service/splits.sqlite`: read from filings, with `status` and `unresolved`, made for chart programs (its #85) |
+| Ticker identity           | `symbols/`, instrument ids such as `us:nvda:xnas:2026`                                                    | `tickers` table, by CIK                                                                                            |
+| Dilution results          | none                                                                                                      | `data/service/results`, a versioned JSON contract                                                                  |
+| Market data               | `metadata.sqlite3` (43 MB), `bars/` (17 MB), `ticks/` (6.5 MB)                                            | none                                                                                                               |
 
 Three facts limit how this can be shared:
 
