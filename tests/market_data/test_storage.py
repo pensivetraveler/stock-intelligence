@@ -659,6 +659,45 @@ def _range(start_minute: int, end_minute: int) -> BarsQuery:
     )
 
 
+def _changed(result: BarsResult, **changes: Any) -> BarsResult:
+    """Another fetch of these minutes: the same result, but for `changes`."""
+    return BarsResult(tuple({**bar, **changes} for bar in result.bars), result.coverage)
+
+
+def test_only_a_later_fetch_time_is_the_same_bar(tmp_path: Path, synthetic_document: Any) -> None:
+    provider = fake_provider(synthetic_document(60))
+    first = provider.get_bars(_range(0, 30))
+    second = provider.get_bars(_range(15, 45))
+    with store(tmp_path) as market_store:
+        market_store.write_result(first)
+        market_store.write_result(_changed(second, available_at_utc="2026-10-10T00:00:00Z"))
+        composed = market_store.read_composed(_range(10, 40), provider.source_id)
+    assert composed is not None
+    assert len(composed.bars) == 30
+    earliest = {bar["interval_start_utc"]: bar["available_at_utc"] for bar in first.bars}
+    for bar in composed.bars:
+        if bar["interval_start_utc"] in earliest:
+            assert bar["available_at_utc"] == earliest[bar["interval_start_utc"]]
+    assert composed.bars[-1]["available_at_utc"] == "2026-10-10T00:00:00Z"
+
+
+def test_different_values_for_one_minute_ask_for_a_fresh_fetch(
+    tmp_path: Path, synthetic_document: Any
+) -> None:
+    upstream = _CountingUpstream(synthetic_document(60))
+    second = upstream.provider.get_bars(_range(15, 45))
+    with store(tmp_path) as market_store:
+        market_store.write_result(upstream.provider.get_bars(_range(0, 30)))
+        market_store.write_result(_changed(second, volume="1"))
+        assert market_store.read_composed(_range(10, 40), upstream.source_id) is None
+
+        cached = CachedMarketDataProvider(upstream, market_store)
+        served = cached.get_bars(_range(10, 40))
+
+    assert upstream.calls == [_range(10, 40)]
+    assert len(served.bars) == 30
+
+
 def test_overlapping_range_is_composed_from_cached_chunks(
     tmp_path: Path, synthetic_document: Any
 ) -> None:

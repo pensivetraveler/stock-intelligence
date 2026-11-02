@@ -918,6 +918,62 @@ describe("chart workspace", () => {
     );
   });
 
+  it("keeps the other pre-market candles when one session fails", async () => {
+    const api = fakeApi();
+    const served = api.bars;
+    const session = (date: string): SessionWindow => ({
+      ...fixture<SessionWindow>("session-window-early-close.json"),
+      session_date: date,
+      is_early_close: false,
+      pre_open_utc: `${date}T08:00:00Z`,
+      regular_open_utc: `${date}T13:30:00Z`,
+      regular_close_utc: `${date}T20:00:00Z`,
+      post_close_utc: `${date}T23:59:00Z`,
+    });
+    api.sessions = () =>
+      Promise.resolve([session("2026-10-07"), session("2026-10-08")]);
+    api.bars = (request) => {
+      if (request.timeframe !== "960m") return served(request);
+      if (request.startUtc.startsWith("2026-10-07")) {
+        return Promise.reject(new Error("cache trouble"));
+      }
+      return served(request).then((response) => ({
+        ...response,
+        bars: [
+          {
+            ...response.bars[0],
+            timeframe: "960m",
+            session: "pre" as const,
+            interval_start_utc: request.startUtc,
+            interval_end_utc: request.endUtc,
+            high: "104",
+            is_final: true,
+          },
+        ],
+      }));
+    };
+    const storage = memoryStorage();
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        ...DEFAULT_WORKSPACE,
+        charts: [
+          {
+            ...DEFAULT_WORKSPACE.charts[0],
+            timeframe: "1d",
+            premarketHigh: true,
+          },
+          DEFAULT_WORKSPACE.charts[1],
+        ],
+      }),
+    );
+    render(<Workspace api={api} storage={storage} />);
+    expect(
+      await screen.findByText(/1 sessions could not be loaded/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("scales pre-market candles to split-adjusted daily candles", async () => {
     const api = fakeApi();
     const served = api.bars;
