@@ -243,6 +243,49 @@ def test_ambiguous_unknown_order_turns_the_kill_switch_on(tmp_path: Path) -> Non
     assert status["halted"] and status["halted_reason"] == "ambiguous unknown paper order"
 
 
+def test_an_order_at_another_price_is_not_the_lost_one(tmp_path: Path) -> None:
+    fake = FakeKiwoomPaper(drop_next_order=True)
+    runner, fake, feed, store = _setup(tmp_path, fake=fake)
+    feed.bars = _bars(99, 101)
+    runner.step(_end(feed))
+    # The user's own order, alike in all but its price.
+    fake.orders[0] = replace(fake.orders[0], price="50")
+    runner.step(_end(feed, 10))
+    assert [s["response_code"] for s in store.submissions("rejected")] == ["not_found_on_reconcile"]
+    assert not store.status()["halted"]
+
+
+def test_the_right_price_at_the_wrong_time_turns_the_kill_switch_on(tmp_path: Path) -> None:
+    fake = FakeKiwoomPaper(drop_next_order=True, order_time="20:00:00")
+    runner, fake, feed, store = _setup(tmp_path, fake=fake)
+    feed.bars = _bars(99, 101)
+    runner.step(_end(feed))
+    runner.step(_end(feed, 10))
+    status = store.status()
+    assert status["halted"] and status["halted_reason"] == "ambiguous unknown paper order"
+    assert store.unknown_submission_count() == 1
+
+
+def test_only_the_order_near_the_request_is_the_lost_one(tmp_path: Path) -> None:
+    fake = FakeKiwoomPaper(drop_next_order=True)
+    runner, fake, feed, store = _setup(tmp_path, fake=fake)
+    feed.bars = _bars(99, 101)
+    runner.step(_end(feed))
+    fake.orders.append(replace(fake.orders[0], ord_no="000000077", ord_time="20:00:00"))
+    runner.step(_end(feed, 10))
+    assert [s["broker_order_ref"] for s in store.submissions("accepted")] == ["000000001"]
+    assert not store.status()["halted"]
+
+
+def test_an_unreadable_order_time_does_not_rule_an_order_out(tmp_path: Path) -> None:
+    fake = FakeKiwoomPaper(drop_next_order=True, order_time="")
+    runner, fake, feed, store = _setup(tmp_path, fake=fake)
+    feed.bars = _bars(99, 101)
+    runner.step(_end(feed))
+    runner.step(_end(feed, 10))
+    assert [s["broker_order_ref"] for s in store.submissions("accepted")] == ["000000001"]
+
+
 def test_percent_of_equity_needs_an_approved_equity(tmp_path: Path) -> None:
     definition = {**DEFINITION, "sizing": {"mode": "percent_equity", "value": 10}}
     runner, fake, feed, _ = _setup(tmp_path, definition=definition)

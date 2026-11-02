@@ -45,6 +45,11 @@ from services.paper_trading.signals import rule_signals
 from services.paper_trading.store import PaperOrderStore, PaperStoreError, _utc
 
 SizingMethod = Literal["shares", "cash", "percent_equity"]
+# An unknown order placed this long before or after its request can still be it: clocks
+# differ, and a slow reply may be slow to reach the server too.
+RECONCILE_BEFORE_SECONDS = 60
+RECONCILE_AFTER_SECONDS = 300
+SECONDS_PER_DAY = 86400
 HUNDRED = Decimal(100)
 CENT = Decimal("0.01")
 MAX_CANCEL_ATTEMPTS = 3
@@ -720,13 +725,27 @@ class PaperRunner:
     def _broker_day(self, moment: datetime) -> Any:
         return moment.astimezone(ZoneInfo(self.broker.time_zone)).date()
 
+    def _placed_near(self, order: BrokerOrder, requested: datetime) -> bool:
+        """The order's time fits a request sent at `requested`; true when it cannot be read."""
+        try:
+            placed = datetime.strptime(order.ordered_at_local or "", "%H:%M:%S")
+        except ValueError:
+            return True
+        sent = requested.astimezone(ZoneInfo(self.broker.time_zone))
+        seconds = placed.hour * 3600 + placed.minute * 60 + placed.second
+        sent_seconds = sent.hour * 3600 + sent.minute * 60 + sent.second
+        # Across midnight the times of day wrap around.
+        apart = (seconds - sent_seconds + SECONDS_PER_DAY // 2) % SECONDS_PER_DAY
+        return -RECONCILE_BEFORE_SECONDS <= apart - SECONDS_PER_DAY // 2 <= RECONCILE_AFTER_SECONDS
+
     def _reconcile(self, now: datetime, orders: list[BrokerOrder]) -> int:
         """Settle pending or unknown submissions from today's order list, or halt.
 
         A submission matches an order nobody else claimed with the same symbol, side,
-        quantity and order type. None found: the order was never placed. More than one,
-        or a submission from an earlier broker day (today's list cannot show it): the
-        kill switch goes on and the user decides.
+        quantity, order type and price, placed around the time it was sent. None with that
+        price: the order was never placed. More than one, the right price at the wrong time,
+        or a submission from an earlier broker day (today's list cannot show it): the kill
+        switch goes on and the user decides.
         """
         claimed = self.store.known_order_refs()
         settled = 0
@@ -740,7 +759,8 @@ class PaperRunner:
                 self.store.halt("unknown paper order from an earlier day", source="runner")
                 continue
             code = self.broker.order_type_code(intent["order"]["order_type"])
-            matches = [
+            price = self.broker.order_price(intent)
+            same_price = [
                 order
                 for order in orders
                 if order.broker_order_ref not in claimed
@@ -749,8 +769,10 @@ class PaperRunner:
                 and order.side == intent["side"]
                 and order.order_quantity == Decimal(intent["order"]["quantity"])
                 and order.order_type_code == code
+                and (order.order_price is None or order.order_price == price)
             ]
-            if len(matches) > 1:
+            matches = [order for order in same_price if self._placed_near(order, requested)]
+            if len(matches) > 1 or (same_price and not matches):
                 self.store.halt("ambiguous unknown paper order", source="runner")
                 continue
             base = {**submission, "responded_at_utc": _utc(now)}

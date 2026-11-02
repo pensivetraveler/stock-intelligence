@@ -115,6 +115,9 @@ class KiwoomPaperBroker:
             raise OrderNotSupportedError(f"order type {order_type} is not offered")
         return ORDER_TYPE_CODES[order_type]
 
+    def order_price(self, intent: dict[str, Any]) -> Decimal:
+        return self._limit_price(intent)
+
     # -- transport -------------------------------------------------------------------
 
     def _issue_token(self) -> tuple[str, float]:
@@ -306,6 +309,7 @@ class KiwoomPaperBroker:
                 continue
             filled = _decimal(row.get("cntr_qty"))
             original = str(row.get("orig_ord_no") or "").strip()
+            price = _decimal(row.get("ord_uv"))
             orders.append(
                 BrokerOrder(
                     broker_order_ref=reference,
@@ -320,6 +324,7 @@ class KiwoomPaperBroker:
                     ordered_at_local=str(row.get("ord_time") or "") or None,
                     filled_at_local=str(row.get("cntr_time") or "") or None,
                     original_order_ref=original if original.strip("0") else None,
+                    order_price=price if price > 0 else None,
                 )
             )
         return orders
