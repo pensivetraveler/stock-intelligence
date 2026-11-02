@@ -17,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
+from fractions import Fraction
 from typing import Any, Literal, cast
 
 import httpx
@@ -32,6 +33,7 @@ from services.market_data.daily import (
     sessions_in_range,
     validate_daily_query,
 )
+from services.market_data.filing_splits import ProviderSplit
 from services.market_data.overnight import OVERNIGHT_POLICY_VERSION, overnight_window
 from services.market_data.provider import (
     BarsQuery,
@@ -282,6 +284,41 @@ class AlpacaMarketDataProvider:
             name = " ".join(str(item.get("name") or "").split())[:200]
             assets.append({"symbol": symbol, "name": name, "venue": venue})
         return assets
+
+    def split_actions(self, symbol: str, since: date, until: date) -> list[ProviderSplit]:
+        """Splits and reverse splits of one ticker, for comparing with filings (ADR 0046)."""
+        params: dict[str, str | int] = {
+            "symbols": symbol,
+            "types": "forward_split,reverse_split,unit_split",
+            "start": since.isoformat(),
+            "end": until.isoformat(),
+            "limit": 1000,
+            "sort": "asc",
+        }
+        found: list[ProviderSplit] = []
+        for _page in range(HISTORY_PAGES):
+            try:
+                response = self._client.get(CORPORATE_ACTIONS_PATH, params=params)
+            except httpx.HTTPError as exc:
+                raise ProviderUnavailableError(
+                    f"could not reach Alpaca: {type(exc).__name__}"
+                ) from exc
+            self._raise_for_status(response)
+            payload = response.json()
+            for items in (payload.get("corporate_actions") or {}).values():
+                for item in items or []:
+                    when, new, old = item.get("ex_date"), item.get("new_rate"), item.get("old_rate")
+                    if when and new and old:
+                        found.append(
+                            ProviderSplit(
+                                date.fromisoformat(when), Fraction(str(new)) / Fraction(str(old))
+                            )
+                        )
+            token = payload.get("next_page_token")
+            if not token:
+                return sorted(found, key=lambda action: action.on)
+            params["page_token"] = token
+        raise ProviderDataError("Alpaca corporate actions did not finish paging")
 
     def symbol_history(self, since: date = HISTORY_SINCE) -> dict[str, Any]:
         """Ticker changes and delistings for `SymbolHistory` (ADR 0033): name changes and

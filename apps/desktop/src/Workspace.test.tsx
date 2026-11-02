@@ -360,6 +360,18 @@ function fakeApi(
       );
     },
     // An Alpaca key answers with an empty night unless a test sets bars.
+    filingSplits: () =>
+      Promise.resolve({
+        kind: "filing_splits_response",
+        schema_version: "0.1",
+        instrument_id: "us:test:xnas:2026",
+        status: "unavailable",
+        filings_from: null,
+        as_of: null,
+        rows: [],
+        compared_with: null,
+        differences: [],
+      }),
     overnightBars: () => {
       const response = fixture<MarketBarsResponse>(
         "market-bars-response-aggregated.json",
@@ -842,6 +854,68 @@ describe("chart workspace", () => {
     // Intraday charts have no such switch.
     pickTimeframe("5m");
     expect(screen.queryByRole("button", { name: "Pre-market" })).toBeNull();
+  });
+
+  it("labels filing split readings under a daily chart, and hides them in a replay", async () => {
+    const api = fakeApi();
+    const asked = vi.fn();
+    api.filingSplits = (instrumentId) => {
+      asked(instrumentId);
+      return Promise.resolve({
+        kind: "filing_splits_response",
+        schema_version: "0.1",
+        instrument_id: instrumentId,
+        status: "found",
+        filings_from: "2021-11-02",
+        as_of: "2026-11-01",
+        rows: [
+          {
+            effective: "2025-05-19",
+            numerator: 1,
+            denominator: 15,
+            status: "confirmed",
+          },
+          {
+            effective: "2025-01-24",
+            numerator: 1,
+            denominator: 100,
+            status: "conflict",
+          },
+        ],
+        compared_with: "alpaca-corporate-actions",
+        differences: [
+          {
+            kind: "filing_unconfirmed",
+            filing: null,
+            provider: { on: "2025-01-27", numerator: 1, denominator: 100 },
+          },
+        ],
+      });
+    };
+    const storage = memoryStorage();
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        ...DEFAULT_WORKSPACE,
+        charts: [
+          { ...DEFAULT_WORKSPACE.charts[0], timeframe: "1d" },
+          DEFAULT_WORKSPACE.charts[1],
+        ],
+      }),
+    );
+    render(<Workspace api={api} storage={storage} />);
+    const note = await screen.findByText(/Splits read from filings/);
+    expect(note).toHaveTextContent("not cross-checked: 2025-05-19 1:15.");
+    expect(note).toHaveTextContent("Unresolved readings: 1.");
+    expect(note).toHaveTextContent("does not say which is wrong");
+
+    fireEvent.click(screen.getByRole("button", { name: /Replay/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "click first candle of chart-1" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText(/Splits read from filings/)).toBeNull(),
+    );
   });
 
   it("scales pre-market candles to split-adjusted daily candles", async () => {

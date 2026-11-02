@@ -925,6 +925,15 @@ const en = {
   "chart.premarketAdjusted":
     "Candles before a split are scaled by that day's split ratio to match the daily candles; they differ from what traded.",
   "chart.premarketFailed": "Pre-market bars could not be loaded: {error}",
+  "chart.filingSplits":
+    "Splits read from filings, not cross-checked: {rows}. Prices are not changed by these.",
+  "chart.filingSplitsNone":
+    "Splits read from filings, not cross-checked: none confirmed.",
+  "chart.filingSplitsUnresolved": "Unresolved readings: {n}.",
+  "chart.filingSplitsDiffer":
+    "Differs from Alpaca on {n}; this does not say which is wrong.",
+  "chart.filingSplitsSame": "Same as Alpaca.",
+  "chart.filingSplitsNotCompared": "Not compared with Alpaca.",
   "session.overnight": "day market",
   "chart.loading": "Loading bars…",
   "chart.older": "◀ Older bars",
@@ -2569,6 +2578,14 @@ const ko: Record<MessageKey, string> = {
   "chart.premarketAdjusted":
     "분할 전 캔들은 일봉에 맞춰 그날의 분할 비율로 환산했으며, 실제 거래된 가격과 다릅니다.",
   "chart.premarketFailed": "프리마켓 봉을 불러오지 못했습니다: {error}",
+  "chart.filingSplits":
+    "공시 판독값, 미대조 병합·분할: {rows}. 이 값으로 가격을 바꾸지 않습니다.",
+  "chart.filingSplitsNone": "공시 판독값, 미대조 병합·분할: 확정된 값 없음.",
+  "chart.filingSplitsUnresolved": "미해결 판독값 {n}건.",
+  "chart.filingSplitsDiffer":
+    "Alpaca와 {n}건 다르며, 어느 쪽이 틀렸다는 뜻은 아닙니다.",
+  "chart.filingSplitsSame": "Alpaca와 같습니다.",
+  "chart.filingSplitsNotCompared": "Alpaca와 비교하지 못했습니다.",
   "session.overnight": "데이마켓",
   "chart.loading": "캔들을 불러오는 중…",
   "chart.older": "◀ 이전 봉",

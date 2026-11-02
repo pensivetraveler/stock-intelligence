@@ -26,6 +26,7 @@ export type StockIntelligenceWorkstationContractsV01 =
   | CredentialListResponse
   | SessionListResponse
   | SymbolSearchResponse
+  | FilingSplitsResponse
   | MarketQuote
   | StockInfo
   | ExchangeRate
@@ -743,6 +744,53 @@ export interface SymbolSearchResponse {
      */
     moved_to?: null | string;
   }[];
+}
+/**
+ * Splits the dilution analyzer read from SEC filings by rules, not compared with another source, next to the provider's splits (ADR 0046). Evidence only: no price depends on it, and a difference does not say which side is wrong.
+ */
+export interface FilingSplitsResponse {
+  kind: "filing_splits_response";
+  schema_version: SchemaVersion;
+  instrument_id: string;
+  /**
+   * not_checked: the analyzer never read this issuer. none_found: its filings named none, which is no guarantee. Before filings_from nothing was read.
+   */
+  status: "unavailable" | "not_checked" | "none_found" | "found";
+  filings_from: string | null;
+  as_of: string | null;
+  /**
+   * @maxItems 200
+   */
+  rows: FilingSplitRow[];
+  /**
+   * Null when the provider's splits could not be read.
+   */
+  compared_with: string | null;
+  /**
+   * @maxItems 200
+   */
+  differences: {
+    kind:
+      "ratio_differs" | "filing_only" | "provider_only" | "filing_unconfirmed";
+    filing: FilingSplitRow | null;
+    provider: {
+      on: string;
+      numerator: number;
+      denominator: number;
+    } | null;
+  }[];
+}
+export interface FilingSplitRow {
+  effective: string;
+  /**
+   * New shares.
+   */
+  numerator: number;
+  /**
+   * Old shares.
+   */
+  denominator: number;
+  status: "confirmed" | "scheduled" | "conflict";
 }
 /**
  * A point-in-time quote read on demand from a broker: last price, order book, recent trades and daily price limits. Not stored; prices are exact decimal strings and times UTC.

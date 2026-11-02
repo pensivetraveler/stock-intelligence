@@ -20,6 +20,7 @@ import type {
   SessionListResponse,
   SessionWindow,
   StockInfo,
+  FilingSplitsResponse,
   SymbolSearchResponse,
   ReconciliationRecord,
   TradeReconciliationResponse,
@@ -90,6 +91,8 @@ export interface MarketApi {
   liveQuote(instrumentId: string, source?: LiveSource): Promise<MarketQuote>;
   /** US-listed stocks whose ticker or company name matches `query`, tickers first. */
   searchSymbols(query: string, limit?: number): Promise<SymbolSearchResponse>;
+  /** Splits read from filings by the dilution analyzer (ADR 0046). */
+  filingSplits(instrumentId: string): Promise<FilingSplitsResponse>;
   quote(
     instrumentId: string,
     sessionDate: string,
@@ -460,6 +463,13 @@ export function createMarketApi(
       return get<SymbolSearchResponse>(
         `/v1/market/symbols?${params.toString()}`,
         "symbol_search_response",
+      );
+    },
+    filingSplits(instrumentId) {
+      const params = new URLSearchParams({ instrument_id: instrumentId });
+      return get<FilingSplitsResponse>(
+        `/v1/market/filing-splits?${params.toString()}`,
+        "filing_splits_response",
       );
     },
     session,
