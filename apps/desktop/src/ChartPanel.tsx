@@ -94,6 +94,7 @@ import {
   PREMARKET_TIMEFRAME,
   premarketBars,
   premarketRange,
+  splitFactors,
 } from "./premarket-high";
 import { PriceChart } from "./PriceChart";
 import { TradeEntry } from "./TradeEntry";
@@ -688,6 +689,10 @@ export function ChartPanel({
   // as-of answer arrives, only the bars it says were available by then.
   const priceAdjustment =
     load.status === "ready" ? load.response.coverage.adjustment : undefined;
+  const shownAdjustment =
+    replayTime !== null && asOf
+      ? asOf.response.coverage.adjustment
+      : priceAdjustment;
   const bars = useMemo(() => {
     if (replayTime === null) return allBars;
     // Bars adjusted before replay began must not join the as-traded as-of bars.
@@ -755,6 +760,8 @@ export function ChartPanel({
     instrumentId.startsWith("us:");
   const [premarket, setPremarket] = useState<{
     bars: PriceBar[];
+    /** The same days as traded, to scale these over adjusted daily candles. */
+    asTraded: PriceBar[];
     error: unknown;
   } | null>(null);
   // Started only once the daily bars have arrived, so the chart's own request
@@ -777,6 +784,19 @@ export function ChartPanel({
           const range = premarketRange(window);
           return range ? [range] : [];
         });
+        // First, so no candle is ever drawn at a price the daily candles left behind.
+        const asTraded =
+          priceAdjustment === "split_adjusted" && windows.length > 0
+            ? (
+                await api.bars({
+                  instrumentId,
+                  timeframe: "1d",
+                  startUtc: `${windows[0].session_date}T00:00:00Z`,
+                  endUtc: `${shiftDays(sessionDate, 1)}T00:00:00Z`,
+                })
+              ).bars
+            : [];
+        if (!current) return;
         const loaded: PriceBar[] = [];
         // A few sessions at a time, newest first, so today's line comes first.
         for (let k = ranges.length; k > 0; k -= HISTORY_REQUESTS) {
@@ -792,13 +812,13 @@ export function ChartPanel({
           );
           if (!current) return;
           loaded.push(...responses.flatMap((response) => response.bars));
-          setPremarket({ bars: [...loaded], error: null });
+          setPremarket({ bars: [...loaded], asTraded, error: null });
         }
         if (current && loaded.length === 0) {
-          setPremarket({ bars: [], error: null });
+          setPremarket({ bars: [], asTraded, error: null });
         }
       } catch (error) {
-        if (current) setPremarket({ bars: [], error });
+        if (current) setPremarket({ bars: [], asTraded: [], error });
       }
     })();
     return () => {
@@ -812,6 +832,7 @@ export function ChartPanel({
     unavailable,
     instrumentsReady,
     mainReady,
+    priceAdjustment,
   ]);
   const premarketShown = useMemo(() => {
     if (!premarket || !series) return [];
@@ -823,8 +844,12 @@ export function ChartPanel({
     return premarketBars(
       shown,
       series.candles.map((point) => point.time),
+      // Replay's as-of daily bars are as traded, like the pre-market's own.
+      shownAdjustment === "split_adjusted"
+        ? splitFactors(allBars ?? [], premarket.asTraded)
+        : null,
     );
-  }, [premarket, series, replayTime]);
+  }, [premarket, series, replayTime, shownAdjustment, allBars]);
   const dayMarketCandles = useMemo(() => {
     if (!dayMarket) return [];
     const shown =
@@ -896,10 +921,6 @@ export function ChartPanel({
     ];
   }, [bars, warmup]);
   const warmupCount = ohlcv.length - (bars?.length ?? 0);
-  const shownAdjustment =
-    replayTime !== null && asOf
-      ? asOf.response.coverage.adjustment
-      : priceAdjustment;
   useEffect(
     () => onBars?.(ohlcv, shownAdjustment),
     [ohlcv, onBars, shownAdjustment],
@@ -1913,10 +1934,15 @@ export function ChartPanel({
             ? t("chart.premarketFailed", {
                 error: describeError(t, premarket.error),
               })
-            : t("chart.premarketNote", {
-                n: premarketShown.length,
-                sessions: PREMARKET_SESSIONS,
-              })}
+            : [
+                t("chart.premarketNote", {
+                  n: premarketShown.length,
+                  sessions: PREMARKET_SESSIONS,
+                }),
+                ...(premarketShown.some((bar) => bar.adjusted)
+                  ? [t("chart.premarketAdjusted")]
+                  : []),
+              ].join(" ")}
         </p>
       ) : null}
       {dayMarketWanted && dayMarket ? (

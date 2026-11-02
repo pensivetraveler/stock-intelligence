@@ -37,6 +37,17 @@ The user asked for a way to show the pre-market high on daily charts, then chose
 - The pre-market high becomes final at the regular open, which is the start of the daily bar it is drawn on. It never shows on an earlier bar.
 - In replay, a pre-market candle appears only once its bar has closed by the replay time. While a session's pre-market is still running in replay, that day has none.
 
+### Split-adjusted daily candles (2026-11-02)
+
+Since daily charts became split-adjusted (ADR 0021, 2026-11-01), a pre-market candle before a split sat at its traded price, far from its daily candle (NVDA 2024-06-07: 1,219 against a daily high of 121.69). No source here adjusts minute bars.
+
+- **Scaling:** while the daily candles shown are split-adjusted, each pre-market candle is multiplied by its own session's ratio: the adjusted daily close over the traded daily close. The traded daily bars come from one more request, made before the pre-market requests.
+- **Rounding:** adjusted prices come rounded to cents, so a gap under one cent counts as no split and the candle stays exactly as traded.
+- **Unknown ratio:** a session without both daily bars gets no candle. An unscaled one would sit at the wrong price.
+- **Note:** when a shown candle was scaled, the note under the chart says it differs from what traded.
+- **Replay:** the as-of daily bars are as traded, so the pre-market candles are too. The ratio uses later actions and is not applied there.
+- **Not a data change:** scaled values exist only on the screen. The bars, cache and backtests are unchanged.
+
 ## Alternatives considered
 
 - **A backend endpoint for per-session statistics (pre-market high, low, volume):** reusable by backtests and Agents, with "no trades" and "no data" told apart in one place. More work (schema, contract tests, docs). It is the next step if those uses appear.
@@ -44,6 +55,8 @@ The user asked for a way to show the pre-market high on daily charts, then chose
 - **For ranges inside the daily body (2026-10-29): a hollow amber outline drawn over the daily candle**, offered to the user, who chose see-through daily bodies instead.
 - **Pre-market candle beside the daily candle (left half of the slot), or a dotted wick from the day's high to the pre-market high:** offered to the user, who chose the overlapping candle.
 - **A short level at the pre-market high only:** the first version. Replaced at the user's request.
+- **Hiding pre-market candles before a split (2026-11-02):** needs the same traded daily bars to find the split, and leaves the user without the candle. Rejected.
+- **Adjusted minute bars from the backend (2026-11-02):** no source here offers them, and it would mean a backend endpoint for a screen-only need. Rejected for now.
 - **Putting the pre-market into the daily bar's OHLC:** rejected. Daily bars would no longer mean the regular session, and two sessions would share one bar without saying so.
 
 ## Remaining risks
@@ -52,10 +65,13 @@ The user asked for a way to show the pre-market high on daily charts, then chose
 - **Shown range:** only the newest 60 sessions get values. Older daily bars, including those loaded with "older bars", have none.
 - **Providers:** a provider that serves no pre-market minute bars gives no candles. The note then shows 0 sessions.
 - **Hidden parts (fixed 2026-10-29):** a pre-market range inside the daily body used to be covered by it. Daily bodies are now see-through while the pre-market is on; the day reads paler than with it off.
+- **Low-priced stocks (2026-11-02):** the ratio comes from closes rounded to cents, so it is less exact for very cheap stocks. A scaled candle can be off by about the rounding as a share of the price.
+- **One failed session hides all candles:** any failed pre-market request replaces the candles with an error. See the cached minute bars problem in `docs/PROJECT_STATE.md`.
 - **Checked live (2026-10-26):** AAPL daily on Alpaca SIP: 59 of 60 sessions loaded; 2026-10-23's pre-market O 345.68 H 349.71 L 344.50 C 349.03 matched a direct API request.
 
 ## Revisit when
 
 - Backtests, strategies or Agents need the pre-market high: move it to a backend endpoint with its own contract.
+- A source offers adjusted minute bars: use them instead of the ratio.
 - Pre-market highs are wanted for more than 60 sessions or on weekly charts.
 - The day market should count as part of the pre-market.

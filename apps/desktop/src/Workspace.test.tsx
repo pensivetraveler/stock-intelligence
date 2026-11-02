@@ -844,6 +844,86 @@ describe("chart workspace", () => {
     expect(screen.queryByRole("button", { name: "Pre-market" })).toBeNull();
   });
 
+  it("scales pre-market candles to split-adjusted daily candles", async () => {
+    const api = fakeApi();
+    const served = api.bars;
+    const date = "2026-10-08";
+    api.sessions = () =>
+      Promise.resolve([
+        {
+          ...fixture<SessionWindow>("session-window-early-close.json"),
+          session_date: date,
+          is_early_close: false,
+          pre_open_utc: `${date}T08:00:00Z`,
+          regular_open_utc: `${date}T13:30:00Z`,
+          regular_close_utc: `${date}T20:00:00Z`,
+          post_close_utc: `${date}T23:59:00Z`,
+        },
+      ]);
+    api.bars = (request) =>
+      served(request).then((response) => {
+        const template = response.bars[0];
+        if (request.timeframe === "1d") {
+          const adjusted = request.adjustment === "split_adjusted";
+          return {
+            ...response,
+            coverage: {
+              ...response.coverage,
+              adjustment: adjusted ? "split_adjusted" : "raw",
+            },
+            bars: [
+              {
+                ...template,
+                timeframe: "1d",
+                interval_start_utc: `${date}T13:30:00Z`,
+                interval_end_utc: `${date}T20:00:00Z`,
+                available_at_utc: `${date}T20:15:00Z`,
+                close: adjusted ? "25" : "100",
+                is_final: true,
+              },
+            ],
+          };
+        }
+        if (request.timeframe !== "960m") return response;
+        return {
+          ...response,
+          bars: [
+            {
+              ...template,
+              timeframe: "960m",
+              session: "pre" as const,
+              interval_start_utc: request.startUtc,
+              interval_end_utc: request.endUtc,
+              high: "104",
+              is_final: true,
+            },
+          ],
+        };
+      });
+    const storage = memoryStorage();
+    storage.setItem(
+      WORKSPACE_STORAGE_KEY,
+      JSON.stringify({
+        ...DEFAULT_WORKSPACE,
+        charts: [
+          {
+            ...DEFAULT_WORKSPACE.charts[0],
+            timeframe: "1d",
+            premarketHigh: true,
+          },
+          DEFAULT_WORKSPACE.charts[1],
+        ],
+      }),
+    );
+    render(<Workspace api={api} storage={storage} />);
+    const chart = await screen.findByTestId("chart-chart-1");
+    await waitFor(() => expect(chart).toHaveTextContent("PM 26"));
+    const region = screen.getByRole("region", { name: /Chart 1/ });
+    expect(
+      within(region).getByText(/scaled by that day's split ratio/),
+    ).toBeInTheDocument();
+  });
+
   it("says a chart request timed out in the user's words", async () => {
     const api = fakeApi();
     api.bars = () =>
