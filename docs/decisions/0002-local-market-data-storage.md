@@ -24,6 +24,15 @@ Phase 1B needs local, restart-safe storage for canonical 1-minute bars, Coverage
 - Gap detection currently follows explicit 1-minute request boundaries and stored manifest gaps. Exchange holidays, DST, half-days and session-aware expected intervals remain Phase 1C work.
 - Revision pins currently guard eviction eligibility; automated retention and garbage collection are not implemented.
 
+## Cached results that disagree (2026-11-03)
+
+Composing cached 1-minute results used to raise an integrity error for any difference, and a real AAPL request failed every time (`stock-intelligence-40`). Two different things were behind it:
+
+- **`available_at_utc` differs per fetch.** Every value is the same, so this is one bar. Composition keeps the earliest time, when this system first had it.
+- **A value differs (AAPL 2026-10-19, volume 60998 and 60996 in two minutes).** The provider corrected a bar. Neither side is chosen and nothing is stitched: composition declines and the range is fetched whole, as it already does when results disagree about a minute having trades. Such a range is fetched again on each new overlapping request, which costs requests but never mixes versions.
+
+The user asked to proceed without naming a rule, so this is the most cautious reading of the rule against stitching bars silently.
+
 ## Reconsider when
 
 - one local writer no longer suffices;

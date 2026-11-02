@@ -812,6 +812,8 @@ export function ChartPanel({
     bars: PriceBar[];
     /** The same days as traded, to scale these over adjusted daily candles. */
     asTraded: PriceBar[];
+    /** Sessions whose request failed, while others could be shown. */
+    failed: number;
     error: unknown;
   } | null>(null);
   // Started only once the daily bars have arrived, so the chart's own request
@@ -848,10 +850,12 @@ export function ChartPanel({
             : [];
         if (!current) return;
         const loaded: PriceBar[] = [];
+        let failed = 0;
+        let firstError: unknown = null;
         // A few sessions at a time, newest first, so today's line comes first.
         for (let k = ranges.length; k > 0; k -= HISTORY_REQUESTS) {
           const batch = ranges.slice(Math.max(0, k - HISTORY_REQUESTS), k);
-          const responses = await Promise.all(
+          const responses = await Promise.allSettled(
             batch.map((range) =>
               api.bars({
                 instrumentId,
@@ -861,14 +865,25 @@ export function ChartPanel({
             ),
           );
           if (!current) return;
-          loaded.push(...responses.flatMap((response) => response.bars));
-          setPremarket({ bars: [...loaded], asTraded, error: null });
+          for (const response of responses) {
+            if (response.status === "fulfilled") {
+              loaded.push(...response.value.bars);
+            } else {
+              failed += 1;
+              firstError ??= response.reason;
+            }
+          }
+          if (loaded.length > 0) {
+            setPremarket({ bars: [...loaded], asTraded, failed, error: null });
+          }
         }
+        // One session's failure leaves the rest; with nothing to show it is the answer.
+        if (loaded.length === 0 && failed > 0) throw firstError;
         if (current && loaded.length === 0) {
-          setPremarket({ bars: [], asTraded, error: null });
+          setPremarket({ bars: [], asTraded, failed, error: null });
         }
       } catch (error) {
-        if (current) setPremarket({ bars: [], asTraded: [], error });
+        if (current) setPremarket({ bars: [], asTraded: [], failed: 0, error });
       }
     })();
     return () => {
@@ -1991,6 +2006,9 @@ export function ChartPanel({
                 }),
                 ...(premarketShown.some((bar) => bar.adjusted)
                   ? [t("chart.premarketAdjusted")]
+                  : []),
+                ...(premarket.failed > 0
+                  ? [t("chart.premarketPartlyFailed", { n: premarket.failed })]
                   : []),
               ].join(" ")}
         </p>
