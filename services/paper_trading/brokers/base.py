@@ -51,6 +51,7 @@ class BrokerOrder:
     # Set on a cancel or modify order: the order it acts on. Such a row is never matched
     # to a submission of its own (seen live 2026-10-23: a cancel gets a new order number).
     original_order_ref: str | None = None
+    order_price: Decimal | None = None  # the price the order was sent with, when reported
 
 
 class PaperBroker(Protocol):
@@ -61,6 +62,8 @@ class PaperBroker(Protocol):
     def capabilities(self) -> Capabilities: ...
 
     def order_type_code(self, order_type: str) -> str: ...
+
+    def order_price(self, intent: dict[str, Any]) -> Decimal: ...
 
     def submit(self, intent: dict[str, Any]) -> SubmitResult: ...
 

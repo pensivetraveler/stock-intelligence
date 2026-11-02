@@ -36,6 +36,7 @@ class FakeKiwoomPaper:
     orders: list[FakeOrder] = field(default_factory=list)
     tokens_issued: int = 0
     # Behaviour switches for one test at a time.
+    order_time: str = "23:02:05"  # the Seoul time of 14:02:05 UTC, when tests send
     reject_orders: bool = False
     drop_next_order: bool = False  # take the order, then lose the connection
     invalidate_next_token: bool = False
@@ -90,6 +91,7 @@ class FakeKiwoomPaper:
                 trde_tp=body["trde_tp"],
                 qty=Decimal(body["ord_qty"]),
                 price=body["ord_uv"],
+                ord_time=self.order_time,
             )
             self.orders.append(order)
             if self.drop_next_order:
