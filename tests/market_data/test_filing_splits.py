@@ -159,7 +159,9 @@ def test_export_writes_the_list_and_the_contract(tmp_path: Path) -> None:
         "filing_only",
         "filing_unconfirmed",
     }
-    assert json.loads((tmp_path / "CONTRACT.json").read_text())["layout_version"] == 1
+    contract = json.loads((tmp_path / "CONTRACT.json").read_text())
+    assert contract["layout_version"] == 1
+    assert {"dilution/", "sec/", "sec.lock"} <= contract["datasets"].keys()
     assert not list(tmp_path.rglob("*.tmp"))
 
 
