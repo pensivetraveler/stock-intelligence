@@ -5,6 +5,7 @@ import {
   loadWorkspace,
   parseWorkspace,
   saveWorkspace,
+  startOnOffered,
   sessionRange,
   WORKSPACE_STORAGE_KEY,
 } from "./workspace-state";
@@ -172,5 +173,43 @@ describe("session range", () => {
         "regular",
       ),
     ).toBeNull();
+  });
+});
+
+describe("startOnOffered", () => {
+  const SPY = "us:spy:arcx:2026";
+
+  it("moves an unchanged default layout to the first offered instrument", () => {
+    const started = startOnOffered(DEFAULT_WORKSPACE, [
+      SPY,
+      "us:aapl:xnas:2026",
+    ]);
+    expect(started.charts.map((chart) => chart.instrumentId)).toEqual(
+      DEFAULT_WORKSPACE.charts.map(() => SPY),
+    );
+    expect(started.charts.map((chart) => chart.timeframe)).toEqual(
+      DEFAULT_WORKSPACE.charts.map((chart) => chart.timeframe),
+    );
+  });
+
+  it("keeps the layout when the synthetic provider offers SYNTH", () => {
+    expect(startOnOffered(DEFAULT_WORKSPACE, ["us:synth:xnas:2026", SPY])).toBe(
+      DEFAULT_WORKSPACE,
+    );
+  });
+
+  it("keeps a layout someone changed, even on SYNTH", () => {
+    const changed = {
+      ...DEFAULT_WORKSPACE,
+      charts: [
+        { ...DEFAULT_WORKSPACE.charts[0], timeframe: "1d" as const },
+        ...DEFAULT_WORKSPACE.charts.slice(1),
+      ],
+    };
+    expect(startOnOffered(changed, [SPY])).toBe(changed);
+  });
+
+  it("keeps the layout while nothing is offered", () => {
+    expect(startOnOffered(DEFAULT_WORKSPACE, [])).toBe(DEFAULT_WORKSPACE);
   });
 });

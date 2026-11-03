@@ -147,6 +147,7 @@ import {
 import {
   CHART_SLOTS,
   DEFAULT_WORKSPACE,
+  startOnOffered,
   type ChartConfig,
   type LayoutMode,
   type SessionScope,
@@ -533,6 +534,19 @@ export function Workspace({
       .then((items) => {
         if (current) {
           setInstruments(items);
+          const offered = items.map((item) => item.instrument.instrument_id);
+          setLibrary((previous) => {
+            const workspaces = previous.workspaces.map((item) => ({
+              ...item,
+              layout: startOnOffered(item.layout, offered),
+            }));
+            return workspaces.some(
+              (item, index) =>
+                item.layout !== previous.workspaces[index].layout,
+            )
+              ? { ...previous, workspaces }
+              : previous;
+          });
           setInstrumentsReady(true);
         }
       })

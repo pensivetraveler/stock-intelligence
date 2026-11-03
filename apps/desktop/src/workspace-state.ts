@@ -70,6 +70,41 @@ export const DEFAULT_WORKSPACE: WorkspaceState = {
   ],
 };
 
+const SYNTHETIC = DEFAULT_WORKSPACE.charts[0].instrumentId;
+
+/**
+ * A layout nobody has changed names SYNTH, which only the synthetic provider offers.
+ * Under any other provider it starts on the first instrument offered instead of an
+ * error. A layout someone changed keeps what it names, offered or not.
+ */
+export function startOnOffered(
+  layout: WorkspaceState,
+  offered: string[],
+): WorkspaceState {
+  if (offered.length === 0 || offered.includes(SYNTHETIC)) return layout;
+  const untouched =
+    layout.charts.length === DEFAULT_WORKSPACE.charts.length &&
+    layout.charts.every((chart, index) => {
+      const original = DEFAULT_WORKSPACE.charts[index];
+      return (
+        chart.instrumentId === SYNTHETIC &&
+        chart.timeframe === original.timeframe &&
+        chart.sessionScope === original.sessionScope &&
+        !chart.indicators?.length &&
+        !chart.drawings?.length &&
+        !chart.premarketHigh
+      );
+    });
+  if (!untouched) return layout;
+  return {
+    ...layout,
+    charts: layout.charts.map((chart) => ({
+      ...chart,
+      instrumentId: offered[0],
+    })),
+  };
+}
+
 const SESSION_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function parseChart(value: unknown): ChartConfig | null {
