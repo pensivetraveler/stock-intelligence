@@ -1799,6 +1799,35 @@ describe("chart workspace", () => {
     expect(legend).toHaveTextContent("not final");
   });
 
+  it("starts a new profile on an offered instrument, not SYNTH", async () => {
+    const api = fakeApi();
+    const listing = fixture<MarketInstrumentsResponse>(
+      "market-instruments-response.json",
+    ).instruments[0];
+    const spy = {
+      ...listing,
+      instrument: {
+        ...listing.instrument,
+        instrument_id: "us:spy:arcx:2026",
+        symbol: "SPY",
+      },
+    };
+    api.instruments = () => Promise.resolve([spy]);
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    await waitFor(() =>
+      expect(api.barsCalls.map((call) => call.instrumentId)).toContain(
+        "us:spy:arcx:2026",
+      ),
+    );
+    expect(
+      screen.queryByText(/not offered by the current data provider/),
+    ).toBeNull();
+    expect(api.barsCalls.map((call) => call.instrumentId)).not.toContain(
+      "us:synth:xnas:2026",
+    );
+  });
+
   it("explains an instrument the current provider does not offer", async () => {
     const api = fakeApi();
     const storage = memoryStorage();
