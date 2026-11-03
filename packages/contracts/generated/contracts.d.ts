@@ -746,7 +746,7 @@ export interface SymbolSearchResponse {
   }[];
 }
 /**
- * Splits the dilution analyzer read from SEC filings by rules, not compared with another source, next to the provider's splits (ADR 0046). Evidence only: no price depends on it, and a difference does not say which side is wrong.
+ * Splits of a US listing: the provider's (Alpaca corporate actions), and splits the dilution analyzer read from SEC filings by rules, not compared with another source (ADR 0046). Evidence only: no price depends on it, and a difference does not say which side is wrong.
  */
 export interface FilingSplitsResponse {
   kind: "filing_splits_response";
@@ -772,6 +772,26 @@ export interface FilingSplitsResponse {
   differences: {
     kind:
       "ratio_differs" | "filing_only" | "provider_only" | "filing_unconfirmed";
+    filing: FilingSplitRow | null;
+    provider: {
+      on: string;
+      numerator: number;
+      denominator: number;
+    } | null;
+  }[];
+  /**
+   * Every split either side names, oldest first: same (both), not_compared (the analyzer did not read that period), or one of the differences. Unconfirmed readings that match nothing are left out.
+   *
+   * @maxItems 200
+   */
+  events: {
+    kind:
+      | "same"
+      | "not_compared"
+      | "ratio_differs"
+      | "filing_only"
+      | "provider_only"
+      | "filing_unconfirmed";
     filing: FilingSplitRow | null;
     provider: {
       on: string;

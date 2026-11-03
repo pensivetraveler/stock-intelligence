@@ -371,6 +371,7 @@ function fakeApi(
         rows: [],
         compared_with: null,
         differences: [],
+        events: [],
       }),
     overnightBars: () => {
       const response = fixture<MarketBarsResponse>(
@@ -856,6 +857,46 @@ describe("chart workspace", () => {
     expect(screen.queryByRole("button", { name: "Pre-market" })).toBeNull();
   });
 
+  it("marks a split on the chart and says where it came from", async () => {
+    const api = fakeApi();
+    const served = api.bars;
+    let first = "";
+    let ready: () => void = () => undefined;
+    const barsServed = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    api.bars = (request) =>
+      served(request).then((response) => {
+        first ||= response.bars[0]?.interval_start_utc.slice(0, 10) ?? "";
+        ready();
+        return response;
+      });
+    api.filingSplits = async (instrumentId) => {
+      await barsServed;
+      return {
+        kind: "filing_splits_response",
+        schema_version: "0.1",
+        instrument_id: instrumentId,
+        status: "unavailable",
+        filings_from: null,
+        as_of: null,
+        rows: [],
+        compared_with: "alpaca-corporate-actions",
+        differences: [],
+        events: [
+          {
+            kind: "not_compared",
+            filing: null,
+            provider: { on: first, numerator: 10, denominator: 1 },
+          },
+        ],
+      };
+    };
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    const chart = await screen.findByTestId("chart-chart-1");
+    await waitFor(() => expect(chart).toHaveTextContent("Split 10:1"));
+  });
+
   it("labels filing split readings under a daily chart, and hides them in a replay", async () => {
     const api = fakeApi();
     const asked = vi.fn();
@@ -890,6 +931,7 @@ describe("chart workspace", () => {
             provider: { on: "2025-01-27", numerator: 1, denominator: 100 },
           },
         ],
+        events: [],
       });
     };
     const storage = memoryStorage();

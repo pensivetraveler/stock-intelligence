@@ -127,3 +127,12 @@ Each step ships and is checked alone, and a backup comes before any move.
 - **What SIW shares:** it downloads only mutable files (the ticker list, submissions, companyfacts), so it never writes under `Archives`. The writer still refuses to replace an immutable file.
 - **Reuse:** SIW's own refetch rule still decides when to ask. When it asks, a file some program downloaded within 5 minutes answers without a request; otherwise SIW downloads and replaces the file. SIW does not read the analyzer's 24-hour rule.
 - **Lock:** `$STOCK_SHARED_DATA/sec.lock`, the analyzer's protocol at 0.2 seconds. If the lock cannot be used the request fails and the evidence falls back to SIW's cached records, saying so. A response that cannot be written is still used, with a note.
+
+## Splits on the chart (2026-11-04)
+
+- **Request:** the user asked to see split and reverse split history on the chart.
+- **Markers:** every US chart marks each split on the bar of its date: `Split 10:1` or `Reverse split 1:15`, new shares to old. Hovering the legend gives the source.
+- **Sources kept apart:** Alpaca's corporate actions (`ex_date`) and the analyzer's confirmed filing readings. Where both name it, one marker. Where they differ, the marker has another colour and says which side names what, without calling either wrong.
+- **Coverage:** Alpaca names no split before about 2020 for the tickers checked (AAPL's 7:1 in 2014 is missing). A chart before that shows no marker, which does not mean there was no split.
+- **Replay:** no markers, as for the note: the list names splits after the replay time.
+- **Prices:** unchanged. The markers are evidence only.

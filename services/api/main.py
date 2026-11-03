@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi import Path as PathParam
@@ -51,14 +52,15 @@ from services.market_data.broker_common import BrokerConfigError, instrument_lis
 from services.market_data.calendar import CalendarError, UsEquityCalendar
 from services.market_data.daily import adjusted_bars
 from services.market_data.filing_splits import (
+    DIFFERENCE_KINDS,
     FilingSplits,
     FilingSplitsUnavailable,
     ProviderSplit,
-    compare_splits,
     difference_document,
     filing_split_document,
     read_filing_splits,
     shared_data_dir,
+    split_events,
     splits_path,
 )
 from services.market_data.instruments import market_of, parse_instrument
@@ -144,6 +146,8 @@ from services.review.store import ReviewStore
 
 LOG = logging.getLogger("siw.api")
 FILING_COMPARE_SECONDS = 6 * 3600
+# Alpaca names no split before about 2020 for the tickers checked (2026-11-04): asked anyway.
+PROVIDER_SPLITS_SINCE = date(2000, 1, 1)
 APP_NAME = "stock-intelligence-workstation-api"
 # US tickers start with a letter; Korean KRX codes are six characters starting with a digit.
 REALTIME_SYMBOL = re.compile(r"^([A-Z][A-Z0-9.]{0,9}|[0-9][0-9A-Z]{5})$")
@@ -856,31 +860,32 @@ def create_app(
         validate_document(document)
         return JSONResponse(content=document)
 
-    filing_compared: dict[str, tuple[float, list[ProviderSplit]]] = {}
+    provider_split_cache: dict[str, tuple[float, list[ProviderSplit]]] = {}
 
-    def provider_splits(ticker: str, filing: FilingSplits) -> list[ProviderSplit] | None:
-        """Alpaca's splits for the period the analyzer read, or None without an answer."""
-        cached = filing_compared.get(ticker)
+    def provider_splits(ticker: str) -> list[ProviderSplit] | None:
+        """Alpaca's splits of a ticker, or None without an answer (kept for 6 hours)."""
+        cached = provider_split_cache.get(ticker)
         if cached is not None and time.monotonic() - cached[0] < FILING_COMPARE_SECONDS:
             return cached[1]
         try:
             adapter = boats()
             if adapter is None or not hasattr(adapter, "split_actions"):
                 return None
-            assert filing.filings_from is not None and filing.as_of is not None
+            today = datetime.now(ZoneInfo("America/New_York")).date()
             actions: list[ProviderSplit] = adapter.split_actions(
-                ticker, filing.filings_from, filing.as_of
+                ticker, PROVIDER_SPLITS_SINCE, today
             )
         except (MarketDataError, SecretStorageError):
             return None
-        filing_compared[ticker] = (time.monotonic(), actions)
+        provider_split_cache[ticker] = (time.monotonic(), actions)
         return actions
 
     @application.get("/v1/market/filing-splits", response_model=None)
     def market_filing_splits(
         instrument_id: Annotated[str, Query(min_length=1, max_length=64)],
     ) -> Response:
-        """Splits read from filings by the dilution analyzer, next to Alpaca's (ADR 0046).
+        """Splits of a US listing: Alpaca's, and the dilution analyzer's filing readings
+        next to them (ADR 0046).
 
         Evidence only: no price depends on this, and a difference names neither side wrong.
         """
@@ -897,10 +902,15 @@ def create_app(
             "rows": [],
             "compared_with": None,
             "differences": [],
+            "events": [],
         }
+        if ticker is None:
+            validate_document(document)
+            return JSONResponse(content=document)
+        filing: FilingSplits | None = None
         if root is None:
             document["status"] = "unavailable"
-        elif ticker is not None:
+        else:
             try:
                 filing = read_filing_splits(splits_path(root), ticker)
             except FilingSplitsUnavailable as exc:
@@ -913,13 +923,17 @@ def create_app(
                     as_of=filing.as_of.isoformat() if filing.as_of else None,
                     rows=[filing_split_document(row) for row in filing.rows],
                 )
-                if filing.status == "found":
-                    actions = provider_splits(ticker, filing)
-                    if actions is not None:
-                        document["compared_with"] = "alpaca-corporate-actions"
-                        document["differences"] = [
-                            difference_document(item) for item in compare_splits(filing, actions)
-                        ]
+        actions = provider_splits(ticker)
+        if actions is not None:
+            document["compared_with"] = "alpaca-corporate-actions"
+        events = split_events(filing, actions or [])
+        if actions is None:
+            events = [event for event in events if event.provider is None]
+        document["events"] = [difference_document(event) for event in events]
+        if filing is not None and filing.status == "found" and actions is not None:
+            document["differences"] = [
+                difference_document(event) for event in events if event.kind in DIFFERENCE_KINDS
+            ]
         validate_document(document)
         return JSONResponse(content=document)
 

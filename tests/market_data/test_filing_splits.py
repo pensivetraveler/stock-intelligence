@@ -24,6 +24,7 @@ from services.market_data.filing_splits import (
     compare_splits,
     export_disagreements,
     read_filing_splits,
+    split_events,
     splits_path,
 )
 
@@ -236,3 +237,34 @@ def test_alpaca_split_actions_read_both_kinds() -> None:
         ProviderSplit(date(2023, 5, 10), Fraction(4, 25)),
         ProviderSplit(date(2024, 6, 10), Fraction(10)),
     ]
+
+
+def test_events_pair_both_sides_and_name_what_was_not_compared() -> None:
+    row = confirmed(date(2025, 5, 19), 1, 15)
+    same = ProviderSplit(date(2025, 5, 20), Fraction(1, 15))
+    before = ProviderSplit(date(2020, 1, 2), Fraction(1, 5))
+    events = split_events(filing(row), [same, before])
+    assert [(event.kind, event.filing, event.provider) for event in events] == [
+        ("not_compared", None, before),
+        ("same", row, same),
+    ]
+
+
+def test_without_filing_readings_every_provider_split_is_an_event() -> None:
+    action = ProviderSplit(date(2024, 6, 10), Fraction(10))
+    assert [event.kind for event in split_events(None, [action])] == ["not_compared"]
+
+
+def test_api_lists_alpaca_splits_without_a_shared_folder(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("STOCK_SHARED_DATA", raising=False)
+    body = (
+        api_client(_Boats())
+        .get("/v1/market/filing-splits", params={"instrument_id": "us:nvda:xnas:2026"})
+        .json()
+    )
+    assert body["status"] == "unavailable"
+    assert body["compared_with"] == "alpaca-corporate-actions"
+    assert [(event["kind"], event["provider"]["on"]) for event in body["events"]] == [
+        ("not_compared", "2025-05-20")
+    ]
+    assert body["differences"] == []
