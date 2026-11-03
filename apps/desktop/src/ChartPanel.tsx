@@ -21,6 +21,7 @@ import {
 } from "./chart-data";
 import type { Drawing, DrawingTool } from "./drawings";
 import { barEnd, barsAsOf } from "./replay";
+import { splitMarkers } from "./split-markers";
 import {
   dailyRange,
   DEFAULT_CANDLES,
@@ -783,11 +784,10 @@ export function ChartPanel({
     config.premarketHigh === true &&
     timeframe === "1d" &&
     instrumentId.startsWith("us:");
-  // Filing readings name future splits, so a replay asks for none (ADR 0046).
+  // Splits (Alpaca's and the filing readings) name future splits, so a replay asks for
+  // none (ADR 0046).
   const filingSplitsWanted =
-    isDailyTimeframe(timeframe) &&
-    instrumentId.startsWith("us:") &&
-    replayTime === null;
+    instrumentId.startsWith("us:") && replayTime === null;
   const [filingSplits, setFilingSplits] = useState<FilingSplitsResponse | null>(
     null,
   );
@@ -956,6 +956,21 @@ export function ChartPanel({
           ])
         : [],
     [bars, instrumentId, journal, backtestFills],
+  );
+  const chartMarkers = useMemo(
+    () =>
+      bars && filingSplits
+        ? [
+            ...markers,
+            ...splitMarkers(
+              bars,
+              filingSplits.events,
+              zoneOf(instrumentId).timeZone,
+              t,
+            ),
+          ]
+        : markers,
+    [bars, filingSplits, markers, instrumentId, t],
   );
   const selectCandle = useCallback(
     (time: number) => {
@@ -1454,7 +1469,7 @@ export function ChartPanel({
     null;
   const change = legendBar ? barChange(legendBar) : null;
   const legendMarkers = legendBar
-    ? markers.filter(
+    ? chartMarkers.filter(
         (marker) =>
           marker.time ===
           Math.floor(Date.parse(legendBar.interval_start_utc) / 1000),
@@ -1501,7 +1516,7 @@ export function ChartPanel({
               premarketBars={premarketShown}
               premarketLabel={t("chart.premarketLine")}
               sync={sync}
-              markers={markers}
+              markers={chartMarkers}
               onCandleClick={selectCandle}
               onHover={setHovered}
               magnet={magnet}
@@ -1620,7 +1635,11 @@ export function ChartPanel({
                 {legendMarkers.length > 0 ? (
                   <span className="legend-fills">
                     {legendMarkers.map((marker) => (
-                      <b key={marker.id} style={{ color: marker.color }}>
+                      <b
+                        key={marker.id}
+                        style={{ color: marker.color }}
+                        title={marker.details?.join("\n")}
+                      >
                         {marker.text}
                       </b>
                     ))}
@@ -2013,7 +2032,7 @@ export function ChartPanel({
               ].join(" ")}
         </p>
       ) : null}
-      {filingSplits?.status === "found" ? (
+      {filingSplits?.status === "found" && isDailyTimeframe(timeframe) ? (
         <p className="workspace-note" role="status">
           {filingSplitsNote(t, filingSplits)}
         </p>

@@ -2157,7 +2157,10 @@
       "additionalProperties": false,
       "required": ["effective", "numerator", "denominator", "status"],
       "properties": {
-        "effective": { "type": "string", "format": "date" },
+        "effective": {
+          "type": "string",
+          "format": "date"
+        },
         "numerator": {
           "type": "integer",
           "minimum": 1,
@@ -2168,11 +2171,13 @@
           "minimum": 1,
           "description": "Old shares."
         },
-        "status": { "enum": ["confirmed", "scheduled", "conflict"] }
+        "status": {
+          "enum": ["confirmed", "scheduled", "conflict"]
+        }
       }
     },
     "FilingSplitsResponse": {
-      "description": "Splits the dilution analyzer read from SEC filings by rules, not compared with another source, next to the provider's splits (ADR 0046). Evidence only: no price depends on it, and a difference does not say which side is wrong.",
+      "description": "Splits of a US listing: the provider's (Alpaca corporate actions), and splits the dilution analyzer read from SEC filings by rules, not compared with another source (ADR 0046). Evidence only: no price depends on it, and a difference does not say which side is wrong.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -2184,22 +2189,39 @@
         "as_of",
         "rows",
         "compared_with",
-        "differences"
+        "differences",
+        "events"
       ],
       "properties": {
-        "kind": { "const": "filing_splits_response" },
-        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
-        "instrument_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "kind": {
+          "const": "filing_splits_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "instrument_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
         "status": {
           "enum": ["unavailable", "not_checked", "none_found", "found"],
           "description": "not_checked: the analyzer never read this issuer. none_found: its filings named none, which is no guarantee. Before filings_from nothing was read."
         },
-        "filings_from": { "type": ["string", "null"], "format": "date" },
-        "as_of": { "type": ["string", "null"], "format": "date" },
+        "filings_from": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "as_of": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
         "rows": {
           "type": "array",
           "maxItems": 200,
-          "items": { "$ref": "#/$defs/FilingSplitRow" }
+          "items": {
+            "$ref": "#/$defs/FilingSplitRow"
+          }
         },
         "compared_with": {
           "type": ["string", "null"],
@@ -2223,8 +2245,12 @@
               },
               "filing": {
                 "oneOf": [
-                  { "$ref": "#/$defs/FilingSplitRow" },
-                  { "type": "null" }
+                  {
+                    "$ref": "#/$defs/FilingSplitRow"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ]
               },
               "provider": {
@@ -2234,16 +2260,85 @@
                     "additionalProperties": false,
                     "required": ["on", "numerator", "denominator"],
                     "properties": {
-                      "on": { "type": "string", "format": "date" },
-                      "numerator": { "type": "integer", "minimum": 1 },
-                      "denominator": { "type": "integer", "minimum": 1 }
+                      "on": {
+                        "type": "string",
+                        "format": "date"
+                      },
+                      "numerator": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "denominator": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
                     }
                   },
-                  { "type": "null" }
+                  {
+                    "type": "null"
+                  }
                 ]
               }
             }
           }
+        },
+        "events": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "filing", "provider"],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "same",
+                  "not_compared",
+                  "ratio_differs",
+                  "filing_only",
+                  "provider_only",
+                  "filing_unconfirmed"
+                ]
+              },
+              "filing": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/FilingSplitRow"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "provider": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["on", "numerator", "denominator"],
+                    "properties": {
+                      "on": {
+                        "type": "string",
+                        "format": "date"
+                      },
+                      "numerator": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "denominator": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "description": "Every split either side names, oldest first: same (both), not_compared (the analyzer did not read that period), or one of the differences. Unconfirmed readings that match nothing are left out."
         }
       }
     },

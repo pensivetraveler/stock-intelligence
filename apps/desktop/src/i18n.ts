@@ -927,6 +927,18 @@ const en = {
   "chart.premarketFailed": "Pre-market bars could not be loaded: {error}",
   "chart.premarketPartlyFailed":
     "{n} sessions could not be loaded and are not shown.",
+  "split.forward": "Split {ratio}",
+  "split.reverse": "Reverse split {ratio}",
+  "split.same": "Alpaca and the filing reading (not cross-checked) agree",
+  "split.notCompared":
+    "Alpaca; the analyzer did not read filings for this period",
+  "split.providerOnly": "Alpaca only; the filing readings do not name it",
+  "split.filingOnly":
+    "filing reading only (not cross-checked); Alpaca does not name it",
+  "split.ratioDiffers":
+    "ratios differ: Alpaca {provider}, filing reading {filing}",
+  "split.filingUnconfirmed":
+    "Alpaca; the filing reading is not confirmed ({status})",
   "chart.filingSplits":
     "Splits read from filings, not cross-checked: {rows}. Prices are not changed by these.",
   "chart.filingSplitsNone":
@@ -2582,6 +2594,14 @@ const ko: Record<MessageKey, string> = {
   "chart.premarketFailed": "프리마켓 봉을 불러오지 못했습니다: {error}",
   "chart.premarketPartlyFailed":
     "{n}개 세션은 불러오지 못해 표시하지 않았습니다.",
+  "split.forward": "분할 {ratio}",
+  "split.reverse": "병합 {ratio}",
+  "split.same": "Alpaca와 공시 판독값(미대조)이 같음",
+  "split.notCompared": "Alpaca. 이 기간의 공시는 분석기가 읽지 않음",
+  "split.providerOnly": "Alpaca에만 있음. 공시 판독값에는 없음",
+  "split.filingOnly": "공시 판독값(미대조)에만 있음. Alpaca에는 없음",
+  "split.ratioDiffers": "비율이 다름: Alpaca {provider}, 공시 판독값 {filing}",
+  "split.filingUnconfirmed": "Alpaca. 공시 판독값은 미확정({status})",
   "chart.filingSplits":
     "공시 판독값, 미대조 병합·분할: {rows}. 이 값으로 가격을 바꾸지 않습니다.",
   "chart.filingSplitsNone": "공시 판독값, 미대조 병합·분할: 확정된 값 없음.",

@@ -77,7 +77,7 @@ class ProviderSplit:
 
 @dataclass(frozen=True)
 class SplitDifference:
-    kind: str  # ratio_differs, filing_only, provider_only or filing_unconfirmed
+    kind: str  # a difference kind, or same / not_compared (see split_events)
     filing: FilingSplit | None
     provider: ProviderSplit | None
 
@@ -146,6 +146,11 @@ def checked_tickers(path: Path) -> list[str]:
         connection.close()
 
 
+DIFFERENCE_KINDS = frozenset(
+    {"ratio_differs", "filing_only", "provider_only", "filing_unconfirmed"}
+)
+
+
 def compare_splits(
     filing: FilingSplits, provider: Iterable[ProviderSplit]
 ) -> list[SplitDifference]:
@@ -154,37 +159,55 @@ def compare_splits(
     Only the period the analyzer read is compared. An action outside it says nothing:
     the filings of that time were not read.
     """
-    if filing.filings_from is None or filing.as_of is None:
-        return []
+    return [event for event in split_events(filing, provider) if event.kind in DIFFERENCE_KINDS]
+
+
+def split_events(
+    filing: FilingSplits | None, provider: Iterable[ProviderSplit]
+) -> list[SplitDifference]:
+    """Every split either side names, oldest first, paired where they agree.
+
+    Kinds beyond the differences: `same` (both name it), `not_compared` (a provider split
+    the analyzer did not read the filings for). Unconfirmed readings that match nothing
+    are left out: the analyzer itself does not apply them.
+    """
+    actions = list(provider)
+    if filing is None or filing.filings_from is None or filing.as_of is None:
+        return [SplitDifference("not_compared", None, action) for action in actions]
     start, end = filing.filings_from, filing.as_of
-    actions = [action for action in provider if start <= action.on <= end]
+    inside = [action for action in actions if start <= action.on <= end]
+    events = [
+        SplitDifference("not_compared", None, action)
+        for action in actions
+        if not start <= action.on <= end
+    ]
     confirmed = [row for row in filing.rows if row.status == "confirmed"]
     others = [row for row in filing.rows if row.status != "confirmed"]
 
     def near(row: FilingSplit, action: ProviderSplit) -> bool:
         return abs((row.effective - action.on).days) <= SAME_EVENT_DAYS
 
-    differences: list[SplitDifference] = []
     used: set[int] = set()
     for row in confirmed:
-        candidates = [i for i, a in enumerate(actions) if i not in used and near(row, a)]
-        same = next((i for i in candidates if actions[i].ratio == row.ratio), None)
+        candidates = [i for i, a in enumerate(inside) if i not in used and near(row, a)]
+        same = next((i for i in candidates if inside[i].ratio == row.ratio), None)
         if same is not None:
             used.add(same)
+            events.append(SplitDifference("same", row, inside[same]))
         elif candidates:
             used.add(candidates[0])
-            differences.append(SplitDifference("ratio_differs", row, actions[candidates[0]]))
+            events.append(SplitDifference("ratio_differs", row, inside[candidates[0]]))
         else:
-            differences.append(SplitDifference("filing_only", row, None))
-    for index, action in enumerate(actions):
+            events.append(SplitDifference("filing_only", row, None))
+    for index, action in enumerate(inside):
         if index in used:
             continue
         unconfirmed = next(
             (row for row in others if near(row, action) and row.ratio == action.ratio), None
         )
         kind = "filing_unconfirmed" if unconfirmed is not None else "provider_only"
-        differences.append(SplitDifference(kind, unconfirmed, action))
-    return sorted(differences, key=_difference_date)
+        events.append(SplitDifference(kind, unconfirmed, action))
+    return sorted(events, key=_difference_date)
 
 
 def _difference_date(difference: SplitDifference) -> date:
