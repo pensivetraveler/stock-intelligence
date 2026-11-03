@@ -13,6 +13,7 @@ from services.public_sources.cache import PublicSourceCache
 from services.public_sources.finra import Finra, FinraCredential, TokenHolder
 from services.public_sources.http import RateLimiter
 from services.public_sources.sec import SecEdgar
+from services.public_sources.shared_sec import shared_sec_files
 
 
 class PublicSources:
@@ -35,7 +36,9 @@ class PublicSources:
         self._tokens = TokenHolder()
 
     def sec(self) -> SecEdgar:
-        return SecEdgar(self.cache, self._user_agent(), self._client, self._sec_limiter)
+        return SecEdgar(
+            self.cache, self._user_agent(), self._client, self._sec_limiter, shared_sec_files()
+        )
 
     def finra(self) -> Finra:
         return Finra(

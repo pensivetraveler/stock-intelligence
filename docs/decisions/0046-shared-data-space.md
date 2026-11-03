@@ -121,3 +121,9 @@ Each step ships and is checked alone, and a backup comes before any move.
 - **Differences:** `ratio_differs`, `filing_only`, `provider_only`, and `filing_unconfirmed` when Alpaca's split matches a reading the analyzer left in `conflict` or `scheduled`.
 - **Export:** `uv run --env-file .env python -m services.market_data.filing_splits export` writes `siw/split-disagreements.json` and `CONTRACT.json`. It runs by hand; nothing schedules it.
 - **Limits:** a renamed ticker is asked of Alpaca only under its current symbol. Delisted instruments use their ticker part as is, so a reused ticker could match another issuer's readings.
+
+## Step 2 in SIW (2026-11-03)
+
+- **What SIW shares:** it downloads only mutable files (the ticker list, submissions, companyfacts), so it never writes under `Archives`. The writer still refuses to replace an immutable file.
+- **Reuse:** SIW's own refetch rule still decides when to ask. When it asks, a file some program downloaded within 5 minutes answers without a request; otherwise SIW downloads and replaces the file. SIW does not read the analyzer's 24-hour rule.
+- **Lock:** `$STOCK_SHARED_DATA/sec.lock`, the analyzer's protocol at 0.2 seconds. If the lock cannot be used the request fails and the evidence falls back to SIW's cached records, saying so. A response that cannot be written is still used, with a note.
