@@ -35,6 +35,12 @@ CONTRACT: dict[str, Any] = {
     "datasets": {
         "dilution/": {"writer": "stock-dilution-analyzer", "readers": {"siw": ["splits.sqlite"]}},
         "siw/split-disagreements.json": {"writer": "siw", "format": DISAGREEMENTS_VERSION},
+        "sec/": {
+            "writers": ["stock-dilution-analyzer", "siw"],
+            "files": "<host>/<sha256(url)[:16]>-<last path segment>, decoded 200 bodies",
+            "immutable": "/Archives/ paths: never replaced",
+        },
+        "sec.lock": {"protocol": "flock, CLOCK_MONOTONIC stamp", "interval_seconds": 0.2},
     },
 }
 
