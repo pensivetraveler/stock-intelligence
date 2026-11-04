@@ -64,3 +64,26 @@ export function todayIn(zone: MarketZone, now: Date = new Date()): string {
     day: "2-digit",
   }).format(now);
 }
+
+/**
+ * The last trading date whose US day market a chart of `sessionDate` asks for. From
+ * 20:00 New York the day market under way belongs to the next date (ADR 0030), so a
+ * chart of today asks for that one too; any other date asks for its own.
+ */
+export function dayMarketThrough(
+  sessionDate: string,
+  now: Date = new Date(),
+): string {
+  if (sessionDate !== todayIn(US_ZONE, now)) return sessionDate;
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: US_ZONE.timeZone,
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).format(now),
+  );
+  if (hour < 20) return sessionDate;
+  const next = new Date(`${sessionDate}T12:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString().slice(0, 10);
+}
