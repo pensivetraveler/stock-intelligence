@@ -6718,24 +6718,6 @@
     },
     "PaperOrderIntent": {
       "type": "object",
-      "allOf": [
-        {
-          "if": {
-            "required": ["environment"],
-            "properties": { "environment": { "const": "real" } }
-          },
-          "then": {
-            "properties": {
-              "broker_account_ref": { "type": "string", "pattern": "-real$" }
-            }
-          },
-          "else": {
-            "properties": {
-              "broker_account_ref": { "type": "string", "pattern": "-demo$" }
-            }
-          }
-        }
-      ],
       "additionalProperties": false,
       "required": [
         "kind",
@@ -7147,24 +7129,6 @@
     },
     "PaperOrderSubmission": {
       "type": "object",
-      "allOf": [
-        {
-          "if": {
-            "required": ["environment"],
-            "properties": { "environment": { "const": "real" } }
-          },
-          "then": {
-            "properties": {
-              "broker_account_ref": { "type": "string", "pattern": "-real$" }
-            }
-          },
-          "else": {
-            "properties": {
-              "broker_account_ref": { "type": "string", "pattern": "-demo$" }
-            }
-          }
-        }
-      ],
       "additionalProperties": false,
       "required": [
         "kind",
@@ -7279,24 +7243,6 @@
     },
     "PaperExecution": {
       "type": "object",
-      "allOf": [
-        {
-          "if": {
-            "required": ["environment"],
-            "properties": { "environment": { "const": "real" } }
-          },
-          "then": {
-            "properties": {
-              "broker_account_ref": { "type": "string", "pattern": "-real$" }
-            }
-          },
-          "else": {
-            "properties": {
-              "broker_account_ref": { "type": "string", "pattern": "-demo$" }
-            }
-          }
-        }
-      ],
       "additionalProperties": false,
       "required": [
         "kind",
