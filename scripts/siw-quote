@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Read-only quote for other local tools (ADR 0050): prints one JSON document.
+#   scripts/siw-quote quote --ticker TCRT [--as-of YYYY-MM-DD] [--adv-days 20]
+# Runs from the repository with its .env (SIW_DATA_DIR and settings; keys stay in the
+# keychain). Exit codes: 0 answered, 2 usage, 3 no such ticker, 4 rate limit, 5 failed.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$PWD/.uv-cache}"
+exec uv run --quiet python -W ignore -m services.market_data.quote "$@"
