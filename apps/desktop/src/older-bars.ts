@@ -3,14 +3,9 @@ import { dailyLookbackDays, DEFAULT_CANDLES } from "./timeframes";
 
 /** A chart loads at most this many bars before its default history, on request. */
 export const MAX_OLDER_BARS = 10 * DEFAULT_CANDLES;
-/** At least this near the first bar, scrolling or zooming out asks for older bars
- * (otherwise when less than one screen of bars is left before the view). */
-export const OLDER_TRIGGER_BARS = 2;
 /** Sessions without a single bar (a trading halt, a thin stock) skipped in one request
  * for older bars before it says there are none (about three months). */
 export const MAX_EMPTY_SESSIONS = 65;
-/** A view change counts as the user's within this long after their wheel or drag. */
-export const USER_MOVE_MS = 800;
 
 function shiftDays(date: string, days: number): string {
   const value = new Date(`${date}T00:00:00Z`);
@@ -113,4 +108,36 @@ export async function olderSessionBars<S extends { session_date: string }>(
 
 function previousDay(date: string): string {
   return shiftDays(date, -1);
+}
+
+/** Elements that use the space bar themselves: there it never asks for older bars. */
+export const OWNS_SPACE_SELECTOR =
+  "input, textarea, select, button, a[href], [contenteditable], [role=textbox], [role=button], [role=slider], [role=combobox]";
+
+/**
+ * Whether a space key press asks this chart for older bars: only while the chart itself
+ * has the focus it took when clicked, never inside a field or a control.
+ */
+export function spaceLoadsOlder(
+  event: Pick<
+    KeyboardEvent,
+    | "key"
+    | "code"
+    | "repeat"
+    | "altKey"
+    | "ctrlKey"
+    | "metaKey"
+    | "shiftKey"
+    | "isComposing"
+  >,
+  target: Element | null,
+  panel: Element | null,
+): boolean {
+  if (event.key !== " " && event.code !== "Space") return false;
+  if (event.repeat || event.isComposing) return false;
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+    return false;
+  if (panel === null || target === null || !panel.contains(target))
+    return false;
+  return target.closest(OWNS_SPACE_SELECTOR) === null || target === panel;
 }

@@ -7,6 +7,7 @@ import {
   olderDailyRange,
   olderSessionBars,
   prependOlder,
+  spaceLoadsOlder,
 } from "./older-bars";
 import { dailyRange } from "./timeframes";
 
@@ -157,5 +158,62 @@ describe("older bars", () => {
       async () => null,
     );
     expect(none).toEqual({ bars: [], from: "2016-01-01", failed: false });
+  });
+});
+
+describe("spaceLoadsOlder", () => {
+  const key = {
+    key: " ",
+    code: "Space",
+    repeat: false,
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    isComposing: false,
+  };
+
+  function panelWith(inner: string): HTMLElement {
+    const panel = document.createElement("section");
+    panel.innerHTML = inner;
+    return panel;
+  }
+
+  it("asks on the focused chart itself and on its canvas", () => {
+    const panel = panelWith("<div><canvas></canvas></div>");
+    expect(spaceLoadsOlder(key, panel, panel)).toBe(true);
+    expect(spaceLoadsOlder(key, panel.querySelector("canvas"), panel)).toBe(
+      true,
+    );
+  });
+
+  it("never asks from a field or a control, even inside the chart", () => {
+    const panel = panelWith(
+      '<input /><textarea></textarea><select></select><button>b</button><div contenteditable="true"></div>',
+    );
+    for (const name of ["input", "textarea", "select", "button", "div"]) {
+      expect(spaceLoadsOlder(key, panel.querySelector(name), panel)).toBe(
+        false,
+      );
+    }
+  });
+
+  it("never asks from outside the chart", () => {
+    const panel = panelWith("");
+    expect(spaceLoadsOlder(key, document.body, panel)).toBe(false);
+  });
+
+  it("ignores other keys, held keys, chords and composing text", () => {
+    const panel = panelWith("");
+    expect(
+      spaceLoadsOlder({ ...key, key: "a", code: "KeyA" }, panel, panel),
+    ).toBe(false);
+    expect(spaceLoadsOlder({ ...key, repeat: true }, panel, panel)).toBe(false);
+    expect(spaceLoadsOlder({ ...key, shiftKey: true }, panel, panel)).toBe(
+      false,
+    );
+    expect(spaceLoadsOlder({ ...key, isComposing: true }, panel, panel)).toBe(
+      false,
+    );
   });
 });
