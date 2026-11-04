@@ -70,3 +70,10 @@ Until now:
 - Day-market bars should feed indicators or backtests: decide on a combined series with its own lineage and source labels.
 - Alpaca's `overnight` feed, or a broker's day-market quotes, become available and should be compared with BOATS.
 - Blue Ocean publishes a holiday schedule that differs from this policy.
+
+## Tonight's session on today's chart (2026-11-04)
+
+- **Problem:** the session that opens at 20:00 New York belongs to the next trading date, so a chart of today, the date the app opens on, did not show it until midnight New York (14:00 in Seoul, 13:00 in summer).
+- **Change:** from 20:00 New York, a chart of today also asks for the next date's day market. Any other date, and any replay, asks for its own date only.
+- **Checked live 2026-11-04 03:37 UTC:** SPY 5-minute day-market bars to `2026-11-04` reached 03:35 UTC, while to `2026-11-03` they stopped at 08:50 UTC the day before.
+- **Limit:** the chart decides when it loads. One left open across 20:00 New York shows the new session after it reloads.

@@ -11,7 +11,7 @@ import type {
 } from "@siw/contracts/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { zoneOf } from "./market-zone";
+import { dayMarketThrough, zoneOf } from "./market-zone";
 import {
   isUncertain,
   summarize,
@@ -756,7 +756,9 @@ export function ChartPanel({
         instrumentId,
         timeframe,
         fromDate: earliestDate > oldest ? earliestDate : oldest,
-        toDate: sessionDate,
+        // A replay stays on its own date: the day market under way is its future.
+        toDate:
+          replayTime === null ? dayMarketThrough(sessionDate) : sessionDate,
       })
       .then((response) => {
         if (current) setDayMarket({ bars: response.bars, error: null });
@@ -777,6 +779,7 @@ export function ChartPanel({
     history.done,
     unavailable,
     instrumentsReady,
+    replayTime,
   ]);
   // The pre-market on US daily charts (ADR 0041): its own requests, one
   // pre-market bucket per session, never merged into the daily bars.
