@@ -60,6 +60,8 @@ On 2026-10-20 the user decided:
 - **Screen:** a Research panel offers each dataset with its documented options and a table view.
 - **Live check:** 10 of the 14 datasets were read live and validated. US rankings by trading amount gave 100 rows, Toss has exactly 300 sectors, and Samsung Electronics (005930) investor and short-selling trends came back with `nextUntil`. Indicator candles, program trades, credit trades and securities lending were tested only against documented examples.
 
+- **Rankings panel (2026-11-04, ADR 0049):** stock rankings also have their own typed endpoint and a Rankings panel whose rows open on a chart; the Research table still shows the raw columns.
+
 ## Planned stages
 
 - Korean stocks with full charts: a KRX calendar, KRW and Korean sessions.
