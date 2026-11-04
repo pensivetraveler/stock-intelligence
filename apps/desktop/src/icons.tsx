@@ -169,6 +169,11 @@ export const ScreenerIcon = () => (
     <path d="M2 3h12L9.5 8.5V13l-3-1.5v-3z" />
   </Icon>
 );
+export const RankingIcon = () => (
+  <Icon>
+    <path d="M1.5 14.5h13M2.5 14.5V9h3.5v5.5M6 14.5V5h4v9.5M10 14.5V7.5h3.5v7" />
+  </Icon>
+);
 export const InfoIcon = () => (
   <Icon>
     <circle cx="8" cy="8" r="6" />

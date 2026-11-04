@@ -23,12 +23,14 @@ import type {
   SessionWindow,
   StockInfo,
   FilingSplitsResponse,
+  StockRankingsResponse,
   SymbolSearchResponse,
   ReconciliationRecord,
   TradeReconciliationResponse,
 } from "@siw/contracts/types";
 
 import { zoneOf } from "./market-zone";
+import type { RankingRequest } from "./rankings";
 import { openRealtime, type RealtimeSocket } from "./realtime";
 
 /** Whole minutes written "Nm" (see timeframes.ts); the API aggregates any of them. */
@@ -78,6 +80,8 @@ export interface MarketApi {
     key: string | null,
     params: Record<string, string>,
   ): Promise<ResearchTable>;
+  /** A Toss stock ranking, each row with the listing to open on a chart (ADR 0049). */
+  rankings(request: RankingRequest): Promise<StockRankingsResponse>;
   /** The app's relay of the broker's realtime stream (Toss, or Meritz US quotes). */
   openRealtime(
     onEvent: (event: RealtimeEvent) => void,
@@ -429,6 +433,20 @@ export function createMarketApi(
       return get<ResearchTable>(
         `/v1/research/${encodeURIComponent(dataset)}?${query.toString()}`,
         "research_table",
+      );
+    },
+    rankings(request) {
+      const query = new URLSearchParams({
+        type: request.ranking,
+        market: request.market,
+      });
+      if (request.duration) query.set("duration", request.duration);
+      if (request.investor) query.set("investor", request.investor);
+      if (request.excludeCaution) query.set("exclude_caution", "true");
+      if (request.count) query.set("count", String(request.count));
+      return get<StockRankingsResponse>(
+        `/v1/rankings?${query.toString()}`,
+        "stock_rankings_response",
       );
     },
     openRealtime(onEvent, source) {

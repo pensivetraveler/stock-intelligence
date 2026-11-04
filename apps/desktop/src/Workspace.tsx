@@ -71,6 +71,7 @@ import {
   KeyIcon,
   QuoteIcon,
   InfoIcon,
+  RankingIcon,
   ResearchIcon,
   ScreenerIcon,
   AccountIcon,
@@ -106,6 +107,7 @@ import {
 import { QuotePanel } from "./QuotePanel";
 import { applyLive, type LiveSymbol, type RealtimeSocket } from "./realtime";
 import { AccountPanel } from "./AccountPanel";
+import { RankingsPanel } from "./RankingsPanel";
 import { ResearchPanel } from "./ResearchPanel";
 import { ConditionSearchPanel } from "./ConditionSearchPanel";
 import { AgentPanel } from "./AgentPanel";
@@ -181,6 +183,7 @@ type Panel =
   | "watchlist"
   | "quote"
   | "info"
+  | "rankings"
   | "research"
   | "screener"
   | "account"
@@ -2000,6 +2003,13 @@ export function Workspace({
               symbol={activeSymbol}
             />
           ) : null}
+          {panel === "rankings" ? (
+            <RankingsPanel
+              api={api}
+              activeInstrumentId={activeConfig.instrumentId}
+              onPick={(listing) => chooseListing(listing)}
+            />
+          ) : null}
           {panel === "research" ? <ResearchPanel api={api} /> : null}
           {panel === "screener" ? (
             <ConditionSearchPanel
@@ -2062,6 +2072,7 @@ export function Workspace({
             ["watchlist", WatchlistIcon],
             ["quote", QuoteIcon],
             ["info", InfoIcon],
+            ["rankings", RankingIcon],
             ["research", ResearchIcon],
             ["screener", ScreenerIcon],
             ["account", AccountIcon],

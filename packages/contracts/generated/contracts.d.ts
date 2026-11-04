@@ -32,6 +32,7 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ExchangeRate
   | BrokerMarketCalendar
   | ResearchTable
+  | StockRankingsResponse
   | BrokerOrderExecution
   | BrokerLedgerResponse
   | BrokerSyncResult
@@ -1057,6 +1058,75 @@ export interface ResearchTable {
    * @maxItems 2000
    */
   rows: (null | boolean | string)[][];
+}
+/**
+ * ADR 0049: one Toss stock ranking read on demand (trading amount or volume, gainers, losers, or Korean investors' net buying or selling). Values are exact decimal strings as Toss sent them; each row carries the listing the symbol directory knows for it, so it can be opened on a chart. Not stored and not chart data.
+ */
+export interface StockRankingsResponse {
+  kind: "stock_rankings_response";
+  schema_version: SchemaVersion;
+  source_id: Identifier;
+  /**
+   * TOSS_SECURITIES_* count Toss Securities fills only; the others the whole market. NET_* are Korean investors' net buying or selling (KRX and NXT together).
+   */
+  ranking:
+    | "MARKET_TRADING_AMOUNT"
+    | "MARKET_TRADING_VOLUME"
+    | "TOP_GAINERS"
+    | "TOP_LOSERS"
+    | "TOSS_SECURITIES_TRADING_AMOUNT"
+    | "TOSS_SECURITIES_TRADING_VOLUME"
+    | "NET_BUY"
+    | "NET_SELL";
+  market: "US" | "KR";
+  /**
+   * Trading days ranked over; null for investor rankings (latest business day only).
+   */
+  duration: null | ("realtime" | "1d" | "1w" | "1mo" | "3mo" | "6mo" | "1y");
+  investor: null | ("foreigner" | "institution" | "individual");
+  /**
+   * Investment-caution stocks were left out (Toss excludeInvestmentCaution).
+   */
+  exclude_caution: boolean;
+  observed_at_utc: UtcTimestamp;
+  /**
+   * When Toss computed the ranking; null when it has none for this choice.
+   */
+  ranked_at_utc: null | UtcTimestamp;
+  /**
+   * @maxItems 100
+   */
+  rows: {
+    rank: number;
+    symbol: string;
+    currency: null | string;
+    last_price: null | DecimalString;
+    /**
+     * Gainers and losers: the price at the start of the duration; other rankings: the previous close.
+     */
+    base_price: null | DecimalString;
+    /**
+     * Decimal ratio (0.0125 = 1.25%) of last_price over base_price.
+     */
+    change_rate: null | DecimalString;
+    trading_volume: null | DecimalString;
+    trading_amount: null | DecimalString;
+    /**
+     * NET_BUY / NET_SELL: net amount bought or sold in KRW, always positive.
+     */
+    net_amount: null | DecimalString;
+    /**
+     * The symbol directory's listing, to open on a chart; null when the symbol is not in a known list.
+     */
+    listing: null | {
+      instrument: InstrumentRef;
+      source_id: Identifier;
+      dataset_revision: Identifier;
+      session_dates: string[];
+    };
+    name: null | string;
+    local_name: null | string;
+  }[];
 }
 /**
  * An order's execution as reported by a broker API, read on demand and stored append-only. A separate ledger from manual entries and statement imports; never summed with them.

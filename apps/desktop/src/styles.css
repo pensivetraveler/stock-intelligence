@@ -2163,6 +2163,37 @@ body {
   white-space: nowrap;
 }
 
+.rankings-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rankings-meta button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.trade-fields .rankings-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trade-fields .rankings-check input {
+  min-height: 0;
+}
+
+.rankings-table td.rankings-symbol,
+.rankings-table th:nth-child(2) {
+  text-align: left;
+}
+
+.rankings-symbol small {
+  color: var(--term-muted, #8b93a7);
+}
+
 .live-notice {
   position: absolute;
   right: 16px;
