@@ -1,5 +1,7 @@
 import type {
   BrokerAccountSnapshot,
+  BrokerConditionList,
+  BrokerConditionResult,
   BrokerLedgerResponse,
   BrokerMarketCalendar,
   BrokerSellableQuantity,
@@ -138,6 +140,10 @@ export interface MarketApi {
   syncMeritz(since?: string): Promise<BrokerSyncResult>;
   /** Store the Kiwoom account's filled US orders since a date (YYYY-MM-DD; default a year). */
   syncKiwoom(since?: string): Promise<BrokerSyncResult>;
+  /** The US conditions saved in Kiwoom's 영웅문Global (ADR 0048). */
+  kiwoomConditions(): Promise<BrokerConditionList>;
+  /** One run of a saved Kiwoom condition: Kiwoom's figures now, not stored. */
+  runKiwoomCondition(seq: string): Promise<BrokerConditionResult>;
   /** Kiwoom Korean stock trades (settlement lines, no fill times), at most a year. */
   syncKiwoomDomestic(since?: string): Promise<BrokerSyncResult>;
   /** Kiwoom US commission and tax per settlement line (positions add them). */
@@ -576,6 +582,22 @@ export function createMarketApi(
         { ...target, timeoutMs: 600_000 },
         `/v1/brokers/kiwoom/sync${query}`,
         "broker_sync_result",
+        { method: "POST" },
+      );
+    },
+    kiwoomConditions() {
+      // One WebSocket login per call; Kiwoom can take a few seconds.
+      return callForKind<BrokerConditionList>(
+        { ...target, timeoutMs: 60_000 },
+        "/v1/screeners/kiwoom/us/conditions",
+        "broker_condition_list",
+      );
+    },
+    runKiwoomCondition(seq) {
+      return callForKind<BrokerConditionResult>(
+        { ...target, timeoutMs: 120_000 },
+        `/v1/screeners/kiwoom/us/conditions/${encodeURIComponent(seq)}/run`,
+        "broker_condition_result",
         { method: "POST" },
       );
     },

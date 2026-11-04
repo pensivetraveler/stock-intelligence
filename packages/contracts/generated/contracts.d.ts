@@ -85,7 +85,9 @@ export type StockIntelligenceWorkstationContractsV01 =
   | ReviewPeriodPayload
   | IndicatorConversation
   | IndicatorAssistantSettings
-  | StrategyConversation;
+  | StrategyConversation
+  | BrokerConditionList
+  | BrokerConditionResult;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -7383,4 +7385,96 @@ export interface StrategyComparison {
   rule_net: number;
   entry_match: number;
   blocks: ("trades_gap" | "net_gap" | "entry_match" | "too_few_trades")[];
+}
+/**
+ * ADR 0048: the US conditions saved in Kiwoom's 영웅문Global, read on demand. They are made and edited there; this app only lists and runs them.
+ */
+export interface BrokerConditionList {
+  kind: "broker_condition_list";
+  schema_version: SchemaVersion;
+  broker: "kiwoom";
+  market: "US";
+  source_id: Identifier;
+  /**
+   * When this API received the reply.
+   */
+  fetched_at_utc: string;
+  /**
+   * @maxItems 1000
+   */
+  conditions: {
+    seq: string;
+    name: string;
+  }[];
+}
+/**
+ * ADR 0048: one run of a saved Kiwoom US condition. A point-in-time read like a quote: not stored, not bars, not evidence, and never used by replay, backtests or agents.
+ */
+export interface BrokerConditionResult {
+  kind: "broker_condition_result";
+  schema_version: SchemaVersion;
+  broker: "kiwoom";
+  market: "US";
+  source_id: Identifier;
+  /**
+   * When this API received the reply.
+   */
+  fetched_at_utc: string;
+  condition: {
+    seq: string;
+    name: string;
+  };
+  /**
+   * False when the page limit was reached with more rows left.
+   */
+  complete: boolean;
+  /**
+   * @maxItems 5000
+   */
+  rows: {
+    symbol: string;
+    name: string;
+    /**
+     * Kiwoom's stex_tp (ND, NY, NA). Not a venue: NY also covers NYSE Arca.
+     */
+    kiwoom_exchange: string;
+    sector: null | string;
+    /**
+     * The app's own listing for the ticker; null when the lookup does not know it (not chartable).
+     */
+    listing: null | {
+      instrument: InstrumentRef;
+      source_id: Identifier;
+      dataset_revision: Identifier;
+      session_dates: string[];
+    };
+    /**
+     * Kiwoom's 현재가, as reported; the time it refers to is not documented.
+     */
+    last: string;
+    /**
+     * Kiwoom's 전일대비, signed, as reported; the time it refers to is not documented.
+     */
+    change: string;
+    /**
+     * Kiwoom's 등락률, percent, as reported; the time it refers to is not documented.
+     */
+    change_percent: string;
+    /**
+     * Kiwoom's 누적거래량, as reported; the time it refers to is not documented.
+     */
+    volume: string;
+    /**
+     * Kiwoom's 시가, as reported; the time it refers to is not documented.
+     */
+    open: string;
+    /**
+     * Kiwoom's 고가, as reported; the time it refers to is not documented.
+     */
+    high: string;
+    /**
+     * Kiwoom's 저가, as reported; the time it refers to is not documented.
+     */
+    low: string;
+  }[];
 }

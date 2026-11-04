@@ -164,6 +164,11 @@ export const ResearchIcon = () => (
     <path d="M2 14h12M4 11V7M7.5 11V4M11 11V8.5" />
   </Icon>
 );
+export const ScreenerIcon = () => (
+  <Icon>
+    <path d="M2 3h12L9.5 8.5V13l-3-1.5v-3z" />
+  </Icon>
+);
 export const InfoIcon = () => (
   <Icon>
     <circle cx="8" cy="8" r="6" />

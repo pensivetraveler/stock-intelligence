@@ -257,6 +257,12 @@
     },
     {
       "$ref": "#/$defs/StrategyConversation"
+    },
+    {
+      "$ref": "#/$defs/BrokerConditionList"
+    },
+    {
+      "$ref": "#/$defs/BrokerConditionResult"
     }
   ],
   "$defs": {
@@ -11349,6 +11355,232 @@
           "type": "array",
           "items": {
             "enum": ["trades_gap", "net_gap", "entry_match", "too_few_trades"]
+          }
+        }
+      }
+    },
+    "BrokerConditionList": {
+      "description": "ADR 0048: the US conditions saved in Kiwoom's 영웅문Global, read on demand. They are made and edited there; this app only lists and runs them.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "broker",
+        "market",
+        "source_id",
+        "fetched_at_utc",
+        "conditions"
+      ],
+      "properties": {
+        "kind": {
+          "const": "broker_condition_list"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "broker": {
+          "const": "kiwoom"
+        },
+        "market": {
+          "const": "US"
+        },
+        "source_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "fetched_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp",
+          "description": "When this API received the reply."
+        },
+        "conditions": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["seq", "name"],
+            "properties": {
+              "seq": {
+                "type": "string",
+                "pattern": "^[0-9]{1,3}$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          }
+        }
+      }
+    },
+    "BrokerConditionResult": {
+      "description": "ADR 0048: one run of a saved Kiwoom US condition. A point-in-time read like a quote: not stored, not bars, not evidence, and never used by replay, backtests or agents.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "broker",
+        "market",
+        "source_id",
+        "fetched_at_utc",
+        "condition",
+        "complete",
+        "rows"
+      ],
+      "properties": {
+        "kind": {
+          "const": "broker_condition_result"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "broker": {
+          "const": "kiwoom"
+        },
+        "market": {
+          "const": "US"
+        },
+        "source_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "fetched_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp",
+          "description": "When this API received the reply."
+        },
+        "condition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["seq", "name"],
+          "properties": {
+            "seq": {
+              "type": "string",
+              "pattern": "^[0-9]{1,3}$"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        },
+        "complete": {
+          "type": "boolean",
+          "description": "False when the page limit was reached with more rows left."
+        },
+        "rows": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "symbol",
+              "name",
+              "kiwoom_exchange",
+              "sector",
+              "listing",
+              "last",
+              "change",
+              "change_percent",
+              "volume",
+              "open",
+              "high",
+              "low"
+            ],
+            "properties": {
+              "symbol": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "kiwoom_exchange": {
+                "type": "string",
+                "maxLength": 8,
+                "description": "Kiwoom's stex_tp (ND, NY, NA). Not a venue: NY also covers NYSE Arca."
+              },
+              "sector": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                ]
+              },
+              "listing": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "instrument",
+                      "source_id",
+                      "dataset_revision",
+                      "session_dates"
+                    ],
+                    "properties": {
+                      "instrument": {
+                        "$ref": "#/$defs/InstrumentRef"
+                      },
+                      "source_id": {
+                        "$ref": "#/$defs/Identifier"
+                      },
+                      "dataset_revision": {
+                        "$ref": "#/$defs/Identifier"
+                      },
+                      "session_dates": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "date"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "description": "The app's own listing for the ticker; null when the lookup does not know it (not chartable)."
+              },
+              "last": {
+                "$ref": "#/$defs/DecimalString",
+                "description": "Kiwoom's 현재가, as reported; the time it refers to is not documented."
+              },
+              "change": {
+                "$ref": "#/$defs/DecimalString",
+                "description": "Kiwoom's 전일대비, signed, as reported; the time it refers to is not documented."
+              },
+              "change_percent": {
+                "$ref": "#/$defs/DecimalString",
+                "description": "Kiwoom's 등락률, percent, as reported; the time it refers to is not documented."
+              },
+              "volume": {
+                "$ref": "#/$defs/DecimalString",
+                "description": "Kiwoom's 누적거래량, as reported; the time it refers to is not documented."
+              },
+              "open": {
+                "$ref": "#/$defs/DecimalString",
+                "description": "Kiwoom's 시가, as reported; the time it refers to is not documented."
+              },
+              "high": {
+                "$ref": "#/$defs/DecimalString",
+                "description": "Kiwoom's 고가, as reported; the time it refers to is not documented."
+              },
+              "low": {
+                "$ref": "#/$defs/DecimalString",
+                "description": "Kiwoom's 저가, as reported; the time it refers to is not documented."
+              }
+            }
           }
         }
       }
