@@ -53,3 +53,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0044-paper-protective-orders.md`: (proposed) SIW Agent 보호 주문 — 모의투자에서 손절·익절·트레일링을 확정 봉 감시로 시작, 킬 스위치·한도·세션 밖 처리는 사용자 결정 필요
 - `0045-agent-on-linux.md`: (accepted) SIW Agent의 Linux 실행 — Ubuntu 24.04, systemd 사용자 서비스, 재부팅 뒤에는 로그인해야 키링이 열리고 실행기가 뜸(linger 없음), `agent-linux` CI
 - `0046-shared-data-space.md`: (proposed) 주식 희석 분석기와 공동 데이터 공간 — 저장소 밖 폴더 하나(`STOCK_SHARED_DATA`), 데이터마다 쓰는 프로그램은 하나, SEC 원문과 분석기의 요청 잠금 공유, SIW는 병합 장부만 읽기, 시세는 SIW만 받고 쓰며 읽는 프로그램은 아직 없음(캐시 결함 결정 뒤), 아직 옮긴 것 없음
+- `0049-toss-stock-rankings-panel.md`: (accepted, 실계좌 확인 전) 토스 주식 랭킹 패널 — `GET /v1/rankings`(`stock_rankings_response`), 거래대금·거래량·급상승·급하락·토스증권 기준과 국내 투자자별 순매수·순매도(1.2.28 신규 엔드포인트), 받은 값 그대로, 이미 아는 종목 목록으로만 listing을 붙여 클릭하면 활성 차트에 열기, 저장하지 않음
