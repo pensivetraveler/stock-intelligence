@@ -88,7 +88,9 @@ import {
   MAX_OLDER_BARS,
   olderDailyRange,
   olderSessionBars,
+  OWNS_SPACE_SELECTOR,
   prependOlder,
+  spaceLoadsOlder,
 } from "./older-bars";
 import { IndicatorSettings } from "./IndicatorSettings";
 import {
@@ -491,6 +493,7 @@ export function ChartPanel({
     replayTime === null &&
     !olderState.exhausted &&
     olderState.bars.length < MAX_OLDER_BARS;
+  const panelRef = useRef<HTMLElement | null>(null);
   const loadOlder = useCallback(() => {
     if (!canLoadOlder || olderBusy.current) return;
     const key = olderKey;
@@ -1504,9 +1507,38 @@ export function ChartPanel({
           : value.toFixed(Math.abs(value) >= 10 ? 2 : 4);
   return (
     <section
+      ref={panelRef}
       className={active ? "chart-panel active" : "chart-panel"}
       aria-label={`${title}: ${symbol} ${timeframe}`}
-      onPointerDown={onActivate}
+      aria-keyshortcuts="Space"
+      // Focusable only by a click on the chart, so the space bar knows which chart
+      // it means. A field or control inside keeps the focus the click gave it.
+      tabIndex={-1}
+      onPointerDown={(event) => {
+        onActivate?.();
+        const target = event.target as Element;
+        if (
+          !(target instanceof Element) ||
+          target.closest(OWNS_SPACE_SELECTOR)
+        ) {
+          return;
+        }
+        panelRef.current?.focus({ preventScroll: true });
+      }}
+      onKeyDown={(event) => {
+        if (
+          !spaceLoadsOlder(
+            event.nativeEvent,
+            event.target as Element,
+            panelRef.current,
+          )
+        ) {
+          return;
+        }
+        // The page would scroll otherwise.
+        event.preventDefault();
+        if (!event.nativeEvent.repeat) loadOlder();
+      }}
     >
       <div className="chart-body">
         {load.status === "ready" && series ? (
@@ -1554,7 +1586,6 @@ export function ChartPanel({
               }
               onToolDone={onToolDone}
               drawingsSelectable={!replayChoosing}
-              onReachStart={loadOlder}
               onVisibleRange={onVisibleRange}
             />
             {replayTime === null ? (

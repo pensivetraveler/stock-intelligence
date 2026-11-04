@@ -164,6 +164,12 @@ button:disabled {
   gap: 16px;
 }
 
+.chart-panel:focus {
+  /* Focus only says which chart the space bar loads older bars for; the active
+     border already shows it. */
+  outline: none;
+}
+
 .chart-panel {
   display: grid;
   align-content: start;

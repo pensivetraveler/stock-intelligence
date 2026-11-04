@@ -952,7 +952,7 @@ const en = {
   "chart.loading": "Loading bars…",
   "chart.older": "◀ Older bars",
   "chart.olderHint":
-    "Load the bars before the first one shown. Scrolling or zooming out past the first bar does the same.",
+    "Load the bars before the first one shown. With the chart clicked, the space bar does the same.",
   "chart.olderLoading": "Loading older bars…",
   "chart.olderNone": "No older bars",
   "chart.olderLimit": "Older-bar limit reached",
@@ -2614,7 +2614,7 @@ const ko: Record<MessageKey, string> = {
   "chart.loading": "캔들을 불러오는 중…",
   "chart.older": "◀ 이전 봉",
   "chart.olderHint":
-    "처음 보이는 봉보다 앞의 봉을 불러옵니다. 첫 봉 너머로 스크롤하거나 축소해도 같습니다.",
+    "처음 보이는 봉보다 앞의 봉을 불러옵니다. 차트를 클릭한 상태에서 스페이스 키를 눌러도 같습니다.",
   "chart.olderLoading": "이전 봉 불러오는 중…",
   "chart.olderNone": "더 이전 봉 없음",
   "chart.olderLimit": "이전 봉 한도 도달",

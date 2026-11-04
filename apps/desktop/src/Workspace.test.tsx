@@ -2120,6 +2120,35 @@ describe("indicators", () => {
     ).toBeDisabled();
   });
 
+  it("loads older bars with the space bar only while the clicked chart has focus", async () => {
+    const api = fakeApi({ history: true });
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    const chart = screen.getByRole("region", { name: /Chart 1/ });
+    const button = within(chart).getByRole("button", { name: "◀ Older bars" });
+    await waitFor(() => expect(button).toBeEnabled());
+    const before = api.sessionsCalls.length;
+    const olderAsked = () =>
+      api.sessionsCalls
+        .slice(before)
+        .some((call) => call.endDate === "2026-08-31");
+
+    // A field keeps its space bar: typing there never loads bars.
+    const field = screen.getAllByLabelText("Session date")[0];
+    fireEvent.pointerDown(field);
+    field.focus();
+    fireEvent.keyDown(field, { key: " ", code: "Space" });
+    // Without a click the chart has no focus: nothing is asked either.
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(olderAsked()).toBe(false);
+
+    fireEvent.pointerDown(screen.getByTestId("chart-chart-1"));
+    expect(chart).toHaveFocus();
+    fireEvent.keyDown(chart, { key: " ", code: "Space" });
+    await waitFor(() => expect(olderAsked()).toBe(true));
+  });
+
   it("styles an indicator like TradingView and computes it on 1m bars", async () => {
     const api = fakeApi({ history: true });
     const storage = memoryStorage();
