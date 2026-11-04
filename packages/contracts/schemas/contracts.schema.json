@@ -181,6 +181,9 @@
       "$ref": "#/$defs/PaperIntentListResponse"
     },
     {
+      "$ref": "#/$defs/LiveConfirmationListResponse"
+    },
+    {
       "$ref": "#/$defs/PaperExecutionListResponse"
     },
     {
@@ -6912,6 +6915,10 @@
         "allowed_instrument_ids"
       ],
       "properties": {
+        "max_order_amount_usd": {
+          "$ref": "#/$defs/NonNegativeDecimalString",
+          "description": "Per-order cap in US dollars (ADR 0047); present only when set."
+        },
         "max_order_amount_krw": {
           "anyOf": [
             {
@@ -7009,7 +7016,7 @@
           "$ref": "#/$defs/Identifier"
         },
         "environment": {
-          "const": "demo"
+          "enum": ["demo", "real"]
         },
         "approval_id": {
           "type": "string",
@@ -7416,7 +7423,7 @@
           "$ref": "#/$defs/Identifier"
         },
         "environment": {
-          "const": "demo"
+          "enum": ["demo", "real"]
         },
         "operation": {
           "type": "string",
@@ -7532,13 +7539,13 @@
           "$ref": "#/$defs/Identifier"
         },
         "environment": {
-          "const": "demo"
+          "enum": ["demo", "real"]
         },
         "ledger": {
-          "const": "broker_paper"
+          "enum": ["broker_paper", "broker_live_orders"]
         },
         "fill_origin": {
-          "const": "broker_demo_simulated"
+          "enum": ["broker_demo_simulated", "broker_live"]
         },
         "intent_id": {
           "anyOf": [
@@ -7825,6 +7832,12 @@
           "maximum": 3600,
           "description": "Seconds an accepted order may stay unfilled before the runner cancels it. Absent: left to the user."
         },
+        "confirm_seconds": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 600,
+          "description": "Live plans only (ADR 0047): seconds the user has to confirm each order before it expires."
+        },
         "bar_settle_seconds": {
           "anyOf": [
             {
@@ -7964,6 +7977,61 @@
         }
       },
       "description": "Recent paper-order intents with their outcome and submission (ADR 0037)."
+    },
+    "LiveConfirmationListResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_version", "now_utc", "confirmations"],
+      "properties": {
+        "kind": {
+          "const": "live_confirmation_list_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "now_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "confirmations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "intent",
+              "requested_at_utc",
+              "expires_at_utc",
+              "decision",
+              "decided_at_utc"
+            ],
+            "properties": {
+              "intent": {
+                "$ref": "#/$defs/PaperOrderIntent"
+              },
+              "requested_at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "expires_at_utc": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "decision": {
+                "enum": ["confirmed", "declined", null]
+              },
+              "decided_at_utc": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "description": "Live orders waiting for the user's confirmation or just confirmed (ADR 0047)."
     },
     "PaperExecutionListResponse": {
       "type": "object",

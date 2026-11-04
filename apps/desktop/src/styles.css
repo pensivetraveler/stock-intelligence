@@ -2781,6 +2781,54 @@ body {
   font-size: 1.3rem;
 }
 
+/* SIW Agent tabs and the live-account screen (ADR 0047). */
+.agent-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.agent-tab {
+  padding: 6px 14px;
+  border: 1px solid #4a5160;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.agent-tab[aria-selected="true"] {
+  background: #2b3240;
+  font-weight: 700;
+}
+
+.agent-tab-live[aria-selected="true"] {
+  border-color: #ff6b6b;
+  background: #5a1717;
+  color: #ffe1e1;
+}
+
+.agent-banner-live {
+  border-color: #ff6b6b;
+  background: #5a1717;
+  color: #ffe1e1;
+}
+
+.agent-confirmations {
+  border-color: #ff6b6b;
+}
+
+.agent-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.agent-confirm {
+  border: 1px solid #ff6b6b;
+  background: #8a2020;
+  color: #fff;
+  font-weight: 700;
+}
+
 .agent-kill {
   padding: 10px 16px;
   border: 1px solid #ff6b6b;

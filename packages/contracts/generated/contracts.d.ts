@@ -60,6 +60,7 @@ export type StockIntelligenceWorkstationContractsV01 =
   | PaperApproval
   | PaperApprovalListResponse
   | PaperIntentListResponse
+  | LiveConfirmationListResponse
   | PaperExecutionListResponse
   | PaperPositionListResponse
   | ReviewTradeListResponse
@@ -3768,7 +3769,7 @@ export interface PaperOrderIntent {
   created_at_utc: UtcTimestamp;
   broker_id: "kiwoom" | "kis";
   broker_account_ref: Identifier;
-  environment: "demo";
+  environment: "demo" | "real";
   approval_id: string;
   strategy: {
     strategy_id: Identifier;
@@ -4047,6 +4048,10 @@ export interface PaperOrderIntent {
  * Limits of one paper-trading approval (ADR 0037). null means no limit for now.
  */
 export interface PaperOrderLimits {
+  /**
+   * Per-order cap in US dollars (ADR 0047); present only when set.
+   */
+  max_order_amount_usd?: string;
   max_order_amount_krw: NonNegativeDecimalString | null;
   max_daily_orders: number | null;
   max_daily_loss_rate: NonNegativeDecimalString | null;
@@ -4066,7 +4071,7 @@ export interface PaperOrderSubmission {
   intent_id: string;
   broker_id: "kiwoom" | "kis";
   broker_account_ref: Identifier;
-  environment: "demo";
+  environment: "demo" | "real";
   operation: string;
   broker_order_type_code: string;
   requested_at_utc: UtcTimestamp;
@@ -4086,9 +4091,9 @@ export interface PaperExecution {
   execution_id: Identifier;
   broker_id: "kiwoom" | "kis";
   broker_account_ref: Identifier;
-  environment: "demo";
-  ledger: "broker_paper";
-  fill_origin: "broker_demo_simulated";
+  environment: "demo" | "real";
+  ledger: "broker_paper" | "broker_live_orders";
+  fill_origin: "broker_demo_simulated" | "broker_live";
   intent_id: string | null;
   broker_order_ref: string;
   instrument_id: Identifier;
@@ -4167,6 +4172,10 @@ export interface PaperApproval {
    */
   unfilled_cancel_seconds?: number;
   /**
+   * Live plans only (ADR 0047): seconds the user has to confirm each order before it expires.
+   */
+  confirm_seconds?: number;
+  /**
    * Seconds after a bar's end after which the runner treats it as final for signals; null: the source's finality only
    */
   bar_settle_seconds: number | null;
@@ -4202,6 +4211,21 @@ export interface PaperIntentListResponse {
       reason: string | null;
     } | null;
     submission: PaperOrderSubmission | null;
+  }[];
+}
+/**
+ * Live orders waiting for the user's confirmation or just confirmed (ADR 0047).
+ */
+export interface LiveConfirmationListResponse {
+  kind: "live_confirmation_list_response";
+  schema_version: SchemaVersion;
+  now_utc: UtcTimestamp;
+  confirmations: {
+    intent: PaperOrderIntent;
+    requested_at_utc: UtcTimestamp;
+    expires_at_utc: UtcTimestamp;
+    decision: "confirmed" | "declined" | null;
+    decided_at_utc: UtcTimestamp | null;
   }[];
 }
 /**
