@@ -36,6 +36,7 @@ from services.api.live_routes import register_live_routes
 from services.api.paper_routes import register_paper_routes
 from services.api.parent_watch import parent_pid_from_env, start_parent_watch
 from services.api.review_routes import register_review_routes
+from services.api.screener_routes import register_screener_routes
 from services.api.strategy_research_routes import register_strategy_research_routes
 from services.assistant.conversion import call_convert_claude
 from services.assistant.indicator import call_indicator_claude
@@ -74,6 +75,8 @@ from services.market_data.kiwoom_account import (
 from services.market_data.kiwoom_account import sync_domestic as kiwoom_sync_domestic
 from services.market_data.kiwoom_account import sync_executions as kiwoom_sync
 from services.market_data.kiwoom_account import sync_fees as kiwoom_sync_fees
+from services.market_data.kiwoom_conditions import ConditionNotFoundError
+from services.market_data.kiwoom_conditions import Connect as KiwoomConditionConnect
 from services.market_data.market_router import MarketRouter
 from services.market_data.meritz import market_quote as meritz_quote
 from services.market_data.meritz_account import SEOUL
@@ -610,6 +613,7 @@ def create_app(
     symbol_directory: SymbolDirectory | None = None,
     toss_session: Callable[[], TossSession | None] | None = None,
     kiwoom_session: Callable[[], KiwoomAccountSession | None] | None = None,
+    kiwoom_conditions_connect: KiwoomConditionConnect | None = None,
     meritz_session: Callable[[], MeritzSession | None] | None = None,
     overnight_source: Callable[[], Any] | None = None,
     symbol_history: SymbolHistory | None = None,
@@ -746,6 +750,19 @@ def create_app(
         except (MarketDataError, OSError, ValueError):
             return None
         return instrument_for(traded, "USD", on)
+
+    def listing_for(symbol: str) -> dict[str, Any] | None:
+        """The listing of a broker's US ticker, as search shows it; None when the app's
+        own lookup does not know it (a condition row is then not chartable)."""
+        instrument_id = instrument_for(symbol)
+        if instrument_id is None:
+            return None
+        for item in provider.get().instruments():
+            if item["instrument"]["instrument_id"] == instrument_id:
+                return dict(item)
+        directory = symbols.get()
+        entry = directory.lookup(instrument_id) if directory is not None else None
+        return directory.listing(entry) if directory is not None and entry is not None else None
 
     def sync_recent(since: str) -> dict[str, object] | None:
         session, store = toss(), journal.get()
@@ -1045,6 +1062,8 @@ def create_app(
             )
         try:
             document = read(session)
+        except ConditionNotFoundError as exc:
+            return _error_response(request, 404, "condition_not_found", str(exc))
         except InstrumentNotFoundError as exc:
             return _error_response(request, 404, "instrument_not_found", str(exc))
         except InvalidBarsQueryError as exc:
@@ -1713,6 +1732,15 @@ def create_app(
         public_sources=sources.get,
         error_response=_error_response,
         ask=agent_ask,
+    )
+    register_screener_routes(
+        application,
+        kiwoom_session=kiwoom,
+        listing_for=listing_for,
+        broker_read=broker_read,
+        error_response=_error_response,
+        clock=clock,
+        connect=kiwoom_conditions_connect,
     )
 
     # Provider and cache I/O are blocking; a sync endpoint runs in FastAPI's threadpool

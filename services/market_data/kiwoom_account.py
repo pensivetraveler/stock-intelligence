@@ -120,6 +120,14 @@ class KiwoomAccountSession:
         """A stable, non-secret reference to this key (a truncated hash of its app key)."""
         return hashlib.sha256(self._credentials.app_key.encode()).hexdigest()[:16]
 
+    @property
+    def environment(self) -> str:
+        return self._credentials.environment
+
+    def access_token(self, refresh: bool = False) -> str:
+        """The key's REST token, for the WebSocket LOGIN of condition search (ADR 0048)."""
+        return self._token.get(refresh=refresh)
+
     def _issue_token(self) -> tuple[str, float]:
         response = self._http.request(
             "POST",

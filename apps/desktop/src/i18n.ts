@@ -364,6 +364,7 @@ const en = {
   "panel.quote": "Live quote",
   "panel.info": "Stock info",
   "panel.research": "Research",
+  "panel.screener": "Condition search",
   "panel.account": "Account",
   "panel.review": "Review Agent",
   "agent.title": "Review Agent",
@@ -853,6 +854,30 @@ const en = {
   "research.meta":
     "{rows} rows · as of {time} (UTC) · source Toss, values as sent",
   "research.older": "Older rows",
+  "screener.title": "Kiwoom condition search",
+  "screener.condition": "Condition",
+  "screener.running": "Running…",
+  "screener.retry": "Retry",
+  "screener.loading": "Finding the connected conditions in 영웅문Global…",
+  "screener.missing":
+    "Not saved in 영웅문Global: {names}. Save them under these names; this app only runs them.",
+  "screener.noKey":
+    "Condition search uses Kiwoom: register an enabled real-account Kiwoom key on the Keys screen.",
+  "screener.listFailed": "Could not read the conditions: {error}",
+  "screener.runFailed": "The condition run failed: {error}",
+  "screener.meta":
+    "{rows} rows · {name} · run at {time} (UTC) · Kiwoom's figures, as sent",
+  "screener.incomplete":
+    "Kiwoom had more rows than the 20 pages this app reads; the list is cut short.",
+  "screener.symbol": "Ticker",
+  "screener.name": "Name",
+  "screener.last": "Price",
+  "screener.changePercent": "Change",
+  "screener.volume": "Volume",
+  "screener.unknown":
+    "This app does not know the ticker, so it cannot be charted.",
+  "screener.note":
+    "Kiwoom does not say what time its figures refer to. Results are not stored and are never used by replay, backtests or agents.",
   "research.ds.rankings": "Stock rankings",
   "research.ds.sector_rankings": "Sector rankings",
   "research.ds.market_indicator_prices": "Korean indices and bond yields",
@@ -2131,6 +2156,7 @@ const ko: Record<MessageKey, string> = {
   "panel.quote": "실시간 시세",
   "panel.info": "종목 정보",
   "panel.research": "리서치",
+  "panel.screener": "조건검색",
   "panel.account": "계좌",
   "panel.review": "복기 Agent",
   "agent.title": "복기 Agent",
@@ -2613,6 +2639,28 @@ const ko: Record<MessageKey, string> = {
   "research.loading": "불러오는 중…",
   "research.meta": "{rows}행 · 기준 {time}(UTC) · 출처 토스, 받은 값 그대로",
   "research.older": "이전 데이터",
+  "screener.title": "키움 조건검색",
+  "screener.condition": "조건식",
+  "screener.running": "검색 중…",
+  "screener.retry": "다시 시도",
+  "screener.loading": "영웅문Global에서 연결한 조건식을 찾는 중…",
+  "screener.missing":
+    "영웅문Global에 없는 조건식: {names}. 이 이름으로 저장해 주세요. 이 앱은 실행만 합니다.",
+  "screener.noKey":
+    "조건검색은 키움 키를 씁니다. 키 화면에서 실계좌 키움 키를 등록하고 켜 주세요.",
+  "screener.listFailed": "조건식 목록을 읽지 못했습니다: {error}",
+  "screener.runFailed": "조건검색에 실패했습니다: {error}",
+  "screener.meta":
+    "{rows}종목 · {name} · {time}(UTC)에 검색 · 키움이 보낸 값 그대로",
+  "screener.incomplete": "결과가 이 앱이 읽는 20쪽보다 많아 목록이 잘렸습니다.",
+  "screener.symbol": "티커",
+  "screener.name": "종목명",
+  "screener.last": "현재가",
+  "screener.changePercent": "등락률",
+  "screener.volume": "거래량",
+  "screener.unknown": "이 앱에 없는 티커라 차트로 열 수 없습니다.",
+  "screener.note":
+    "키움은 이 값이 어느 시점의 값인지 알려 주지 않습니다. 결과는 저장하지 않고, 리플레이·백테스트·Agent에도 쓰지 않습니다.",
   "research.ds.rankings": "주식 랭킹",
   "research.ds.sector_rankings": "섹터 랭킹",
   "research.ds.market_indicator_prices": "국내 지수·국채 금리",

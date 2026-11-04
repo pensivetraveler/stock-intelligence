@@ -2163,6 +2163,13 @@ body {
   white-space: nowrap;
 }
 
+/* Kiwoom condition rows: a long company name must not push the figures out of view. */
+.research-table td.condition-name {
+  max-width: 8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .rankings-meta {
   display: flex;
   align-items: center;

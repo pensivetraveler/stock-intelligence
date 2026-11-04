@@ -583,6 +583,63 @@ function fakeApi(
       ),
     syncMeritz: () => Promise.reject(new Error("not in this test")),
     syncKiwoomDomestic: () => Promise.reject(new Error("not in this test")),
+    kiwoomConditions: () =>
+      Promise.resolve({
+        kind: "broker_condition_list",
+        schema_version: "0.1",
+        broker: "kiwoom",
+        market: "US",
+        source_id: "kiwoom-us-conditions",
+        fetched_at_utc: "2026-11-04T01:30:00Z",
+        conditions: [
+          { seq: "1", name: "SIW_전일신고거래량" },
+          { seq: "3", name: "SIW_전일급등주" },
+        ],
+        missing: ["SIW_당일급등주"],
+      }),
+    runKiwoomCondition: (name) =>
+      Promise.resolve({
+        kind: "broker_condition_result",
+        schema_version: "0.1",
+        broker: "kiwoom",
+        market: "US",
+        source_id: "kiwoom-us-conditions",
+        fetched_at_utc: "2026-11-04T01:30:00Z",
+        condition: { seq: "3", name },
+        complete: true,
+        rows: ["NVDA", "ZZZQ"].map((symbol) => ({
+          symbol,
+          name: symbol === "NVDA" ? "엔비디아" : "모르는 종목",
+          kiwoom_exchange: "ND",
+          sector: null,
+          listing:
+            symbol === "NVDA"
+              ? {
+                  instrument: {
+                    kind: "instrument_ref",
+                    schema_version: "0.1",
+                    instrument_id: "us:nvda:xnas:2026",
+                    symbol: "NVDA",
+                    venue: "XNAS",
+                    asset_class: "us_equity",
+                    currency: "USD",
+                    identity_as_of: "2026-01-01T00:00:00Z",
+                    identity_source: "alpaca-sip-assets",
+                  },
+                  source_id: "alpaca-sip",
+                  dataset_revision: "alpaca-sip-assets-2026-10-20",
+                  session_dates: [],
+                }
+              : null,
+          last: "5.1600",
+          change: symbol === "NVDA" ? "0.9400" : "-0.0265",
+          change_percent: symbol === "NVDA" ? "22.27" : "-14.19",
+          volume: "9011562",
+          open: "4.7100",
+          high: "5.2000",
+          low: "4.7100",
+        })),
+      }),
     syncKiwoomFees: () => Promise.reject(new Error("not in this test")),
     syncKiwoom: () =>
       Promise.resolve({
@@ -1627,6 +1684,45 @@ describe("chart workspace", () => {
       within(panel).getByText(/USD\/KRW reference rate 1331.27/),
     ).toBeVisible();
     expect(within(panel).getByText("Charts use 16:00 – 20:00")).toBeVisible();
+  });
+
+  it("runs a connected Kiwoom condition and charts a matched ticker", async () => {
+    const api = fakeApi();
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: "Condition search" }));
+    const panel = await screen.findByRole("region", {
+      name: "Kiwoom condition search",
+    });
+    // A connected condition that is not saved in 영웅문Global is named, not offered.
+    expect(
+      await within(panel).findByText(
+        /Not saved in 영웅문Global: SIW_당일급등주/,
+      ),
+    ).toBeVisible();
+    expect(
+      within(panel).queryByRole("button", { name: "SIW_당일급등주" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "SIW_전일급등주" }),
+    );
+    expect(
+      await within(panel).findByText(/2 rows · SIW_전일급등주/),
+    ).toBeVisible();
+    expect(
+      within(panel).getByRole("button", { name: "SIW_전일급등주" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(within(panel).getByText("-14.19%")).toHaveClass("legend-down");
+    // A ticker the app does not know is shown but cannot be opened.
+    expect(
+      within(panel).queryByRole("button", { name: /ZZZQ/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: /NVDA/ }));
+    await waitFor(() =>
+      expect(
+        api.barsCalls.some((call) => call.instrumentId === "us:nvda:xnas:2026"),
+      ).toBe(true),
+    );
   });
 
   it("reads Toss research tables with their documented options", async () => {

@@ -73,6 +73,7 @@ import {
   InfoIcon,
   RankingIcon,
   ResearchIcon,
+  ScreenerIcon,
   AccountIcon,
   LayoutIcon,
   LogScaleIcon,
@@ -108,6 +109,7 @@ import { applyLive, type LiveSymbol, type RealtimeSocket } from "./realtime";
 import { AccountPanel } from "./AccountPanel";
 import { RankingsPanel } from "./RankingsPanel";
 import { ResearchPanel } from "./ResearchPanel";
+import { ConditionSearchPanel } from "./ConditionSearchPanel";
 import { AgentPanel } from "./AgentPanel";
 import type { AgentApi, ChartReviewRequest } from "./agent-api";
 import { BacktestScreen } from "./BacktestScreen";
@@ -183,6 +185,7 @@ type Panel =
   | "info"
   | "rankings"
   | "research"
+  | "screener"
   | "account"
   | "journal"
   | "keys"
@@ -2008,6 +2011,12 @@ export function Workspace({
             />
           ) : null}
           {panel === "research" ? <ResearchPanel api={api} /> : null}
+          {panel === "screener" ? (
+            <ConditionSearchPanel
+              api={api}
+              onPick={(listing) => chooseListing(listing)}
+            />
+          ) : null}
           {panel === "account" ? (
             <AccountPanel api={api} onSynced={refreshJournal} />
           ) : null}
@@ -2064,6 +2073,7 @@ export function Workspace({
             ["info", InfoIcon],
             ["rankings", RankingIcon],
             ["research", ResearchIcon],
+            ["screener", ScreenerIcon],
             ["account", AccountIcon],
             ["journal", JournalIcon],
             ...(backtestApi ? ([["backtest", BacktestIcon]] as const) : []),
