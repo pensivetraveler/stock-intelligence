@@ -9,7 +9,8 @@ condition 42 answered 10 rows in one page. Replies were named GCNSRLST and GCNSR
 while the spec names them GCNSRLT and CNSRREQ, so both are accepted. Numbers are
 zero-padded with their sign ("000005.1600", "-00000.0265"). A row carries no time, and
 `stex_tp` (ND, NY, NA) does not tell NYSE from NYSE Arca, so it is reported, never used
-as a venue.
+as a venue. Later that day three conditions were saved above the others and every `seq`
+moved by four, so conditions are run by name and their `seq` is looked up each time.
 
 Only LOGIN, PING echoes, GCNSRLST and GCNSRREQ with search_type 0 can be sent: realtime
 condition events and every order call are out of reach.
@@ -78,7 +79,7 @@ def default_connect(url: str) -> Connection:
 
 
 class ConditionNotFoundError(InstrumentNotFoundError):
-    """The `seq` is not among the conditions saved in 영웅문Global."""
+    """No condition of that name is saved in 영웅문Global."""
 
 
 @dataclass(frozen=True)
@@ -121,17 +122,23 @@ class KiwoomConditionSearch:
         with self._open() as socket:
             return _conditions(socket)
 
-    def run(self, seq: str) -> ConditionRun:
+    def run(self, name: str) -> ConditionRun:
+        """Run the condition saved under `name`. Its `seq` is looked up on the same
+        connection: Kiwoom renumbers every condition when one is added above it (seen
+        live on 2026-11-04), so a `seq` kept from an earlier call can name another one."""
         with self._open() as socket:
-            # The spec asks for the list before a realtime run; asking first here also
-            # gives the condition's name and refuses a `seq` that does not exist.
-            condition = next((item for item in _conditions(socket) if item.seq == seq), None)
-            if condition is None:
-                raise ConditionNotFoundError(f"no saved Kiwoom condition has seq {seq!r}")
+            matches = [item for item in _conditions(socket) if item.name == name]
+            if not matches:
+                raise ConditionNotFoundError(f"no Kiwoom condition is saved as {name!r}")
+            if len(matches) > 1:
+                raise InvalidBarsQueryError(
+                    f"{len(matches)} Kiwoom conditions are saved as {name!r}; rename one"
+                )
+            condition = matches[0]
             rows: list[ConditionRow] = []
             body = {
                 "trnm": "GCNSRREQ",
-                "seq": seq,
+                "seq": condition.seq,
                 "search_type": "0",
                 "cont_yn": "N",
                 "next_key": "",

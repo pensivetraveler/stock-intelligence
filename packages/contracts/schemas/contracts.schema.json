@@ -11615,7 +11615,7 @@
       }
     },
     "BrokerConditionList": {
-      "description": "ADR 0048: the US conditions saved in Kiwoom's 영웅문Global, read on demand. They are made and edited there; this app only lists and runs them.",
+      "description": "ADR 0048: the Kiwoom US conditions SIW is connected to, as saved in 영웅문Global when read. They are made and edited there; `seq` is Kiwoom's number at that moment and changes when a condition is added above it.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -11625,7 +11625,8 @@
         "market",
         "source_id",
         "fetched_at_utc",
-        "conditions"
+        "conditions",
+        "missing"
       ],
       "properties": {
         "kind": {
@@ -11666,6 +11667,16 @@
               }
             }
           }
+        },
+        "missing": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": "Connected condition names that are not saved in 영웅문Global now."
         }
       }
     },
@@ -11718,7 +11729,8 @@
               "minLength": 1,
               "maxLength": 200
             }
-          }
+          },
+          "description": "`seq` is Kiwoom's number at the time of the run, looked up by name."
         },
         "complete": {
           "type": "boolean",

@@ -1,7 +1,8 @@
 """Kiwoom US condition search over a fake WebSocket (no network, ADR 0048).
 
 Replies follow the shapes seen live on 2026-11-04: `[seq, name]` pairs from GCNSRLST and
-zero-padded, signed numbers from GCNSRREQ.
+zero-padded, signed numbers from GCNSRREQ. SIW_당일급등주 is left out of the saved list so
+a connected condition that is not saved can be tested.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ from services.market_data.provider import (
 )
 
 NOW = datetime(2026, 11, 4, 1, 30, tzinfo=timezone.utc)
-CONDITIONS = [["1", "검색기-기본조건"], ["42", "정규장거래량"]]
+CONDITIONS = [["1", "SIW_전일신고거래량"], ["3", "SIW_전일급등주"], ["46", "정규장거래량"]]
 
 
 def row(symbol: str, last: str = "000005.1600", change: str = "000000.9400") -> dict[str, str]:
@@ -63,7 +64,9 @@ class Server:
         search_code: int = 0,
         list_name: str = "GCNSRLST",
         ping_first: bool = False,
+        conditions: list[list[str]] | None = None,
     ) -> None:
+        self.conditions = conditions if conditions is not None else CONDITIONS
         self.login_codes = login_codes or [0]
         self.pages = pages if pages is not None else [[row("ACB")]]
         self.search_code = search_code
@@ -92,7 +95,11 @@ class Connection:
             reply: dict[str, Any] = {"trnm": "LOGIN", "return_code": code, "return_msg": "x"}
             self.outbox.append(json.dumps({"trnm": "PING"}))
         elif name == "GCNSRLST":
-            reply = {"trnm": self.server.list_name, "return_code": 0, "data": CONDITIONS}
+            reply = {
+                "trnm": self.server.list_name,
+                "return_code": 0,
+                "data": self.server.conditions,
+            }
         elif name == "GCNSRREQ":
             page = int(body["next_key"] or "0")
             more = page + 1 < len(self.server.pages)
@@ -131,8 +138,9 @@ def test_conditions_are_listed_after_login() -> None:
     server = Server(ping_first=True)
     found = search(server).conditions()
     assert [(item.seq, item.name) for item in found] == [
-        ("1", "검색기-기본조건"),
-        ("42", "정규장거래량"),
+        ("1", "SIW_전일신고거래량"),
+        ("3", "SIW_전일급등주"),
+        ("46", "정규장거래량"),
     ]
     assert server.urls == [REAL_URL]
     assert server.sent[0] == {"trnm": "LOGIN", "token": "cached"}
@@ -141,13 +149,13 @@ def test_conditions_are_listed_after_login() -> None:
 
 
 def test_the_spec_spelling_of_the_list_reply_is_accepted() -> None:
-    assert len(search(Server(list_name="GCNSRLT")).conditions()) == 2
+    assert len(search(Server(list_name="GCNSRLT")).conditions()) == len(CONDITIONS)
 
 
 def test_a_run_reads_every_page_as_exact_decimals() -> None:
     server = Server(pages=[[row("ACB")], [row("GPUS", "000000.1602", "-00000.0265")]])
-    run = search(server).run("42")
-    assert run.condition.name == "정규장거래량"
+    run = search(server).run("정규장거래량")
+    assert run.condition.seq == "46"
     assert run.complete
     assert [item.symbol for item in run.rows] == ["ACB", "GPUS"]
     first, second = run.rows
@@ -171,23 +179,37 @@ def test_a_run_reads_every_page_as_exact_decimals() -> None:
 
 
 def test_a_run_stops_at_the_page_limit() -> None:
-    run = search(Server(pages=[[row("ACB")]] * (MAX_PAGES + 3))).run("42")
+    run = search(Server(pages=[[row("ACB")]] * (MAX_PAGES + 3))).run("정규장거래량")
     assert not run.complete
     assert len(run.rows) == MAX_PAGES
 
 
-def test_an_unknown_seq_is_refused_before_any_search() -> None:
+def test_an_unsaved_or_ambiguous_name_is_refused_before_any_search() -> None:
     server = Server()
     with pytest.raises(ConditionNotFoundError):
-        search(server).run("7")
+        search(server).run("SIW_당일급등주")
     assert all(body["trnm"] != "GCNSRREQ" for body in server.sent)
     assert server.closed == 1
+    twice = Server(conditions=[["1", "정규장거래량"], ["2", "정규장거래량"]])
+    with pytest.raises(InvalidBarsQueryError):
+        search(twice).run("정규장거래량")
+    assert all(body["trnm"] != "GCNSRREQ" for body in twice.sent)
+
+
+def test_the_seq_is_looked_up_by_name_on_every_run() -> None:
+    # Kiwoom renumbers conditions when one is added above them.
+    server = Server(conditions=[["42", "정규장거래량"]])
+    assert search(server).run("정규장거래량").condition.seq == "42"
+    server.conditions = [["1", "SIW_전일신고거래량"], ["46", "정규장거래량"]]
+    assert search(server).run("정규장거래량").condition.seq == "46"
+    requests = [body["seq"] for body in server.sent if body["trnm"] == "GCNSRREQ"]
+    assert requests == ["42", "46"]
 
 
 def test_a_refused_login_is_retried_once_with_a_fresh_token() -> None:
     tokens: list[bool] = []
     server = Server(login_codes=[8005, 0])
-    assert len(search(server, tokens).conditions()) == 2
+    assert len(search(server, tokens).conditions()) == len(CONDITIONS)
     assert tokens == [False, True]
     assert server.closed == 2
 
@@ -199,13 +221,13 @@ def test_a_refused_login_is_retried_once_with_a_fresh_token() -> None:
 
 def test_refusals_and_bad_rows_fail_loudly() -> None:
     with pytest.raises(ProviderRateLimitError):
-        search(Server(search_code=1701)).run("42")
+        search(Server(search_code=1701)).run("정규장거래량")
     with pytest.raises(InvalidBarsQueryError):
-        search(Server(search_code=20)).run("42")
+        search(Server(search_code=20)).run("정규장거래량")
     with pytest.raises(ProviderDataError):
-        search(Server(pages=[[{**row("ACB"), "10": "n/a"}]])).run("42")
+        search(Server(pages=[[{**row("ACB"), "10": "n/a"}]])).run("정규장거래량")
     with pytest.raises(ProviderDataError):
-        search(Server(pages=[[{**row("ACB"), "9001": " "}]])).run("42")
+        search(Server(pages=[[{**row("ACB"), "9001": " "}]])).run("정규장거래량")
 
 
 def test_silence_is_unavailable() -> None:
@@ -244,26 +266,37 @@ def test_condition_api() -> None:
         listed = client.get("/v1/screeners/kiwoom/us/conditions")
         assert listed.status_code == 200, listed.text
         validate_document(listed.json())
-        assert listed.json()["conditions"][1] == {"seq": "42", "name": "정규장거래량"}
+        # Only the connected conditions, with their current numbers; an unsaved one is named.
+        assert listed.json()["conditions"] == [
+            {"seq": "1", "name": "SIW_전일신고거래량"},
+            {"seq": "3", "name": "SIW_전일급등주"},
+        ]
+        assert listed.json()["missing"] == ["SIW_당일급등주"]
         assert listed.headers["cache-control"] == "no-store"
 
-        ran = client.post("/v1/screeners/kiwoom/us/conditions/42/run")
+        ran = client.post(
+            "/v1/screeners/kiwoom/us/conditions/run", params={"name": "SIW_전일급등주"}
+        )
         assert ran.status_code == 200, ran.text
         document = ran.json()
         validate_document(document)
         assert document["fetched_at_utc"] == "2026-11-04T01:30:00Z"
-        assert document["condition"] == {"seq": "42", "name": "정규장거래량"}
+        assert document["condition"] == {"seq": "3", "name": "SIW_전일급등주"}
         aapl, unknown = document["rows"]
         # A known ticker gets the app's own listing; an unknown one is not chartable.
         assert aapl["listing"]["instrument"]["instrument_id"] == "us:aapl:xnas:2026"
         assert unknown["listing"] is None
         assert aapl["last"] == "5.1600" and aapl["kiwoom_exchange"] == "ND"
 
-        assert (
-            client.post("/v1/screeners/kiwoom/us/conditions/7/run").json()["error"]["code"]
-            == "condition_not_found"
-        )
-        assert client.post("/v1/screeners/kiwoom/us/conditions/x1/run").status_code == 422
+        def run(name: str) -> tuple[int, str]:
+            reply = client.post("/v1/screeners/kiwoom/us/conditions/run", params={"name": name})
+            return reply.status_code, reply.json().get("error", {}).get("code", "")
+
+        assert run("SIW_당일급등주") == (404, "condition_not_found")
+        searches = sum(body["trnm"] == "GCNSRREQ" for body in server.sent)
+        # A saved condition that is not connected is never sent to Kiwoom.
+        assert run("정규장거래량") == (422, "condition_not_connected")
+        assert sum(body["trnm"] == "GCNSRREQ" for body in server.sent) == searches
 
     missing = create_app(FakeMarketDataProvider.from_path(), kiwoom_session=lambda: None)
     with TestClient(missing) as other:

@@ -7457,7 +7457,7 @@ export interface StrategyComparison {
   blocks: ("trades_gap" | "net_gap" | "entry_match" | "too_few_trades")[];
 }
 /**
- * ADR 0048: the US conditions saved in Kiwoom's 영웅문Global, read on demand. They are made and edited there; this app only lists and runs them.
+ * ADR 0048: the Kiwoom US conditions SIW is connected to, as saved in 영웅문Global when read. They are made and edited there; `seq` is Kiwoom's number at that moment and changes when a condition is added above it.
  */
 export interface BrokerConditionList {
   kind: "broker_condition_list";
@@ -7476,6 +7476,12 @@ export interface BrokerConditionList {
     seq: string;
     name: string;
   }[];
+  /**
+   * Connected condition names that are not saved in 영웅문Global now.
+   *
+   * @maxItems 50
+   */
+  missing: string[];
 }
 /**
  * ADR 0048: one run of a saved Kiwoom US condition. A point-in-time read like a quote: not stored, not bars, not evidence, and never used by replay, backtests or agents.
@@ -7490,6 +7496,9 @@ export interface BrokerConditionResult {
    * When this API received the reply.
    */
   fetched_at_utc: string;
+  /**
+   * `seq` is Kiwoom's number at the time of the run, looked up by name.
+   */
   condition: {
     seq: string;
     name: string;

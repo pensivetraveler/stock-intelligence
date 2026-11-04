@@ -1680,6 +1680,7 @@ def create_app(
         kiwoom_session=kiwoom,
         listing_for=listing_for,
         broker_read=broker_read,
+        error_response=_error_response,
         clock=clock,
         connect=kiwoom_conditions_connect,
     )

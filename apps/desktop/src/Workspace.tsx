@@ -2015,7 +2015,6 @@ export function Workspace({
             <ConditionSearchPanel
               api={api}
               onPick={(listing) => chooseListing(listing)}
-              storage={storage}
             />
           ) : null}
           {panel === "account" ? (

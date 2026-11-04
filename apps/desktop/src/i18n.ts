@@ -856,12 +856,11 @@ const en = {
   "research.older": "Older rows",
   "screener.title": "Kiwoom condition search",
   "screener.condition": "Condition",
-  "screener.run": "Run",
   "screener.running": "Running…",
   "screener.retry": "Retry",
-  "screener.loading": "Loading the conditions saved in 영웅문Global…",
-  "screener.none":
-    "No US conditions are saved. Make them in 영웅문Global; this app only runs them.",
+  "screener.loading": "Finding the connected conditions in 영웅문Global…",
+  "screener.missing":
+    "Not saved in 영웅문Global: {names}. Save them under these names; this app only runs them.",
   "screener.noKey":
     "Condition search uses Kiwoom: register an enabled real-account Kiwoom key on the Keys screen.",
   "screener.listFailed": "Could not read the conditions: {error}",
@@ -2600,12 +2599,11 @@ const ko: Record<MessageKey, string> = {
   "research.older": "이전 데이터",
   "screener.title": "키움 조건검색",
   "screener.condition": "조건식",
-  "screener.run": "검색",
   "screener.running": "검색 중…",
   "screener.retry": "다시 시도",
-  "screener.loading": "영웅문Global에 저장한 조건식을 불러오는 중…",
-  "screener.none":
-    "저장된 미국주식 조건식이 없습니다. 조건식은 영웅문Global에서 만들고, 이 앱은 실행만 합니다.",
+  "screener.loading": "영웅문Global에서 연결한 조건식을 찾는 중…",
+  "screener.missing":
+    "영웅문Global에 없는 조건식: {names}. 이 이름으로 저장해 주세요. 이 앱은 실행만 합니다.",
   "screener.noKey":
     "조건검색은 키움 키를 씁니다. 키 화면에서 실계좌 키움 키를 등록하고 켜 주세요.",
   "screener.listFailed": "조건식 목록을 읽지 못했습니다: {error}",

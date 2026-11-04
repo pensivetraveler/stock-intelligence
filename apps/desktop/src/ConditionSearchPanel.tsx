@@ -11,21 +11,10 @@ import {
   type MarketApi,
 } from "./market-api";
 
-const SEQ_STORAGE_KEY = "siw.screener.kiwoomSeq";
-
 interface ConditionSearchPanelProps {
   api: MarketApi;
   /** Show a matched ticker on the active chart, as a search result would. */
   onPick: (listing: InstrumentListing) => void;
-  storage?: Storage | null;
-}
-
-function savedSeq(storage: Storage | null | undefined): string {
-  try {
-    return storage?.getItem(SEQ_STORAGE_KEY) ?? "";
-  } catch {
-    return "";
-  }
 }
 
 function errorText(error: unknown): string {
@@ -33,22 +22,20 @@ function errorText(error: unknown): string {
 }
 
 /**
- * Kiwoom's US condition search (ADR 0048): the conditions saved in 영웅문Global, and one
- * run of the chosen one. Figures are Kiwoom's at the time of the run, shown as sent and
+ * Kiwoom's US condition search (ADR 0048): one button per condition SIW is connected
+ * to, found by name in 영웅문Global, and one run of the pressed one. Figures are Kiwoom's at the time of the run, shown as sent and
  * never stored; a ticker the app does not know cannot be opened on a chart.
  */
 export function ConditionSearchPanel({
   api,
   onPick,
-  storage = typeof window === "undefined" ? null : window.localStorage,
 }: ConditionSearchPanelProps) {
   const { t } = useI18n();
   const [list, setList] = useState<BrokerConditionList | null>(null);
   const [listError, setListError] = useState<unknown>(null);
-  const [seq, setSeqState] = useState(() => savedSeq(storage));
   const [result, setResult] = useState<BrokerConditionResult | null>(null);
   const [runError, setRunError] = useState<unknown>(null);
-  const [running, setRunning] = useState(false);
+  const [running, setRunning] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
@@ -64,29 +51,17 @@ export function ConditionSearchPanel({
   }, [api, reload]);
 
   const conditions = list?.conditions ?? [];
-  const chosen = conditions.some((item) => item.seq === seq)
-    ? seq
-    : (conditions[0]?.seq ?? "");
-  const setSeq = (next: string) => {
-    setSeqState(next);
-    try {
-      storage?.setItem(SEQ_STORAGE_KEY, next);
-    } catch {
-      // Not saved: the choice holds until the page reloads.
-    }
-  };
-  const run = () => {
-    if (!chosen) return;
-    setRunning(true);
+  const run = (name: string) => {
+    setRunning(name);
     setRunError(null);
     api
-      .runKiwoomCondition(chosen)
+      .runKiwoomCondition(name)
       .then(setResult)
       .catch((reason: unknown) => {
         setResult(null);
         setRunError(reason);
       })
-      .finally(() => setRunning(false));
+      .finally(() => setRunning(null));
   };
   const noKey =
     listError instanceof MarketApiError &&
@@ -117,27 +92,31 @@ export function ConditionSearchPanel({
       {list === null && !listError ? (
         <p className="workspace-note">{t("screener.loading")}</p>
       ) : null}
-      {list && conditions.length === 0 ? (
-        <p className="workspace-note">{t("screener.none")}</p>
+      {list && list.missing.length > 0 ? (
+        <p className="workspace-note" role="status">
+          {t("screener.missing", { names: list.missing.join(", ") })}
+        </p>
       ) : null}
       {conditions.length > 0 ? (
-        <div className="trade-fields">
-          <label>
-            {t("screener.condition")}
-            <select
-              value={chosen}
-              onChange={(event) => setSeq(event.target.value)}
+        <div
+          className="trade-fields"
+          role="group"
+          aria-label={t("screener.condition")}
+        >
+          {conditions.map((item) => (
+            <button
+              key={item.name}
+              type="button"
+              className={
+                result?.condition.name === item.name ? undefined : "secondary"
+              }
+              aria-pressed={result?.condition.name === item.name}
+              disabled={running !== null}
+              onClick={() => run(item.name)}
             >
-              {conditions.map((item) => (
-                <option key={item.seq} value={item.seq}>
-                  {item.seq}. {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="button" disabled={running} onClick={run}>
-            {running ? t("screener.running") : t("screener.run")}
-          </button>
+              {running === item.name ? t("screener.running") : item.name}
+            </button>
+          ))}
         </div>
       ) : null}
       {runError ? (
@@ -191,7 +170,9 @@ export function ConditionSearchPanel({
                           </span>
                         )}
                       </td>
-                      <td>{row.name}</td>
+                      <td className="condition-name" title={row.name}>
+                        {row.name}
+                      </td>
                       <td>{row.last}</td>
                       <td
                         className={

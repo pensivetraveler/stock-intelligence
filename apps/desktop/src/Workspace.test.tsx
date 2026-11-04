@@ -592,11 +592,12 @@ function fakeApi(
         source_id: "kiwoom-us-conditions",
         fetched_at_utc: "2026-11-04T01:30:00Z",
         conditions: [
-          { seq: "1", name: "검색기-기본조건" },
-          { seq: "42", name: "정규장거래량" },
+          { seq: "1", name: "SIW_전일신고거래량" },
+          { seq: "3", name: "SIW_전일급등주" },
         ],
+        missing: ["SIW_당일급등주"],
       }),
-    runKiwoomCondition: (seq) =>
+    runKiwoomCondition: (name) =>
       Promise.resolve({
         kind: "broker_condition_result",
         schema_version: "0.1",
@@ -604,7 +605,7 @@ function fakeApi(
         market: "US",
         source_id: "kiwoom-us-conditions",
         fetched_at_utc: "2026-11-04T01:30:00Z",
-        condition: { seq, name: "정규장거래량" },
+        condition: { seq: "3", name },
         complete: true,
         rows: ["NVDA", "ZZZQ"].map((symbol) => ({
           symbol,
@@ -1685,23 +1686,32 @@ describe("chart workspace", () => {
     expect(within(panel).getByText("Charts use 16:00 – 20:00")).toBeVisible();
   });
 
-  it("runs a saved Kiwoom condition and charts a matched ticker", async () => {
+  it("runs a connected Kiwoom condition and charts a matched ticker", async () => {
     const api = fakeApi();
-    const storage = memoryStorage();
-    render(<Workspace api={api} storage={storage} />);
+    render(<Workspace api={api} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
     fireEvent.click(screen.getByRole("button", { name: "Condition search" }));
     const panel = await screen.findByRole("region", {
       name: "Kiwoom condition search",
     });
-    fireEvent.change(await within(panel).findByLabelText("Condition"), {
-      target: { value: "42" },
-    });
-    expect(storage.getItem("siw.screener.kiwoomSeq")).toBe("42");
-    fireEvent.click(within(panel).getByRole("button", { name: "Run" }));
+    // A connected condition that is not saved in 영웅문Global is named, not offered.
     expect(
-      await within(panel).findByText(/2 rows · 정규장거래량/),
+      await within(panel).findByText(
+        /Not saved in 영웅문Global: SIW_당일급등주/,
+      ),
     ).toBeVisible();
+    expect(
+      within(panel).queryByRole("button", { name: "SIW_당일급등주" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "SIW_전일급등주" }),
+    );
+    expect(
+      await within(panel).findByText(/2 rows · SIW_전일급등주/),
+    ).toBeVisible();
+    expect(
+      within(panel).getByRole("button", { name: "SIW_전일급등주" }),
+    ).toHaveAttribute("aria-pressed", "true");
     expect(within(panel).getByText("-14.19%")).toHaveClass("legend-down");
     // A ticker the app does not know is shown but cannot be opened.
     expect(
