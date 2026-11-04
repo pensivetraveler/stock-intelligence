@@ -1,17 +1,25 @@
 import type {
   BacktestStrategy,
   CredentialSummary,
+  LiveConfirmationListResponse,
   PaperApproval,
   PaperExecution,
   PaperIntentListResponse,
   PaperPositionListResponse,
   PaperRunnerStatus,
 } from "@siw/contracts/types";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { useI18n, LANGUAGES, type Language } from "../i18n";
 import { I18nProvider } from "../I18nProvider";
 import "../styles.css";
+import { createLiveApi, type LiveApi } from "./live-api";
 import { createPaperApi, type PaperApi } from "./paper-api";
 import {
   createRunnerControl,
@@ -21,6 +29,7 @@ import {
 
 type IntentRow = PaperIntentListResponse["intents"][number];
 type PositionRow = PaperPositionListResponse["positions"][number];
+type ConfirmationRow = LiveConfirmationListResponse["confirmations"][number];
 
 const PROTECTIVE_FIELDS = [
   "stop_loss_pct",
@@ -34,6 +43,8 @@ interface AgentAppProps {
   apiBaseUrl?: string;
   paperApi?: PaperApi;
   runnerControl?: RunnerControl;
+  liveApi?: LiveApi;
+  liveRunnerControl?: RunnerControl;
   pollMs?: number;
   languageStorage?: Storage | null;
   /** The language until the user picks one; SIW Agent opens in Korean. */
@@ -42,7 +53,10 @@ interface AgentAppProps {
   now?: () => Date;
 }
 
-/** SIW Agent: paper-trading status, kill switch, approvals and the paper ledger. */
+/**
+ * SIW Agent: paper-trading status, kill switch, approvals and the paper ledger, and a
+ * separate live-account tab where every order waits for the user (ADR 0047).
+ */
 export function AgentApp({
   languageStorage,
   defaultLanguage = "ko",
@@ -62,14 +76,62 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function AgentScreen({
+type ScreenProps = Omit<AgentAppProps, "languageStorage" | "defaultLanguage">;
+
+function AgentScreen(props: ScreenProps) {
+  const { t } = useI18n();
+  const [mode, setMode] = useState<"paper" | "live">("paper");
+  const tabs = (
+    <nav className="agent-tabs" role="tablist" aria-label={t("liveacct.tabs")}>
+      {(["paper", "live"] as const).map((item) => (
+        <button
+          key={item}
+          type="button"
+          role="tab"
+          aria-selected={mode === item}
+          className={`agent-tab ${item === "live" ? "agent-tab-live" : ""}`}
+          onClick={() => setMode(item)}
+        >
+          {t(item === "paper" ? "liveacct.tab.paper" : "liveacct.tab.live")}
+        </button>
+      ))}
+    </nav>
+  );
+  return mode === "paper" ? (
+    <PaperScreen {...props} tabs={tabs} />
+  ) : (
+    <LiveScreen {...props} tabs={tabs} />
+  );
+}
+
+function LanguagePicker() {
+  const { t, language, setLanguage } = useI18n();
+  return (
+    <label>
+      {t("app.language")}{" "}
+      <select
+        value={language}
+        onChange={(event) => setLanguage(event.target.value as Language)}
+      >
+        {LANGUAGES.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function PaperScreen({
   apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8765",
   paperApi,
   runnerControl,
   pollMs = 5_000,
   now = () => new Date(),
-}: Omit<AgentAppProps, "languageStorage" | "defaultLanguage">) {
-  const { t, language, setLanguage } = useI18n();
+  tabs,
+}: ScreenProps & { tabs: ReactNode }) {
+  const { t } = useI18n();
   useEffect(() => {
     document.title = t("paper.windowTitle");
   }, [t]);
@@ -161,24 +223,13 @@ function AgentScreen({
 
   return (
     <main className="app agent-app">
+      {tabs}
       <div className="agent-banner" role="note">
         {t("paper.banner")}
       </div>
       <header className="agent-header">
         <h1>{t("paper.title")}</h1>
-        <label>
-          {t("app.language")}{" "}
-          <select
-            value={language}
-            onChange={(event) => setLanguage(event.target.value as Language)}
-          >
-            {LANGUAGES.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <LanguagePicker />
         <button
           type="button"
           className="agent-kill"
@@ -416,6 +467,7 @@ function ServiceCard({
   onInstall,
   onStop,
   onUninstall,
+  title,
 }: {
   control: RunnerControl;
   state: RunnerServiceState | null;
@@ -423,11 +475,13 @@ function ServiceCard({
   onInstall: () => void;
   onStop: () => void;
   onUninstall: () => void;
+  title?: string;
 }) {
   const { t } = useI18n();
+  const heading = title ?? t("paper.service");
   return (
-    <section className="agent-card" aria-label={t("paper.service")}>
-      <h2>{t("paper.service")}</h2>
+    <section className="agent-card" aria-label={heading}>
+      <h2>{heading}</h2>
       {!control.available ? (
         <p>{t("paper.service.unavailable")}</p>
       ) : (
@@ -883,7 +937,7 @@ function SymbolPicker({
   chosen,
   onChange,
 }: {
-  api: PaperApi;
+  api: Pick<PaperApi, "searchSymbols">;
   chosen: ChosenInstrument[];
   onChange: (chosen: ChosenInstrument[]) => void;
 }) {
@@ -1123,14 +1177,25 @@ function IntentTable({ rows }: { rows: IntentRow[] }) {
   );
 }
 
-function ExecutionTable({ rows }: { rows: PaperExecution[] }) {
+function ExecutionTable({
+  rows,
+  title,
+  note,
+  empty,
+}: {
+  rows: PaperExecution[];
+  title?: string;
+  note?: string;
+  empty?: string;
+}) {
   const { t } = useI18n();
+  const heading = title ?? t("paper.executions");
   return (
-    <section className="agent-card" aria-label={t("paper.executions")}>
-      <h2>{t("paper.executions")}</h2>
-      <p className="agent-muted">{t("paper.executions.note")}</p>
+    <section className="agent-card" aria-label={heading}>
+      <h2>{heading}</h2>
+      <p className="agent-muted">{note ?? t("paper.executions.note")}</p>
       {rows.length === 0 ? (
-        <p className="agent-muted">{t("paper.executions.empty")}</p>
+        <p className="agent-muted">{empty ?? t("paper.executions.empty")}</p>
       ) : (
         <table className="agent-table">
           <thead>
@@ -1160,5 +1225,521 @@ function ExecutionTable({ rows }: { rows: PaperExecution[] }) {
         </table>
       )}
     </section>
+  );
+}
+
+// -- live account (ADR 0047) -----------------------------------------------------------
+
+const LIVE_POLL_MS = 2_000;
+const LIVE_CONFIRM_SECONDS = 60;
+
+function LiveScreen({
+  apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8765",
+  paperApi,
+  liveApi,
+  liveRunnerControl,
+  now = () => new Date(),
+  tabs,
+}: ScreenProps & { tabs: ReactNode }) {
+  const { t } = useI18n();
+  useEffect(() => {
+    document.title = t("liveacct.title");
+  }, [t]);
+  const api = useMemo(
+    () => liveApi ?? createLiveApi(apiBaseUrl),
+    [liveApi, apiBaseUrl],
+  );
+  // Strategies, keys and listings are read through the same read-only endpoints.
+  const lookup = useMemo(
+    () => paperApi ?? createPaperApi(apiBaseUrl),
+    [paperApi, apiBaseUrl],
+  );
+  const control = useMemo(
+    () => liveRunnerControl ?? createRunnerControl(undefined, "live_runner"),
+    [liveRunnerControl],
+  );
+  const [status, setStatus] = useState<PaperRunnerStatus | null>(null);
+  const [approvals, setApprovals] = useState<PaperApproval[]>([]);
+  const [intents, setIntents] = useState<IntentRow[]>([]);
+  const [executions, setExecutions] = useState<PaperExecution[]>([]);
+  const [waiting, setWaiting] = useState<ConfirmationRow[]>([]);
+  const [service, setService] = useState<RunnerServiceState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [, setTick] = useState(0);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [
+        nextStatus,
+        nextApprovals,
+        nextIntents,
+        nextExecutions,
+        nextWaiting,
+      ] = await Promise.all([
+        api.status(),
+        api.approvals(),
+        api.intents(),
+        api.executions(),
+        api.confirmations(),
+      ]);
+      setStatus(nextStatus);
+      setApprovals(nextApprovals.approvals);
+      setIntents(nextIntents.intents);
+      setExecutions(nextExecutions.executions);
+      setWaiting(nextWaiting.confirmations);
+      setError(null);
+    } catch (caught) {
+      setError(message(caught));
+    }
+    if (control.available) {
+      try {
+        setService(await control.state());
+      } catch (caught) {
+        setService({
+          installed: false,
+          running: false,
+          detail: message(caught),
+        });
+      }
+    }
+  }, [api, control]);
+
+  useEffect(() => {
+    void refresh();
+    const timer = window.setInterval(() => {
+      setTick((value) => value + 1);
+      void refresh();
+    }, LIVE_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
+
+  const act = async (action: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      await action();
+      setActionError(null);
+    } catch (caught) {
+      setActionError(message(caught));
+    } finally {
+      setBusy(false);
+      await refresh();
+    }
+  };
+
+  const kill = () =>
+    act(async () => {
+      try {
+        setStatus(await api.kill("kill switch pressed in SIW Agent (live)"));
+      } catch (caught) {
+        if (!control.available) throw caught;
+        setService(await control.stop());
+      }
+    });
+
+  return (
+    <main className="app agent-app agent-live">
+      {tabs}
+      <div className="agent-banner agent-banner-live" role="note">
+        {t("liveacct.banner")}
+      </div>
+      <header className="agent-header">
+        <h1>{t("liveacct.title")}</h1>
+        <LanguagePicker />
+        <button
+          type="button"
+          className="agent-kill"
+          onClick={() => void kill()}
+          disabled={busy}
+        >
+          {t("liveacct.kill")}
+        </button>
+      </header>
+      {[error, actionError].map(
+        (problem, index) =>
+          problem && (
+            <p key={index} className="agent-error" role="alert">
+              {t("paper.error", { message: problem })}
+            </p>
+          ),
+      )}
+      <ConfirmationList
+        rows={waiting}
+        busy={busy}
+        now={now}
+        onConfirm={(id) => act(() => api.confirm(id))}
+        onDecline={(id) => act(() => api.decline(id))}
+      />
+      <SummaryCards
+        status={status}
+        approvals={approvals}
+        intents={intents}
+        executions={executions}
+        protecting={false}
+        busy={busy}
+        now={now}
+        onRelease={() => act(() => api.release())}
+        onDisarm={() => act(() => api.disarm())}
+      />
+      <ServiceCard
+        title={t("liveacct.service")}
+        control={control}
+        state={service}
+        busy={busy}
+        onInstall={() => act(async () => setService(await control.install()))}
+        onStop={() => act(async () => setService(await control.stop()))}
+        onUninstall={() =>
+          act(async () => setService(await control.uninstall()))
+        }
+      />
+      <LiveApprovalSection
+        api={api}
+        lookup={lookup}
+        approvals={approvals}
+        status={status}
+        busy={busy}
+        onArm={(id) => act(() => api.arm(id))}
+        onApproved={() => void refresh()}
+      />
+      <IntentTable rows={intents} />
+      <ExecutionTable
+        rows={executions}
+        title={t("liveacct.executions")}
+        note={t("liveacct.executions.note")}
+        empty={t("liveacct.executions.empty")}
+      />
+    </main>
+  );
+}
+
+function ConfirmationList({
+  rows,
+  busy,
+  now,
+  onConfirm,
+  onDecline,
+}: {
+  rows: ConfirmationRow[];
+  busy: boolean;
+  now: () => Date;
+  onConfirm: (intentId: string) => void;
+  onDecline: (intentId: string) => void;
+}) {
+  const { t } = useI18n();
+  const at = now().getTime();
+  return (
+    <section
+      className="agent-card agent-confirmations"
+      aria-label={t("liveacct.confirmations")}
+    >
+      <h2>{t("liveacct.confirmations")}</h2>
+      {rows.length === 0 ? (
+        <p className="agent-muted">{t("liveacct.confirmations.empty")}</p>
+      ) : (
+        <ul className="agent-list">
+          {rows.map((row) => {
+            const { intent } = row;
+            const left = Math.max(
+              0,
+              Math.ceil((new Date(row.expires_at_utc).getTime() - at) / 1000),
+            );
+            const price =
+              intent.order.limit_price ??
+              intent.order.estimated_max_price ??
+              "?";
+            return (
+              <li key={intent.intent_id} data-testid="live-confirmation">
+                <span>
+                  <strong>
+                    {t("liveacct.order", {
+                      symbol: intent.symbol,
+                      side: sideLabel(t, intent.side),
+                      quantity: intent.order.quantity,
+                      price,
+                    })}
+                  </strong>
+                  {exitLabel(t, intent.signal.summary) ||
+                    ` · ${t("liveacct.reason.signal")}`}
+                  {" · "}
+                  {row.decision === "confirmed"
+                    ? t("liveacct.confirmed")
+                    : left > 0
+                      ? t("liveacct.remaining", { seconds: left })
+                      : t("liveacct.expired")}
+                </span>
+                {row.decision === null && left > 0 && (
+                  <span className="agent-actions">
+                    <button
+                      type="button"
+                      className="agent-confirm"
+                      onClick={() => onConfirm(intent.intent_id)}
+                      disabled={busy}
+                    >
+                      {t("liveacct.confirm")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDecline(intent.intent_id)}
+                      disabled={busy}
+                    >
+                      {t("liveacct.decline")}
+                    </button>
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function LiveApprovalSection({
+  api,
+  lookup,
+  approvals,
+  status,
+  busy,
+  onArm,
+  onApproved,
+}: {
+  api: LiveApi;
+  lookup: PaperApi;
+  approvals: PaperApproval[];
+  status: PaperRunnerStatus | null;
+  busy: boolean;
+  onArm: (approvalId: string) => void;
+  onApproved: () => void;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="agent-card" aria-label={t("liveacct.approvals")}>
+      <div className="agent-card-head">
+        <h2>{t("liveacct.approvals")}</h2>
+        {!open && (
+          <button type="button" onClick={() => setOpen(true)}>
+            {t("liveacct.form.open")}
+          </button>
+        )}
+      </div>
+      {approvals.length === 0 ? (
+        <p className="agent-muted">{t("liveacct.approvals.empty")}</p>
+      ) : (
+        <ul className="agent-list">
+          {approvals.map((approval) => (
+            <li key={approval.approval_id}>
+              <span>
+                <strong>
+                  {approval.strategy.strategy_id}@
+                  {approval.strategy.strategy_version}
+                </strong>{" "}
+                · {approval.instruments.map((item) => item.symbol).join(", ")} ·{" "}
+                {t("liveacct.limit", {
+                  amount: approval.limits.max_order_amount_usd ?? "?",
+                  count: approval.limits.max_daily_orders ?? "?",
+                })}
+              </span>
+              {status?.approval_id === approval.approval_id && status.armed ? (
+                <strong className="agent-armed">{t("paper.armedHere")}</strong>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onArm(approval.approval_id)}
+                  disabled={busy || status?.halted === true}
+                >
+                  {t("paper.arm")}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && (
+        <LivePlanForm
+          api={api}
+          lookup={lookup}
+          busy={busy}
+          onCancel={() => setOpen(false)}
+          onApproved={() => {
+            setOpen(false);
+            onApproved();
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+function LivePlanForm({
+  api,
+  lookup,
+  busy,
+  onCancel,
+  onApproved,
+}: {
+  api: LiveApi;
+  lookup: PaperApi;
+  busy: boolean;
+  onCancel: () => void;
+  onApproved: () => void;
+}) {
+  const { t } = useI18n();
+  const [strategies, setStrategies] = useState<BacktestStrategy[]>([]);
+  const [keys, setKeys] = useState<CredentialSummary[]>([]);
+  const [strategyId, setStrategyId] = useState("");
+  const [credentialId, setCredentialId] = useState("");
+  const [chosen, setChosen] = useState<ChosenInstrument[]>([]);
+  const [cap, setCap] = useState("100");
+  const [daily, setDaily] = useState("2");
+  const [cancelAfter, setCancelAfter] = useState("60");
+  const [settle, setSettle] = useState("60");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [list, credentials] = await Promise.all([
+          lookup.strategies(),
+          lookup.credentials(),
+        ]);
+        setStrategies(list.strategies);
+        const real = credentials.credentials.filter(
+          (item) =>
+            item.provider === "kiwoom" &&
+            item.environment === "real" &&
+            item.enabled,
+        );
+        setKeys(real);
+        if (real.length > 0) setCredentialId(real[0].credential_id);
+      } catch (caught) {
+        setFormError(message(caught));
+      }
+    })();
+  }, [lookup]);
+
+  const strategy = strategies.find((item) => item.strategy_id === strategyId);
+  const submit = async () => {
+    if (strategy === undefined) return;
+    if (chosen.length !== 1) {
+      setFormError(t("liveacct.form.oneInstrument"));
+      return;
+    }
+    try {
+      await api.approve({
+        strategy_id: strategy.strategy_id,
+        strategy_version: strategy.version,
+        instruments: chosen.map(({ instrument_id, symbol }) => ({
+          instrument_id,
+          symbol,
+        })),
+        credential_id: credentialId,
+        max_order_amount_usd: cap.trim(),
+        max_daily_orders: Number(daily),
+        market_buffer_bps: "50",
+        max_signal_age_seconds: 300,
+        bar_settle_seconds: settle.trim() === "" ? null : Number(settle),
+        unfilled_cancel_seconds:
+          cancelAfter.trim() === "" ? null : Number(cancelAfter),
+        confirm_seconds: LIVE_CONFIRM_SECONDS,
+      });
+      setFormError(null);
+      onApproved();
+    } catch (caught) {
+      setFormError(message(caught));
+    }
+  };
+
+  return (
+    <div className="agent-form" aria-label={t("liveacct.form.open")}>
+      <label>
+        {t("liveacct.form.strategy")}
+        <select
+          value={strategyId}
+          onChange={(event) => setStrategyId(event.target.value)}
+        >
+          <option value="">—</option>
+          {strategies.map((item) => (
+            <option key={item.strategy_id} value={item.strategy_id}>
+              {item.name} (v{item.version})
+            </option>
+          ))}
+        </select>
+      </label>
+      <SymbolPicker api={lookup} chosen={chosen} onChange={setChosen} />
+      {keys.length === 0 ? (
+        <p className="agent-warning">{t("liveacct.form.noKey")}</p>
+      ) : (
+        <label>
+          {t("liveacct.form.key")}
+          <select
+            value={credentialId}
+            onChange={(event) => setCredentialId(event.target.value)}
+          >
+            {keys.map((item) => (
+              <option key={item.credential_id} value={item.credential_id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <label>
+        {t("liveacct.form.cap")}
+        <input
+          inputMode="decimal"
+          value={cap}
+          onChange={(event) => setCap(event.target.value)}
+        />
+      </label>
+      <label>
+        {t("liveacct.form.daily")}
+        <input
+          inputMode="numeric"
+          value={daily}
+          onChange={(event) => setDaily(event.target.value)}
+        />
+      </label>
+      <label>
+        {t("liveacct.form.cancel")}
+        <input
+          inputMode="numeric"
+          value={cancelAfter}
+          onChange={(event) => setCancelAfter(event.target.value)}
+        />
+      </label>
+      <label>
+        {t("liveacct.form.settle")}
+        <input
+          inputMode="numeric"
+          value={settle}
+          onChange={(event) => setSettle(event.target.value)}
+        />
+      </label>
+      <p className="agent-muted">
+        {t("liveacct.form.confirmSeconds", { seconds: LIVE_CONFIRM_SECONDS })}
+      </p>
+      <p className="agent-warning">{t("liveacct.form.note")}</p>
+      {formError && <p className="agent-error">{formError}</p>}
+      <div className="agent-actions">
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={
+            busy ||
+            strategy === undefined ||
+            keys.length === 0 ||
+            chosen.length !== 1
+          }
+        >
+          {t("liveacct.form.submit")}
+        </button>
+        <button type="button" onClick={onCancel}>
+          {t("liveacct.form.cancelButton")}
+        </button>
+      </div>
+    </div>
   );
 }

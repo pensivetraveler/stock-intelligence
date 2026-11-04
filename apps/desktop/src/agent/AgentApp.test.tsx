@@ -1,4 +1,5 @@
 import type {
+  LiveConfirmationListResponse,
   PaperApproval,
   PaperIntentListResponse,
   PaperRunnerStatus,
@@ -7,6 +8,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentApp } from "./AgentApp";
+import type { LiveApi } from "./live-api";
 import { createPaperApi, type PaperApi } from "./paper-api";
 import { createRunnerControl, type RunnerControl } from "./runner-control";
 
@@ -489,5 +491,190 @@ describe("holdings and protection (ADR 0044)", () => {
     expect(screen.getByText(/감시 안 됨/)).toBeTruthy();
     expect(screen.getByText("실행기가 감시 중")).toBeTruthy();
     expect(screen.getAllByText("95.95").length).toBe(2);
+  });
+});
+
+describe("AgentApp live account (ADR 0047)", () => {
+  const NOW = new Date("2026-11-04T15:00:00Z");
+  const waitingIntent = {
+    intent_id: "d".repeat(64),
+    symbol: "F",
+    side: "buy",
+    order: {
+      order_type: "market",
+      quantity: "1",
+      limit_price: null,
+      market_buffer_bps: "50",
+      estimated_max_price: "11.56",
+    },
+    signal: { summary: "rules buy signal at the bar close", operands: [] },
+  };
+
+  function confirmations(
+    decision: "confirmed" | "declined" | null = null,
+  ): LiveConfirmationListResponse {
+    return {
+      kind: "live_confirmation_list_response",
+      schema_version: "0.1",
+      now_utc: "2026-11-04T15:00:00Z",
+      confirmations: [
+        {
+          intent: waitingIntent,
+          requested_at_utc: "2026-11-04T14:59:20Z",
+          expires_at_utc: "2026-11-04T15:00:20Z",
+          decision,
+          decided_at_utc: null,
+        },
+      ],
+    } as unknown as LiveConfirmationListResponse;
+  }
+
+  function fakeLive(changes: Partial<LiveApi> = {}): LiveApi {
+    const paper = fakeApi();
+    return {
+      status: vi.fn(async () => status()),
+      approvals: vi.fn(async () => ({
+        kind: "paper_approval_list_response" as const,
+        schema_version: "0.1" as const,
+        approvals: [],
+      })),
+      intents: paper.intents,
+      executions: paper.executions,
+      confirmations: vi.fn(async () => confirmations()),
+      approve: vi.fn(async () => APPROVAL),
+      arm: vi.fn(async () => status({ armed: true })),
+      disarm: vi.fn(async () => status()),
+      kill: vi.fn(async () => status({ halted: true, halted_reason: "stop" })),
+      release: vi.fn(async () => status()),
+      confirm: vi.fn(async () => confirmations("confirmed")),
+      decline: vi.fn(async () => confirmations("declined")),
+      ...changes,
+    };
+  }
+
+  function renderLive(live: LiveApi, paper: PaperApi = fakeApi()) {
+    render(
+      <AgentApp
+        paperApi={paper}
+        liveApi={live}
+        runnerControl={noControl}
+        liveRunnerControl={noControl}
+        pollMs={60_000}
+        languageStorage={null}
+        defaultLanguage="en"
+        now={() => NOW}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Live account" }));
+  }
+
+  it("opens on paper trading and shows the live banner only on its tab", async () => {
+    const live = fakeLive();
+    render(
+      <AgentApp
+        paperApi={fakeApi()}
+        liveApi={live}
+        runnerControl={noControl}
+        pollMs={60_000}
+        languageStorage={null}
+        defaultLanguage="en"
+      />,
+    );
+    expect(screen.getByText(/Paper trading \(모의투자\) only/)).toBeTruthy();
+    expect(screen.queryByText(/real orders with real money/)).toBeNull();
+    expect(live.status).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("tab", { name: "Live account" }));
+    expect(await screen.findByText(/real orders with real money/)).toBeTruthy();
+  });
+
+  it("shows a waiting order with its time left and sends the user's answer", async () => {
+    const live = fakeLive();
+    renderLive(live);
+    const row = await screen.findByTestId("live-confirmation");
+    expect(row.textContent).toContain("Buy 1 F, limit 11.56");
+    expect(row.textContent).toContain("strategy signal");
+    expect(row.textContent).toContain("20 s left");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and send" }));
+    await waitFor(() =>
+      expect(live.confirm).toHaveBeenCalledWith("d".repeat(64)),
+    );
+    expect(live.decline).not.toHaveBeenCalled();
+  });
+
+  it("offers no buttons for a confirmed order", async () => {
+    const live = fakeLive({
+      confirmations: vi.fn(async () => confirmations("confirmed")),
+    });
+    renderLive(live);
+    expect(
+      await screen.findByText(/confirmed: the runner sends it/),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Confirm and send" }),
+    ).toBeNull();
+  });
+
+  it("approves a live plan with a dollar cap, a daily count and a real key", async () => {
+    const live = fakeLive();
+    const paper = fakeApi({
+      strategies: vi.fn(async () => ({
+        kind: "backtest_strategy_list_response" as const,
+        schema_version: "0.1" as const,
+        strategies: [{ strategy_id: "strat-1", name: "one share", version: 1 }],
+      })) as unknown as PaperApi["strategies"],
+      credentials: vi.fn(async () => ({
+        kind: "credential_list_response" as const,
+        schema_version: "0.1" as const,
+        storage: "keychain",
+        active_provider: "fake",
+        credentials: [
+          {
+            credential_id: "demo-key",
+            provider: "kiwoom",
+            environment: "demo",
+            enabled: true,
+            label: "Kiwoom demo",
+          },
+          {
+            credential_id: "real-key",
+            provider: "kiwoom",
+            environment: "real",
+            enabled: true,
+            label: "Kiwoom1",
+          },
+        ],
+      })) as unknown as PaperApi["credentials"],
+    });
+    renderLive(live, paper);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "New live plan" }),
+    );
+    const strategy = await screen.findByLabelText("Strategy");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("option", { name: "one share (v1)" }),
+      ).toBeTruthy(),
+    );
+    fireEvent.change(strategy, { target: { value: "strat-1" } });
+    const key = await screen.findByLabelText("Kiwoom real-account key");
+    expect(
+      Array.from((key as HTMLSelectElement).options).map((o) => o.textContent),
+    ).toEqual(["Kiwoom1"]);
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "app" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /AAPL/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve live plan" }));
+    await waitFor(() => expect(live.approve).toHaveBeenCalled());
+    expect(live.approve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        credential_id: "real-key",
+        max_order_amount_usd: "100",
+        max_daily_orders: 2,
+        confirm_seconds: 60,
+        unfilled_cancel_seconds: 60,
+        instruments: [{ instrument_id: "us:aapl:xnas:2026", symbol: "AAPL" }],
+      }),
+    );
   });
 });

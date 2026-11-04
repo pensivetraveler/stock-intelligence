@@ -148,6 +148,7 @@ def build_intent(
     limits: PaperLimits,
     facts: RunnerFacts,
     created_at: datetime,
+    environment: Literal["demo", "real"] = "demo",
 ) -> tuple[dict[str, Any], LimitResult]:
     """The validated intent document and its limit check. Raises for a non-final bar."""
     if not data.signal_bar_final:
@@ -178,7 +179,7 @@ def build_intent(
         "created_at_utc": _utc(created_at),
         "broker_id": broker_id,
         "broker_account_ref": broker_account_ref,
-        "environment": "demo",
+        "environment": environment,
         "approval_id": approval_id,
         "strategy": {
             "strategy_id": strategy.strategy_id,

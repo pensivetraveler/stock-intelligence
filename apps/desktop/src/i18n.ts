@@ -1398,6 +1398,48 @@ const en = {
   "paper.executions.note":
     "Simulated by the broker's paper server; not market fills and never added to real ledgers.",
   "paper.timeUnresolved": "time unknown",
+  "liveacct.tabs": "SIW Agent screens",
+  "liveacct.tab.paper": "Paper trading",
+  "liveacct.tab.live": "Live account",
+  "liveacct.title": "SIW Agent — live account",
+  "liveacct.banner":
+    "Live account — real orders with real money. The runner sends an order only after you confirm it here.",
+  "liveacct.kill": "Kill switch: stop live orders",
+  "liveacct.confirmations": "Orders waiting for you",
+  "liveacct.confirmations.empty":
+    "No order is waiting. When the armed plan decides an order, it waits here for your answer.",
+  "liveacct.order": "{side} {quantity} {symbol}, limit {price}",
+  "liveacct.reason.signal": "strategy signal",
+  "liveacct.remaining": "{seconds} s left",
+  "liveacct.confirmed": "confirmed: the runner sends it on its next pass",
+  "liveacct.expired": "time is up",
+  "liveacct.confirm": "Confirm and send",
+  "liveacct.decline": "Decline",
+  "liveacct.service": "Live runner (user service)",
+  "liveacct.approvals": "Live plans",
+  "liveacct.approvals.empty":
+    "No live plan yet. Approve one with “New live plan”.",
+  "liveacct.limit": "≤ ${amount} per order · {count} orders a day",
+  "liveacct.form.open": "New live plan",
+  "liveacct.form.strategy": "Strategy",
+  "liveacct.form.key": "Kiwoom real-account key",
+  "liveacct.form.noKey":
+    "Register a Kiwoom key as a real account on the Keys screen first.",
+  "liveacct.form.cap": "Most per order (USD)",
+  "liveacct.form.daily": "Most orders per day",
+  "liveacct.form.cancel": "Cancel an unfilled order after (seconds)",
+  "liveacct.form.settle": "Treat a bar as final after (seconds)",
+  "liveacct.form.confirmSeconds":
+    "Each order waits {seconds} seconds for your answer, then expires.",
+  "liveacct.form.note":
+    "Stops, targets and trailing exits wait for your answer too. If you are away, they are not sent.",
+  "liveacct.form.oneInstrument": "Choose exactly one instrument.",
+  "liveacct.form.submit": "Approve live plan",
+  "liveacct.form.cancelButton": "Cancel",
+  "liveacct.executions": "Live fills",
+  "liveacct.executions.empty": "No live fills yet.",
+  "liveacct.executions.note":
+    "This runner's own record of its orders' fills. The broker ledger filled by Kiwoom sync stays the record of real fills.",
   "panel.tradeReview": "Trade review",
   "rv.title": "Trade review",
   "rv.subtitle":
@@ -3049,6 +3091,47 @@ const ko: Record<MessageKey, string> = {
   "paper.executions.note":
     "증권사 모의 서버가 만든 체결입니다. 시장 체결이 아니며 실제 원장에 더하지 않습니다.",
   "paper.timeUnresolved": "시각 미확인",
+  "liveacct.tabs": "SIW Agent 화면",
+  "liveacct.tab.paper": "모의투자",
+  "liveacct.tab.live": "실계좌",
+  "liveacct.title": "SIW Agent — 실계좌",
+  "liveacct.banner":
+    "실계좌 — 실제 돈으로 하는 실제 주문입니다. 여기서 승인한 주문만 실행기가 보냅니다.",
+  "liveacct.kill": "킬 스위치: 실계좌 신규 주문 중지",
+  "liveacct.confirmations": "승인 대기 주문",
+  "liveacct.confirmations.empty":
+    "승인을 기다리는 주문이 없습니다. 무장한 계획이 주문을 정하면 여기서 답을 기다립니다.",
+  "liveacct.order": "{symbol} {quantity}주 {side} · 지정가 {price}",
+  "liveacct.reason.signal": "전략 신호",
+  "liveacct.remaining": "{seconds}초 남음",
+  "liveacct.confirmed": "승인됨: 실행기가 다음 주기에 보냅니다",
+  "liveacct.expired": "시간 지남",
+  "liveacct.confirm": "승인하고 보내기",
+  "liveacct.decline": "거절",
+  "liveacct.service": "실계좌 실행기(사용자 서비스)",
+  "liveacct.approvals": "실계좌 계획",
+  "liveacct.approvals.empty":
+    "아직 실계좌 계획이 없습니다. “새 실계좌 계획”으로 승인하세요.",
+  "liveacct.limit": "1건 ≤ ${amount} · 하루 {count}건",
+  "liveacct.form.open": "새 실계좌 계획",
+  "liveacct.form.strategy": "전략",
+  "liveacct.form.key": "키움 실전 키",
+  "liveacct.form.noKey": "먼저 키 화면에 키움 키를 실전 계좌로 등록하세요.",
+  "liveacct.form.cap": "1건 최대 금액(USD)",
+  "liveacct.form.daily": "하루 최대 주문 수",
+  "liveacct.form.cancel": "미체결 주문 취소까지(초)",
+  "liveacct.form.settle": "봉 확정으로 볼 때까지(초)",
+  "liveacct.form.confirmSeconds":
+    "주문마다 {seconds}초 동안 답을 기다리고, 지나면 만료됩니다.",
+  "liveacct.form.note":
+    "손절·익절·트레일링 청산도 승인해야 나갑니다. 자리를 비우면 나가지 않습니다.",
+  "liveacct.form.oneInstrument": "종목을 하나만 고르세요.",
+  "liveacct.form.submit": "실계좌 계획 승인",
+  "liveacct.form.cancelButton": "취소",
+  "liveacct.executions": "실계좌 체결",
+  "liveacct.executions.empty": "아직 실계좌 체결이 없습니다.",
+  "liveacct.executions.note":
+    "이 실행기가 보낸 주문의 체결 기록입니다. 실제 체결의 기준 원장은 키움 동기화가 채우는 증권사 원장입니다.",
   "panel.tradeReview": "매매 복기",
   "rv.title": "매매 복기",
   "rv.subtitle":

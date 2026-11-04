@@ -136,8 +136,12 @@ class RunnerService:
         feed: Callable[[], BarFeed],
         now: Callable[[], datetime] | None = None,
         fx_rate: Callable[[], FxRate | None] | None = None,
+        runner_class: type[PaperRunner] = PaperRunner,
+        missing_key: str = "no enabled Kiwoom demo key matches the approved account",
     ) -> None:
         self.store = store
+        self._runner_class = runner_class
+        self._missing_key = missing_key
         self._strategies = strategies
         self._broker_for = broker_for
         self._feed = feed
@@ -160,11 +164,11 @@ class RunnerService:
             plan.broker_account_ref, self.store.verified_markets(plan.broker_id)
         )
         if broker is None:
-            self.last_error = "no enabled Kiwoom demo key matches the approved account"
+            self.last_error = self._missing_key
             return None
         if self._feed_instance is None:
             self._feed_instance = self._feed()
-        self._runner = PaperRunner(
+        self._runner = self._runner_class(
             self.store, broker, self._feed_instance, plan, fx_rate=self._fx_rate
         )
         if self._runner.approval_id != approval_id:
@@ -203,6 +207,7 @@ class RunnerService:
         return (
             f"step intents={report.intents} submitted={report.submitted} "
             f"blocked={report.blocked} fills={report.fills} reconciled={report.reconciled}"
+            + (f" awaiting={report.awaiting}" if report.awaiting else "")
         )
 
 

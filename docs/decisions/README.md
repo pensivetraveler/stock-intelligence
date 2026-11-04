@@ -53,3 +53,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0044-paper-protective-orders.md`: (proposed) SIW Agent 보호 주문 — 모의투자에서 손절·익절·트레일링을 확정 봉 감시로 시작, 킬 스위치·한도·세션 밖 처리는 사용자 결정 필요
 - `0045-agent-on-linux.md`: (accepted) SIW Agent의 Linux 실행 — Ubuntu 24.04, systemd 사용자 서비스, 재부팅 뒤에는 로그인해야 키링이 열리고 실행기가 뜸(linger 없음), `agent-linux` CI
 - `0046-shared-data-space.md`: (proposed) 주식 희석 분석기와 공동 데이터 공간 — 저장소 밖 폴더 하나(`STOCK_SHARED_DATA`), 데이터마다 쓰는 프로그램은 하나, SEC 원문과 분석기의 요청 잠금 공유, SIW는 병합 장부만 읽기, 시세는 SIW만 받고 쓰며 읽는 프로그램은 아직 없음(캐시 결함 결정 뒤), 아직 옮긴 것 없음
+- `0047-live-orders-per-order-confirmation.md`: SIW Agent 단계 2 — 실계좌 주문, 모의 실행기 판단을 그대로 쓰고 제출 앞에 주문마다 사용자 승인(60초 만료, 보호 청산 포함), 별도 원장 `live_orders.sqlite3`, 실전 도메인은 `services/live_trading/`에만, 달러 한도·하루 주문 수 필수, 같은 키움 키의 조회 동기화 중지

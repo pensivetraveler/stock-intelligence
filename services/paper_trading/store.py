@@ -14,7 +14,7 @@ from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from packages.contracts.validator import validate_document
 from services.market_data.storage import MigrationRunner
@@ -45,12 +45,27 @@ def approval_id(content: dict[str, Any]) -> str:
 
 
 class PaperOrderStore:
+    # The live ledger (ADR 0047) is the same store in another file; a document of the
+    # other environment is refused, so paper and real orders never share a ledger.
+    database_name = DATABASE_NAME
+    environment: Literal["demo", "real"] = "demo"
+    execution_ledger = "broker_paper"
+
     def __init__(self, root: Path, *, now: Callable[[], datetime] | None = None) -> None:
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
-        self.database_path = self.root / DATABASE_NAME
+        self.database_path = self.root / self.database_name
         self._now = now or (lambda: datetime.now(timezone.utc))
         MigrationRunner(self.database_path, MIGRATIONS_DIR).apply()
+
+    def _own(self, document: dict[str, Any]) -> None:
+        if (
+            document.get("environment") != self.environment
+            or document.get("ledger", self.execution_ledger) != self.execution_ledger
+        ):
+            raise PaperStoreError(
+                f"a {document.get('environment')} document does not belong in {self.database_name}"
+            )
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -80,6 +95,7 @@ class PaperOrderStore:
         `blocking` off (a protective exit, ADR 0044) the reasons are kept and it goes on.
         """
         validate_document(document)
+        self._own(document)
         now = _utc(self._now())
         with self._connect() as db:
             cursor = db.execute(
@@ -136,6 +152,7 @@ class PaperOrderStore:
     def record_submission(self, document: dict[str, Any]) -> None:
         """Insert or update one submission; its intent may be submitted only once."""
         validate_document(document)
+        self._own(document)
         now = _utc(self._now())
         with self._connect() as db:
             existing = db.execute(
@@ -194,6 +211,59 @@ class PaperOrderStore:
                 (submission_id,),
             ).fetchall()
         return [str(row["requested_at_utc"]) for row in rows]
+
+    # Confirmations of live orders (ADR 0047)
+
+    def request_confirmation(self, intent_id: str, expires_at: datetime) -> None:
+        with self._connect() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO order_confirmations "
+                "(intent_id, requested_at_utc, expires_at_utc) VALUES (?, ?, ?)",
+                (intent_id, _utc(self._now()), _utc(expires_at)),
+            )
+
+    def decide_confirmation(self, intent_id: str, decision: str, source: str) -> None:
+        """The user's answer. Only a request still open and not expired takes one."""
+        if decision not in ("confirmed", "declined"):
+            raise ValueError("decision must be confirmed or declined")
+        now = self._now()
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT c.expires_at_utc, c.decision, o.status FROM order_confirmations c "
+                "LEFT JOIN intent_outcomes o USING (intent_id) WHERE c.intent_id = ?",
+                (intent_id,),
+            ).fetchone()
+            if row is None:
+                raise PaperStoreError("no order waits for this confirmation")
+            if row["decision"] is not None or row["status"] is not None:
+                raise PaperStoreError("this order was already decided")
+            if _utc(now) >= row["expires_at_utc"]:
+                raise PaperStoreError("the time to confirm this order has passed")
+            db.execute(
+                "UPDATE order_confirmations SET decision = ?, decided_at_utc = ?, source = ? "
+                "WHERE intent_id = ?",
+                (decision, _utc(now), source[:40], intent_id),
+            )
+
+    def open_confirmations(self) -> list[dict[str, Any]]:
+        """Requests whose intent has no outcome yet, oldest first."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT c.*, i.document_json FROM order_confirmations c "
+                "JOIN order_intents i USING (intent_id) "
+                "WHERE NOT EXISTS (SELECT 1 FROM intent_outcomes o WHERE o.intent_id = c.intent_id)"
+                " ORDER BY c.requested_at_utc, c.intent_id"
+            ).fetchall()
+        return [
+            {
+                "intent": dict(json.loads(row["document_json"])),
+                "requested_at_utc": row["requested_at_utc"],
+                "expires_at_utc": row["expires_at_utc"],
+                "decision": row["decision"],
+                "decided_at_utc": row["decided_at_utc"],
+            }
+            for row in rows
+        ]
 
     # Protective states (ADR 0044 G2)
 
@@ -394,6 +464,7 @@ class PaperOrderStore:
 
     def record_execution(self, document: dict[str, Any]) -> bool:
         validate_document(document)
+        self._own(document)
         with self._connect() as db:
             cursor = db.execute(
                 "INSERT OR IGNORE INTO paper_executions VALUES (?, ?, ?, ?, ?, ?)",

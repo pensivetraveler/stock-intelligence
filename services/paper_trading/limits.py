@@ -21,12 +21,21 @@ class PaperLimits:
     max_daily_orders: int | None = None
     max_daily_loss_rate: Decimal | None = None
     max_position_amount_krw: Decimal | None = None
+    # US orders only; checked without an exchange rate (ADR 0047).
+    max_order_amount_usd: Decimal | None = None
 
     def document(self) -> dict[str, Any]:
         def text(value: Decimal | None) -> str | None:
             return None if value is None else format(value, "f")
 
+        # Only when set, so that plans approved before it existed keep their approval ID.
+        extra = (
+            {}
+            if self.max_order_amount_usd is None
+            else {"max_order_amount_usd": text(self.max_order_amount_usd)}
+        )
         return {
+            **extra,
             "max_order_amount_krw": text(self.max_order_amount_krw),
             "max_daily_orders": self.max_daily_orders,
             "max_daily_loss_rate": text(self.max_daily_loss_rate),
@@ -102,6 +111,13 @@ def check_limits(
                 reasons.append("fx_unavailable")
         elif amount_krw > limits.max_order_amount_krw:
             reasons.append("order_amount_exceeded")
+    if limits.max_order_amount_usd is not None:
+        if order.currency != "USD":
+            reasons.append("order_currency_not_usd")
+        elif price is not None and price > 0:
+            over = order.quantity * price > limits.max_order_amount_usd
+            if over and "order_amount_exceeded" not in reasons:
+                reasons.append("order_amount_exceeded")
     if limits.max_daily_orders is not None and facts.orders_today >= limits.max_daily_orders:
         reasons.append("daily_order_count_exceeded")
     if limits.max_daily_loss_rate is not None:

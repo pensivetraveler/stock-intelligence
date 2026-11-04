@@ -32,6 +32,7 @@ from services.api.credential_routes import register_credential_routes
 from services.api.indicator_assistant_routes import register_indicator_assistant_routes
 from services.api.indicator_routes import register_indicator_routes
 from services.api.journal_routes import register_import_routes, register_journal_routes
+from services.api.live_routes import register_live_routes
 from services.api.paper_routes import register_paper_routes
 from services.api.parent_watch import parent_pid_from_env, start_parent_watch
 from services.api.review_routes import register_review_routes
@@ -46,6 +47,7 @@ from services.credentials.store import CredentialStore, KeyringSecretBackend, Se
 from services.custom_indicators.store import CustomIndicatorStore
 from services.journal.ledger import account_positions
 from services.journal.store import JournalStore
+from services.live_trading.store import LiveOrderStore
 from services.market_data.aggregation import AggregationError
 from services.market_data.bars_service import MarketBarsService
 from services.market_data.broker_common import BrokerConfigError, instrument_listing
@@ -1250,6 +1252,9 @@ def create_app(
         start = since or (
             (until or clock().astimezone(KIWOOM_NEW_YORK).date()) - timedelta(days=365)
         )
+        refused = live_holds_kiwoom(request)
+        if refused is not None:
+            return refused
         return broker_read(
             request,
             kiwoom,
@@ -1275,6 +1280,9 @@ def create_app(
             )
         last = until or clock().astimezone(KIWOOM_NEW_YORK).date()
         start = since or (last - timedelta(days=90))
+        refused = live_holds_kiwoom(request)
+        if refused is not None:
+            return refused
         return broker_read(
             request,
             kiwoom,
@@ -1300,6 +1308,9 @@ def create_app(
             )
         last = until or clock().astimezone(KIWOOM_NEW_YORK).date()
         start = since or (last - timedelta(days=364))
+        refused = live_holds_kiwoom(request)
+        if refused is not None:
+            return refused
         return broker_read(
             request,
             kiwoom,
@@ -1511,12 +1522,15 @@ def create_app(
 
     register_backtest_routes(application, runner=backtests.get, error_response=_error_response)
     paper_holder: list[PaperOrderStore | None] = [None]
+    # The first requests of a screen arrive together; one of them applies the migrations.
+    order_store_lock = threading.Lock()
 
     def paper_store() -> PaperOrderStore | None:
-        if paper_holder[0] is None:
-            configured = os.getenv("SIW_DATA_DIR", "").strip()
-            if configured:
-                paper_holder[0] = PaperOrderStore(Path(configured))
+        with order_store_lock:
+            if paper_holder[0] is None:
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                if configured:
+                    paper_holder[0] = PaperOrderStore(Path(configured))
         return paper_holder[0]
 
     def strategy_lookup() -> Callable[[str, int], dict[str, Any]] | None:
@@ -1526,6 +1540,50 @@ def create_app(
     register_paper_routes(
         application,
         store=paper_store,
+        credentials=credentials.get,
+        strategies=strategy_lookup,
+        now=clock,
+        error_response=_error_response,
+    )
+    live_holder: list[LiveOrderStore | None] = [None]
+
+    def live_store() -> LiveOrderStore | None:
+        with order_store_lock:
+            if live_holder[0] is None:
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                if configured:
+                    live_holder[0] = LiveOrderStore(Path(configured))
+        return live_holder[0]
+
+    def live_holds_kiwoom(request: Request) -> JSONResponse | None:
+        """The armed live runner owns its Kiwoom key's token (ADR 0047 §5)."""
+        live = live_store()
+        status = None if live is None else live.status()
+        if (
+            status is None
+            or status["approval_id"] is None
+            or not (status["armed"] or status["halted"])
+        ):
+            return None
+        approval = live.approval(status["approval_id"]) if live is not None else None
+        try:
+            session = kiwoom()
+        except SecretStorageError:
+            return None
+        if approval is None or session is None:
+            return None
+        if approval["broker_account_ref"] != f"kiwoom-{session.key_ref}-real":
+            return None
+        return _error_response(
+            request,
+            409,
+            "kiwoom_key_in_live_use",
+            "The live order runner uses this Kiwoom key; disarm it before syncing",
+        )
+
+    register_live_routes(
+        application,
+        store=live_store,
         credentials=credentials.get,
         strategies=strategy_lookup,
         now=clock,

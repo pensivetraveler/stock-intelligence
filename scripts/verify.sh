@@ -37,9 +37,13 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
-# The Research build must not carry the Agent's paper-trading screen (ADR 0037 §7).
+# The Research build must not carry the Agent's order screens (ADR 0037 §7, ADR 0047).
 if grep -lq "/v1/paper/arm" apps/desktop/dist-research/assets/*.js; then
   echo "SIW Research build contains the paper-trading screen." >&2
+  exit 1
+fi
+if grep -lq "/v1/live/" apps/desktop/dist-research/assets/*.js; then
+  echo "SIW Research build contains the live-order screen." >&2
   exit 1
 fi
 
