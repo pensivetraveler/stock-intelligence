@@ -483,6 +483,23 @@ class AlpacaMarketDataProvider:
             raise ProviderDataError(f"provider data violates the contract: {exc}") from exc
         return result
 
+    def stock_bars(
+        self,
+        symbol: str,
+        timeframe: Literal["1Min", "1Day"],
+        start: datetime,
+        end: datetime,
+        adjustment: Literal["raw", "split"],
+        max_pages: int,
+    ) -> list[dict[str, Any]]:
+        """Alpaca bars of one ticker as sent (prices as Decimal), for the quote command.
+
+        No canonical bars or coverage: callers that show charts use `get_bars`.
+        """
+        if not SYMBOL_PATTERN.fullmatch(symbol):
+            raise InvalidBarsQueryError("a ticker is 1-10 letters, digits or dots")
+        return self._fetch_pages(symbol, timeframe, start, end, max_pages, adjustment)
+
     def get_adjusted_daily_bars(self, query: BarsQuery, adjustment: str) -> BarsResult:
         """Alpaca "1Day" bars adjusted for splits or for splits and dividends.
 

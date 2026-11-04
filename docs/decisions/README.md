@@ -55,3 +55,4 @@ Revisit when: 어느 조건에서 재검토하나
 - `0046-shared-data-space.md`: (proposed) 주식 희석 분석기와 공동 데이터 공간 — 저장소 밖 폴더 하나(`STOCK_SHARED_DATA`), 데이터마다 쓰는 프로그램은 하나, SEC 원문과 분석기의 요청 잠금 공유, SIW는 병합 장부만 읽기, 시세는 SIW만 받고 쓰며 읽는 프로그램은 아직 없음(캐시 결함 결정 뒤), 아직 옮긴 것 없음
 - `0047-live-orders-per-order-confirmation.md`: SIW Agent 단계 2 — 실계좌 주문, 모의 실행기 판단을 그대로 쓰고 제출 앞에 주문마다 사용자 승인(60초 만료, 보호 청산 포함), 별도 원장 `live_orders.sqlite3`, 실전 도메인은 `services/live_trading/`에만, 달러 한도·하루 주문 수 필수, 같은 키움 키의 조회 동기화 중지
 - `0049-toss-stock-rankings-panel.md`: (accepted, 실계좌 확인 전) 토스 주식 랭킹 패널 — `GET /v1/rankings`(`stock_rankings_response`), 거래대금·거래량·급상승·급하락·토스증권 기준과 국내 투자자별 순매수·순매도(1.2.28 신규 엔드포인트), 받은 값 그대로, 이미 아는 종목 목록으로만 listing을 붙여 클릭하면 활성 차트에 열기, 저장하지 않음
+- `0050-quote-command-for-local-tools.md`: (accepted) 다른 로컬 도구용 읽기 전용 시세 명령 — `scripts/siw-quote quote --ticker`, Alpaca 분할 조정 값과 기준일(`split_basis`), 마지막 1분봉 종가·오늘 세션별 거래량·정규장 1분봉 합 ADV와 일봉 ADV, 캐시를 읽거나 쓰지 않음, 재배포 금지(약관 원문 미확인)

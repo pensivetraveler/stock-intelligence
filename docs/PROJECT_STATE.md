@@ -2663,3 +2663,14 @@
 - **백엔드:** `GET /v1/rankings`가 `stock_rankings_response` 계약으로 읽는다. 값은 토스가 보낸 문자열 그대로이고 저장하지 않는다. 종목 listing은 이미 받아 둔 종목 목록과 설정된 종목에서만 찾는다. 토스 허용 목록에 `/api/v1/rankings/investor-trading`(공식 명세 1.2.28 신규, RANKING 그룹)을 더했다.
 - **명세와 실제의 구분:** 종류·파라미터·응답 필드는 2026-11-04 공식 명세 1.2.28에서 확인했다. 실계좌 응답은 아직 보지 않았다(미검증). 미국 우선주·클래스 주식의 토스 표기와 Alpaca 표기 차이도 미확인이다.
 - **확인:** 단위 테스트(명세 예시 응답)와 Workspace UI 테스트. 브라우저 미리보기는 로컬 가짜 토스 서버로 확인했다(실제 토스 키 미사용).
+
+## 다른 로컬 도구용 시세 명령(ADR 0050) — 2026-11-04
+
+- **요청:** 주식 희석 분석기 `[요청 #stock-quote-1]`. Price Map에 쓸 현재가, 정규장 종가, 오늘 거래량, ADV를 SIW에서 받는다(사용자 결정).
+- **추가:** `scripts/siw-quote quote --ticker T [--as-of D] [--adv-days N]`가 `services/market_data/quote.py`를 실행해 JSON 하나를 낸다. Alpaca adapter에 원본 봉을 그대로 읽는 `stock_bars`를 더했다.
+- **확인:**
+  - 가짜 봉 시험 9개.
+  - 실제 Alpaca 조회 2026-11-04 장전: TCRT(현재), AAPL `--as-of 2026-10-30`, 없는 종목 ZZZZQX(종료 코드 3).
+- **미확인:**
+  - Alpaca 1분봉 합과 일봉 거래량이 왜 다른지(일봉에 장외 거래 포함 여부).
+  - Alpaca 시장 데이터 약관 원문.
