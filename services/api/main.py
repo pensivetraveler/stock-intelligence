@@ -6,7 +6,7 @@ import os
 import re
 import threading
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -128,6 +128,7 @@ from services.market_data.toss_info import (
     stock_info,
 )
 from services.market_data.toss_quotes import market_quote
+from services.market_data.toss_rankings import stock_rankings
 from services.market_data.toss_research import research_table
 from services.market_data.toss_session import (
     DEFAULT_BASE_URL as DEFAULT_TOSS_URL,
@@ -1395,6 +1396,69 @@ def create_app(
         params = {name: value for name, value in request.query_params.items() if name != "key"}
         return toss_read(
             request, lambda session: research_table(session, dataset, key, params, clock)
+        )
+
+    def ranking_listings(
+        market: Literal["US", "KR"], wanted: Iterable[str]
+    ) -> dict[str, dict[str, Any]]:
+        """The listings of ranked symbols, from configured instruments and the symbol lists
+        known on disk (never triggers a provider request)."""
+        wanted_symbols = {symbol.upper() for symbol in wanted}
+        prefix = "kr:" if market == "KR" else "us:"
+        found: dict[str, dict[str, Any]] = {}
+        directory = symbols.korean() if market == "KR" else symbols.get()
+        if directory is not None:
+            for entry in directory.known().values():
+                symbol = entry.symbol.upper()
+                if symbol in wanted_symbols and symbol not in found:
+                    found[symbol] = {
+                        "listing": directory.listing(entry),
+                        "name": entry.name,
+                        "local_name": entry.local_name,
+                    }
+        for item in provider.get().instruments():
+            instrument = item["instrument"]
+            symbol = instrument["symbol"].upper()
+            if symbol in wanted_symbols and instrument["instrument_id"].startswith(prefix):
+                found.setdefault(symbol, {"listing": item, "name": None, "local_name": None})
+        return found
+
+    @application.get("/v1/rankings", response_model=None)
+    def rankings_endpoint(
+        request: Request,
+        ranking: Annotated[
+            Literal[
+                "MARKET_TRADING_AMOUNT",
+                "MARKET_TRADING_VOLUME",
+                "TOP_GAINERS",
+                "TOP_LOSERS",
+                "TOSS_SECURITIES_TRADING_AMOUNT",
+                "TOSS_SECURITIES_TRADING_VOLUME",
+                "NET_BUY",
+                "NET_SELL",
+            ],
+            Query(alias="type"),
+        ],
+        market: Literal["US", "KR"] = "US",
+        duration: Literal["realtime", "1d", "1w", "1mo", "3mo", "6mo", "1y"] | None = None,
+        investor: Literal["foreigner", "institution", "individual"] | None = None,
+        exclude_caution: bool = False,
+        count: Annotated[int, Query(ge=1, le=100)] = 100,
+    ) -> Response:
+        """A Toss stock ranking (ADR 0049), each row with the listing to open on a chart."""
+        return toss_read(
+            request,
+            lambda session: stock_rankings(
+                session,
+                ranking,
+                market,
+                duration=duration,
+                investor=investor,
+                exclude_caution=exclude_caution,
+                count=count,
+                listings=ranking_listings,
+                now=clock,
+            ),
         )
 
     @application.get("/v1/market/quote", response_model=None)

@@ -4,7 +4,8 @@ Toss keeps one valid access token per client: issuing a new one revokes the old.
 adapter, quotes and account views must therefore share one token per key, so sessions are
 kept in a process-wide registry keyed by the key itself (`session_for`).
 
-Only the documented GET read endpoints are on the allowlist (official OpenAPI 1.2.24,
+Only the documented GET read endpoints are on the allowlist (official OpenAPI 1.2.24, plus
+the 1.2.28 investor ranking;
 openapi.tossinvest.com/openapi-docs/latest/openapi.json). Order and conditional-order
 create, modify and cancel endpoints are not, so this client cannot place, change or cancel
 orders. Each request waits for its documented rate-limit group (requests per second per
@@ -58,6 +59,7 @@ READ_ENDPOINTS: dict[str, str] = {
     "/api/v1/market-calendar/KR": "MARKET_INFO",
     "/api/v1/market-calendar/US": "MARKET_INFO",
     "/api/v1/rankings": "RANKING",
+    "/api/v1/rankings/investor-trading": "RANKING",  # added in 1.2.28 (ADR 0049)
     "/api/v1/market-indicators/prices": "MARKET_INDICATOR",
     "/api/v1/market-indicators/{symbol}/candles": "MARKET_INDICATOR_CHART",
     "/api/v1/market-indicators/{symbol}/investor-trading": "MARKET_INDICATOR",

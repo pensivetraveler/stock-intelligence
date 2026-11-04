@@ -39,6 +39,7 @@ import type { AgentApi } from "./agent-api";
 import type { BacktestApi } from "./backtest-api";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { todayIn, US_ZONE } from "./market-zone";
+import type { RankingRequest } from "./rankings";
 import { Workspace } from "./Workspace";
 import { LIBRARY_STORAGE_KEY } from "./workspace-library";
 import { DEFAULT_WORKSPACE, WORKSPACE_STORAGE_KEY } from "./workspace-state";
@@ -100,6 +101,7 @@ function fakeApi(
     key: string | null;
     params: Record<string, string>;
   }[];
+  rankingCalls: RankingRequest[];
   barsCalls: BarsRequest[];
   sessionsCalls: { endDate: string; count: number }[];
   manualRequests: ManualExecutionRequest[];
@@ -117,6 +119,7 @@ function fakeApi(
     key: string | null;
     params: Record<string, string>;
   }[] = [];
+  const rankingCalls: RankingRequest[] = [];
   const manual: ManualExecution[] = [];
   const imported: ImportedExecution[] = [];
   const broker: BrokerOrderExecution[] = [];
@@ -164,6 +167,85 @@ function fakeApi(
         next_cursor: dataset === "rankings" ? null : "2026-10-16",
         columns: ["rank", "symbol", "price.changeRate"],
         rows: [["1", "SOXL", "-0.0566"]],
+      });
+    },
+    rankingCalls,
+    rankings: (request) => {
+      rankingCalls.push(request);
+      const investor = request.ranking === "NET_BUY";
+      return Promise.resolve({
+        kind: "stock_rankings_response",
+        schema_version: "0.1",
+        source_id: investor ? "toss-kr" : "toss-us",
+        ranking: request.ranking,
+        market: request.market,
+        duration: request.duration ?? null,
+        investor: request.investor ?? null,
+        exclude_caution: request.excludeCaution ?? false,
+        observed_at_utc: "2026-11-04T12:30:00Z",
+        ranked_at_utc: "2026-11-04T12:27:42Z",
+        rows: investor
+          ? [
+              {
+                rank: 1,
+                symbol: "005930",
+                currency: "KRW",
+                last_price: null,
+                base_price: null,
+                change_rate: null,
+                trading_volume: null,
+                trading_amount: null,
+                net_amount: "386487682000",
+                listing: null,
+                name: null,
+                local_name: null,
+              },
+            ]
+          : [
+              {
+                rank: 1,
+                symbol: "NVDA",
+                currency: "USD",
+                last_price: "131.38",
+                base_price: "128.45",
+                change_rate: "0.0228",
+                trading_volume: "342100",
+                trading_amount: "44942580",
+                net_amount: null,
+                listing: {
+                  instrument: {
+                    kind: "instrument_ref",
+                    schema_version: "0.1",
+                    instrument_id: "us:nvda:xnas:2026",
+                    symbol: "NVDA",
+                    venue: "XNAS",
+                    asset_class: "us_equity",
+                    currency: "USD",
+                    identity_as_of: "2026-01-01T00:00:00Z",
+                    identity_source: "alpaca-sip-assets",
+                  },
+                  source_id: "alpaca-sip",
+                  dataset_revision: "alpaca-sip-assets-2026-10-20",
+                  session_dates: [],
+                },
+                name: "NVIDIA Corporation Common Stock",
+                local_name: "엔비디아",
+              },
+              {
+                rank: 2,
+                symbol: "SOXL",
+                currency: "USD",
+                last_price: "93.06",
+                base_price: "98.65",
+                change_rate: "-0.0566",
+                trading_volume: "5806983",
+                trading_amount: "729711095863",
+                net_amount: null,
+                listing: null,
+                name: null,
+                local_name: null,
+              },
+            ],
       });
     },
     instruments: () =>
@@ -1581,6 +1663,78 @@ describe("chart workspace", () => {
     await waitFor(() =>
       expect(api.researchCalls.at(-1)?.params.until).toBe("2026-10-16"),
     );
+  });
+
+  it("lists Toss rankings and opens a ranked stock in the active chart", async () => {
+    const api = fakeApi();
+    render(<Workspace api={api} storage={memoryStorage()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: "Rankings" }));
+    const panel = await screen.findByRole("region", { name: "Rankings" });
+    expect(await within(panel).findByText("엔비디아")).toBeVisible();
+    expect(api.rankingCalls[0]).toEqual({
+      ranking: "MARKET_TRADING_AMOUNT",
+      market: "US",
+      duration: "1d",
+      excludeCaution: false,
+      count: 50,
+    });
+    // Exact digits, grouped; the change rate as a percentage.
+    expect(within(panel).getByText("729,711,095,863")).toBeVisible();
+    expect(within(panel).getByText("-5.66%")).toBeVisible();
+    // A symbol the symbol list does not know cannot be opened.
+    expect(
+      within(panel).queryByRole("button", {
+        name: "Show SOXL in the active chart",
+      }),
+    ).not.toBeInTheDocument();
+
+    // Gainers have no realtime ranking: the option is offered disabled.
+    fireEvent.change(within(panel).getByLabelText("Ranking"), {
+      target: { value: "TOP_GAINERS" },
+    });
+    expect(
+      within(panel).getByRole("option", { name: "Realtime" }),
+    ).toBeDisabled();
+    fireEvent.change(within(panel).getByLabelText("Period"), {
+      target: { value: "1w" },
+    });
+    await waitFor(() =>
+      expect(api.rankingCalls.at(-1)).toMatchObject({
+        ranking: "TOP_GAINERS",
+        duration: "1w",
+      }),
+    );
+
+    fireEvent.click(
+      await within(panel).findByRole("button", {
+        name: "Show NVDA in the active chart",
+      }),
+    );
+    await screen.findByRole("region", { name: /Chart 1: NVDA/ });
+    await waitFor(() =>
+      expect(
+        api.barsCalls.some((call) => call.instrumentId === "us:nvda:xnas:2026"),
+      ).toBe(true),
+    );
+
+    // Investor rankings are Korean only and take an investor instead of a period.
+    fireEvent.change(within(panel).getByLabelText("Ranking"), {
+      target: { value: "NET_BUY" },
+    });
+    expect(within(panel).getByLabelText("Market")).toBeDisabled();
+    fireEvent.change(within(panel).getByLabelText("Investor"), {
+      target: { value: "institution" },
+    });
+    await waitFor(() =>
+      expect(api.rankingCalls.at(-1)).toEqual({
+        ranking: "NET_BUY",
+        market: "KR",
+        investor: "institution",
+        count: 50,
+      }),
+    );
+    expect(await within(panel).findByText("386,487,682,000")).toBeVisible();
   });
 
   it("shows the Toss account read-only and syncs fills into the journal", async () => {

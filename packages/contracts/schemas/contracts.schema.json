@@ -97,6 +97,9 @@
       "$ref": "#/$defs/ResearchTable"
     },
     {
+      "$ref": "#/$defs/StockRankingsResponse"
+    },
+    {
       "$ref": "#/$defs/BrokerOrderExecution"
     },
     {
@@ -3161,6 +3164,258 @@
                   "maxLength": 400
                 }
               ]
+            }
+          }
+        }
+      }
+    },
+    "StockRankingsResponse": {
+      "description": "ADR 0049: one Toss stock ranking read on demand (trading amount or volume, gainers, losers, or Korean investors' net buying or selling). Values are exact decimal strings as Toss sent them; each row carries the listing the symbol directory knows for it, so it can be opened on a chart. Not stored and not chart data.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "source_id",
+        "ranking",
+        "market",
+        "duration",
+        "investor",
+        "exclude_caution",
+        "observed_at_utc",
+        "ranked_at_utc",
+        "rows"
+      ],
+      "properties": {
+        "kind": {
+          "const": "stock_rankings_response"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "source_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "ranking": {
+          "enum": [
+            "MARKET_TRADING_AMOUNT",
+            "MARKET_TRADING_VOLUME",
+            "TOP_GAINERS",
+            "TOP_LOSERS",
+            "TOSS_SECURITIES_TRADING_AMOUNT",
+            "TOSS_SECURITIES_TRADING_VOLUME",
+            "NET_BUY",
+            "NET_SELL"
+          ],
+          "description": "TOSS_SECURITIES_* count Toss Securities fills only; the others the whole market. NET_* are Korean investors' net buying or selling (KRX and NXT together)."
+        },
+        "market": {
+          "enum": ["US", "KR"]
+        },
+        "duration": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": ["realtime", "1d", "1w", "1mo", "3mo", "6mo", "1y"]
+            }
+          ],
+          "description": "Trading days ranked over; null for investor rankings (latest business day only)."
+        },
+        "investor": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": ["foreigner", "institution", "individual"]
+            }
+          ]
+        },
+        "exclude_caution": {
+          "type": "boolean",
+          "description": "Investment-caution stocks were left out (Toss excludeInvestmentCaution)."
+        },
+        "observed_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "ranked_at_utc": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            }
+          ],
+          "description": "When Toss computed the ranking; null when it has none for this choice."
+        },
+        "rows": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "rank",
+              "symbol",
+              "currency",
+              "last_price",
+              "base_price",
+              "change_rate",
+              "trading_volume",
+              "trading_amount",
+              "net_amount",
+              "listing",
+              "name",
+              "local_name"
+            ],
+            "properties": {
+              "rank": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "symbol": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              },
+              "currency": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8
+                  }
+                ]
+              },
+              "last_price": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/DecimalString"
+                  }
+                ]
+              },
+              "base_price": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/DecimalString"
+                  }
+                ],
+                "description": "Gainers and losers: the price at the start of the duration; other rankings: the previous close."
+              },
+              "change_rate": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/DecimalString"
+                  }
+                ],
+                "description": "Decimal ratio (0.0125 = 1.25%) of last_price over base_price."
+              },
+              "trading_volume": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/DecimalString"
+                  }
+                ]
+              },
+              "trading_amount": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/DecimalString"
+                  }
+                ]
+              },
+              "net_amount": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/DecimalString"
+                  }
+                ],
+                "description": "NET_BUY / NET_SELL: net amount bought or sold in KRW, always positive."
+              },
+              "listing": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "instrument",
+                      "source_id",
+                      "dataset_revision",
+                      "session_dates"
+                    ],
+                    "properties": {
+                      "instrument": {
+                        "$ref": "#/$defs/InstrumentRef"
+                      },
+                      "source_id": {
+                        "$ref": "#/$defs/Identifier"
+                      },
+                      "dataset_revision": {
+                        "$ref": "#/$defs/Identifier"
+                      },
+                      "session_dates": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "date"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "description": "The symbol directory's listing, to open on a chart; null when the symbol is not in a known list."
+              },
+              "name": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                ]
+              },
+              "local_name": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                ]
+              }
             }
           }
         }
