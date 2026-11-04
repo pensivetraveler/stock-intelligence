@@ -3,11 +3,12 @@
 //! - Starts the local API from this repository when nothing answers on 127.0.0.1:8765,
 //!   and stops only an API it started itself. `uv run` keeps uvicorn as a child process,
 //!   so the API runs in its own process group and quitting stops the whole group.
-//! - Installs, stops and removes the resident paper-order runner as a user service: a
+//! - Installs, stops and removes the resident order runners as user services: a
 //!   LaunchAgent on macOS (`launchd`), a systemd user service on Linux (`systemd`, ADR 0045).
+//!   The paper runner and the live runner (ADR 0047) are separate services.
 //!
-//! The shell never sends orders and holds no keys: the runner reads its demo key from
-//! the keychain itself.
+//! The shell never sends orders and holds no keys: each runner reads its key from the
+//! keychain itself.
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
@@ -32,6 +33,44 @@ use systemd as service;
 
 const API_ADDR: &str = "127.0.0.1:8765";
 pub const RUNNER_LABEL: &str = "com.pensivetraveler.siw.agent.runner";
+pub const LIVE_RUNNER_LABEL: &str = "com.pensivetraveler.siw.agent.live-runner";
+
+/// Which resident runner a service command is about.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RunnerKind {
+    Paper,
+    Live,
+}
+
+impl RunnerKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            RunnerKind::Paper => RUNNER_LABEL,
+            RunnerKind::Live => LIVE_RUNNER_LABEL,
+        }
+    }
+
+    pub fn module(self) -> &'static str {
+        match self {
+            RunnerKind::Paper => "services.paper_trading.service",
+            RunnerKind::Live => "services.live_trading.service",
+        }
+    }
+
+    pub fn log_name(self) -> &'static str {
+        match self {
+            RunnerKind::Paper => "runner.log",
+            RunnerKind::Live => "live-runner.log",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            RunnerKind::Paper => "SIW Agent paper-order runner",
+            RunnerKind::Live => "SIW Agent live-order runner",
+        }
+    }
+}
 
 /// The API process group this shell started, if any; the child is the group leader.
 struct ApiChild(Mutex<Option<Child>>);
@@ -159,13 +198,13 @@ fn stop_group(child: &mut Child, grace: Duration) {
 }
 
 /// What `uv` runs for the resident runner, from the repository, on either service manager.
-pub(crate) fn runner_arguments(uv: &Path, repo: &Path) -> Vec<String> {
+pub(crate) fn runner_arguments(uv: &Path, repo: &Path, kind: RunnerKind) -> Vec<String> {
     let mut arguments = vec![
         uv.display().to_string(),
         "run".into(),
         "python".into(),
         "-m".into(),
-        "services.paper_trading.service".into(),
+        kind.module().into(),
     ];
     if repo.join(".env").is_file() {
         arguments.extend(["--env-file".into(), ".env".into()]);
@@ -185,28 +224,52 @@ pub(crate) fn run_tool(command: &mut Command) -> (bool, String) {
     }
 }
 
-#[tauri::command]
-fn runner_state() -> RunnerServiceState {
-    service::state(String::new())
-}
-
-#[tauri::command]
-fn runner_install() -> Result<RunnerServiceState, String> {
+fn install(kind: RunnerKind) -> Result<RunnerServiceState, String> {
     let repo = repo_dir().ok_or("the repository was not found (set SIW_REPO_DIR)")?;
     let uv = find_uv().ok_or("uv was not found")?;
     let logs = service::log_dir();
     std::fs::create_dir_all(&logs).map_err(|e| e.to_string())?;
-    service::install(&uv, &repo, &logs)
+    service::install(kind, &uv, &repo, &logs)
+}
+
+#[tauri::command]
+fn runner_state() -> RunnerServiceState {
+    service::state(RunnerKind::Paper, String::new())
+}
+
+#[tauri::command]
+fn runner_install() -> Result<RunnerServiceState, String> {
+    install(RunnerKind::Paper)
 }
 
 #[tauri::command]
 fn runner_stop() -> RunnerServiceState {
-    service::stop()
+    service::stop(RunnerKind::Paper)
 }
 
 #[tauri::command]
 fn runner_uninstall() -> Result<RunnerServiceState, String> {
-    service::uninstall()
+    service::uninstall(RunnerKind::Paper)
+}
+
+#[tauri::command]
+fn live_runner_state() -> RunnerServiceState {
+    service::state(RunnerKind::Live, String::new())
+}
+
+#[tauri::command]
+fn live_runner_install() -> Result<RunnerServiceState, String> {
+    install(RunnerKind::Live)
+}
+
+#[tauri::command]
+fn live_runner_stop() -> RunnerServiceState {
+    service::stop(RunnerKind::Live)
+}
+
+#[tauri::command]
+fn live_runner_uninstall() -> Result<RunnerServiceState, String> {
+    service::uninstall(RunnerKind::Live)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -225,13 +288,17 @@ pub fn run() {
             runner_state,
             runner_install,
             runner_stop,
-            runner_uninstall
+            runner_uninstall,
+            live_runner_state,
+            live_runner_install,
+            live_runner_stop,
+            live_runner_uninstall
         ])
         .build(tauri::generate_context!())
         .expect("error while building Tauri application");
     app.run(|handle, event| {
         if let RunEvent::Exit = event {
-            // Only the API this shell started; the resident runner keeps running.
+            // Only the API this shell started; the resident runners keep running.
             if let Some(mut child) = handle.state::<ApiChild>().0.lock().expect("lock").take() {
                 stop_group(&mut child, Duration::from_secs(5));
             }

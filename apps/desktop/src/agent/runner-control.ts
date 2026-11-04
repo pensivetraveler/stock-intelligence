@@ -23,7 +23,11 @@ function inTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-export function createRunnerControl(invoke?: Invoke): RunnerControl {
+/** `prefix` picks the runner: `runner` (paper) or `live_runner` (ADR 0047). */
+export function createRunnerControl(
+  invoke?: Invoke,
+  prefix: "runner" | "live_runner" = "runner",
+): RunnerControl {
   const available = invoke !== undefined || inTauri();
   const call = async (command: string): Promise<RunnerServiceState> => {
     if (!available) {
@@ -39,9 +43,9 @@ export function createRunnerControl(invoke?: Invoke): RunnerControl {
   };
   return {
     available,
-    state: () => call("runner_state"),
-    install: () => call("runner_install"),
-    stop: () => call("runner_stop"),
-    uninstall: () => call("runner_uninstall"),
+    state: () => call(`${prefix}_state`),
+    install: () => call(`${prefix}_install`),
+    stop: () => call(`${prefix}_stop`),
+    uninstall: () => call(`${prefix}_uninstall`),
   };
 }

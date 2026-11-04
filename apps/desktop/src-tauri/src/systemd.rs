@@ -9,10 +9,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::{home, RunnerServiceState, RUNNER_LABEL};
+use crate::{home, RunnerKind, RunnerServiceState};
 
-fn unit_name() -> String {
-    format!("{RUNNER_LABEL}.service")
+fn unit_name(kind: RunnerKind) -> String {
+    format!("{}.service", kind.label())
 }
 
 /// An XDG base directory: the variable when it is an absolute path, else the default.
@@ -33,8 +33,8 @@ pub fn log_dir() -> PathBuf {
     xdg_dir("XDG_STATE_HOME", ".local/state").join("siw-agent")
 }
 
-fn unit_path() -> PathBuf {
-    xdg_dir("XDG_CONFIG_HOME", ".config").join("systemd/user").join(unit_name())
+fn unit_path(kind: RunnerKind) -> PathBuf {
+    xdg_dir("XDG_CONFIG_HOME", ".config").join("systemd/user").join(unit_name(kind))
 }
 
 /// A whole-line unit value: only `%` specifiers are expanded there.
@@ -59,18 +59,19 @@ fn quote_environment(text: &str) -> String {
 }
 
 /// The runner's user service: started at login, restarted after a crash, never given keys.
-pub fn runner_unit(uv: &Path, repo: &Path, log_dir: &Path) -> String {
-    let program = crate::runner_arguments(uv, repo)
+pub fn runner_unit(kind: RunnerKind, uv: &Path, repo: &Path, log_dir: &Path) -> String {
+    let description = kind.description();
+    let program = crate::runner_arguments(uv, repo, kind)
         .iter()
         .map(|argument| quote_exec_word(argument))
         .collect::<Vec<_>>()
         .join(" ");
     let repo_text = escape_line(&repo.display().to_string());
     let cache = quote_environment(&format!("UV_CACHE_DIR={}", repo.join(".uv-cache").display()));
-    let log = escape_line(&log_dir.join("runner.log").display().to_string());
+    let log = escape_line(&log_dir.join(kind.log_name()).display().to_string());
     format!(
         "[Unit]
-Description=SIW Agent paper-order runner
+Description={description}
 
 [Service]
 Type=simple
@@ -97,54 +98,59 @@ fn reads_as_running(printed: &str) -> bool {
     printed.trim() == "active"
 }
 
-pub fn state(detail: String) -> RunnerServiceState {
-    let (_, printed) = systemctl(&["is-active", &unit_name()]);
+pub fn state(kind: RunnerKind, detail: String) -> RunnerServiceState {
+    let (_, printed) = systemctl(&["is-active", &unit_name(kind)]);
     RunnerServiceState {
-        installed: unit_path().is_file(),
+        installed: unit_path(kind).is_file(),
         running: reads_as_running(&printed),
         detail,
     }
 }
 
-pub fn install(uv: &Path, repo: &Path, logs: &Path) -> Result<RunnerServiceState, String> {
+pub fn install(
+    kind: RunnerKind,
+    uv: &Path,
+    repo: &Path,
+    logs: &Path,
+) -> Result<RunnerServiceState, String> {
     // A line break would end the value and start another unit setting.
     if [uv, repo, logs].iter().any(|path| path.display().to_string().contains('\n')) {
         return Err("a path contains a line break".into());
     }
-    let unit = unit_path();
+    let unit = unit_path(kind);
     if let Some(parent) = unit.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&unit, runner_unit(uv, repo, logs)).map_err(|e| e.to_string())?;
-    let name = unit_name();
+    std::fs::write(&unit, runner_unit(kind, uv, repo, logs)).map_err(|e| e.to_string())?;
+    let name = unit_name(kind);
     for arguments in [&["daemon-reload"][..], &["enable", &name][..], &["restart", &name][..]] {
         let (ok, output) = systemctl(arguments);
         if !ok {
-            return Ok(state(output));
+            return Ok(state(kind, output));
         }
     }
-    Ok(state(String::new()))
+    Ok(state(kind, String::new()))
 }
 
 /// Stops the runner until the next login, like `launchctl bootout`.
-pub fn stop() -> RunnerServiceState {
-    let (_, output) = systemctl(&["stop", &unit_name()]);
-    let current = state(String::new());
+pub fn stop(kind: RunnerKind) -> RunnerServiceState {
+    let (_, output) = systemctl(&["stop", &unit_name(kind)]);
+    let current = state(kind, String::new());
     if current.running {
-        state(output)
+        state(kind, output)
     } else {
         current
     }
 }
 
-pub fn uninstall() -> Result<RunnerServiceState, String> {
-    let _ = systemctl(&["disable", "--now", &unit_name()]);
-    let unit = unit_path();
+pub fn uninstall(kind: RunnerKind) -> Result<RunnerServiceState, String> {
+    let _ = systemctl(&["disable", "--now", &unit_name(kind)]);
+    let unit = unit_path(kind);
     if unit.is_file() {
         std::fs::remove_file(&unit).map_err(|e| e.to_string())?;
     }
     let _ = systemctl(&["daemon-reload"]);
-    Ok(state(String::new()))
+    Ok(state(kind, String::new()))
 }
 
 #[cfg(test)]
@@ -152,7 +158,12 @@ mod tests {
     use super::*;
 
     fn unit_for(repo: &Path) -> String {
-        runner_unit(Path::new("/home/me/.local/bin/uv"), repo, Path::new("/home/me/logs"))
+        runner_unit(
+            RunnerKind::Paper,
+            Path::new("/home/me/.local/bin/uv"),
+            repo,
+            Path::new("/home/me/logs"),
+        )
     }
 
     #[test]
@@ -206,7 +217,7 @@ mod tests {
         let wait_for = |running: bool| {
             let deadline = Instant::now() + Duration::from_secs(10);
             loop {
-                let current = state(String::new());
+                let current = state(RunnerKind::Paper, String::new());
                 if current.running == running || Instant::now() >= deadline {
                     return current;
                 }
@@ -214,24 +225,27 @@ mod tests {
             }
         };
 
-        let installed = install(&uv, &root, &logs).expect("install");
+        let installed = install(RunnerKind::Paper, &uv, &root, &logs).expect("install");
         assert_eq!(installed.detail, "");
         assert!(installed.installed);
         assert!(wait_for(true).running);
-        assert!(systemctl(&["is-enabled", &unit_name()]).0, "starts at the next login");
+        assert!(
+            systemctl(&["is-enabled", &unit_name(RunnerKind::Paper)]).0,
+            "starts at the next login"
+        );
 
-        let stopped = stop();
+        let stopped = stop(RunnerKind::Paper);
         assert!(stopped.installed);
         assert!(!wait_for(false).running);
         assert!(std::fs::read_to_string(logs.join("runner.log")).expect("log").contains("started"));
 
-        assert!(install(&uv, &root, &logs).expect("reinstall").installed);
+        assert!(install(RunnerKind::Paper, &uv, &root, &logs).expect("reinstall").installed);
         assert!(wait_for(true).running);
 
-        let removed = uninstall().expect("uninstall");
+        let removed = uninstall(RunnerKind::Paper).expect("uninstall");
         assert!(!removed.installed);
         assert!(!wait_for(false).running);
-        assert!(!unit_path().exists());
+        assert!(!unit_path(RunnerKind::Paper).exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

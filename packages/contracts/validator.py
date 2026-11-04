@@ -150,6 +150,30 @@ def _paper_intent_errors(document: dict[str, Any]) -> list[str]:
     return errors
 
 
+# The account reference names its environment, and a fill its ledger (ADR 0047).
+ORDER_LEDGERS = {
+    "demo": ("broker_paper", "broker_demo_simulated"),
+    "real": ("broker_live_orders", "broker_live"),
+}
+
+
+def _order_environment_errors(document: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    environment = document["environment"]
+    if not str(document["broker_account_ref"]).endswith(f"-{environment}"):
+        errors.append("the broker account reference must name the order's environment")
+    if (
+        document["kind"] == "paper_execution"
+        and (
+            document["ledger"],
+            document["fill_origin"],
+        )
+        != ORDER_LEDGERS[environment]
+    ):
+        errors.append("a fill's ledger and origin must match its environment")
+    return errors
+
+
 def semantic_errors(document: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     kind = document.get("kind")
@@ -309,6 +333,9 @@ def semantic_errors(document: dict[str, Any]) -> list[str]:
     if kind == "scenario_ledger_response":
         for item in document["scenarios"]:
             errors.extend(semantic_errors(item["scenario"]))
+
+    if kind in ("paper_order_intent", "paper_order_submission", "paper_execution"):
+        errors.extend(_order_environment_errors(document))
 
     if kind == "paper_order_intent":
         errors.extend(_paper_intent_errors(document))

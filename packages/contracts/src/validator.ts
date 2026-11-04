@@ -194,6 +194,32 @@ function paperIntentErrors(document: Document): string[] {
   return errors;
 }
 
+// The account reference names its environment, and a fill its ledger (ADR 0047).
+const ORDER_LEDGERS: Record<string, [string, string]> = {
+  demo: ["broker_paper", "broker_demo_simulated"],
+  real: ["broker_live_orders", "broker_live"],
+};
+
+function orderEnvironmentErrors(document: Document): string[] {
+  const errors: string[] = [];
+  const environment = asString(document, "environment");
+  if (!asString(document, "broker_account_ref").endsWith(`-${environment}`)) {
+    errors.push(
+      "the broker account reference must name the order's environment",
+    );
+  }
+  const expected = ORDER_LEDGERS[environment];
+  if (
+    document.kind === "paper_execution" &&
+    (expected === undefined ||
+      document.ledger !== expected[0] ||
+      document.fill_origin !== expected[1])
+  ) {
+    errors.push("a fill's ledger and origin must match its environment");
+  }
+  return errors;
+}
+
 export function semanticErrors(document: Document): string[] {
   const errors: string[] = [];
 
@@ -512,6 +538,14 @@ export function semanticErrors(document: Document): string[] {
     if (document.coverage_status === "empty" && observed !== 0) {
       errors.push("empty coverage must not contain observed intervals");
     }
+  }
+
+  if (
+    document.kind === "paper_order_intent" ||
+    document.kind === "paper_order_submission" ||
+    document.kind === "paper_execution"
+  ) {
+    errors.push(...orderEnvironmentErrors(document));
   }
 
   if (document.kind === "paper_order_intent") {

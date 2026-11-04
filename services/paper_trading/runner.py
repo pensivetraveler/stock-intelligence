@@ -96,6 +96,8 @@ class RunPlan:
     # Seconds an accepted order may stay unfilled before the runner cancels it; the next
     # bar then decides again. None: left to the user (ADR 0044, G1).
     unfilled_cancel_seconds: int | None = None
+    # Live plans only: seconds the user has to confirm each order (ADR 0047).
+    confirm_seconds: int | None = None
 
     def approval_content(self) -> dict[str, Any]:
         content = {
@@ -128,6 +130,8 @@ class RunPlan:
         # Only when set, so that plans approved before this existed keep their approval ID.
         if self.unfilled_cancel_seconds is not None:
             content["unfilled_cancel_seconds"] = self.unfilled_cancel_seconds
+        if self.confirm_seconds is not None:
+            content["confirm_seconds"] = self.confirm_seconds
         # The same: only a plan with protective exits has this, and they ask to be seen.
         if any(self.definition.get(name) is not None for name in PROTECTIVE_FIELDS):
             clean = validate_definition(self.definition)
@@ -164,6 +168,7 @@ def plan_from_approval(content: dict[str, Any], definition: dict[str, Any]) -> R
             max_daily_orders=limits["max_daily_orders"],
             max_daily_loss_rate=number(limits["max_daily_loss_rate"]),
             max_position_amount_krw=number(limits["max_position_amount_krw"]),
+            max_order_amount_usd=number(limits.get("max_order_amount_usd")),
         ),
         broker_id=content["broker_id"],
         broker_account_ref=content["broker_account_ref"],
@@ -181,6 +186,7 @@ def plan_from_approval(content: dict[str, Any], definition: dict[str, Any]) -> R
         max_signal_age_seconds=int(content["max_signal_age_seconds"]),
         bar_settle_seconds=content.get("bar_settle_seconds"),
         unfilled_cancel_seconds=content.get("unfilled_cancel_seconds"),
+        confirm_seconds=content.get("confirm_seconds"),
     )
 
 
@@ -232,6 +238,7 @@ class StepReport:
     fills: int = 0
     cancel_requests: int = 0
     cancelled: int = 0
+    awaiting: int = 0  # live intents now waiting for the user's confirmation (ADR 0047)
 
 
 def bars_sha256(bars: Sequence[EngineBar]) -> str:
@@ -251,6 +258,8 @@ def _epoch(value: int) -> datetime:
 
 
 class PaperRunner:
+    fill_origin = "broker_demo_simulated"
+
     def __init__(
         self,
         store: PaperOrderStore,
@@ -310,6 +319,7 @@ class PaperRunner:
         if protecting:
             self._close_sold()
         report.halted = self.store.status()["halted"]
+        self._settle_confirmations(now, report)
         if report.halted and not protecting:
             return report
         # After the halt check: the kill switch leaves unfilled orders as they are (ADR 0037).
@@ -492,6 +502,8 @@ class PaperRunner:
         return True
 
     def _exit_is_clear(self, instrument_id: str, orders: Callable[[], list[BrokerOrder]]) -> bool:
+        if self._awaiting(instrument_id):
+            return False
         for submission in self.store.submissions("pending_response", "unknown"):
             intent = self.store.intent(submission["intent_id"])
             if intent is not None and intent["instrument_id"] == instrument_id:
@@ -630,6 +642,7 @@ class PaperRunner:
             limits=plan.limits,
             facts=facts,
             created_at=now,
+            environment=self.store.environment,
         )
         blocking = not result.passed and (
             exit_order is None or bool(EXIT_STOPPING_REASONS.intersection(result.reasons))
@@ -658,8 +671,23 @@ class PaperRunner:
             self.store.set_outcome(intent["intent_id"], "blocked", "order_type_not_supported")
             report.blocked += 1
             return
+        self._dispatch(intent, now, report, exit_order is not None)
+
+    # -- submission ------------------------------------------------------------------
+
+    def _dispatch(
+        self, intent: dict[str, Any], now: datetime, report: StepReport, exit: bool
+    ) -> None:
+        """Send an intent that passed its checks. The live runner waits for the user here."""
         self._submit(intent, now)
         report.submitted += 1
+
+    def _settle_confirmations(self, now: datetime, report: StepReport) -> None:
+        """Send or close intents waiting for the user's confirmation (live only, ADR 0047)."""
+
+    def _awaiting(self, instrument_id: str) -> bool:
+        """An intent of this instrument waits for the user's confirmation (live only)."""
+        return False
 
     def _submission(
         self,
@@ -679,7 +707,7 @@ class PaperRunner:
             "intent_id": intent["intent_id"],
             "broker_id": intent["broker_id"],
             "broker_account_ref": intent["broker_account_ref"],
-            "environment": "demo",
+            "environment": self.store.environment,
             "operation": operation,
             "broker_order_type_code": code,
             "requested_at_utc": _utc(now),
@@ -798,6 +826,8 @@ class PaperRunner:
         self, instrument_id: str, side: str, orders: Callable[[], list[BrokerOrder]]
     ) -> bool:
         """An earlier order of this instrument and side is still working at the broker."""
+        if self._awaiting(instrument_id):
+            return True
         waiting = [
             submission
             for submission in self.store.accepted_without_execution()
@@ -904,9 +934,9 @@ class PaperRunner:
                 "execution_id": f"{submission['broker_id']}-paper-{intent['intent_id'][:24]}",
                 "broker_id": submission["broker_id"],
                 "broker_account_ref": submission["broker_account_ref"],
-                "environment": "demo",
-                "ledger": "broker_paper",
-                "fill_origin": "broker_demo_simulated",
+                "environment": self.store.environment,
+                "ledger": self.store.execution_ledger,
+                "fill_origin": self.fill_origin,
                 "intent_id": intent["intent_id"],
                 "broker_order_ref": order.broker_order_ref,
                 "instrument_id": intent["instrument_id"],
