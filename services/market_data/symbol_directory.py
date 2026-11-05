@@ -1,10 +1,12 @@
 """Searchable directory of US-listed stocks, fetched from the market-data provider.
 
 The provider's asset list (about 12,000 symbols) is kept in `SIW_DATA_DIR/symbols/` and
-refreshed when it is more than a day old. If a refresh fails, the previous copy is served
-and marked stale, and the next attempt waits a few minutes so a provider outage does not
-turn every keystroke into a request. Search matches tickers first, then company names,
-including Korean names when a source of them is given (Toss; see toss_info.korean_names).
+refreshed when it is more than a day old. A search never waits for that refresh when a copy
+exists: the copy answers, marked stale, while a background thread fetches the new list and
+its Korean names at the same time. If a refresh fails, the next attempt waits a few minutes
+so a provider outage does not turn every keystroke into a request. Search matches tickers
+first, then company names, including Korean names when a source of them is given (Toss; see
+toss_info.korean_names).
 """
 
 from __future__ import annotations
@@ -26,6 +28,10 @@ RETRY_AFTER_FAILURE = timedelta(minutes=5)
 MAX_RESULTS = 50
 MAX_QUERY_LENGTH = 40
 KOREAN_VENUES = frozenset({"XKRX", "XKOS"})
+
+
+def _in_thread(job: Callable[[], None]) -> None:
+    threading.Thread(target=job, name="symbol-directory-refresh", daemon=True).start()
 
 
 class SymbolDirectoryUnavailableError(RuntimeError):
@@ -85,13 +91,18 @@ class SymbolDirectory:
         *,
         local_names: Callable[[], dict[str, str]] | None = None,
         now: Callable[[], datetime] | None = None,
+        refresh_in: Callable[[Callable[[], None]], None] = _in_thread,
     ) -> None:
         self.path = root / "symbols" / f"{source_id}.json"
         self.source_id = source_id
         self._fetch = fetch
         self._local_names = local_names
         self._now = now or (lambda: datetime.now(timezone.utc))
-        self._lock = threading.Lock()
+        self._refresh_in = refresh_in
+        # Reentrant: the first fetch, with no copy to serve, stores while holding it.
+        self._lock = threading.RLock()
+        self._refreshing = False
+        self._error = ""
         self._entries: tuple[SymbolEntry, ...] | None = None
         self._by_id: dict[str, SymbolEntry] = {}
         self._fetched_at: datetime | None = None
@@ -151,21 +162,46 @@ class SymbolDirectory:
             # A list saved without Korean names is refreshed once when a source exists.
             fresh = fresh and (self._local_names is None or self._has_names or self._names_tried)
             waiting = self._failed_at is not None and now - self._failed_at < RETRY_AFTER_FAILURE
-            if not fresh and not waiting:
+            due = not fresh and not waiting and not self._refreshing
+            if due:
                 self._names_tried = True
-                try:
-                    self._store(self._fetch(), self._names(), now)
-                    self._failed_at = None
-                except Exception as exc:
-                    self._failed_at = now
-                    if self._entries is None:
-                        raise SymbolDirectoryUnavailableError(
-                            f"the symbol list could not be fetched: {str(exc)[:200]}"
-                        ) from exc
+                self._refreshing = True
+                if self._entries is None:
+                    # Nothing to serve yet: this search waits, and others wait on the lock.
+                    self._refresh(now)
+                    due = False
+        if due:
+            self._refresh_in(lambda: self._refresh(now))
+        with self._lock:
             if self._entries is None or self._fetched_at is None:
-                raise SymbolDirectoryUnavailableError("the symbol list could not be fetched")
+                detail = f": {self._error}" if self._error else ""
+                raise SymbolDirectoryUnavailableError(
+                    f"the symbol list could not be fetched{detail}"
+                )
             stale = now - self._fetched_at >= MAX_AGE
             return self._entries, self._fetched_at, stale
+
+    def _refresh(self, now: datetime) -> None:
+        """Fetch the list and its Korean names at the same time, then store both."""
+        try:
+            names: dict[str, dict[str, str]] = {}
+            reader = threading.Thread(target=lambda: names.update(found=self._names()), daemon=True)
+            reader.start()
+            try:
+                assets = self._fetch()
+            finally:
+                reader.join()
+            with self._lock:
+                self._store(assets, names.get("found", {}), now)
+                self._failed_at = None
+                self._error = ""
+        except Exception as exc:
+            with self._lock:
+                self._failed_at = now
+                self._error = str(exc)[:200]
+        finally:
+            with self._lock:
+                self._refreshing = False
 
     def _load(self) -> None:
         try:

@@ -6,6 +6,7 @@ Asset payloads follow docs.alpaca.markets `GET /v2/assets`; no test reaches the 
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -79,8 +80,14 @@ def test_any_listed_symbol_can_be_charted_with_alpaca() -> None:
     assert adapter.symbol_for("us:otcx:otcm:2026") is None
 
 
+def now_in_this_thread(job: Any) -> None:
+    job()
+
+
 def directory(tmp_path: Path, fetch: Any, clock: list[datetime]) -> SymbolDirectory:
-    return SymbolDirectory(tmp_path, "alpaca-sip", fetch, now=lambda: clock[0])
+    return SymbolDirectory(
+        tmp_path, "alpaca-sip", fetch, now=lambda: clock[0], refresh_in=now_in_this_thread
+    )
 
 
 def assets() -> list[dict[str, str]]:
@@ -128,6 +135,48 @@ def test_the_directory_is_kept_for_a_day_and_served_stale_on_failure(tmp_path: P
     assert stale.stale is True and [entry.symbol for entry in stale.entries] == ["SNAP"]
     second.search("snap")  # the failed refresh is not retried on every keystroke
     assert len(calls) == 2
+
+
+def test_a_stale_list_answers_at_once_while_the_new_one_is_fetched(tmp_path: Path) -> None:
+    clock = [NOW]
+    directory(tmp_path, assets, clock).search("snap")
+    calls: list[int] = []
+
+    def renamed() -> list[dict[str, str]]:
+        calls.append(1)
+        return [{"symbol": "SNAP", "name": "Snap Inc. Class A", "venue": "XNYS"}]
+
+    jobs: list[Any] = []
+    later = SymbolDirectory(
+        tmp_path, "alpaca-sip", renamed, now=lambda: clock[0], refresh_in=jobs.append
+    )
+    clock[0] = NOW + timedelta(hours=25)
+    stale = later.search("snap")
+    # The stored copy answers before anything is fetched, and only one refresh is queued.
+    assert stale.stale is True and stale.entries[0].name == "Snap Inc."
+    later.search("snap")
+    assert (calls, len(jobs)) == ([], 1)
+    jobs[0]()
+    fresh = later.search("snap")
+    assert fresh.stale is False and fresh.entries[0].name == "Snap Inc. Class A"
+    assert calls == [1] and len(jobs) == 1
+
+
+def test_the_list_and_its_korean_names_are_fetched_at_the_same_time(tmp_path: Path) -> None:
+    fetching, naming = threading.Event(), threading.Event()
+
+    def fetch() -> list[dict[str, str]]:
+        fetching.set()
+        assert naming.wait(5), "the names were not fetched while the list was"
+        return assets()
+
+    def names() -> dict[str, str]:
+        naming.set()
+        assert fetching.wait(5)
+        return {"AAPL": "애플"}
+
+    found = SymbolDirectory(tmp_path, "alpaca-sip", fetch, local_names=names).search("애플")
+    assert [entry.symbol for entry in found.entries] == ["AAPL"]
 
 
 def test_no_directory_and_no_provider_means_unavailable(tmp_path: Path) -> None:
