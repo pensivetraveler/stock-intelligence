@@ -3,9 +3,13 @@
 The collector subscribes to the condition from premarket to the end of the aftermarket on
 US session days and appends to `SIW_DATA_DIR/screeners/kiwoom_condition_watch.sqlite3`:
 one watch per connection, the condition's list when it starts, and every enter/leave
-event with the time SIW received it. A watch that ends without its end being recorded (the
-process was killed or the machine slept) is closed as `interrupted` the next time the
-store opens, so a gap in the record is never mistaken for a quiet market.
+event with the time SIW received it. Each subscription is renewed every RENEW_SECONDS:
+on 2026-11-05 a subscription opened before the 18:00 KST premarket open stayed connected
+but sent no event after it, while the list it watched changed completely. A renewal bounds
+such a silence, and its fresh list shows what the events missed (`differs_from_previous`).
+A watch that ends without its end being recorded (the process was killed or the machine
+slept) is closed as `interrupted` the next time the store opens, so a gap in the record is
+never mistaken for a quiet market.
 """
 
 from __future__ import annotations
@@ -35,6 +39,11 @@ MIN_RETRY_SECONDS = 5.0
 MAX_RETRY_SECONDS = 300.0
 # A watch that lasted this long resets the retry delay.
 STEADY_SECONDS = 300.0
+# A subscription is closed and opened again this often, even when nothing went wrong.
+RENEW_SECONDS = 1800.0
+# The first subscription of a window starts this long after premarket opens, so it is not
+# opened just before Kiwoom turns the condition over to the new day.
+START_DELAY_SECONDS = 60.0
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS watches (
@@ -174,6 +183,7 @@ class ConditionWatchStore:
                     "started_at_utc": item["started_at_utc"],
                     "ended_at_utc": item["ended_at_utc"],
                     "end_reason": item["end_reason"],
+                    "differs_from_previous": self._differs(item),
                     "events": [
                         {
                             "received_at_utc": row["received_at_utc"],
@@ -190,6 +200,35 @@ class ConditionWatchStore:
                 for item in watches
             ],
         }
+
+    def _differs(self, watch: sqlite3.Row) -> dict[str, list[str]] | None:
+        """How this watch's list differs from where the previous watch of the same condition
+        left off (its list plus its events): changes no event reported. None for the first
+        watch. Called with the lock held."""
+        previous = self._db.execute(
+            "SELECT watch_id FROM watches WHERE watch_id < ? AND condition_name = ? "
+            "AND environment = ? ORDER BY watch_id DESC LIMIT 1",
+            (watch["watch_id"], watch["condition_name"], watch["environment"]),
+        ).fetchone()
+        if previous is None:
+            return None
+        expected: set[str] = set()
+        for row in self._db.execute(
+            "SELECT kind, symbol FROM watch_events WHERE watch_id = ? ORDER BY event_id",
+            (previous["watch_id"],),
+        ):
+            if row["kind"] == "leave":
+                expected.discard(row["symbol"])
+            else:
+                expected.add(row["symbol"])
+        listed = {
+            row["symbol"]
+            for row in self._db.execute(
+                "SELECT symbol FROM watch_events WHERE watch_id = ? AND kind = 'listed'",
+                (watch["watch_id"],),
+            )
+        }
+        return {"entered": sorted(listed - expected), "left": sorted(expected - listed)}
 
 
 def window_around(moment: datetime, calendar: ExchangeCalendar) -> tuple[datetime, datetime]:
@@ -221,8 +260,11 @@ def watch_once(
     until: datetime,
     stop: threading.Event,
     clock: Callable[[], datetime],
+    renew_at: datetime | None = None,
 ) -> WatchOutcome:
-    """One connection: subscribe, record, and close the watch with why it ended."""
+    """One connection: subscribe, record, and close the watch with why it ended. It ends at
+    `until` (the window's close) or, earlier, at `renew_at` as `renewed`."""
+    deadline = until if renew_at is None else min(until, renew_at)
     watch: list[int] = []
 
     def on_list(condition: Condition, tickers: tuple[ConditionTicker, ...]) -> None:
@@ -236,7 +278,7 @@ def watch_once(
             name,
             on_list=on_list,
             on_event=on_event,
-            until=lambda: stop.is_set() or clock() >= until,
+            until=lambda: stop.is_set() or clock() >= deadline,
         )
     except MarketDataError as exc:
         error = f"{type(exc).__name__}: {exc}"
@@ -244,7 +286,9 @@ def watch_once(
             store.end(watch[0], clock(), error)
         fatal = isinstance(exc, (ConditionNotFoundError, DuplicateConditionError))
         return WatchOutcome("error", error, fatal)
-    reason = "stopped" if stop.is_set() else "window_closed"
+    reason = "window_closed" if clock() >= until else "renewed"
+    if stop.is_set():
+        reason = "stopped"
     if watch:
         store.end(watch[0], clock(), reason)
     return WatchOutcome(reason)
@@ -267,6 +311,7 @@ def run_watch(
     delay = MIN_RETRY_SECONDS
     while not stop.is_set():
         start, end = window_around(clock(), calendar)
+        start += timedelta(seconds=START_DELAY_SECONDS)
         now = clock()
         if now < start:
             report({"status": "waiting", "window_start_utc": _utc(start)})
@@ -274,7 +319,16 @@ def run_watch(
             continue
         report({"status": "watching", "condition": name, "window_end_utc": _utc(end)})
         began = clock()
-        outcome = watch_once(search, store, name, environment, until=end, stop=stop, clock=clock)
+        outcome = watch_once(
+            search,
+            store,
+            name,
+            environment,
+            until=end,
+            stop=stop,
+            clock=clock,
+            renew_at=began + timedelta(seconds=RENEW_SECONDS),
+        )
         if outcome.error is None:
             delay = MIN_RETRY_SECONDS
             continue
