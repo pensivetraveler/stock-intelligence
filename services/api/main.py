@@ -69,8 +69,10 @@ from services.market_data.filing_splits import (
 from services.market_data.instruments import market_of, parse_instrument
 from services.market_data.kiwoom_account import NEW_YORK as KIWOOM_NEW_YORK
 from services.market_data.kiwoom_account import (
-    KiwoomAccountCredentials,
     KiwoomAccountSession,
+)
+from services.market_data.kiwoom_account import (
+    real_account_session as kiwoom_real_account_session,
 )
 from services.market_data.kiwoom_account import sync_domestic as kiwoom_sync_domestic
 from services.market_data.kiwoom_account import sync_executions as kiwoom_sync
@@ -370,15 +372,7 @@ class _LazyBoats:
 
 def _kiwoom_session(credentials: CredentialStore | None) -> KiwoomAccountSession | None:
     """A read-only account session of the first enabled real-account Kiwoom key."""
-    if credentials is None:
-        return None
-    for record in credentials.list("kiwoom"):
-        if record.enabled and record.environment == "real":
-            secrets = credentials.secrets(record)
-            return KiwoomAccountSession(
-                KiwoomAccountCredentials(secrets["app_key"], secrets["secret_key"], "real")
-            )
-    return None
+    return None if credentials is None else kiwoom_real_account_session(credentials)
 
 
 def _meritz_session(credentials: CredentialStore | None) -> MeritzSession | None:

@@ -17,14 +17,13 @@ from starlette.responses import Response
 from packages.contracts.validator import validate_document
 from services.market_data.broker_common import utc_text
 from services.market_data.kiwoom_conditions import (
+    CONNECTED_CONDITIONS,
     Connect,
     KiwoomConditionSearch,
     default_connect,
 )
 
 SOURCE_ID = "kiwoom-us-conditions"
-# The user's choice (2026-11-04): the conditions SIW uses, saved in 영웅문Global.
-CONNECTED_CONDITIONS = ("SIW_전일신고거래량", "SIW_당일급등주", "SIW_전일급등주")
 BrokerRead = Callable[
     [Request, Callable[[], Any], str, Callable[[Any], dict[str, object]]], Response
 ]

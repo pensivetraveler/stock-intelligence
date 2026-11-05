@@ -12,14 +12,20 @@ zero-padded with their sign ("000005.1600", "-00000.0265"). A row carries no tim
 as a venue. Later that day three conditions were saved above the others and every `seq`
 moved by four, so conditions are run by name and their `seq` is looked up each time.
 
-Only LOGIN, PING echoes, GCNSRLST and GCNSRREQ with search_type 0 can be sent: realtime
-condition events and every order call are out of reach.
+usa20290 (GCNSRREQ with search_type 1) answers the condition's tickers and then keeps
+sending REAL messages of type S2 as tickers enter (843 "I") or leave (843 "D"); usa20291
+(GCNSRCLR) stops them (ADR 0051). The spec documents no time zone for field 20 or the
+meaning of 841 and 907, so each event keeps its raw values.
+
+Only LOGIN, PING echoes, GCNSRLST, GCNSRREQ with search_type 0 or 1, and GCNSRCLR can be
+sent: every order call is out of reach.
 """
 
 from __future__ import annotations
 
 import contextlib
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -34,14 +40,22 @@ from services.market_data.provider import (
     ProviderUnavailableError,
 )
 
+# The user's choice (2026-11-04): the conditions SIW uses, saved in 영웅문Global.
+CONNECTED_CONDITIONS = ("SIW_전일신고거래량", "SIW_당일급등주", "SIW_전일급등주")
 REAL_URL = "wss://api.kiwoom.com:10000/api/us/websocket"
 DEMO_URL = "wss://mockapi.kiwoom.com:10000/api/us/websocket"
 LIST_REPLIES = frozenset({"GCNSRLST", "GCNSRLT"})
 SEARCH_REPLIES = frozenset({"GCNSRREQ", "CNSRREQ"})
+# The spec's usa20291 example answers a GCNSRCLR with trnm GCNSRREQ.
+CLEAR_REPLIES = frozenset({"GCNSRCLR", "GCNSRREQ"})
 RATE_LIMIT_CODES = {1700, 1701, 1702}
 MAX_PAGES = 20
 MAX_SKIPPED = 50  # unrelated messages tolerated while waiting for one reply
 TIMEOUT_SECONDS = 15.0
+# Kiwoom sends a PING about every 10 s (seen live on 2026-11-05), so a silent minute
+# means the connection is gone even if the socket has not said so.
+SILENCE_SECONDS = 60.0
+EVENT_KINDS: dict[str, Literal["enter", "leave"]] = {"I": "enter", "D": "leave"}
 # Row fields of usa20281: Kiwoom's FID -> our name.
 NUMBER_FIELDS = {
     "10": "last",
@@ -82,6 +96,10 @@ class ConditionNotFoundError(InstrumentNotFoundError):
     """No condition of that name is saved in 영웅문Global."""
 
 
+class DuplicateConditionError(InvalidBarsQueryError):
+    """More than one condition is saved under that name."""
+
+
 @dataclass(frozen=True)
 class Condition:
     seq: str
@@ -95,6 +113,25 @@ class ConditionRow:
     kiwoom_exchange: str
     sector: str | None
     numbers: dict[str, str]  # NUMBER_FIELDS values -> exact decimal text
+
+
+@dataclass(frozen=True)
+class ConditionTicker:
+    """One ticker of a realtime condition list: only the code and Kiwoom's exchange code."""
+
+    symbol: str
+    kiwoom_exchange: str
+
+
+@dataclass(frozen=True)
+class ConditionEvent:
+    """A ticker entering or leaving a watched condition, as Kiwoom sent it."""
+
+    kind: Literal["enter", "leave"]
+    symbol: str
+    kiwoom_exchange: str
+    kiwoom_time: str | None  # field 20 (HHMMSS); its time zone is not documented
+    values: dict[str, str]  # every field of the event, unchanged
 
 
 @dataclass(frozen=True)
@@ -127,14 +164,7 @@ class KiwoomConditionSearch:
         connection: Kiwoom renumbers every condition when one is added above it (seen
         live on 2026-11-04), so a `seq` kept from an earlier call can name another one."""
         with self._open() as socket:
-            matches = [item for item in _conditions(socket) if item.name == name]
-            if not matches:
-                raise ConditionNotFoundError(f"no Kiwoom condition is saved as {name!r}")
-            if len(matches) > 1:
-                raise InvalidBarsQueryError(
-                    f"{len(matches)} Kiwoom conditions are saved as {name!r}; rename one"
-                )
-            condition = matches[0]
+            condition = _find(socket, name)
             rows: list[ConditionRow] = []
             body = {
                 "trnm": "GCNSRREQ",
@@ -151,6 +181,37 @@ class KiwoomConditionSearch:
                     return ConditionRun(condition, tuple(rows), complete=True)
                 body = {**body, "cont_yn": "Y", "next_key": next_key}
             return ConditionRun(condition, tuple(rows), complete=False)
+
+    def watch(
+        self,
+        name: str,
+        *,
+        on_list: Callable[[Condition, tuple[ConditionTicker, ...]], None],
+        on_event: Callable[[ConditionEvent], None],
+        until: Callable[[], bool],
+    ) -> None:
+        """Subscribe to the condition saved under `name` (usa20290) and report its list,
+        then every enter/leave event, until `until()` is true. The subscription is then
+        cleared (usa20291) and the connection closed. A lost connection raises
+        ProviderUnavailableError; the caller decides when to watch again."""
+        with self._open() as socket:
+            condition = _find(socket, name)
+            reply = socket.ask(
+                {"trnm": "GCNSRREQ", "seq": condition.seq, "search_type": "1"}, SEARCH_REPLIES
+            )
+            on_list(condition, tuple(_ticker(item) for item in _list(reply.get("data"))))
+            try:
+                while not until():
+                    message = socket.next_message(timeout=1.0)
+                    if message is not None and str(message.get("trnm", "")).upper() == "REAL":
+                        for item in _list(message.get("data")):
+                            event = _event(item, condition.seq)
+                            if event is not None:
+                                on_event(event)
+            finally:
+                # Best effort: the connection may already be gone.
+                with contextlib.suppress(Exception):
+                    socket.ask({"trnm": "GCNSRCLR", "seq": condition.seq}, CLEAR_REPLIES)
 
     def _open(self) -> _Socket:
         for attempt in range(2):
@@ -172,8 +233,10 @@ class KiwoomConditionSearch:
 
 
 class _Socket:
-    def __init__(self, connection: Connection) -> None:
+    def __init__(self, connection: Connection, clock: Callable[[], float] = time.monotonic) -> None:
         self._connection = connection
+        self._clock = clock
+        self._heard_at = clock()
 
     def __enter__(self) -> _Socket:
         return self
@@ -202,9 +265,39 @@ class _Socket:
             raise InvalidBarsQueryError(f"Kiwoom refused the condition request ({code}): {message}")
         return reply
 
+    def next_message(self, timeout: float) -> dict[str, Any] | None:
+        """The next message other than a PING, or None when nothing came in `timeout`.
+        Raises ProviderUnavailableError after SILENCE_SECONDS without any message."""
+        try:
+            raw = self._connection.recv(timeout=timeout)
+        except TimeoutError:
+            if self._clock() - self._heard_at > SILENCE_SECONDS:
+                raise ProviderUnavailableError("Kiwoom's WebSocket went silent") from None
+            return None
+        except Exception as exc:  # websockets raises its own classes
+            raise ProviderUnavailableError(
+                f"Kiwoom's WebSocket closed: {type(exc).__name__}"
+            ) from exc
+        self._heard_at = self._clock()
+        text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+        if text.strip().upper() == "PING":
+            self._write(text)
+            return None
+        try:
+            message = json.loads(text)
+        except ValueError as exc:
+            raise ProviderDataError("Kiwoom sent a message that is not JSON") from exc
+        if not isinstance(message, dict):
+            return None
+        if str(message.get("trnm", "")).upper() == "PING":
+            self._send(message)
+            return None
+        return message
+
     def _send(self, body: dict[str, str]) -> None:
-        if body.get("trnm") not in {"LOGIN", "PING", "GCNSRLST", "GCNSRREQ"} or (
-            body.get("trnm") == "GCNSRREQ" and body.get("search_type") != "0"
+        name = body.get("trnm")
+        if name not in {"LOGIN", "PING", "GCNSRLST", "GCNSRREQ", "GCNSRCLR"} or (
+            name == "GCNSRREQ" and body.get("search_type") not in {"0", "1"}
         ):
             raise ProviderDataError(f"{body.get('trnm')} is not on the read-only allowlist")
         self._write(json.dumps(body, ensure_ascii=False))
@@ -218,15 +311,21 @@ class _Socket:
             ) from exc
 
     def _wait(self, replies: frozenset[str]) -> dict[str, Any]:
-        for _skipped in range(MAX_SKIPPED):
+        deadline = self._clock() + TIMEOUT_SECONDS
+        skipped = 0
+        while skipped < MAX_SKIPPED:
+            left = deadline - self._clock()
+            if left <= 0:
+                raise ProviderUnavailableError("Kiwoom did not answer in time")
             try:
-                raw = self._connection.recv(timeout=TIMEOUT_SECONDS)
+                raw = self._connection.recv(timeout=left)
             except TimeoutError as exc:
                 raise ProviderUnavailableError("Kiwoom did not answer in time") from exc
             except Exception as exc:  # websockets raises its own classes
                 raise ProviderUnavailableError(
                     f"Kiwoom's WebSocket closed: {type(exc).__name__}"
                 ) from exc
+            self._heard_at = self._clock()
             text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
             if text.strip().upper() == "PING":
                 self._write(text)
@@ -242,6 +341,8 @@ class _Socket:
                 self._send(message)
             elif name in replies:
                 return message
+            else:
+                skipped += 1
         raise ProviderDataError("Kiwoom never answered the condition request")
 
 
@@ -257,6 +358,54 @@ def _conditions(socket: _Socket) -> list[Condition]:
             raise ProviderDataError("Kiwoom returned a condition without seq and name")
         found.append(Condition(seq, name))
     return found
+
+
+def _find(socket: _Socket, name: str) -> Condition:
+    matches = [item for item in _conditions(socket) if item.name == name]
+    if not matches:
+        raise ConditionNotFoundError(f"no Kiwoom condition is saved as {name!r}")
+    if len(matches) > 1:
+        raise DuplicateConditionError(
+            f"{len(matches)} Kiwoom conditions are saved as {name!r}; rename one"
+        )
+    return matches[0]
+
+
+def _ticker(item: object) -> ConditionTicker:
+    if not isinstance(item, dict):
+        raise ProviderDataError("Kiwoom returned a condition ticker that is not an object")
+    symbol = str(item.get("jmcode", "")).strip().upper()
+    if not symbol:
+        raise ProviderDataError("Kiwoom returned a condition ticker without a code")
+    exchange = item.get("stex_tp", item.get("stexTp", ""))
+    return ConditionTicker(symbol, str(exchange).strip()[:8])
+
+
+def _event(item: object, seq: str) -> ConditionEvent | None:
+    """An S2 enter/leave event of condition `seq`, or None for anything else."""
+    if not isinstance(item, dict) or str(item.get("type", "")).upper() != "S2":
+        return None
+    raw = item.get("values")
+    if not isinstance(raw, dict):
+        raise ProviderDataError("Kiwoom sent a condition event without values")
+    values = {str(key): str(value)[:200] for key, value in raw.items()}
+    # 841 carried the condition's seq in the spec example; skip events of another one.
+    if values.get("841", seq).strip() != seq:
+        return None
+    kind = EVENT_KINDS.get(values.get("843", "").strip().upper())
+    if kind is None:
+        raise ProviderDataError(f"Kiwoom sent a condition event of kind {values.get('843')!r}")
+    symbol = (values.get("9001") or str(item.get("item", ""))).strip().upper()
+    if not symbol:
+        raise ProviderDataError("Kiwoom sent a condition event without a ticker")
+    kiwoom_time = values.get("20", "").strip() or None
+    return ConditionEvent(
+        kind=kind,
+        symbol=symbol,
+        kiwoom_exchange=str(item.get("stexTp", item.get("stex_tp", ""))).strip()[:8],
+        kiwoom_time=kiwoom_time,
+        values=values,
+    )
 
 
 def _row(item: object) -> ConditionRow:
