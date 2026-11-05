@@ -35,7 +35,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -53,6 +53,9 @@ from services.market_data.provider import (
     ProviderUnavailableError,
 )
 from services.market_data.symbol_history import resolution_of
+
+if TYPE_CHECKING:
+    from services.credentials.store import CredentialStore
 
 BROKER_ID = "kiwoom"
 REAL_BASE_URL = "https://api.kiwoom.com"
@@ -93,6 +96,17 @@ class KiwoomAccountCredentials:
 
     def __repr__(self) -> str:
         return f"KiwoomAccountCredentials(environment={self.environment!r})"
+
+
+def real_account_session(credentials: CredentialStore) -> KiwoomAccountSession | None:
+    """A read-only session of the first enabled real-account Kiwoom key, if any."""
+    for record in credentials.list("kiwoom"):
+        if record.enabled and record.environment == "real":
+            secrets = credentials.secrets(record)
+            return KiwoomAccountSession(
+                KiwoomAccountCredentials(secrets["app_key"], secrets["secret_key"], "real")
+            )
+    return None
 
 
 class KiwoomAccountSession:

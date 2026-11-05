@@ -6,13 +6,18 @@ import os
 import signal
 import threading
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+# The user's choice (2026-11-05): the condition watched in realtime.
+WATCHED = "SIW_당일급등주"
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="siw-collector")
-    parser.add_argument("command", choices=("doctor", "run", "backfill"))
+    parser.add_argument(
+        "command", choices=("doctor", "run", "backfill", "watch-condition", "export-condition")
+    )
     parser.add_argument("--config", type=Path)
     backfill = parser.add_argument_group("backfill (provider from SIW_MARKET_DATA_PROVIDER)")
     backfill.add_argument("--instrument-id")
@@ -22,6 +27,11 @@ def _parser() -> argparse.ArgumentParser:
     backfill.add_argument("--min-request-interval-seconds", type=float, default=0.0)
     backfill.add_argument("--max-attempts", type=int, default=3)
     backfill.add_argument("--data-dir", type=Path, help="defaults to SIW_DATA_DIR")
+    watch = parser.add_argument_group("watch-condition / export-condition (ADR 0051)")
+    watch.add_argument("--name", help=f"a connected Kiwoom condition (default {WATCHED})")
+    watch.add_argument(
+        "--date", type=date.fromisoformat, help="export: a New York session date, YYYY-MM-DD"
+    )
     return parser
 
 
@@ -95,7 +105,7 @@ def _backfill(args: argparse.Namespace) -> int:
     if missing:
         _error("invalid_arguments", f"backfill requires --{missing[0].replace('_', '-')}")
         return 2
-    data_dir = args.data_dir or (Path(value) if (value := os.getenv("SIW_DATA_DIR")) else None)
+    data_dir = _data_dir(args)
     if data_dir is None:
         _error("invalid_config", "backfill requires --data-dir or SIW_DATA_DIR")
         return 2
@@ -140,10 +150,78 @@ def _backfill(args: argparse.Namespace) -> int:
     )
 
 
+def _data_dir(args: argparse.Namespace) -> Path | None:
+    return args.data_dir or (Path(value) if (value := os.getenv("SIW_DATA_DIR")) else None)
+
+
+def _watch_condition(args: argparse.Namespace) -> int:
+    """Record one Kiwoom condition in realtime, every US session, until stopped."""
+    from services.collector.condition_watch import ConditionWatchStore, run_watch
+    from services.credentials.store import CredentialStore, KeyringSecretBackend
+    from services.market_data.kiwoom_account import real_account_session
+    from services.market_data.kiwoom_conditions import CONNECTED_CONDITIONS, KiwoomConditionSearch
+
+    name = args.name or WATCHED
+    if name not in CONNECTED_CONDITIONS:
+        _error("invalid_arguments", f"{name!r} is not a connected Kiwoom condition")
+        return 2
+    data_dir = _data_dir(args)
+    if data_dir is None:
+        _error("invalid_config", "watch-condition requires --data-dir or SIW_DATA_DIR")
+        return 2
+    session = real_account_session(CredentialStore(data_dir, KeyringSecretBackend()))
+    if session is None:
+        _error("invalid_config", "no enabled real-account Kiwoom key is registered")
+        return 2
+    stop = threading.Event()
+    signal.signal(signal.SIGINT, lambda _signum, _frame: stop.set())
+    signal.signal(signal.SIGTERM, lambda _signum, _frame: stop.set())
+    store = ConditionWatchStore.in_data_dir(data_dir)
+    try:
+        return run_watch(
+            KiwoomConditionSearch(session.access_token, "real"),
+            store,
+            name,
+            "real",
+            stop=stop,
+            clock=lambda: datetime.now(timezone.utc),
+            report=lambda payload: _print({**payload, "service": "collector"}),
+        )
+    finally:
+        store.close()
+
+
+def _export_condition(args: argparse.Namespace) -> int:
+    """Print what was recorded during one New York session date, as JSON."""
+    from services.collector.condition_watch import ConditionWatchStore
+    from services.market_data.calendar import NEW_YORK
+
+    data_dir = _data_dir(args)
+    if data_dir is None or args.date is None:
+        _error("invalid_arguments", "export-condition requires --date and a data dir")
+        return 2
+    start = datetime.combine(args.date, datetime.min.time(), NEW_YORK)
+    store = ConditionWatchStore.in_data_dir(data_dir)
+    try:
+        document = store.export(start, start + timedelta(days=1))
+    finally:
+        store.close()
+    name = args.name or WATCHED
+    document["watches"] = [
+        item for item in document["watches"] if item["condition"]["name"] == name
+    ]
+    print(json.dumps(document, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "doctor":
         return _doctor(args.config)
     if args.command == "backfill":
         return _backfill(args)
+    if args.command == "watch-condition":
+        return _watch_condition(args)
+    if args.command == "export-condition":
+        return _export_condition(args)
     return _run(args.config)
