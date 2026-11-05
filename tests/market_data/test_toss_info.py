@@ -216,9 +216,18 @@ def test_a_list_saved_without_korean_names_is_refreshed_once(tmp_path: Path) -> 
         return [{"symbol": "AAPL", "name": "Apple Inc. Common Stock", "venue": "XNAS"}]
 
     SymbolDirectory(tmp_path, "alpaca-sip", assets, now=lambda: NOW).search("a")
+    jobs: list[Any] = []
     upgraded = SymbolDirectory(
-        tmp_path, "alpaca-sip", assets, local_names=lambda: {"AAPL": "애플"}, now=lambda: NOW
+        tmp_path,
+        "alpaca-sip",
+        assets,
+        local_names=lambda: {"AAPL": "애플"},
+        now=lambda: NOW,
+        refresh_in=jobs.append,
     )
+    # The list without names answers at once; the names arrive with the background refresh.
+    assert upgraded.search("애플").entries == ()
+    jobs.pop()()
     assert [e.local_name for e in upgraded.search("애플").entries] == ["애플"]
     upgraded.search("애플")
     assert len(calls) == 2  # once for the old list, once to add the names; then cached

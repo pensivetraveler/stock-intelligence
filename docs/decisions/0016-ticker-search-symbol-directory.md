@@ -15,6 +15,7 @@ Charts could only show the few instruments configured in `SIW_ALPACA_SYMBOLS` (S
   - Exchanges map to MICs (NASDAQ→XNAS, NYSE→XNYS, ARCA→ARCX, AMEX→XASE, BATS→BATS). OTC and crypto assets are left out, because the exchange calendar covers listed US equities only.
 - **Directory:** `services/market_data/symbol_directory.py` keeps the list in `SIW_DATA_DIR/symbols/<source_id>.json`. On 2026-10-20 that was 13,228 symbols and 1.2 MB.
   - **Refresh:** the list is refreshed when it is more than a day old.
+    - 2026-11-05: a search no longer waits for that refresh when a copy exists. The copy answers at once, marked `stale`, and one background thread fetches the new list. The Korean names (Toss) are fetched at the same time as the list, not after it. Measured that day, the first search of the day had waited about 7 s (Alpaca list 2.5 s, Toss US names 2.4 s, Toss Korean listings 2.0 s, one after another). Only a directory with no copy at all still makes the search wait.
   - **Failed refresh:** the old copy is served marked `stale`, and the next attempt waits 5 minutes. With no copy at all, the search answers 503.
   - **Search order:** exact ticker, then ticker prefix (shorter first), then a word of the company name that starts with the query, then any match in the company name.
 - **API:** `GET /v1/market/symbols?q=&limit=` returns the new `symbol_search_response` contract, whose results are ordinary instrument listings plus the company name.
