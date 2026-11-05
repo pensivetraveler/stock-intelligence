@@ -1,7 +1,8 @@
 """Realtime Kiwoom condition watch over a fake WebSocket, and its record (no network, ADR 0051).
 
-Messages follow the usa20290 spec example: the subscription answers `jmcode`/`stex_tp`
-pairs, then REAL messages carry S2 items whose values hold 843 "I" (enter) or "D" (leave).
+Messages follow the usa20290 spec example and the live messages of 2026-11-05: the
+subscription answers `jmcode`/`stex_tp` pairs, then REAL messages carry S2 items whose
+values hold 843 "I" (enter) or "D" (leave) and 20, Seoul time as HHMMSS.
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ CALENDAR = ExchangeCalendar("XNYS")
 
 def s2(symbol: str, kind: str, seq: str = "2") -> dict[str, Any]:
     return {
-        "values": {"20": "230156", "841": seq, "843": kind, "907": "2", "9001": symbol},
+        "values": {"20": "184121", "841": seq, "843": kind, "907": "2", "9001": symbol},
         "type": "S2",
         "name": "조건검색",
         "item": symbol,
@@ -139,8 +140,8 @@ def test_a_watch_subscribes_by_name_and_reports_enter_and_leave_events() -> None
     assert condition == Condition("2", "SIW_당일급등주")
     assert tickers == (ConditionTicker("ADV", "ND"), ConditionTicker("GPUS", "NA"))
     assert [(item.kind, item.symbol, item.kiwoom_time) for item in events] == [
-        ("enter", "COIN", "230156"),
-        ("leave", "SOFI", "230156"),
+        ("enter", "COIN", "184121"),
+        ("leave", "SOFI", "184121"),
     ]
     assert events[0].values["907"] == "2" and events[0].kiwoom_exchange == "ND"
     names = [body["trnm"] for body in server.sent if body["trnm"] != "PING"]
@@ -226,6 +227,32 @@ def test_the_store_records_watches_and_closes_an_interrupted_one(tmp_path: Path)
     # The gap after its last event is on record, not hidden.
     assert two["end_reason"] == "interrupted"
     assert two["ended_at_utc"] == "2026-11-05T11:00:00.000Z"
+    # The second list is empty, so ADV and COIN left without an event saying so.
+    assert one["differs_from_previous"] is None
+    assert two["differs_from_previous"] == {"entered": [], "left": ["ADV", "COIN"]}
+
+
+def test_a_fresh_list_shows_the_changes_no_event_reported(tmp_path: Path) -> None:
+    # As on 2026-11-05: a subscription stayed connected but silent while its list changed.
+    store = ConditionWatchStore.in_data_dir(tmp_path)
+    condition = Condition("2", "SIW_당일급등주")
+    ticker = lambda symbol: ConditionTicker(symbol, "ND")  # noqa: E731
+    first = store.start(condition, "real", utc(2026, 11, 5, 9), (ticker("ADV"), ticker("CDT")))
+    leave = ConditionEvent("leave", "CDT", "ND", "180501", {"843": "D", "9001": "CDT"})
+    store.add(first, utc(2026, 11, 5, 9, 5), leave)
+    store.end(first, utc(2026, 11, 5, 9, 30), "renewed")
+    second = store.start(condition, "real", utc(2026, 11, 5, 9, 30), (ticker("ELPW"),))
+    store.end(second, utc(2026, 11, 5, 10), "renewed")
+    # Another condition's watch is compared only with its own.
+    other = store.start(Condition("3", "SIW_전일급등주"), "real", utc(2026, 11, 5, 10), ())
+    store.end(other, utc(2026, 11, 5, 10, 30), "renewed")
+    watches = store.export(utc(2026, 11, 5), utc(2026, 11, 6))["watches"]
+    store.close()
+    assert [item["differs_from_previous"] for item in watches] == [
+        None,
+        {"entered": ["ELPW"], "left": ["ADV"]},
+        None,
+    ]
 
 
 class Clock:
@@ -264,6 +291,20 @@ def test_watch_once_records_a_session_and_why_it_ended(tmp_path: Path) -> None:
         clock=clock,
     )
     assert outcome.reason == "window_closed"
+    # A renewal ends the watch before the window does.
+    outcome = watch_once(
+        searcher(Server()),
+        store,
+        "SIW_당일급등주",
+        "real",
+        until=utc(2026, 11, 6, 1),
+        stop=threading.Event(),
+        clock=clock,
+        renew_at=clock.now,
+    )
+    assert outcome.reason == "renewed"
+    last = store.export(utc(2026, 11, 5), utc(2026, 11, 6))["watches"][-1]
+    assert last["end_reason"] == "renewed"
     store.close()
 
 
@@ -320,7 +361,7 @@ def test_run_watch_waits_for_the_window_and_backs_off_after_errors(tmp_path: Pat
         report=reports.append,
         calendar=CALENDAR,
     )
-    assert 3500 < before.waits[0] <= 3600  # until 09:00Z
+    assert 3560 < before.waits[0] <= 3660  # until 09:01Z, a minute after premarket opens
 
     missing = run_watch(
         FlakySearch([ConditionNotFoundError("no SIW_당일급등주")]),  # type: ignore[arg-type]
@@ -334,6 +375,44 @@ def test_run_watch_waits_for_the_window_and_backs_off_after_errors(tmp_path: Pat
     )
     assert missing == 2
     store.close()
+
+
+class RenewingSearch:
+    """Answers the list and returns at the renewal time, as a quiet subscription does."""
+
+    def __init__(self, stop: threading.Event, clock: Clock, watches: int) -> None:
+        self.stop, self.clock, self.left = stop, clock, watches
+
+    def watch(self, name: str, *, on_list: Any, on_event: Any, until: Any) -> None:
+        on_list(Condition("2", name), ())
+        while not until():
+            self.clock.now += timedelta(minutes=1)
+        self.left -= 1
+        if self.left == 0:
+            self.stop.set()
+
+
+def test_run_watch_renews_the_subscription_without_waiting(tmp_path: Path) -> None:
+    store = ConditionWatchStore.in_data_dir(tmp_path)
+    stop = Stop(waits=1)
+    clock = Clock(utc(2026, 11, 5, 12))
+    code = run_watch(
+        RenewingSearch(stop, clock, watches=3),  # type: ignore[arg-type]
+        store,
+        "SIW_당일급등주",
+        "real",
+        stop=stop,
+        clock=clock,
+        report=lambda _item: None,
+        calendar=CALENDAR,
+    )
+    watches = store.export(utc(2026, 11, 5), utc(2026, 11, 6))["watches"]
+    store.close()
+    assert code == 0 and stop.waits == []
+    assert [item["end_reason"] for item in watches] == ["renewed", "renewed", "stopped"]
+    began = datetime.fromisoformat(watches[0]["started_at_utc"].replace("Z", "+00:00"))
+    ended = datetime.fromisoformat(watches[0]["ended_at_utc"].replace("Z", "+00:00"))
+    assert timedelta(minutes=30) <= ended - began < timedelta(minutes=32)
 
 
 def test_the_cli_refuses_an_unconnected_name_and_exports_a_date(
