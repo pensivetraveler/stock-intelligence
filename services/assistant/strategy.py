@@ -26,9 +26,9 @@ from services.assistant.indicator import (
 )
 from services.review.conversation import ConversationError
 
-# Model assignment #SIW-2 (Local Agent session), provisional until its pilot: Sonnet at high
-# effort, because reading a backtest is more than writing code. The investor may retry on
-# Opus at high effort; the retry costs more and has no cache.
+# Model assignment #SIW-2 (Local AI Gateway session, then named Local Agent), provisional
+# until its pilot: Sonnet at high effort, because reading a backtest is more than writing
+# code. The investor may retry on Opus at high effort; the retry costs more and has no cache.
 DEFAULT_MODEL = "claude-sonnet-5-5"
 RETRY_MODEL = "claude-opus-5-5"
 EFFORT = "high"

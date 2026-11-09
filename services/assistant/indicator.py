@@ -30,9 +30,10 @@ from services.review.claude import FALLBACK_BETA, FALLBACK_MODELS, MODELS
 from services.review.conversation import BINDING_BETA, ConversationError
 from services.review.store import ReviewStore
 
-# Model assignment #SIW-1 (Local Agent session, confirmed by the 2026-10-28 pilot): Sonnet
-# at medium effort. When five fixes are not enough the investor may retry, first on
-# Sonnet at high effort (same cost in the pilot), then on Opus (about 2.5 times the cost).
+# Model assignment #SIW-1 (Local AI Gateway session, then named Local Agent; confirmed by
+# the 2026-10-28 pilot): Sonnet at medium effort. When five fixes are not enough the
+# investor may retry, first on Sonnet at high effort (same cost in the pilot), then on Opus
+# (about 2.5 times the cost).
 DEFAULT_MODEL = "claude-sonnet-5-5"
 RETRY_MODEL = "claude-opus-5-5"
 EFFORT = "medium"
