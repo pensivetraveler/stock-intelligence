@@ -109,6 +109,7 @@ import { applyLive, type LiveSymbol, type RealtimeSocket } from "./realtime";
 import { AccountPanel } from "./AccountPanel";
 import { RankingsPanel } from "./RankingsPanel";
 import { ResearchPanel } from "./ResearchPanel";
+import { CandidatesPanel } from "./CandidatesPanel";
 import { ConditionSearchPanel } from "./ConditionSearchPanel";
 import { AgentPanel } from "./AgentPanel";
 import type { AgentApi, ChartReviewRequest } from "./agent-api";
@@ -121,6 +122,7 @@ import { FormulaDialog } from "./FormulaEditor";
 import { PineDialog } from "./PineEditor";
 import { pineDefinition, pineWidths } from "./pine";
 import type { BacktestApi } from "./backtest-api";
+import type { ScreeningApi } from "./screening-api";
 import type { ReviewApi } from "./review-api";
 import { StockInfoPanel } from "./StockInfoPanel";
 import { JournalPanel } from "./JournalPanel";
@@ -168,6 +170,8 @@ interface WorkspaceProps {
   keysPanel?: ReactNode;
   /** The backtest screen's client; without one the screen is not offered. */
   backtestApi?: BacktestApi;
+  /** Daily candidate screening (ADR 0052); needs the backtest client for strategies. */
+  screeningApi?: ScreeningApi;
   /** The review Agent's client; without one it is not offered. */
   agentApi?: AgentApi;
   /** The trade review screen's client (ADR 0042); without one it is not offered. */
@@ -340,6 +344,7 @@ export function Workspace({
   newId = randomId,
   keysPanel,
   backtestApi,
+  screeningApi,
   agentApi,
   reviewApi,
   customApi,
@@ -427,6 +432,10 @@ export function Workspace({
     return () => window.removeEventListener("keydown", cancel);
   }, [drawTool]);
   // A watchlist reopened floating after a reload is not also shown in the side panel.
+  const backtestStrategies = useMemo(
+    () => () => backtestApi?.strategies() ?? Promise.resolve([]),
+    [backtestApi],
+  );
   const [panel, setPanel] = useState<Panel | null>(() =>
     loadWatchlistWindow(storage).open ? null : "watchlist",
   );
@@ -2011,6 +2020,13 @@ export function Workspace({
             />
           ) : null}
           {panel === "research" ? <ResearchPanel api={api} /> : null}
+          {panel === "screener" && screeningApi && backtestApi ? (
+            <CandidatesPanel
+              api={screeningApi}
+              strategies={backtestStrategies}
+              onPick={(listing) => chooseListing(listing)}
+            />
+          ) : null}
           {panel === "screener" ? (
             <ConditionSearchPanel
               api={api}

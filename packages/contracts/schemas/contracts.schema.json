@@ -269,6 +269,12 @@
     },
     {
       "$ref": "#/$defs/BrokerConditionResult"
+    },
+    {
+      "$ref": "#/$defs/ScreeningCandidates"
+    },
+    {
+      "$ref": "#/$defs/ScreeningCheck"
     }
   ],
   "$defs": {
@@ -11917,6 +11923,376 @@
               }
             }
           }
+        }
+      }
+    },
+    "ScreeningCandidates": {
+      "description": "ADR 0052 S1: a US session's screening candidates — symbols the realtime condition record (ADR 0051) listed or added before the cutoff, plus symbols the user added — with the latest result of each check. Not an order, not a plan approval.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "session_date",
+        "cutoff_utc",
+        "condition_name",
+        "recorded",
+        "watch_coverage",
+        "candidates"
+      ],
+      "properties": {
+        "kind": {
+          "const": "screening_candidates"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "session_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "New York session date."
+        },
+        "cutoff_utc": {
+          "$ref": "#/$defs/UtcTimestamp",
+          "description": "Only events SIW received before this time count."
+        },
+        "condition_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "recorded": {
+          "type": "boolean",
+          "description": "False when there is no condition record at all."
+        },
+        "watch_coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "watches",
+            "interrupted",
+            "first_started_utc",
+            "last_heard_utc",
+            "open_now"
+          ],
+          "properties": {
+            "watches": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "interrupted": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "first_started_utc": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/UtcTimestamp"
+                }
+              ]
+            },
+            "last_heard_utc": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/UtcTimestamp"
+                }
+              ]
+            },
+            "open_now": {
+              "type": "boolean"
+            }
+          },
+          "description": "How much of the session window the record covers, so a gap is not read as a quiet list."
+        },
+        "candidates": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "symbol",
+              "sources",
+              "first_seen_utc",
+              "in_list",
+              "kiwoom_exchange",
+              "listing",
+              "checks"
+            ],
+            "properties": {
+              "symbol": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9.]{0,9}$"
+              },
+              "sources": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": ["condition", "manual"]
+                }
+              },
+              "first_seen_utc": {
+                "$ref": "#/$defs/UtcTimestamp",
+                "description": "When SIW first received it in this session (condition), or when the user added it."
+              },
+              "in_list": {
+                "type": ["boolean", "null"],
+                "description": "In the condition's list when the last watch before the cutoff last heard; null for manual-only."
+              },
+              "kiwoom_exchange": {
+                "type": ["string", "null"],
+                "maxLength": 8
+              },
+              "listing": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "instrument",
+                      "source_id",
+                      "dataset_revision",
+                      "session_dates"
+                    ],
+                    "properties": {
+                      "instrument": {
+                        "$ref": "#/$defs/InstrumentRef"
+                      },
+                      "source_id": {
+                        "$ref": "#/$defs/Identifier"
+                      },
+                      "dataset_revision": {
+                        "$ref": "#/$defs/Identifier"
+                      },
+                      "session_dates": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "date"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "description": "The app's own listing for the ticker; null when the lookup does not know it (not chartable)."
+              },
+              "checks": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "entry": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["check_id", "status", "created_at_utc"],
+                    "properties": {
+                      "check_id": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "status": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "created_at_utc": {
+                        "$ref": "#/$defs/UtcTimestamp"
+                      }
+                    }
+                  },
+                  "news": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["check_id", "status", "created_at_utc"],
+                    "properties": {
+                      "check_id": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "status": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "created_at_utc": {
+                        "$ref": "#/$defs/UtcTimestamp"
+                      }
+                    }
+                  },
+                  "off_exchange": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["check_id", "status", "created_at_utc"],
+                    "properties": {
+                      "check_id": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "status": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "created_at_utc": {
+                        "$ref": "#/$defs/UtcTimestamp"
+                      }
+                    }
+                  },
+                  "dilution": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["check_id", "status", "created_at_utc"],
+                    "properties": {
+                      "check_id": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "status": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "created_at_utc": {
+                        "$ref": "#/$defs/UtcTimestamp"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ScreeningCheck": {
+      "description": "ADR 0052: one stored check of one candidate. `result` depends on `check`; for `entry` it holds the last closed daily bar, the bars used and every simple condition with the values it compared. Stored results are only added, never changed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "check_id",
+        "check",
+        "session_date",
+        "symbol",
+        "instrument_id",
+        "cutoff_utc",
+        "created_at_utc",
+        "after_the_fact",
+        "status",
+        "result",
+        "versions",
+        "warnings",
+        "sources"
+      ],
+      "properties": {
+        "kind": {
+          "const": "screening_check"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "check_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "check": {
+          "enum": ["entry", "news", "off_exchange", "dilution"]
+        },
+        "session_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "symbol": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9.]{0,9}$"
+        },
+        "instrument_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "cutoff_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "created_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "after_the_fact": {
+          "type": "boolean",
+          "description": "Run after the session ended: stored data, not what was live at the cutoff."
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "unsupported",
+            "no_data",
+            "error",
+            "pending"
+          ]
+        },
+        "strategy": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "strategy_id",
+                "name",
+                "version",
+                "definition_sha256"
+              ],
+              "properties": {
+                "strategy_id": {
+                  "$ref": "#/$defs/Identifier"
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "definition_sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              }
+            }
+          ]
+        },
+        "result": {
+          "type": "object"
+        },
+        "versions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "sources": {
+          "type": "object"
         }
       }
     }

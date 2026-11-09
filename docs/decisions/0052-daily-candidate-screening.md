@@ -98,6 +98,15 @@
 
 순서는 외부 의존이 적은 것부터다. 사용자가 바꿀 수 있다.
 
+### S1 구현 (2026-11-09)
+
+- **후보:** `services/screening/candidates.py`가 ADR 0051 기록 파일을 **읽기 전용 SQLite 연결**로 연다. `ConditionWatchStore`로 열면 스키마를 만들고 끝나지 않은 구독을 `interrupted`로 닫아, 기록 중인 기록기를 방해한다. cutoff 전에 SIW가 받은 이벤트만 쓴다. 종목마다 처음 받은 시각, cutoff 직전 구독 기준 목록 포함 여부를 내고, 구독 수·중단 수·지금 기록 중인지로 기록의 빈틈을 함께 보인다. 직접 넣은 종목은 `manual`.
+- **A:** `services/screening/entry.py`. 저장한 규칙 전략의 `entry`를 cutoff 전에 정규장이 마감한 마지막 세션까지의 확정 일봉(분할 조정, 없으면 원가격과 경고)에 백테스트와 같은 `RuleEvaluator`로 평가한다. 단순 조건마다 비교한 두 값과 충족 여부를 남긴다. 시간대 조건과 Python 지표는 `unsupported`로 답한다.
+- **저장:** `SIW_DATA_DIR/screening.sqlite3`(`services/screening/store.py`). 검사 결과는 덧붙이기만 하고 카드는 종류별 최신 결과를 보인다.
+- **API:** `GET/POST /v1/screening/candidates`, `POST /v1/screening/checks/entry`, `GET /v1/screening/checks/{id}`. 새 계약 `screening_candidates`, `screening_check`(`check`는 `entry`·`news`·`off_exchange`·`dilution`; B·C·D 세션이 같은 문서 모양으로 붙인다).
+- **화면:** SIW Research 오른쪽 "조건검색" 패널 위에 "오늘의 후보". 전략 고르기(이 화면에서만 기억), 모두 검사·종목별 검사, 검사 결과 펼쳐 보기, 종목 추가, 종목을 누르면 차트.
+- **아직 없음:** 편입 즉시 자동 검사(지금은 버튼), 프리마켓 장전 봉 조건, B·C·D, SIW Agent로 넘기기(S5).
+
 ### 진행 방식 (2026-11-09 사용자 결정)
 
 - "S1부터 진행." S1은 이 저장소의 담당 세션이 구현한다.

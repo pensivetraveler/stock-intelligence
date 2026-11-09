@@ -89,7 +89,9 @@ export type StockIntelligenceWorkstationContractsV01 =
   | IndicatorAssistantSettings
   | StrategyConversation
   | BrokerConditionList
-  | BrokerConditionResult;
+  | BrokerConditionResult
+  | ScreeningCandidates
+  | ScreeningCheck;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -7580,4 +7582,122 @@ export interface BrokerConditionResult {
      */
     low: string;
   }[];
+}
+/**
+ * ADR 0052 S1: a US session's screening candidates — symbols the realtime condition record (ADR 0051) listed or added before the cutoff, plus symbols the user added — with the latest result of each check. Not an order, not a plan approval.
+ */
+export interface ScreeningCandidates {
+  kind: "screening_candidates";
+  schema_version: SchemaVersion;
+  /**
+   * New York session date.
+   */
+  session_date: string;
+  /**
+   * Only events SIW received before this time count.
+   */
+  cutoff_utc: string;
+  condition_name: string;
+  /**
+   * False when there is no condition record at all.
+   */
+  recorded: boolean;
+  /**
+   * How much of the session window the record covers, so a gap is not read as a quiet list.
+   */
+  watch_coverage: {
+    watches: number;
+    interrupted: number;
+    first_started_utc: null | UtcTimestamp;
+    last_heard_utc: null | UtcTimestamp;
+    open_now: boolean;
+  };
+  /**
+   * @maxItems 2000
+   */
+  candidates: {
+    symbol: string;
+    /**
+     * @minItems 1
+     */
+    sources: ["condition" | "manual", ...("condition" | "manual")[]];
+    /**
+     * When SIW first received it in this session (condition), or when the user added it.
+     */
+    first_seen_utc: string;
+    /**
+     * In the condition's list when the last watch before the cutoff last heard; null for manual-only.
+     */
+    in_list: boolean | null;
+    kiwoom_exchange: string | null;
+    /**
+     * The app's own listing for the ticker; null when the lookup does not know it (not chartable).
+     */
+    listing: null | {
+      instrument: InstrumentRef;
+      source_id: Identifier;
+      dataset_revision: Identifier;
+      session_dates: string[];
+    };
+    checks: {
+      entry?: {
+        check_id: number;
+        status: string;
+        created_at_utc: UtcTimestamp;
+      };
+      news?: {
+        check_id: number;
+        status: string;
+        created_at_utc: UtcTimestamp;
+      };
+      off_exchange?: {
+        check_id: number;
+        status: string;
+        created_at_utc: UtcTimestamp;
+      };
+      dilution?: {
+        check_id: number;
+        status: string;
+        created_at_utc: UtcTimestamp;
+      };
+    };
+  }[];
+}
+/**
+ * ADR 0052: one stored check of one candidate. `result` depends on `check`; for `entry` it holds the last closed daily bar, the bars used and every simple condition with the values it compared. Stored results are only added, never changed.
+ */
+export interface ScreeningCheck {
+  kind: "screening_check";
+  schema_version: SchemaVersion;
+  check_id: number;
+  check: "entry" | "news" | "off_exchange" | "dilution";
+  session_date: string;
+  symbol: string;
+  instrument_id: Identifier;
+  cutoff_utc: UtcTimestamp;
+  created_at_utc: UtcTimestamp;
+  /**
+   * Run after the session ended: stored data, not what was live at the cutoff.
+   */
+  after_the_fact: boolean;
+  status: "passed" | "failed" | "unsupported" | "no_data" | "error" | "pending";
+  strategy?: null | {
+    strategy_id: Identifier;
+    name: string;
+    version: number;
+    definition_sha256: string;
+  };
+  result: {
+    [k: string]: unknown;
+  };
+  versions: {
+    [k: string]: string;
+  };
+  /**
+   * @maxItems 200
+   */
+  warnings: string[];
+  sources: {
+    [k: string]: unknown;
+  };
 }
