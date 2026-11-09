@@ -93,19 +93,6 @@ CATALOG: dict[str, ProviderKeySpec] = {
             ),
             per_account=False,
         ),
-        # Not market-data sources: news feeds for screening check B (ADR 0052 §3).
-        ProviderKeySpec(
-            "marketnewsapi",
-            "MarketNewsAPI",
-            (SecretField("api_key", "API key", "SIW_MARKETNEWSAPI_API_KEY"),),
-            per_account=False,
-        ),
-        ProviderKeySpec(
-            "finnhub",
-            "Finnhub",
-            (SecretField("api_key", "API key", "SIW_FINNHUB_API_KEY"),),
-            per_account=False,
-        ),
         # Not a market-data source: the Bank of Korea's USD/KRW reference rate, used to
         # check paper orders against a KRW amount limit (ADR 0037).
         ProviderKeySpec(

@@ -54,6 +54,19 @@
 
 ### 3. B — 뉴스 재료
 
+- **구조(2026-11-09 사용자 결정):** "뉴스 수집, 개별 뉴스 분석, 개별 종목의 뉴스 사이클 분석은 각각 별도의 모듈"이고, 셋을 SIW 밖 "별도 프로젝트·서비스"에 둔다. 서비스는 news-analysis(`~/Trading/news-analysis`, GitHub `pensivetraveler/news-analysis`, `127.0.0.1:8776`, 계약 `news-contract-v1`)다. 희석 분석기(C)와 같은 방식이고, SIW는 요청하고 결과를 받기만 한다. 수집 키와 기사 저장소도 서비스가 가진다.
+- **SIW 쪽(검사 B, `services/screening/news_service.py`, `services/api/screening_news_routes.py`):**
+  - `POST /v1/screening/checks/news` `{symbol, session_date?, lookback_hours?(기본 72, 1~720)}`이면 서비스에 `POST /api/v1/news-checks` `{ticker, cutoff_utc, lookback_hours, refresh: "auto"}`를 보낸다. cutoff는 A와 같이 `min(지금, 세션 끝)`이다. 그 뒤 작업을 15초까지 기다려 `news_check` 결과를 받는다.
+  - 결과는 `screening_check`(`check: "news"`)로 저장한다. `status`는 서비스 값(`material`·`no_material`·`no_data`·`error`)을 그대로 쓰고, 끝나지 않았거나 서비스가 꺼져 있으면 `pending`이다. `result`에는 카드용 요약(categories, out_of_scope, feeds, article_count, latest_categorized)과 서비스 결과 원문(`news_check`)을 둔다.
+  - `versions`에는 검사 판과 계약, 서비스 판, 규칙 판·해시, 출처별 파서를 담는다. `sources`에는 `{service, contract, result_id}`를 담는다.
+  - 기다리던 검사는 `POST /v1/screening/checks/news/{check_id}/refresh`로 같은 cutoff에서 다시 확인한다.
+  - 다른 계약 판(`news-contract-v1`이 아닌 것)은 받지 않는다. SIW는 서비스를 띄우지 않는다. 서비스 주소는 `SIW_NEWS_URL`이고 이 컴퓨터 주소만 허용한다.
+- **범주:** 서비스 규칙 `news-rules-2`를 따른다. 구속력 있는 계약(`binding_contract`)과 MOU·LOI(`non_binding_intent`)를 나누고, 유상증자·공모 같은 희석 기사는 범주로 두지 않고 `out_of_scope.dilution`으로 표시만 한다. 희석은 C가 판단한다.
+- **개별 분석(NIR)·사이클 분석(CIR):** 서비스의 모듈이다. 모델 배정 회신(Local AI Gateway `[회신 #news-1]`: 스크립트 + claude-haiku-5.5 임시)과 사용자 확정은 서비스 쪽에서 다룬다.
+- **이전 구현(PR #147, 3b99763):** SIW 안에서 세 출처를 직접 모으고 `news-rules-1`로 분류했다. 그 코드(`services/public_sources/*news*`, `services/screening/news.py`·`news_rules.py`)와 Keys 화면의 `marketnewsapi`·`finnhub` 항목은 서비스로 옮기며 지웠다. 두 항목에 등록된 키는 없었다. 그때 확인한 권한·약관은 아래에 기록으로 남긴다.
+
+#### 기록: SIW 안 구현 때의 확인(2026-11-09, 지금은 서비스가 맡음)
+
 - **출처(2026-11-09 사용자 결정: "MarketNewsAPI, Finnhub 모두 사용"):** 세 뉴스 공급원을 각각 별도 출처로 읽는다. 서로 섞거나 하나로 합치지 않는다.
   - **Alpaca News** (`alpaca-news`): `GET /v1beta1/news`. 기사는 여러 공급원에서 온다(`source`: Benzinga, fiscal.ai 등).
   - **MarketNewsAPI** (`marketnewsapi-news`): `GET https://api.marketnewsapi.com/v1/news`. 발행사 보도자료(GlobeNewswire, Business Wire, PR Newswire, ACCESS Newswire, Newsfile)와 일반 기사를 준다. 원본 보도자료를 모으는 용도다. 키는 `X-API-Key` 헤더로 보낸다.
