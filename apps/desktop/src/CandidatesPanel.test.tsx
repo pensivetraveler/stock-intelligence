@@ -123,6 +123,8 @@ describe("CandidatesPanel", () => {
         return Promise.resolve(check);
       }),
       check: vi.fn(() => Promise.resolve(check)),
+      runDilutionCheck: vi.fn(),
+      refreshCheck: vi.fn(),
     };
     const onPick = vi.fn();
     render(
@@ -163,6 +165,8 @@ describe("CandidatesPanel", () => {
       addCandidate: vi.fn(() => Promise.resolve(candidates())),
       runEntryCheck: vi.fn(),
       check: vi.fn(),
+      runDilutionCheck: vi.fn(),
+      refreshCheck: vi.fn(),
     };
     render(
       <CandidatesPanel
@@ -180,5 +184,102 @@ describe("CandidatesPanel", () => {
       expect(api.addCandidate).toHaveBeenCalledWith("AAPL", "2026-11-09"),
     );
     await screen.findByText("ZZZQ");
+  });
+
+  it("asks for rules-only dilution and keeps unknown prices unknown", async () => {
+    const supply = {
+      kind: "screening_check",
+      check_id: 9,
+      check: "dilution",
+      symbol: "AAPL",
+      status: "incomplete",
+      result: {
+        llm: false,
+        incomplete_reasons: ["llm_disabled"],
+        securities: [
+          {
+            id: "S1",
+            kind: "warrant",
+            description: "Series A Warrant",
+            price: {
+              amount: "1.25",
+              unit: "usd_per_share",
+              status: "confirmed",
+              fact: true,
+            },
+            price_range: null,
+            floor: null,
+            outstanding: {
+              amount: null,
+              unit: "shares",
+              status: "unverified",
+              fact: false,
+            },
+            conditions: [],
+            after_base_point: false,
+            approval_unknown: true,
+          },
+        ],
+        capacity: [],
+      },
+      warnings: [],
+    } as unknown as ScreeningCheck;
+    let done = false;
+    const api: ScreeningApi = {
+      candidates: vi.fn(() => {
+        const found = candidates();
+        if (done)
+          found.candidates[0].checks.dilution = {
+            check_id: 9,
+            status: "incomplete",
+            created_at_utc: "2026-11-09T15:31:00Z",
+          };
+        return Promise.resolve(found);
+      }),
+      addCandidate: vi.fn(),
+      runEntryCheck: vi.fn(),
+      check: vi.fn(() => Promise.resolve(supply)),
+      runDilutionCheck: vi.fn(() => {
+        done = true;
+        return Promise.resolve(supply);
+      }),
+      refreshCheck: vi.fn(),
+    };
+    render(
+      <CandidatesPanel
+        api={api}
+        strategies={() => Promise.resolve([])}
+        onPick={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Dilution for all (rules only)",
+      }),
+    );
+    await waitFor(() =>
+      expect(api.runDilutionCheck).toHaveBeenCalledWith(
+        "AAPL",
+        false,
+        "2026-11-09",
+      ),
+    );
+    expect(api.runDilutionCheck).toHaveBeenCalledTimes(1);
+    fireEvent.click(await screen.findByRole("button", { name: "partial" }));
+    await screen.findByText(/totals are unknown, not zero/);
+    expect(screen.getByText("?")).toBeTruthy();
+    expect(
+      screen.getByText(/may not convert before shareholder approval/),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Analyze with LLM (costs)" }),
+    );
+    await waitFor(() =>
+      expect(api.runDilutionCheck).toHaveBeenLastCalledWith(
+        "AAPL",
+        true,
+        "2026-11-09",
+      ),
+    );
   });
 });

@@ -18,6 +18,14 @@ export interface ScreeningApi {
     strategyId: string,
     sessionDate?: string,
   ): Promise<ScreeningCheck>;
+  /** Check C: rules-only unless `llm` (kept for the few candidates the user picks). */
+  runDilutionCheck(
+    symbol: string,
+    llm: boolean,
+    sessionDate?: string,
+  ): Promise<ScreeningCheck>;
+  /** A waiting check looked at again; a new result when there is one. */
+  refreshCheck(checkId: number): Promise<ScreeningCheck>;
   check(checkId: number): Promise<ScreeningCheck>;
 }
 
@@ -57,6 +65,22 @@ export function createScreeningApi(
           method: "POST",
           body: { symbol, strategy_id: strategyId, ...dated(sessionDate) },
         },
+      );
+    },
+    runDilutionCheck(symbol, llm, sessionDate) {
+      return callForKind<ScreeningCheck>(
+        target,
+        "/v1/screening/checks/dilution",
+        "screening_check",
+        { method: "POST", body: { symbol, llm, ...dated(sessionDate) } },
+      );
+    },
+    refreshCheck(checkId) {
+      return callForKind<ScreeningCheck>(
+        target,
+        `/v1/screening/checks/${checkId}/refresh`,
+        "screening_check",
+        { method: "POST" },
       );
     },
     check(checkId) {

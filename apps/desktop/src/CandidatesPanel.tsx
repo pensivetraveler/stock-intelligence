@@ -154,6 +154,40 @@ export function CandidatesPanel({
         setRunError(t("candidates.addFailed", { error: errorText(reason) })),
       );
   };
+  const dilution = async (candidates: Candidate[], llm: boolean) => {
+    setRunError(null);
+    for (const candidate of candidates) {
+      const key = `dilution:${candidate.symbol}`;
+      setRunning((list) => [...list, key]);
+      try {
+        const found = await api.runDilutionCheck(
+          candidate.symbol,
+          llm,
+          document?.session_date,
+        );
+        if (llm) setDetail(found);
+      } catch (reason) {
+        setRunError(
+          t("candidates.checkFailed", {
+            symbol: candidate.symbol,
+            error: errorText(reason),
+          }),
+        );
+      } finally {
+        setRunning((list) => list.filter((item) => item !== key));
+      }
+    }
+    setReload((value) => value + 1);
+  };
+  const refresh = (checkId: number) => {
+    api
+      .refreshCheck(checkId)
+      .then((found) => {
+        setDetail(found);
+        setReload((value) => value + 1);
+      })
+      .catch((reason: unknown) => setRunError(errorText(reason)));
+  };
   const showDetail = (checkId: number) => {
     api
       .check(checkId)
@@ -226,6 +260,14 @@ export function CandidatesPanel({
         <button
           type="button"
           className="secondary"
+          disabled={running.length > 0 || chartable.length === 0}
+          onClick={() => void dilution(chartable, false)}
+        >
+          {t("candidates.dilutionAll")}
+        </button>
+        <button
+          type="button"
+          className="secondary"
           onClick={() => setReload(reload + 1)}
         >
           {t("candidates.refresh")}
@@ -264,12 +306,14 @@ export function CandidatesPanel({
                 <th>{t("candidates.firstSeen")}</th>
                 <th>{t("candidates.inList")}</th>
                 <th>{t("candidates.entry")}</th>
+                <th>{t("candidates.dilution")}</th>
               </tr>
             </thead>
             <tbody>
               {document.candidates.map((item) => {
                 const listing = item.listing;
                 const entry = item.checks.entry;
+                const supply = item.checks.dilution;
                 return (
                   <tr key={item.symbol}>
                     <td>
@@ -319,6 +363,33 @@ export function CandidatesPanel({
                         "—"
                       )}
                     </td>
+                    <td>
+                      {running.includes(`dilution:${item.symbol}`) ? (
+                        t("screener.running")
+                      ) : supply ? (
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() =>
+                            supply.status === "pending"
+                              ? refresh(supply.check_id)
+                              : showDetail(supply.check_id)
+                          }
+                        >
+                          {statusText(t, supply.status)}
+                        </button>
+                      ) : listing ? (
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => void dilution([item], false)}
+                        >
+                          {t("candidates.check")}
+                        </button>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -328,8 +399,21 @@ export function CandidatesPanel({
       ) : document ? (
         <p className="workspace-note">{t("candidates.empty")}</p>
       ) : null}
-      {detail ? (
+      {detail && detail.check === "entry" ? (
         <EntryDetail check={detail} onClose={() => setDetail(null)} />
+      ) : null}
+      {detail && detail.check === "dilution" ? (
+        <DilutionDetail
+          check={detail}
+          onClose={() => setDetail(null)}
+          onRefresh={() => refresh(detail.check_id)}
+          onLlm={() => {
+            const candidate = document?.candidates.find(
+              (item) => item.symbol === detail.symbol,
+            );
+            if (candidate) void dilution([candidate], true);
+          }}
+        />
       ) : null}
       <p className="workspace-note">{t("candidates.note")}</p>
     </section>
@@ -406,6 +490,145 @@ function EntryDetail({
       <button type="button" className="secondary" onClick={onClose}>
         {t("candidates.close")}
       </button>
+    </div>
+  );
+}
+
+interface SupplyValue {
+  amount: string | null;
+  unit: string | null;
+  status: string | null;
+  fact: boolean;
+}
+
+interface SupplySecurity {
+  id: string;
+  kind: string;
+  description: string;
+  price: SupplyValue | null;
+  price_range: (SupplyValue | null)[] | null;
+  floor: SupplyValue | null;
+  outstanding: SupplyValue | null;
+  conditions: { type: string; threshold: SupplyValue | null }[];
+  after_base_point: boolean;
+  approval_unknown: boolean;
+}
+
+/** An amount as the analyzer gave it: unknown stays "?", a non-fact keeps its status. */
+function supplyText(value: SupplyValue | null | undefined): string {
+  if (!value || value.amount === null) return "?";
+  return value.fact ? value.amount : `${value.amount} (${value.status ?? "?"})`;
+}
+
+function DilutionDetail({
+  check,
+  onClose,
+  onRefresh,
+  onLlm,
+}: {
+  check: ScreeningCheck;
+  onClose: () => void;
+  onRefresh: () => void;
+  onLlm: () => void;
+}) {
+  const { t } = useI18n();
+  const result = check.result as {
+    llm?: boolean;
+    reason?: string;
+    securities?: SupplySecurity[];
+    capacity?: { security_id: string; nominal: SupplyValue | null }[];
+    incomplete_reasons?: string[];
+    issuer_warnings?: string[];
+    shelves_notes?: string[];
+    resale_notes?: string[];
+  };
+  return (
+    <div
+      className="research-scroll"
+      role="region"
+      aria-label={t("candidates.dilutionDetail")}
+    >
+      <p className="workspace-note">
+        {t("candidates.dilutionMeta", {
+          symbol: check.symbol,
+          mode: result.llm ? "LLM" : t("candidates.rulesOnly"),
+          status: statusText(t, check.status),
+        })}
+      </p>
+      {result.reason ? <p className="chart-error">{result.reason}</p> : null}
+      {result.incomplete_reasons && result.incomplete_reasons.length > 0 ? (
+        <p className="workspace-note" role="status">
+          {t("candidates.dilutionIncomplete", {
+            reasons: result.incomplete_reasons.join(", "),
+          })}
+        </p>
+      ) : null}
+      {result.securities && result.securities.length > 0 ? (
+        <table className="quote-trades research-table">
+          <thead>
+            <tr>
+              <th>{t("candidates.security")}</th>
+              <th>{t("candidates.price")}</th>
+              <th>{t("candidates.floorOrRange")}</th>
+              <th>{t("candidates.outstanding")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.securities.map((item) => (
+              <tr key={item.id}>
+                <td title={item.kind}>
+                  {item.description}
+                  {item.approval_unknown
+                    ? ` · ${t("candidates.approvalUnknown")}`
+                    : ""}
+                </td>
+                <td>{supplyText(item.price)}</td>
+                <td>
+                  {item.price_range
+                    ? item.price_range.map(supplyText).join("–")
+                    : item.floor
+                      ? `≥ ${supplyText(item.floor)}`
+                      : "—"}
+                </td>
+                <td>{supplyText(item.outstanding)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+      {(result.capacity ?? []).map((item) => (
+        <p key={item.security_id} className="workspace-note">
+          {t("candidates.capacity", {
+            id: item.security_id,
+            amount: supplyText(item.nominal),
+          })}
+        </p>
+      ))}
+      {[
+        ...(result.issuer_warnings ?? []),
+        ...(result.shelves_notes ?? []),
+        ...(result.resale_notes ?? []),
+        ...check.warnings,
+      ].map((note) => (
+        <p key={note} className="workspace-note">
+          {note}
+        </p>
+      ))}
+      <div className="trade-fields">
+        {check.status === "pending" ? (
+          <button type="button" className="secondary" onClick={onRefresh}>
+            {t("candidates.lookAgain")}
+          </button>
+        ) : null}
+        {result.llm ? null : (
+          <button type="button" className="secondary" onClick={onLlm}>
+            {t("candidates.withLlm")}
+          </button>
+        )}
+        <button type="button" className="secondary" onClick={onClose}>
+          {t("candidates.close")}
+        </button>
+      </div>
     </div>
   );
 }
