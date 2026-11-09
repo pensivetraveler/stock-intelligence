@@ -201,6 +201,27 @@ def test_entry_check_route_stores_a_result_the_card_shows(client: Any) -> None:
     assert http.get("/v1/screening/checks/999").status_code == 404
 
 
+def test_the_candidate_list_carries_every_check_kind(client: Any, tmp_path: Path) -> None:
+    http, _saved = client
+    other = ScreeningStore(tmp_path / "screening.sqlite3", lambda: NOW)
+    for kind in ("news", "off_exchange", "dilution", "off_exchange_structure"):
+        other.add_check(
+            {
+                "session_date": "2026-11-09",
+                "symbol": "AAPL",
+                "check": kind,
+                "status": "pending",
+                "cutoff_utc": "2026-11-09T13:00:00.000Z",
+                "created_at_utc": "2026-11-09T13:00:00.000Z",
+            }
+        )
+    other.close()
+    document = http.get("/v1/screening/candidates").json()
+    validate_document(document)
+    checks = document["candidates"][0]["checks"]
+    assert set(checks) == {"news", "off_exchange", "dilution", "off_exchange_structure"}
+
+
 def test_without_adjusted_bars_the_check_uses_prices_as_traded(tmp_path: Path) -> None:
     def refuses(*_: Any) -> Any:
         raise InvalidBarsQueryError("this data provider does not offer adjusted daily bars")

@@ -12165,6 +12165,25 @@
                         "$ref": "#/$defs/UtcTimestamp"
                       }
                     }
+                  },
+                  "off_exchange_structure": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["check_id", "status", "created_at_utc"],
+                    "properties": {
+                      "check_id": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "status": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "created_at_utc": {
+                        "$ref": "#/$defs/UtcTimestamp"
+                      }
+                    }
                   }
                 }
               }

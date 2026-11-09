@@ -7660,6 +7660,11 @@ export interface ScreeningCandidates {
         status: string;
         created_at_utc: UtcTimestamp;
       };
+      off_exchange_structure?: {
+        check_id: number;
+        status: string;
+        created_at_utc: UtcTimestamp;
+      };
     };
   }[];
 }

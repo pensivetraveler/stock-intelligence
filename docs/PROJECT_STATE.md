@@ -2750,3 +2750,9 @@
 - **추가:** `services/screening/structure/`(세션 가격대 캐시 `sessions.py`, Decimal 모델 `model.py`, 불변 등록부 `registry.py`, 사후 판정·walk-forward 평가·shadow audit `evaluation.py`, 카드 검사 `check.py`, 연결·명령 `service.py`, 연구 기준 parameter·판정 기준·평가 계획 예시 `config/`). `POST /v1/screening/checks/off_exchange_structure`(`services/api/screening_structure_routes.py`), `screening_check.check`에 `off_exchange_structure`, 계약 `ScreeningOffExchangeStructureResult`. 저장은 `SIW_DATA_DIR/screening_structure.sqlite3`(캐시·등록부)와 `screening.sqlite3`(카드).
 - **확인:** `tests/screening/test_structure_model.py`(gate·연구 점수 분리·결정론·세션 부족은 UNKNOWN·분할·기준 가격 누출·sub-penny), `test_structure_registry.py`(세션 읽기·캐시 해시·등록부 불변·승인 증거·사후 판정 원래 구간·label 시각·walk-forward split·shadow 20세션), `test_structure_api.py`(저장·연구 점수 미노출·분할 차단·대기 후 이어 받기·계약 거절), 계약 fixture 유효·무효 각 1개.
 - **미확인:** 실제 Alpaca 키로 20세션 받기, Alpaca 일봉이 정규장만인지, 실제 평가 데이터셋과 승인. 패널 "가격 구조" 열은 S1 세션이 붙인다([회신 #SIW-stress-1]). 희석 스트레스 설계안은 아직 받지 않았다.
+
+## 오늘의 후보 패널에 B·C·D·가격 구조 열과 차트 표시(ADR 0052 §7) — 2026-11-09
+
+- **변경:** 뉴스·장외 체결·가격 구조 열과 펼쳐 보기, 검사 결과 가격선을 차트에 그리기(기본 꺼짐), 희석 0개 = "모름" 문구. 후보 목록 계약에 `off_exchange_structure` 추가(빠져 있어 조회가 실패하던 버그).
+- **검증:** `./scripts/verify.sh` 통과(pytest 1259, Vitest 410). 새 UI 테스트 2개, 새 계약 시험 1개(고치기 전 실패 확인).
+- **미확인:** 실제 API·데스크톱 앱에서 열과 차트 선 확인(SIW API 재시작 필요), 분할 조정 차트에서 희석 가격선 위치.
