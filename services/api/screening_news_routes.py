@@ -1,8 +1,9 @@
 """Screening check B — news catalysts (ADR 0052 §3): `POST /v1/screening/checks/news`.
 
-Reads Alpaca News headlines and summaries known by the cutoff, tags them with the keyword
-rules and stores one `screening_check` in screening.sqlite3. It places no order and changes
-no entry condition. The session window and cutoff follow the entry check (S1).
+Reads the news feeds (Alpaca News, MarketNewsAPI, Finnhub) up to the cutoff, tags the
+articles with the keyword rules and stores one `screening_check` in screening.sqlite3. It
+places no order and changes no entry condition. The session window and cutoff follow the
+entry check (S1).
 """
 
 from __future__ import annotations
@@ -82,7 +83,7 @@ def register_screening_news_routes(
         instrument_id = str(listing["instrument"]["instrument_id"])
         now = clock()
         cutoff = min(now, window.post_close_utc)
-        outcome = news_check(sources.alpaca_news(), instrument_id, cutoff, body.lookback_hours)
+        outcome = news_check(sources.news_feeds(), instrument_id, cutoff, body.lookback_hours)
         document = {
             "kind": "screening_check",
             "schema_version": "0.1",

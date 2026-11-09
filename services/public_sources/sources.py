@@ -8,11 +8,14 @@ from pathlib import Path
 
 import httpx
 
-from services.public_sources import alpaca_news, finra, sec
+from services.public_sources import alpaca_news, finnhub_news, finra, marketnews, sec
 from services.public_sources.alpaca_news import AlpacaNews, AlpacaNewsCredential
 from services.public_sources.cache import PublicSourceCache
+from services.public_sources.finnhub_news import FinnhubCredential, FinnhubNews
 from services.public_sources.finra import Finra, FinraCredential, TokenHolder
 from services.public_sources.http import RateLimiter
+from services.public_sources.marketnews import MarketNews, MarketNewsCredential
+from services.public_sources.news_common import NewsFeed
 from services.public_sources.sec import SecEdgar
 from services.public_sources.shared_sec import shared_sec_files
 
@@ -29,6 +32,10 @@ class PublicSources:
         finra_limiter: RateLimiter | None = None,
         alpaca_credential: Callable[[], AlpacaNewsCredential | None] = lambda: None,
         news_limiter: RateLimiter | None = None,
+        finnhub_credential: Callable[[], FinnhubCredential | None] = lambda: None,
+        marketnews_credential: Callable[[], MarketNewsCredential | None] = lambda: None,
+        finnhub_limiter: RateLimiter | None = None,
+        marketnews_limiter: RateLimiter | None = None,
     ) -> None:
         self.cache = PublicSourceCache(path, clock)
         self._user_agent = user_agent
@@ -39,6 +46,10 @@ class PublicSources:
         self._tokens = TokenHolder()
         self._alpaca_credential = alpaca_credential
         self._news_limiter = news_limiter or RateLimiter(alpaca_news.REQUEST_INTERVAL)
+        self._finnhub_credential = finnhub_credential
+        self._marketnews_credential = marketnews_credential
+        self._finnhub_limiter = finnhub_limiter or RateLimiter(finnhub_news.REQUEST_INTERVAL)
+        self._marketnews_limiter = marketnews_limiter or RateLimiter(marketnews.REQUEST_INTERVAL)
 
     def sec(self) -> SecEdgar:
         return SecEdgar(
@@ -56,3 +67,17 @@ class PublicSources:
 
     def alpaca_news(self) -> AlpacaNews:
         return AlpacaNews(self.cache, self._alpaca_credential(), self._client, self._news_limiter)
+
+    def finnhub_news(self) -> FinnhubNews:
+        return FinnhubNews(
+            self.cache, self._finnhub_credential(), self._client, self._finnhub_limiter
+        )
+
+    def marketnews(self) -> MarketNews:
+        return MarketNews(
+            self.cache, self._marketnews_credential(), self._client, self._marketnews_limiter
+        )
+
+    def news_feeds(self) -> list[NewsFeed]:
+        """Every news feed, in a fixed order; a feed without a key is still listed."""
+        return [self.alpaca_news(), self.marketnews(), self.finnhub_news()]

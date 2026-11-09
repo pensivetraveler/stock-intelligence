@@ -634,6 +634,8 @@ export interface CredentialSummary {
     | "kiwoom"
     | "meritz"
     | "finra"
+    | "marketnewsapi"
+    | "finnhub"
     | "ecos"
     | "anthropic";
   label: string;
@@ -669,6 +671,8 @@ export interface CredentialListResponse {
       | "kiwoom"
       | "meritz"
       | "finra"
+      | "marketnewsapi"
+      | "finnhub"
       | "ecos"
       | "anthropic";
     display_name: string;

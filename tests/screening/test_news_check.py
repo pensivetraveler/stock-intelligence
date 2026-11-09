@@ -145,7 +145,7 @@ def envelope(
 
 
 def run(sources: PublicSources, cutoff: datetime = CUTOFF, **kwargs: Any) -> dict[str, Any]:
-    document = envelope(news_check(sources.alpaca_news(), ABCD, cutoff, **kwargs), cutoff)
+    document = envelope(news_check([sources.alpaca_news()], ABCD, cutoff, **kwargs), cutoff)
     validate_document(document)
     return document
 
@@ -299,14 +299,14 @@ def test_text_edited_after_the_cutoff_is_flagged(tmp_path: Path, clock: Clock) -
 def test_future_cutoff_is_refused(tmp_path: Path, clock: Clock) -> None:
     with pytest.raises(ValueError, match="future"):
         news_check(
-            sources_for(tmp_path, Upstream(), clock).alpaca_news(), ABCD, NOW + timedelta(hours=1)
+            [sources_for(tmp_path, Upstream(), clock).alpaca_news()], ABCD, NOW + timedelta(hours=1)
         )
 
 
 def test_naive_cutoff_is_refused(tmp_path: Path, clock: Clock) -> None:
     with pytest.raises(ValueError, match="time zone"):
         news_check(
-            sources_for(tmp_path, Upstream(), clock).alpaca_news(), ABCD, datetime(2026, 1, 1)
+            [sources_for(tmp_path, Upstream(), clock).alpaca_news()], ABCD, datetime(2026, 1, 1)
         )
 
 
@@ -328,12 +328,14 @@ def test_material_result_lists_categories_facts_and_versions(tmp_path: Path, clo
     assert facts[("news_count", None)]["value"] == "3"
     assert facts[("material_news_count", None)]["value"] == "2"
     assert facts[("catalyst_count", "offering")]["value"] == "1"
-    assert facts[("latest_catalyst_age_hours", "104")]["value"] == "1.8"
+    assert facts[("latest_catalyst_age_hours", "alpaca-news/ABCD:104")]["value"] == "1.8"
     assert document["versions"] == {
         "news_rules": "news-rules-1",
         "news_rules_sha256": rules_checksum(),
-        "parser": "alpaca-news-1",
+        "parser.alpaca-news": "alpaca-news-1",
     }
+    assert facts[("feed_article_count", "alpaca-news")]["value"] == "3"
+    assert document["result"]["feeds"][0]["state"] == "ok"
 
 
 def test_no_news_and_no_material(tmp_path: Path, clock: Clock) -> None:
@@ -350,7 +352,8 @@ def test_missing_key_sends_nothing(tmp_path: Path, clock: Clock) -> None:
     upstream = Upstream()
     document = run(sources_for(tmp_path, upstream, clock, key=None))
     assert document["status"] == "error"
-    assert document["result"]["reason"] == "alpaca_credential_missing"
+    assert document["result"]["reason"] == "news_credentials_missing"
+    assert document["result"]["feeds"][0]["reason"] == "alpaca_credential_missing"
     assert upstream.requests == []
 
 
@@ -378,7 +381,7 @@ def test_failed_refresh_uses_the_cache_and_says_from_when(tmp_path: Path, clock:
 def test_korean_listing_is_unsupported(tmp_path: Path, clock: Clock) -> None:
     upstream = Upstream()
     outcome = news_check(
-        sources_for(tmp_path, upstream, clock).alpaca_news(), "kr:005930:xkrx:2026", CUTOFF
+        [sources_for(tmp_path, upstream, clock).alpaca_news()], "kr:005930:xkrx:2026", CUTOFF
     )
     validate_document(envelope(outcome, CUTOFF, "kr:005930:xkrx:2026"))
     assert outcome["status"] == "unsupported"

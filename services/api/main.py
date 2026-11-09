@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypeVar
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -148,7 +148,9 @@ from services.market_data.toss_session import (
 from services.market_data.toss_stream import Connect, RealtimeHub, default_connect
 from services.paper_trading.store import PaperOrderStore
 from services.public_sources.alpaca_news import AlpacaNewsCredential
+from services.public_sources.finnhub_news import FinnhubCredential
 from services.public_sources.finra import FinraCredential
+from services.public_sources.marketnews import MarketNewsCredential
 from services.public_sources.sources import PublicSources
 from services.review.claude import ask_for_report, convert_principles
 from services.review.conversation import call_claude
@@ -596,6 +598,12 @@ class _LazyPublicSources:
                         user_agent=lambda: os.getenv("SIW_SEC_USER_AGENT"),
                         finra_credential=lambda: _finra_credential(self._credentials()),
                         alpaca_credential=lambda: _alpaca_news_credential(self._credentials()),
+                        finnhub_credential=lambda: _single_key(
+                            self._credentials(), "finnhub", FinnhubCredential
+                        ),
+                        marketnews_credential=lambda: _single_key(
+                            self._credentials(), "marketnewsapi", MarketNewsCredential
+                        ),
                     )
             return self._sources
 
@@ -620,6 +628,21 @@ def _alpaca_news_credential(credentials: CredentialStore | None) -> AlpacaNewsCr
         return None
     secrets = credentials.secrets(record)
     return AlpacaNewsCredential(secrets["api_key_id"], secrets["api_secret_key"])
+
+
+T = TypeVar("T")
+
+
+def _single_key(
+    credentials: CredentialStore | None, provider: str, make: Callable[[str], T]
+) -> T | None:
+    """The first enabled key of a one-field provider (`api_key`) on the Keys screen."""
+    if credentials is None:
+        return None
+    for record in credentials.list(provider):
+        if record.enabled:
+            return make(credentials.secrets(record)["api_key"])
+    return None
 
 
 def _claude_key(credentials: CredentialStore | None) -> str | None:

@@ -2717,3 +2717,5 @@
 - **안 한 것:** "오늘의 후보" 패널의 뉴스 열(S1이 붙임), LLM 분류(모델 배정 상담 전), 재료별 조건 조정 표(S5), 실시간 뉴스 WebSocket.
 - **시험:** `tests/screening/test_news_check.py`(`httpx.MockTransport`만, 지어낸 기사): 요청 인자·키 헤더, 본문 미저장, 쪽 넘김, 재다운로드 규칙, cutoff 뒤 기사 제외, 판 누적과 cutoff 시점 판 선택, 수정본 표시, 키 없음·403·오프라인 캐시, 국내 종목, 봉투 계약 검증, 규칙 분류, 경로(저장·지난 세션 cutoff·잘못된 종목·날짜).
 - **미확인:** 뉴스 포함 요금제, 뉴스 전용 과거 기간·한도, `created_at`이 게시 시각인지, 수정 때 `updated_at` 변화, Benzinga 별도 조건, 낱말 목록의 실제 적중률(실제 급등주 기사로 재 보지 않았다).
+- **추가(같은 날, 사용자 결정 "MarketNewsAPI, Finnhub 모두 사용"):** 원본 보도자료를 모으려고 두 공급원을 별도 출처로 붙였다. `services/public_sources/marketnews.py`(보도자료 본문 보관, 비미국 거래소 전용 기사 제외, 무료 지연 경고), `services/public_sources/finnhub_news.py`(날짜 단위 조회, cutoff는 받은 뒤 적용), 공통 틀 `news_common.py`, Keys 화면 항목 `marketnewsapi`·`finnhub`(키 공급자 계약 갱신), `PublicSourceCache.delete_source`(Finnhub 구독 종료 시 삭제 의무). 뉴스 검사는 세 출처를 모두 읽고 출처별 상태(`result.feeds`)를 적으며, 같은 제목은 `same_headline_as`로만 가리킨다. 시험 `tests/screening/test_news_feeds.py`.
+- **미확인(두 공급원):** 키 발급 전이라 실제 호출 없음. 응답 모양·소형주 적중·Finnhub 날짜의 시간대·쪽 넘김 상한·MarketNewsAPI 거래소 코드 목록. `screening.sqlite3` 결과 문서 안 Finnhub 제목 삭제 방법.
