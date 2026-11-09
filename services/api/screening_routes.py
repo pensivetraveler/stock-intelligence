@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,7 @@ from services.screening.dilution import (
     follow,
 )
 from services.screening.entry import entry_check
+from services.screening.momentum import momentum_check
 from services.screening.store import CheckNotFoundError, ScreeningStore
 
 CONDITION_NAME = "SIW_당일급등주"
@@ -52,6 +53,11 @@ class EntryCheckRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=10)
     strategy_id: str = Field(min_length=1, max_length=200)
     strategy_version: int | None = Field(default=None, ge=1)
+    session_date: date | None = None
+
+
+class MomentumCheckRequest(BaseModel):
+    symbol: str = Field(min_length=1, max_length=10)
     session_date: date | None = None
 
 
@@ -102,13 +108,25 @@ def register_screening_routes(
     def bad_date(request: Request) -> JSONResponse:
         return error_response(request, 422, "not_a_session", "that date has no US session")
 
-    def candidates_document(window: Any) -> dict[str, Any]:
+    def candidates_document(window: Any, as_of: datetime | None = None) -> dict[str, Any]:
         screening, root = store(), data_dir()
         assert screening is not None and root is not None
         now = clock()
         cutoff = min(now, window.post_close_utc)
+        if as_of is not None:
+            cutoff = min(cutoff, as_of)
         watched = read_watched(watch_path(root), window, cutoff, CONDITION_NAME)
         latest = screening.latest(window.session_date)
+        for found in latest.values():
+            if "momentum" in found:
+                # The table shows the numbers themselves, not only a status.
+                momentum = screening.check(found["momentum"]["check_id"]).get("result", {})
+                found["momentum"]["summary"] = {
+                    "price": (momentum.get("price") or {}).get("value"),
+                    "change_percent": momentum.get("change_percent"),
+                    "dollar_volume_estimate": momentum.get("dollar_volume_estimate"),
+                    "entry_time_known": bool(momentum.get("entry_time_known", False)),
+                }
         rows: dict[str, dict[str, Any]] = {}
         for item in watched.symbols:
             rows[item.symbol] = {
@@ -117,6 +135,10 @@ def register_screening_routes(
                 "first_seen_utc": item.first_seen_utc,
                 "in_list": item.in_list,
                 "kiwoom_exchange": item.kiwoom_exchange,
+                "first_seen_how": item.first_seen_how,
+                "entered_after_utc": item.entered_after_utc,
+                "enter_count": item.enter_count,
+                "seconds_in_list": round(item.seconds_in_list, 1),
             }
         for symbol, added in screening.manual(window.session_date):
             if symbol in rows:
@@ -128,6 +150,10 @@ def register_screening_routes(
                     "first_seen_utc": added,
                     "in_list": None,
                     "kiwoom_exchange": None,
+                    "first_seen_how": "manual",
+                    "entered_after_utc": None,
+                    "enter_count": None,
+                    "seconds_in_list": None,
                 }
         coverage = watched.coverage
         return {
@@ -135,6 +161,10 @@ def register_screening_routes(
             "schema_version": "0.1",
             "session_date": window.session_date.isoformat(),
             "cutoff_utc": utc_text(cutoff),
+            # Selection mostly ends by noon in New York (ADR 0054); the panel can cut there.
+            "selection_noon_utc": utc_text(
+                datetime.combine(window.session_date, time(12, 0), NEW_YORK)
+            ),
             "condition_name": CONDITION_NAME,
             "recorded": watched.recorded,
             "watch_coverage": {
@@ -143,6 +173,15 @@ def register_screening_routes(
                 "first_started_utc": coverage.first_started_utc,
                 "last_heard_utc": coverage.last_heard_utc,
                 "open_now": coverage.open_now,
+                "gaps": [
+                    {
+                        "from_utc": gap.from_utc,
+                        "to_utc": gap.to_utc,
+                        "reason": gap.reason,
+                        "previous_end": gap.previous_end,
+                    }
+                    for gap in coverage.gaps
+                ],
             },
             "candidates": [
                 {
@@ -159,14 +198,21 @@ def register_screening_routes(
         return JSONResponse(content=document)
 
     @application.get("/v1/screening/candidates", response_model=None)
-    def candidates(request: Request, session_date: date | None = None) -> Response:
-        """Today's candidates (or a past session's) with the latest result of each check."""
+    def candidates(
+        request: Request, session_date: date | None = None, as_of: datetime | None = None
+    ) -> Response:
+        """Today's candidates (or a past session's) with the latest result of each check.
+        `as_of` cuts the record earlier than now, such as at noon New York time."""
         if store() is None or data_dir() is None:
             return unavailable(request)
+        if as_of is not None and as_of.utcoffset() is None:
+            return error_response(
+                request, 422, "invalid_as_of", "as_of needs a time zone, such as ...Z"
+            )
         window = session_window(session_date)
         if window is None:
             return bad_date(request)
-        return respond(candidates_document(window))
+        return respond(candidates_document(window, as_of))
 
     @application.post("/v1/screening/candidates", response_model=None)
     def add_candidate(request: Request, body: CandidateRequest) -> Response:
@@ -228,6 +274,64 @@ def register_screening_routes(
             "created_at_utc": utc_text(now),
             # A later run for an earlier time sees stored data, not what was live then.
             "after_the_fact": now > window.post_close_utc,
+            **outcome,
+        }
+        validate_document({**document, "check_id": 0})
+        return respond(screening.add_check(document))
+
+    @application.post("/v1/screening/checks/momentum", response_model=None)
+    def run_momentum_check(request: Request, body: MomentumCheckRequest) -> Response:
+        """The market before a symbol entered the condition list (ADR 0055): price, change
+        from the previous close and dollar volume from the bars closed by then."""
+        screening, root = store(), data_dir()
+        if screening is None or root is None:
+            return unavailable(request)
+        symbol = body.symbol.strip().upper()
+        if not SYMBOL.fullmatch(symbol):
+            return error_response(request, 422, "invalid_symbol", "a US ticker such as AAPL")
+        window = session_window(body.session_date)
+        if window is None:
+            return bad_date(request)
+        listing = listing_for(symbol)
+        if listing is None:
+            return error_response(
+                request, 422, "unknown_symbol", f"{symbol} is not in the app's symbol list"
+            )
+        now = clock()
+        watched = read_watched(
+            watch_path(root), window, min(now, window.post_close_utc), CONDITION_NAME
+        )
+        seen = next((item for item in watched.symbols if item.symbol == symbol), None)
+        if seen is None:
+            return error_response(
+                request,
+                422,
+                "not_a_condition_candidate",
+                f"{symbol} is not in the condition record of {window.session_date.isoformat()}",
+            )
+        instrument_id = str(listing["instrument"]["instrument_id"])
+        try:
+            outcome = momentum_check(instrument_id, window, seen, get_bars(), calendar)
+        except MarketDataError as exc:
+            outcome = {
+                "status": "error",
+                "result": {"reason": str(exc)[:300]},
+                "versions": {},
+                "warnings": [],
+                "sources": {},
+            }
+        document = {
+            "kind": "screening_check",
+            "schema_version": "0.1",
+            "check": "momentum",
+            "session_date": window.session_date.isoformat(),
+            "symbol": symbol,
+            "instrument_id": instrument_id,
+            # The values describe the minutes before SIW first saw the symbol.
+            "cutoff_utc": seen.first_seen_utc,
+            "created_at_utc": utc_text(now),
+            "after_the_fact": now > window.post_close_utc,
+            "strategy": None,
             **outcome,
         }
         validate_document({**document, "check_id": 0})

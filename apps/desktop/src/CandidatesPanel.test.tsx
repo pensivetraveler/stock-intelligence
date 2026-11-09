@@ -33,6 +33,7 @@ function candidates(
     schema_version: "0.1",
     session_date: "2026-11-09",
     cutoff_utc: "2026-11-09T15:30:00.000Z",
+    selection_noon_utc: "2026-11-09T17:00:00.000Z",
     condition_name: "SIW_당일급등주",
     recorded: true,
     watch_coverage: {
@@ -41,6 +42,7 @@ function candidates(
       first_started_utc: "2026-11-09T09:01:00.000Z",
       last_heard_utc: "2026-11-09T15:30:00.000Z",
       open_now: true,
+      gaps: [],
     },
     candidates: [
       {
@@ -49,6 +51,10 @@ function candidates(
         first_seen_utc: "2026-11-09T09:01:00.000Z",
         in_list: true,
         kiwoom_exchange: "ND",
+        first_seen_how: "first_list",
+        entered_after_utc: "2026-11-09T09:00:00.000Z",
+        enter_count: 0,
+        seconds_in_list: 23_340,
         listing,
         checks: entry ? { entry } : {},
       },
@@ -58,6 +64,10 @@ function candidates(
         first_seen_utc: "2026-11-09T09:05:00.000Z",
         in_list: false,
         kiwoom_exchange: "ND",
+        first_seen_how: "enter_event",
+        entered_after_utc: null,
+        enter_count: 16,
+        seconds_in_list: 820,
         listing: null,
         checks: {},
       },
@@ -111,6 +121,7 @@ function unused(keep: ApiKey[] = []): Partial<ScreeningApi> {
     "refreshNewsCheck",
     "runOffExchangeCheck",
     "runStructureCheck",
+    "runMomentumCheck",
   ];
   return Object.fromEntries(
     keys.filter((key) => !keep.includes(key)).map((key) => [key, vi.fn()]),
@@ -490,5 +501,108 @@ describe("CandidatesPanel", () => {
     );
     await screen.findByText(/4\/20 sessions read/);
     expect(api.runStructureCheck).toHaveBeenCalledTimes(2);
+  });
+  it("shows record gaps, unknown entry times, the noon cut and values at entry", async () => {
+    let measured = false;
+    const momentum = {
+      kind: "screening_check",
+      check_id: 9,
+      check: "momentum",
+      symbol: "AAPL",
+      status: "ok",
+      strategy: null,
+      result: {
+        first_seen_utc: "2026-11-09T09:01:00.000Z",
+        entry_time_known: false,
+        bars_until_utc: "2026-11-09T09:01:00.000Z",
+        price: {
+          value: "5",
+          bar_end_utc: "2026-11-09T09:01:00Z",
+          session: "pre",
+        },
+        previous_close: { value: "4", session_date: "2026-11-06" },
+        change_percent: "25.00",
+        volume: "2000",
+        dollar_volume_estimate: "1250000.00",
+        missing_minutes: {},
+        missing: [],
+      },
+      sources: { bars: { source_feed_scope: "alpaca-sip" } },
+      warnings: ["Rebuilt from bars fetched when the check ran."],
+    } as unknown as ScreeningCheck;
+    const document = () => {
+      const found = candidates();
+      found.watch_coverage.gaps = [
+        {
+          from_utc: "2026-11-09T13:40:47.146Z",
+          to_utc: "2026-11-09T15:30:00.000Z",
+          reason: "not_recording",
+          previous_end: "stopped",
+        },
+      ];
+      found.candidates[1].first_seen_utc = "2026-11-09T17:05:00.000Z";
+      if (measured)
+        found.candidates[0].checks = {
+          momentum: {
+            check_id: 9,
+            status: "ok",
+            created_at_utc: "2026-11-09T15:31:00Z",
+            summary: {
+              price: "5",
+              change_percent: "25.00",
+              dollar_volume_estimate: "1250000.00",
+              entry_time_known: false,
+            },
+          },
+        };
+      return found;
+    };
+    const api = {
+      candidates: vi.fn(() => Promise.resolve(document())),
+      addCandidate: vi.fn(),
+      runEntryCheck: vi.fn(),
+      check: vi.fn(() => Promise.resolve(momentum)),
+      ...unused(["runMomentumCheck"]),
+      runMomentumCheck: vi.fn(() => {
+        measured = true;
+        return Promise.resolve(momentum);
+      }),
+    } as ScreeningApi;
+    render(
+      <CandidatesPanel
+        api={api}
+        strategies={() => Promise.resolve([])}
+        onPick={vi.fn()}
+      />,
+    );
+    expect(
+      await screen.findByText(/08:40–10:30 not recording \(stopped\)/),
+    ).toBeTruthy();
+    // AAPL was in the opening list: only a range, not an entry time.
+    expect(screen.getByText("04:00–04:01?")).toBeTruthy();
+    expect(screen.getByText("16× · 14 min")).toBeTruthy();
+    expect(screen.getByText("Entered after noon (New York)")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Values at entry for all" }),
+    );
+    await waitFor(() =>
+      expect(api.runMomentumCheck).toHaveBeenCalledWith("AAPL", "2026-11-09"),
+    );
+    // ZZZQ is not chartable, so it is not measured.
+    expect(api.runMomentumCheck).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "AAPL At entry (Alpaca)" }),
+    );
+    expect(await screen.findByText(/The entry time is not known/)).toBeTruthy();
+    expect(screen.getByText("$1.3M")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("Only up to noon (12:00 New York)"));
+    await waitFor(() =>
+      expect(api.candidates).toHaveBeenLastCalledWith(
+        undefined,
+        "2026-11-09T17:00:00.000Z",
+      ),
+    );
   });
 });

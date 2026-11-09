@@ -8,7 +8,8 @@ import { callForKind, type ApiTarget } from "./market-api";
  * places an order or approves a plan.
  */
 export interface ScreeningApi {
-  candidates(sessionDate?: string): Promise<ScreeningCandidates>;
+  /** `asOf` (UTC) cuts the condition record earlier than now, such as at noon. */
+  candidates(sessionDate?: string, asOf?: string): Promise<ScreeningCandidates>;
   addCandidate(
     symbol: string,
     sessionDate?: string,
@@ -16,6 +17,11 @@ export interface ScreeningApi {
   runEntryCheck(
     symbol: string,
     strategyId: string,
+    sessionDate?: string,
+  ): Promise<ScreeningCheck>;
+  /** The market before a symbol entered the condition list (ADR 0055). */
+  runMomentumCheck(
+    symbol: string,
     sessionDate?: string,
   ): Promise<ScreeningCheck>;
   /** Check C: rules-only unless `llm` (kept for the few candidates the user picks). */
@@ -52,10 +58,12 @@ export function createScreeningApi(
   const dated = (sessionDate?: string) =>
     sessionDate ? { session_date: sessionDate } : {};
   return {
-    candidates(sessionDate) {
-      const query = sessionDate
-        ? `?${new URLSearchParams({ session_date: sessionDate }).toString()}`
-        : "";
+    candidates(sessionDate, asOf) {
+      const params = new URLSearchParams();
+      if (sessionDate) params.set("session_date", sessionDate);
+      if (asOf) params.set("as_of", asOf);
+      const text = params.toString();
+      const query = text ? `?${text}` : "";
       return callForKind<ScreeningCandidates>(
         target,
         `/v1/screening/candidates${query}`,
@@ -79,6 +87,14 @@ export function createScreeningApi(
           method: "POST",
           body: { symbol, strategy_id: strategyId, ...dated(sessionDate) },
         },
+      );
+    },
+    runMomentumCheck(symbol, sessionDate) {
+      return callForKind<ScreeningCheck>(
+        target,
+        "/v1/screening/checks/momentum",
+        "screening_check",
+        { method: "POST", body: { symbol, ...dated(sessionDate) } },
       );
     },
     runDilutionCheck(symbol, llm, sessionDate) {

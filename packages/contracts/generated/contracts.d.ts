@@ -7584,7 +7584,7 @@ export interface BrokerConditionResult {
   }[];
 }
 /**
- * ADR 0052 S1: a US session's screening candidates — symbols the realtime condition record (ADR 0051) listed or added before the cutoff, plus symbols the user added — with the latest result of each check. Not an order, not a plan approval.
+ * ADR 0052 S1: a US session's screening candidates — symbols the realtime condition record (ADR 0051) listed or added before the cutoff, plus symbols the user added — with the latest result of each check. ADR 0055 (U0) adds the record's gaps, how each entry time is known, and how often a symbol entered and how long it stayed. Not an order, not a plan approval.
  */
 export interface ScreeningCandidates {
   kind: "screening_candidates";
@@ -7597,6 +7597,10 @@ export interface ScreeningCandidates {
    * Only events SIW received before this time count.
    */
   cutoff_utc: string;
+  /**
+   * 12:00 New York time of the session date: selection mostly ends by then (ADR 0054).
+   */
+  selection_noon_utc: string;
   condition_name: string;
   /**
    * False when there is no condition record at all.
@@ -7611,6 +7615,24 @@ export interface ScreeningCandidates {
     first_started_utc: null | UtcTimestamp;
     last_heard_utc: null | UtcTimestamp;
     open_now: boolean;
+    /**
+     * Stretches of the window before the cutoff that no watch covered (pauses over 5 s). A symbol could enter or leave there unseen; this is not a quiet market.
+     *
+     * @maxItems 500
+     */
+    gaps: {
+      from_utc: UtcTimestamp;
+      to_utc: UtcTimestamp;
+      reason:
+        | "before_first_watch"
+        | "between_watches"
+        | "not_recording"
+        | "no_record";
+      /**
+       * Why the watch before the gap ended (renewed, stopped, interrupted, unclosed, an error).
+       */
+      previous_end: string | null;
+    }[];
   };
   /**
    * @maxItems 2000
@@ -7665,7 +7687,39 @@ export interface ScreeningCandidates {
         status: string;
         created_at_utc: UtcTimestamp;
       };
+      momentum?: {
+        check_id: number;
+        status: string;
+        created_at_utc: UtcTimestamp;
+        summary?: {
+          price: null | string;
+          change_percent: null | string;
+          dollar_volume_estimate: null | string;
+          entry_time_known: boolean;
+        };
+      };
     };
+    /**
+     * enter_event: an enter event, so first_seen_utc is the entry time as SIW received it. The list values: first seen in a watch's opening list, so it entered at an unknown time after entered_after_utc. manual: added by the user.
+     */
+    first_seen_how:
+      | "enter_event"
+      | "first_list"
+      | "list_after_gap"
+      | "list_on_renewal"
+      | "manual";
+    /**
+     * Earliest time the entry could have happened when it is not known; null otherwise.
+     */
+    entered_after_utc: null | UtcTimestamp;
+    /**
+     * Enter events before the cutoff (opening lists not counted). Many in a short time is a symbol flickering at the condition's threshold.
+     */
+    enter_count: number | null;
+    /**
+     * Time in the condition's list within covered stretches before the cutoff.
+     */
+    seconds_in_list: number | null;
   }[];
 }
 /**
@@ -7676,7 +7730,12 @@ export interface ScreeningCheck {
   schema_version: SchemaVersion;
   check_id: number;
   check:
-    "entry" | "news" | "off_exchange" | "dilution" | "off_exchange_structure";
+    | "entry"
+    | "news"
+    | "off_exchange"
+    | "dilution"
+    | "off_exchange_structure"
+    | "momentum";
   session_date: string;
   symbol: string;
   instrument_id: Identifier;
@@ -7687,7 +7746,7 @@ export interface ScreeningCheck {
    */
   after_the_fact: boolean;
   /**
-   * passed/failed: check A. material/no_material: check B. ok/incomplete: checks C, D and the off-exchange structure (ADR 0053). The rest: any check.
+   * passed/failed: check A. material/no_material: check B. ok/incomplete: checks C, D and the off-exchange structure (ADR 0053). The rest: any check. The momentum check (ADR 0055): ok, incomplete (minutes may still arrive), no_data, error.
    */
   status:
     | "passed"
