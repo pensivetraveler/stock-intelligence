@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypeVar
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -37,6 +37,7 @@ from services.api.paper_routes import register_paper_routes
 from services.api.parent_watch import parent_pid_from_env, start_parent_watch
 from services.api.review_routes import register_review_routes
 from services.api.screener_routes import register_screener_routes
+from services.api.screening_news_routes import register_screening_news_routes
 from services.api.screening_off_exchange_routes import (
     finra_review_from,
     register_screening_off_exchange_routes,
@@ -150,7 +151,10 @@ from services.market_data.toss_session import (
 )
 from services.market_data.toss_stream import Connect, RealtimeHub, default_connect
 from services.paper_trading.store import PaperOrderStore
+from services.public_sources.alpaca_news import AlpacaNewsCredential
+from services.public_sources.finnhub_news import FinnhubCredential
 from services.public_sources.finra import FinraCredential
+from services.public_sources.marketnews import MarketNewsCredential
 from services.public_sources.sources import PublicSources
 from services.review.claude import ask_for_report, convert_principles
 from services.review.conversation import call_claude
@@ -599,6 +603,13 @@ class _LazyPublicSources:
                         self._clock,
                         user_agent=lambda: os.getenv("SIW_SEC_USER_AGENT"),
                         finra_credential=lambda: _finra_credential(self._credentials()),
+                        alpaca_credential=lambda: _alpaca_news_credential(self._credentials()),
+                        finnhub_credential=lambda: _single_key(
+                            self._credentials(), "finnhub", FinnhubCredential
+                        ),
+                        marketnews_credential=lambda: _single_key(
+                            self._credentials(), "marketnewsapi", MarketNewsCredential
+                        ),
                     )
             return self._sources
 
@@ -611,6 +622,32 @@ def _finra_credential(credentials: CredentialStore | None) -> FinraCredential | 
         if record.enabled:
             secrets = credentials.secrets(record)
             return FinraCredential(secrets["client_id"], secrets["client_secret"])
+    return None
+
+
+def _alpaca_news_credential(credentials: CredentialStore | None) -> AlpacaNewsCredential | None:
+    """The first enabled Alpaca key on the Keys screen, as for day-market bars (ADR 0052)."""
+    if credentials is None:
+        return None
+    record = next((item for item in credentials.list("alpaca") if item.enabled), None)
+    if record is None:
+        return None
+    secrets = credentials.secrets(record)
+    return AlpacaNewsCredential(secrets["api_key_id"], secrets["api_secret_key"])
+
+
+T = TypeVar("T")
+
+
+def _single_key(
+    credentials: CredentialStore | None, provider: str, make: Callable[[str], T]
+) -> T | None:
+    """The first enabled key of a one-field provider (`api_key`) on the Keys screen."""
+    if credentials is None:
+        return None
+    for record in credentials.list(provider):
+        if record.enabled:
+            return make(credentials.secrets(record)["api_key"])
     return None
 
 
@@ -1786,6 +1823,14 @@ def create_app(
         finra_review=finra_review_from(
             sources.get, lambda: MarketBarsService(provider.get()).get_bars
         ),
+        error_response=_error_response,
+        clock=clock,
+    )
+    register_screening_news_routes(
+        application,
+        store=screening.get,
+        listing_for=listing_for,
+        news=sources.get,
         error_response=_error_response,
         clock=clock,
     )
