@@ -100,7 +100,7 @@ import {
   premarketRange,
   splitFactors,
 } from "./premarket-high";
-import { PriceChart } from "./PriceChart";
+import { PriceChart, type ChartPriceLevel } from "./PriceChart";
 import { TradeEntry } from "./TradeEntry";
 import { sessionRange, type ChartConfig } from "./workspace-state";
 
@@ -152,6 +152,8 @@ interface ChartPanelProps {
   instruments: InstrumentListing[];
   /** False until the instrument list has loaded (or failed), so no request races it. */
   instrumentsReady?: boolean;
+  /** Screening price levels for this chart's instrument (ADR 0052 §7). */
+  priceLevels?: ChartPriceLevel[];
   sync: ChartSyncGroup;
   journal: {
     manual: ManualExecution[];
@@ -264,6 +266,7 @@ export function ChartPanel({
   config,
   instruments,
   instrumentsReady = true,
+  priceLevels,
   sync,
   journal,
   onJournalChange,
@@ -1550,6 +1553,7 @@ export function ChartPanel({
               dayMarket={dayMarketCandles}
               premarketBars={premarketShown}
               premarketLabel={t("chart.premarketLine")}
+              priceLevels={priceLevels}
               sync={sync}
               markers={chartMarkers}
               onCandleClick={selectCandle}

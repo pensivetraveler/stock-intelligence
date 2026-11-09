@@ -37,6 +37,14 @@ import { hasGraphics } from "./pine-drawings";
 import { PineGraphicsPrimitive } from "./pine-graphics";
 import type { PremarketBar } from "./premarket-high";
 
+/** A horizontal price line drawn on the candles, e.g. a screening check's level. */
+export interface ChartPriceLevel {
+  price: number;
+  title: string;
+  color: string;
+  style?: LineStyleName;
+}
+
 interface PriceChartProps {
   chartId: string;
   candles: CandlePoint[];
@@ -48,6 +56,8 @@ interface PriceChartProps {
   premarketBars?: PremarketBar[];
   /** Price-line title for the newest pre-market high. */
   premarketLabel?: string;
+  /** Price lines drawn on the candles (screening levels, ADR 0052 §7); off by default. */
+  priceLevels?: ChartPriceLevel[];
   sync: ChartSyncGroup;
   markers?: ChartMarker[];
   /** Called with the start time (epoch seconds) of the clicked candle. */
@@ -106,6 +116,8 @@ function nearestCandle(points: CandlePoint[], time: number): CandlePoint {
     : after;
 }
 
+const NO_LEVELS: ChartPriceLevel[] = [];
+
 const LINE_STYLE: Record<LineStyleName, LineStyle> = {
   solid: LineStyle.Solid,
   dashed: LineStyle.Dashed,
@@ -127,6 +139,7 @@ export function PriceChart({
   dayMarket = [],
   premarketBars = [],
   premarketLabel = "PM High",
+  priceLevels = NO_LEVELS,
   sync,
   markers = [],
   onCandleClick,
@@ -157,6 +170,8 @@ export function PriceChart({
   const premarketSeries = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const seeThroughDay = premarketBars.length > 0;
   const premarketLine = useRef<IPriceLine | null>(null);
+  const levelLines = useRef<IPriceLine[]>([]);
+  const levelSeries = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const applyingSyncedRange = useRef(false);
   const indicatorSeries = useRef<ISeriesApi<"Line" | "Histogram">[]>([]);
   // Pine drawings (ADR 0040), each attached to a series in its indicator's pane.
@@ -482,6 +497,25 @@ export function PriceChart({
       title: premarketLabel,
     });
   }, [premarketBars, premarketLabel, candles]);
+
+  useEffect(() => {
+    const series = candleSeries.current;
+    if (!series) return;
+    // Lines of a series the chart has since replaced went away with it.
+    if (levelSeries.current === series)
+      for (const line of levelLines.current) series.removePriceLine(line);
+    levelSeries.current = series;
+    levelLines.current = priceLevels.map((level) =>
+      series.createPriceLine({
+        price: level.price,
+        color: level.color,
+        lineWidth: 1,
+        lineStyle: LINE_STYLE[level.style ?? "dashed"],
+        axisLabelVisible: level.title !== "",
+        title: level.title,
+      }),
+    );
+  }, [priceLevels, chartId, sync]);
 
   useEffect(() => {
     chart.current?.applyOptions({

@@ -100,10 +100,27 @@ const check = {
   warnings: [],
 } as unknown as ScreeningCheck;
 
+type ApiKey = keyof ScreeningApi;
+
+/** Calls a test does not use: mocks, so the panel never reaches a network. */
+function unused(keep: ApiKey[] = []): Partial<ScreeningApi> {
+  const keys: ApiKey[] = [
+    "runDilutionCheck",
+    "refreshCheck",
+    "runNewsCheck",
+    "refreshNewsCheck",
+    "runOffExchangeCheck",
+    "runStructureCheck",
+  ];
+  return Object.fromEntries(
+    keys.filter((key) => !keep.includes(key)).map((key) => [key, vi.fn()]),
+  );
+}
+
 describe("CandidatesPanel", () => {
   it("checks entry rules for chartable candidates and shows why", async () => {
     let checked = false;
-    const api: ScreeningApi = {
+    const api = {
       candidates: vi.fn(() =>
         Promise.resolve(
           candidates(
@@ -123,9 +140,8 @@ describe("CandidatesPanel", () => {
         return Promise.resolve(check);
       }),
       check: vi.fn(() => Promise.resolve(check)),
-      runDilutionCheck: vi.fn(),
-      refreshCheck: vi.fn(),
-    };
+      ...unused(),
+    } as ScreeningApi;
     const onPick = vi.fn();
     render(
       <CandidatesPanel
@@ -160,14 +176,13 @@ describe("CandidatesPanel", () => {
 
   it("says when there is no condition record and adds a ticker", async () => {
     const empty = { ...candidates(), recorded: false, candidates: [] };
-    const api: ScreeningApi = {
+    const api = {
       candidates: vi.fn(() => Promise.resolve(empty)),
       addCandidate: vi.fn(() => Promise.resolve(candidates())),
       runEntryCheck: vi.fn(),
       check: vi.fn(),
-      runDilutionCheck: vi.fn(),
-      refreshCheck: vi.fn(),
-    };
+      ...unused(),
+    } as ScreeningApi;
     render(
       <CandidatesPanel
         api={api}
@@ -225,7 +240,7 @@ describe("CandidatesPanel", () => {
       warnings: [],
     } as unknown as ScreeningCheck;
     let done = false;
-    const api: ScreeningApi = {
+    const api = {
       candidates: vi.fn(() => {
         const found = candidates();
         if (done)
@@ -243,8 +258,8 @@ describe("CandidatesPanel", () => {
         done = true;
         return Promise.resolve(supply);
       }),
-      refreshCheck: vi.fn(),
-    };
+      ...unused(["runDilutionCheck"]),
+    } as ScreeningApi;
     render(
       <CandidatesPanel
         api={api}
@@ -265,7 +280,11 @@ describe("CandidatesPanel", () => {
       ),
     );
     expect(api.runDilutionCheck).toHaveBeenCalledTimes(1);
-    fireEvent.click(await screen.findByRole("button", { name: "partial" }));
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "AAPL Dilution supply: partial",
+      }),
+    );
     await screen.findByText(/totals are unknown, not zero/);
     expect(screen.getByText("?")).toBeTruthy();
     expect(
@@ -281,5 +300,195 @@ describe("CandidatesPanel", () => {
         "2026-11-09",
       ),
     );
+  });
+
+  it("says no securities from rules alone is unknown, not none", async () => {
+    const none = {
+      kind: "screening_check",
+      check_id: 11,
+      check: "dilution",
+      symbol: "AAPL",
+      instrument_id: "us:aapl:xnas:2026",
+      status: "incomplete",
+      result: {
+        llm: false,
+        incomplete_reasons: ["llm_disabled"],
+        securities: [],
+        capacity: [],
+      },
+      warnings: [],
+    } as unknown as ScreeningCheck;
+    const api = {
+      candidates: vi.fn(() => {
+        const found = candidates();
+        found.candidates[0].checks.dilution = {
+          check_id: 11,
+          status: "incomplete",
+          created_at_utc: "2026-11-09T15:31:00Z",
+        };
+        return Promise.resolve(found);
+      }),
+      addCandidate: vi.fn(),
+      runEntryCheck: vi.fn(),
+      check: vi.fn(() => Promise.resolve(none)),
+      ...unused(),
+    } as ScreeningApi;
+    render(
+      <CandidatesPanel
+        api={api}
+        strategies={() => Promise.resolve([])}
+        onPick={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "AAPL Dilution supply: partial",
+      }),
+    );
+    await screen.findByText(/that means unknown, not none/);
+  });
+
+  it("runs news, off-exchange and structure checks and draws levels", async () => {
+    const offExchange = {
+      kind: "screening_check",
+      check_id: 21,
+      check: "off_exchange",
+      symbol: "AAPL",
+      instrument_id: "us:aapl:xnas:2026",
+      status: "ok",
+      result: {
+        sessions_requested: 5,
+        sessions: [
+          { session_date: "2026-11-06", partial: false, truncated: true },
+        ],
+        reference_price: "101.5",
+        off_exchange_share_pct: "41.2",
+        levels: [
+          {
+            price_low: "100.00",
+            price_high: "100.50",
+            volume: "1000",
+            share_pct: "12.5",
+            side: "below",
+          },
+        ],
+        notes: [],
+      },
+      warnings: [],
+    } as unknown as ScreeningCheck;
+    const structure = {
+      kind: "screening_check",
+      check_id: 22,
+      check: "off_exchange_structure",
+      symbol: "AAPL",
+      instrument_id: "us:aapl:xnas:2026",
+      status: "pending",
+      result: {
+        progress: {
+          total_sessions: 20,
+          cached_sessions: 4,
+          reading_sessions: 16,
+          missing: [],
+        },
+        limitations: [],
+        unverified: [],
+      },
+      warnings: [],
+    } as unknown as ScreeningCheck;
+    const news = {
+      kind: "screening_check",
+      check_id: 23,
+      check: "news",
+      symbol: "AAPL",
+      instrument_id: "us:aapl:xnas:2026",
+      status: "material",
+      result: {
+        lookback_hours: 72,
+        article_count: 2,
+        categories: { binding_contract: 1 },
+        out_of_scope: { dilution: { articles: 1 } },
+        feeds: [],
+        latest_categorized: null,
+      },
+      warnings: [],
+    } as unknown as ScreeningCheck;
+    let ran = false;
+    const api = {
+      candidates: vi.fn(() => {
+        const found = candidates();
+        if (ran)
+          found.candidates[0].checks = {
+            news: { check_id: 23, status: "material", created_at_utc: "x" },
+            off_exchange: { check_id: 21, status: "ok", created_at_utc: "x" },
+            off_exchange_structure: {
+              check_id: 22,
+              status: "pending",
+              created_at_utc: "x",
+            },
+          };
+        return Promise.resolve(found);
+      }),
+      addCandidate: vi.fn(),
+      runEntryCheck: vi.fn(),
+      check: vi.fn((id: number) =>
+        Promise.resolve(id === 21 ? offExchange : news),
+      ),
+      runNewsCheck: vi.fn(() => Promise.resolve(news)),
+      runOffExchangeCheck: vi.fn(() => Promise.resolve(offExchange)),
+      runStructureCheck: vi.fn(() => {
+        ran = true;
+        return Promise.resolve(structure);
+      }),
+      ...unused(["runNewsCheck", "runOffExchangeCheck", "runStructureCheck"]),
+    } as ScreeningApi;
+    const onShowLevels = vi.fn();
+    const onPick = vi.fn();
+    render(
+      <CandidatesPanel
+        api={api}
+        strategies={() => Promise.resolve([])}
+        onPick={onPick}
+        onShowLevels={onShowLevels}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "News, off-exchange and structure for all",
+      }),
+    );
+    await waitFor(() => expect(api.runStructureCheck).toHaveBeenCalled());
+    expect(api.runNewsCheck).toHaveBeenCalledWith("AAPL", "2026-11-09");
+    expect(api.runOffExchangeCheck).toHaveBeenCalledWith("AAPL", "2026-11-09");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "AAPL News: catalyst" }),
+    );
+    await screen.findByText(/Binding contract: 1/);
+    await screen.findByText(/1 articles are about dilution/);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "AAPL Off-exchange: done" }),
+    );
+    await screen.findByText(/1 sessions were read only in part/);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show 2 lines on the chart" }),
+    );
+    expect(onShowLevels).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instrumentId: "us:aapl:xnas:2026",
+        levels: [
+          expect.objectContaining({ price: 100, title: "12.5%" }),
+          expect.objectContaining({ price: 100.5 }),
+        ],
+      }),
+    );
+    expect(onPick).toHaveBeenCalledWith(listing);
+
+    // A waiting structure check is asked again by posting, which shows progress.
+    fireEvent.click(
+      screen.getByRole("button", { name: "AAPL Price structure: waiting" }),
+    );
+    await screen.findByText(/4\/20 sessions read/);
+    expect(api.runStructureCheck).toHaveBeenCalledTimes(2);
   });
 });

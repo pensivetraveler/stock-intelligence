@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import { useI18n } from "./i18n";
 import type { InstrumentListing } from "./market-api";
+import type { ChartPriceLevel } from "./PriceChart";
 import type { ScreeningApi } from "./screening-api";
 
 const STRATEGY_KEY = "siw.screening.strategy";
@@ -16,7 +17,23 @@ interface CandidatesPanelProps {
   /** Saved strategies; only rules strategies can be checked on daily bars. */
   strategies: () => Promise<BacktestStrategy[]>;
   onPick: (listing: InstrumentListing) => void;
+  /** Draws a check's price levels on charts of that instrument; null clears them. */
+  onShowLevels?: (overlay: ScreeningOverlay | null) => void;
+  /** The levels drawn now, so the panel can offer to clear them. */
+  overlay?: ScreeningOverlay | null;
 }
+
+/** Price levels of one stored check, drawn on charts of its instrument (ADR 0052 §7). */
+export interface ScreeningOverlay {
+  instrumentId: string;
+  symbol: string;
+  checkId: number;
+  levels: ChartPriceLevel[];
+}
+
+/** Checks other than entry, run one candidate at a time. */
+type OtherKind =
+  "news" | "dilution" | "off_exchange" | "off_exchange_structure";
 
 type Candidate = ScreeningCandidates["candidates"][number];
 
@@ -38,6 +55,29 @@ function remember(strategyId: string): void {
   } catch {
     // A blocked store only means the choice is not kept.
   }
+}
+
+const OTHER_KINDS: OtherKind[] = [
+  "news",
+  "dilution",
+  "off_exchange",
+  "off_exchange_structure",
+];
+
+/** Colors of drawn levels: one per check, readable on light and dark charts. */
+const LEVEL_COLORS = {
+  dilution: "#d97706",
+  off_exchange: "#2563eb",
+  off_exchange_structure: "#7c3aed",
+} as const;
+
+type ShowLevels = (check: ScreeningCheck, levels: ChartPriceLevel[]) => void;
+
+/** A decimal string as a chart price; null for an unknown or unusable value. */
+function priceOf(value: string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
 }
 
 const STATUSES = [
@@ -79,6 +119,8 @@ export function CandidatesPanel({
   api,
   strategies,
   onPick,
+  onShowLevels,
+  overlay = null,
 }: CandidatesPanelProps) {
   const { t } = useI18n();
   const [document, setDocument] = useState<ScreeningCandidates | null>(null);
@@ -154,39 +196,66 @@ export function CandidatesPanel({
         setRunError(t("candidates.addFailed", { error: errorText(reason) })),
       );
   };
-  const dilution = async (candidates: Candidate[], llm: boolean) => {
+  const runOne = (kind: OtherKind, symbol: string, llm: boolean) => {
+    const date = document?.session_date;
+    if (kind === "news") return api.runNewsCheck(symbol, date);
+    if (kind === "off_exchange") return api.runOffExchangeCheck(symbol, date);
+    if (kind === "off_exchange_structure")
+      return api.runStructureCheck(symbol, date);
+    return api.runDilutionCheck(symbol, llm, date);
+  };
+  const run = async (
+    kinds: OtherKind[],
+    candidates: Candidate[],
+    llm = false,
+  ) => {
     setRunError(null);
     for (const candidate of candidates) {
-      const key = `dilution:${candidate.symbol}`;
-      setRunning((list) => [...list, key]);
-      try {
-        const found = await api.runDilutionCheck(
-          candidate.symbol,
-          llm,
-          document?.session_date,
-        );
-        if (llm) setDetail(found);
-      } catch (reason) {
-        setRunError(
-          t("candidates.checkFailed", {
-            symbol: candidate.symbol,
-            error: errorText(reason),
-          }),
-        );
-      } finally {
-        setRunning((list) => list.filter((item) => item !== key));
+      for (const kind of kinds) {
+        const key = `${kind}:${candidate.symbol}`;
+        setRunning((list) => [...list, key]);
+        try {
+          const found = await runOne(kind, candidate.symbol, llm);
+          if (llm) setDetail(found);
+        } catch (reason) {
+          setRunError(
+            t("candidates.checkFailed", {
+              symbol: candidate.symbol,
+              error: errorText(reason),
+            }),
+          );
+        } finally {
+          setRunning((list) => list.filter((item) => item !== key));
+        }
       }
     }
     setReload((value) => value + 1);
   };
-  const refresh = (checkId: number) => {
-    api
-      .refreshCheck(checkId)
-      .then((found) => {
-        setDetail(found);
+  const dilution = (candidates: Candidate[], llm: boolean) =>
+    run(["dilution"], candidates, llm);
+  /** A waiting check looked at again, by the route its kind has. */
+  const lookAgain = (
+    found: { check_id: number },
+    kind: OtherKind,
+    symbol: string,
+  ) => {
+    const again =
+      kind === "news"
+        ? api.refreshNewsCheck(found.check_id)
+        : kind === "off_exchange_structure"
+          ? // Posting again shows the progress, then the result once sessions are cached.
+            api.runStructureCheck(symbol, document?.session_date)
+          : api.refreshCheck(found.check_id);
+    again
+      .then((next) => {
+        setDetail(next);
         setReload((value) => value + 1);
       })
       .catch((reason: unknown) => setRunError(errorText(reason)));
+  };
+  const refresh = (checkId: number) => {
+    if (!detail) return;
+    lookAgain({ check_id: checkId }, detail.check as OtherKind, detail.symbol);
   };
   const showDetail = (checkId: number) => {
     api
@@ -194,6 +263,22 @@ export function CandidatesPanel({
       .then(setDetail)
       .catch((reason: unknown) => setRunError(errorText(reason)));
   };
+
+  const show = onShowLevels
+    ? (check: ScreeningCheck, levels: ChartPriceLevel[]) => {
+        onShowLevels({
+          instrumentId: check.instrument_id,
+          symbol: check.symbol,
+          checkId: check.check_id,
+          levels,
+        });
+        const candidate = document?.candidates.find(
+          (item) => item.symbol === check.symbol,
+        );
+        // The levels are drawn on that ticker's chart, so show it.
+        if (candidate?.listing) onPick(candidate.listing);
+      }
+    : undefined;
 
   const chartable = (document?.candidates ?? []).filter(
     (item) => item.listing !== null,
@@ -268,10 +353,32 @@ export function CandidatesPanel({
         <button
           type="button"
           className="secondary"
+          disabled={running.length > 0 || chartable.length === 0}
+          onClick={() =>
+            void run(
+              ["news", "off_exchange", "off_exchange_structure"],
+              chartable,
+            )
+          }
+        >
+          {t("candidates.othersAll")}
+        </button>
+        <button
+          type="button"
+          className="secondary"
           onClick={() => setReload(reload + 1)}
         >
           {t("candidates.refresh")}
         </button>
+        {overlay && onShowLevels ? (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => onShowLevels(null)}
+          >
+            {t("candidates.clearLevels", { symbol: overlay.symbol })}
+          </button>
+        ) : null}
       </div>
       <form
         className="trade-fields"
@@ -306,14 +413,15 @@ export function CandidatesPanel({
                 <th>{t("candidates.firstSeen")}</th>
                 <th>{t("candidates.inList")}</th>
                 <th>{t("candidates.entry")}</th>
-                <th>{t("candidates.dilution")}</th>
+                {OTHER_KINDS.map((kind) => (
+                  <th key={kind}>{t(`candidates.column.${kind}`)}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {document.candidates.map((item) => {
                 const listing = item.listing;
                 const entry = item.checks.entry;
-                const supply = item.checks.dilution;
                 return (
                   <tr key={item.symbol}>
                     <td>
@@ -363,33 +471,40 @@ export function CandidatesPanel({
                         "—"
                       )}
                     </td>
-                    <td>
-                      {running.includes(`dilution:${item.symbol}`) ? (
-                        t("screener.running")
-                      ) : supply ? (
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() =>
-                            supply.status === "pending"
-                              ? refresh(supply.check_id)
-                              : showDetail(supply.check_id)
-                          }
-                        >
-                          {statusText(t, supply.status)}
-                        </button>
-                      ) : listing ? (
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => void dilution([item], false)}
-                        >
-                          {t("candidates.check")}
-                        </button>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
+                    {OTHER_KINDS.map((kind) => {
+                      const found = item.checks[kind];
+                      return (
+                        <td key={kind}>
+                          {running.includes(`${kind}:${item.symbol}`) ? (
+                            t("screener.running")
+                          ) : found ? (
+                            <button
+                              type="button"
+                              className="secondary"
+                              aria-label={`${item.symbol} ${t(`candidates.column.${kind}`)}: ${statusText(t, found.status)}`}
+                              onClick={() =>
+                                found.status === "pending"
+                                  ? lookAgain(found, kind, item.symbol)
+                                  : showDetail(found.check_id)
+                              }
+                            >
+                              {statusText(t, found.status)}
+                            </button>
+                          ) : listing ? (
+                            <button
+                              type="button"
+                              className="secondary"
+                              aria-label={`${item.symbol} ${t(`candidates.column.${kind}`)}: ${t("candidates.check")}`}
+                              onClick={() => void run([kind], [item])}
+                            >
+                              {t("candidates.check")}
+                            </button>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}
@@ -406,6 +521,7 @@ export function CandidatesPanel({
         <DilutionDetail
           check={detail}
           onClose={() => setDetail(null)}
+          onShow={show}
           onRefresh={() => refresh(detail.check_id)}
           onLlm={() => {
             const candidate = document?.candidates.find(
@@ -413,6 +529,28 @@ export function CandidatesPanel({
             );
             if (candidate) void dilution([candidate], true);
           }}
+        />
+      ) : null}
+      {detail && detail.check === "news" ? (
+        <NewsDetail
+          check={detail}
+          onClose={() => setDetail(null)}
+          onRefresh={() => refresh(detail.check_id)}
+        />
+      ) : null}
+      {detail && detail.check === "off_exchange" ? (
+        <OffExchangeDetail
+          check={detail}
+          onClose={() => setDetail(null)}
+          onShow={show}
+        />
+      ) : null}
+      {detail && detail.check === "off_exchange_structure" ? (
+        <StructureDetail
+          check={detail}
+          onClose={() => setDetail(null)}
+          onRefresh={() => refresh(detail.check_id)}
+          onShow={show}
         />
       ) : null}
       <p className="workspace-note">{t("candidates.note")}</p>
@@ -520,16 +658,41 @@ function supplyText(value: SupplyValue | null | undefined): string {
   return value.fact ? value.amount : `${value.amount} (${value.status ?? "?"})`;
 }
 
+/** Contract prices, floors and condition thresholds of a dilution result as chart lines. */
+function supplyLevels(securities: SupplySecurity[]): ChartPriceLevel[] {
+  const levels: ChartPriceLevel[] = [];
+  const add = (value: SupplyValue | null | undefined, title: string) => {
+    const price = priceOf(value?.amount);
+    if (price === null || value?.unit !== "usd_per_share") return;
+    levels.push({
+      price,
+      title,
+      color: LEVEL_COLORS.dilution,
+      // A value the analyzer did not confirm is drawn dotted.
+      style: value.fact ? "dashed" : "dotted",
+    });
+  };
+  for (const item of securities) {
+    add(item.price, item.id);
+    for (const bound of item.price_range ?? []) add(bound, item.id);
+    add(item.floor, `${item.id} ≥`);
+    for (const condition of item.conditions) add(condition.threshold, item.id);
+  }
+  return levels;
+}
+
 function DilutionDetail({
   check,
   onClose,
   onRefresh,
   onLlm,
+  onShow,
 }: {
   check: ScreeningCheck;
   onClose: () => void;
   onRefresh: () => void;
   onLlm: () => void;
+  onShow?: ShowLevels;
 }) {
   const { t } = useI18n();
   const result = check.result as {
@@ -561,6 +724,15 @@ function DilutionDetail({
           {t("candidates.dilutionIncomplete", {
             reasons: result.incomplete_reasons.join(", "),
           })}
+        </p>
+      ) : null}
+      {result.securities &&
+      result.securities.length === 0 &&
+      check.status !== "pending" ? (
+        <p className="workspace-note" role="status">
+          {check.status === "incomplete" || !result.llm
+            ? t("candidates.noSecuritiesUnknown")
+            : t("candidates.noSecuritiesFound")}
         </p>
       ) : null}
       {result.securities && result.securities.length > 0 ? (
@@ -625,6 +797,434 @@ function DilutionDetail({
             {t("candidates.withLlm")}
           </button>
         )}
+        <ShowButton
+          check={check}
+          levels={supplyLevels(result.securities ?? [])}
+          onShow={onShow}
+        />
+        <button type="button" className="secondary" onClick={onClose}>
+          {t("candidates.close")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Draws a check's levels on the chart; absent when there is nothing to draw. */
+function ShowButton({
+  check,
+  levels,
+  onShow,
+}: {
+  check: ScreeningCheck;
+  levels: ChartPriceLevel[];
+  onShow?: ShowLevels;
+}) {
+  const { t } = useI18n();
+  if (!onShow || levels.length === 0) return null;
+  return (
+    <button
+      type="button"
+      className="secondary"
+      onClick={() => onShow(check, levels)}
+    >
+      {t("candidates.showLevels", { count: levels.length })}
+    </button>
+  );
+}
+
+function Notes({ notes }: { notes: string[] }) {
+  return (
+    <>
+      {[...new Set(notes)].map((note) => (
+        <p key={note} className="workspace-note">
+          {note}
+        </p>
+      ))}
+    </>
+  );
+}
+
+interface NewsResult {
+  reason?: string | null;
+  lookback_hours?: number;
+  article_count?: number;
+  categories?: Record<string, number>;
+  out_of_scope?: { dilution?: { articles?: number } };
+  feeds?: {
+    source_id: string;
+    state: string;
+    articles: number;
+    truncated: boolean;
+  }[];
+  latest_categorized?: {
+    headline?: string;
+    published_at_utc?: string;
+    categories: string[];
+  } | null;
+}
+
+const NEWS_CATEGORIES = [
+  "binding_contract",
+  "non_binding_intent",
+  "partnership",
+] as const;
+
+function categoryText(
+  t: ReturnType<typeof useI18n>["t"],
+  category: string,
+): string {
+  const known = NEWS_CATEGORIES.find((item) => item === category);
+  return known ? t(`candidates.news.${known}`) : category;
+}
+
+/** Check B: catalyst categories the news-analysis service found before the cutoff. */
+function NewsDetail({
+  check,
+  onClose,
+  onRefresh,
+}: {
+  check: ScreeningCheck;
+  onClose: () => void;
+  onRefresh: () => void;
+}) {
+  const { t } = useI18n();
+  const result = check.result as NewsResult;
+  const categories = Object.entries(result.categories ?? {}).filter(
+    ([, count]) => count > 0,
+  );
+  const dilution = result.out_of_scope?.dilution?.articles ?? 0;
+  return (
+    <div
+      className="research-scroll"
+      role="region"
+      aria-label={t("candidates.newsDetail")}
+    >
+      <p className="workspace-note">
+        {t("candidates.newsMeta", {
+          symbol: check.symbol,
+          hours: result.lookback_hours ?? "—",
+          articles: result.article_count ?? 0,
+          status: statusText(t, check.status),
+        })}
+      </p>
+      {result.reason ? <p className="chart-error">{result.reason}</p> : null}
+      {categories.length > 0 ? (
+        <ul>
+          {categories.map(([category, count]) => (
+            <li key={category}>
+              {categoryText(t, category)}: {count}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {result.latest_categorized ? (
+        <p className="workspace-note">
+          {t("candidates.newsLatest", {
+            time: result.latest_categorized.published_at_utc
+              ? newYorkTime(result.latest_categorized.published_at_utc)
+              : "—",
+            headline: result.latest_categorized.headline ?? "—",
+            categories: result.latest_categorized.categories
+              .map((item) => categoryText(t, item))
+              .join(", "),
+          })}
+        </p>
+      ) : null}
+      {dilution > 0 ? (
+        <p className="workspace-note" role="status">
+          {t("candidates.newsDilution", { count: dilution })}
+        </p>
+      ) : null}
+      {(result.feeds ?? []).length > 0 ? (
+        <p className="workspace-note">
+          {(result.feeds ?? [])
+            .map(
+              (feed) =>
+                `${feed.source_id}: ${feed.state} (${feed.articles}${feed.truncated ? "+" : ""})`,
+            )
+            .join(" · ")}
+        </p>
+      ) : null}
+      <Notes notes={check.warnings} />
+      <div className="trade-fields">
+        {check.status === "pending" ? (
+          <button type="button" className="secondary" onClick={onRefresh}>
+            {t("candidates.lookAgain")}
+          </button>
+        ) : null}
+        <button type="button" className="secondary" onClick={onClose}>
+          {t("candidates.close")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface OffExchangeLevel {
+  price_low: string;
+  price_high: string;
+  volume: string;
+  share_pct: string;
+  side: string;
+}
+
+interface OffExchangeResult {
+  reason?: string;
+  sessions_requested?: number;
+  sessions?: { session_date: string; partial: boolean; truncated: boolean }[];
+  reference_price?: string | null;
+  off_exchange_share_pct?: string | null;
+  levels?: OffExchangeLevel[];
+  missing?: string[];
+  notes?: string[];
+}
+
+function sideText(t: ReturnType<typeof useI18n>["t"], side: string): string {
+  return side === "above" || side === "below" || side === "at"
+    ? t(`candidates.side.${side}`)
+    : side;
+}
+
+/** Check D: off-exchange (TRF-reported) volume by price over recent sessions. */
+function OffExchangeDetail({
+  check,
+  onClose,
+  onShow,
+}: {
+  check: ScreeningCheck;
+  onClose: () => void;
+  onShow?: ShowLevels;
+}) {
+  const { t } = useI18n();
+  const result = check.result as OffExchangeResult;
+  const sessions = result.sessions ?? [];
+  const cut = sessions.filter((item) => item.partial || item.truncated).length;
+  const levels: ChartPriceLevel[] = [];
+  for (const level of result.levels ?? []) {
+    const low = priceOf(level.price_low);
+    const high = priceOf(level.price_high);
+    const title = `${level.share_pct}%`;
+    if (low !== null)
+      levels.push({ price: low, title, color: LEVEL_COLORS.off_exchange });
+    if (high !== null && high !== low)
+      levels.push({ price: high, title: "", color: LEVEL_COLORS.off_exchange });
+  }
+  return (
+    <div
+      className="research-scroll"
+      role="region"
+      aria-label={t("candidates.offExchangeDetail")}
+    >
+      <p className="workspace-note">
+        {t("candidates.offExchangeMeta", {
+          symbol: check.symbol,
+          sessions: sessions.length,
+          requested: result.sessions_requested ?? "—",
+          share: result.off_exchange_share_pct ?? "?",
+          reference: result.reference_price ?? "?",
+          status: statusText(t, check.status),
+        })}
+      </p>
+      {cut > 0 ? (
+        <p className="workspace-note" role="status">
+          {t("candidates.offExchangeCut", { count: cut })}
+        </p>
+      ) : null}
+      {result.reason ? <p className="chart-error">{result.reason}</p> : null}
+      {(result.levels ?? []).length > 0 ? (
+        <table className="quote-trades research-table">
+          <thead>
+            <tr>
+              <th>{t("candidates.priceBand")}</th>
+              <th>{t("candidates.share")}</th>
+              <th>{t("candidates.side")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(result.levels ?? []).map((level) => (
+              <tr key={level.price_low}>
+                <td>
+                  {level.price_low}–{level.price_high}
+                </td>
+                <td>{level.share_pct}%</td>
+                <td>{sideText(t, level.side)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+      <Notes notes={[...(result.notes ?? []), ...check.warnings]} />
+      <div className="trade-fields">
+        <ShowButton check={check} levels={levels} onShow={onShow} />
+        <button type="button" className="secondary" onClick={onClose}>
+          {t("candidates.close")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface StructureZone {
+  zone_id: string;
+  low: string;
+  high: string;
+  side: string;
+  period_share?: string | null;
+}
+
+interface StructureResult {
+  reason?: string;
+  progress?: {
+    total_sessions: number;
+    cached_sessions: number;
+    reading_sessions: number;
+  };
+  forecast_status?: "ISSUED" | "NOT_ISSUED";
+  stage?: string;
+  deployment_stage?: string;
+  reference_price?: { value: string | null };
+  zones?: StructureZone[];
+  gaps?: Record<
+    string,
+    {
+      gap_is_open_ended?: boolean;
+      gap_low?: string | null;
+      gap_high?: string | null;
+    } | null
+  >;
+  eligibility?: {
+    status: string;
+    hard_failures: { code: string; text: string }[];
+    soft_failures: { code: string; text: string }[];
+  };
+  notes?: string[];
+  limitations?: string[];
+}
+
+/** The stage shown only for an issued forecast; otherwise "no stage" or "research". */
+function stageText(
+  t: ReturnType<typeof useI18n>["t"],
+  result: StructureResult,
+): string {
+  if (result.forecast_status !== "ISSUED" || !result.stage)
+    return result.deployment_stage === "RESEARCH_ONLY"
+      ? t("candidates.stage.research")
+      : t("candidates.stage.none");
+  return result.stage === "UNKNOWN" ? t("candidates.stage.none") : result.stage;
+}
+
+/** Off-exchange price structure (ADR 0053): zones and gaps; a stage only when issued. */
+function StructureDetail({
+  check,
+  onClose,
+  onRefresh,
+  onShow,
+}: {
+  check: ScreeningCheck;
+  onClose: () => void;
+  onRefresh: () => void;
+  onShow?: ShowLevels;
+}) {
+  const { t } = useI18n();
+  const result = check.result as StructureResult;
+  const zones = result.zones ?? [];
+  const levels: ChartPriceLevel[] = [];
+  for (const zone of zones) {
+    const low = priceOf(zone.low);
+    const high = priceOf(zone.high);
+    if (low !== null)
+      levels.push({
+        price: low,
+        title: zone.zone_id,
+        color: LEVEL_COLORS.off_exchange_structure,
+      });
+    if (high !== null && high !== low)
+      levels.push({
+        price: high,
+        title: "",
+        color: LEVEL_COLORS.off_exchange_structure,
+      });
+  }
+  const gaps = Object.entries(result.gaps ?? {}).filter(
+    (entry): entry is [string, NonNullable<(typeof entry)[1]>] =>
+      entry[1] !== null,
+  );
+  const progress = result.progress;
+  return (
+    <div
+      className="research-scroll"
+      role="region"
+      aria-label={t("candidates.structureDetail")}
+    >
+      <p className="workspace-note">
+        {t("candidates.structureMeta", {
+          symbol: check.symbol,
+          stage: stageText(t, result),
+          reference: result.reference_price?.value ?? "?",
+          status: statusText(t, check.status),
+        })}
+      </p>
+      {progress && check.status === "pending" ? (
+        <p className="workspace-note" role="status">
+          {t("candidates.structureProgress", {
+            cached: progress.cached_sessions,
+            total: progress.total_sessions,
+          })}
+        </p>
+      ) : null}
+      {result.reason ? <p className="chart-error">{result.reason}</p> : null}
+      {zones.length > 0 ? (
+        <table className="quote-trades research-table">
+          <thead>
+            <tr>
+              <th>{t("candidates.zone")}</th>
+              <th>{t("candidates.priceBand")}</th>
+              <th>{t("candidates.side")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {zones.map((zone) => (
+              <tr key={zone.zone_id}>
+                <td>{zone.zone_id}</td>
+                <td>
+                  {zone.low}–{zone.high}
+                </td>
+                <td>{sideText(t, zone.side)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+      {gaps.map(([direction, gap]) => (
+        <p key={direction} className="workspace-note">
+          {t(direction === "up" ? "candidates.gapUp" : "candidates.gapDown", {
+            band: gap.gap_is_open_ended
+              ? t("candidates.gapOpen")
+              : `${gap.gap_low ?? "?"}–${gap.gap_high ?? "?"}`,
+          })}
+        </p>
+      ))}
+      {result.eligibility && result.eligibility.hard_failures.length > 0 ? (
+        <>
+          <p className="workspace-note">{t("candidates.whyNoStage")}</p>
+          <ul>
+            {result.eligibility.hard_failures.map((item) => (
+              <li key={item.code} title={item.code}>
+                {item.text}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      <Notes notes={[...(result.notes ?? []), ...check.warnings]} />
+      <div className="trade-fields">
+        {check.status === "pending" ? (
+          <button type="button" className="secondary" onClick={onRefresh}>
+            {t("candidates.lookAgain")}
+          </button>
+        ) : null}
+        <ShowButton check={check} levels={levels} onShow={onShow} />
         <button type="button" className="secondary" onClick={onClose}>
           {t("candidates.close")}
         </button>

@@ -109,7 +109,7 @@ import { applyLive, type LiveSymbol, type RealtimeSocket } from "./realtime";
 import { AccountPanel } from "./AccountPanel";
 import { RankingsPanel } from "./RankingsPanel";
 import { ResearchPanel } from "./ResearchPanel";
-import { CandidatesPanel } from "./CandidatesPanel";
+import { CandidatesPanel, type ScreeningOverlay } from "./CandidatesPanel";
 import { ConditionSearchPanel } from "./ConditionSearchPanel";
 import { AgentPanel } from "./AgentPanel";
 import type { AgentApi, ChartReviewRequest } from "./agent-api";
@@ -436,6 +436,9 @@ export function Workspace({
     () => () => backtestApi?.strategies() ?? Promise.resolve([]),
     [backtestApi],
   );
+  // Screening levels drawn on charts of one instrument; none until the user asks.
+  const [screeningOverlay, setScreeningOverlay] =
+    useState<ScreeningOverlay | null>(null);
   const [panel, setPanel] = useState<Panel | null>(() =>
     loadWatchlistWindow(storage).open ? null : "watchlist",
   );
@@ -1600,6 +1603,13 @@ export function Workspace({
               config={withPreview(index)}
               instruments={instruments}
               instrumentsReady={instrumentsReady}
+              priceLevels={
+                screeningOverlay &&
+                screeningOverlay.instrumentId ===
+                  withPreview(index).instrumentId
+                  ? screeningOverlay.levels
+                  : undefined
+              }
               sync={sync}
               journal={chartJournal}
               backtestFills={backtestShown?.fills}
@@ -2025,6 +2035,8 @@ export function Workspace({
               api={screeningApi}
               strategies={backtestStrategies}
               onPick={(listing) => chooseListing(listing)}
+              onShowLevels={setScreeningOverlay}
+              overlay={screeningOverlay}
             />
           ) : null}
           {panel === "screener" ? (
