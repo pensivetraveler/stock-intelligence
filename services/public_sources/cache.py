@@ -209,13 +209,3 @@ class PublicSourceCache:
                 )
             )
         return chosen
-
-    def delete_source(self, source_id: str) -> int:
-        """Remove every record and download mark of one source (for example when a
-        subscription whose terms require deletion ends). Returns the records removed."""
-        with self._lock:
-            removed = self._db.execute(
-                "DELETE FROM records WHERE source_id = ?", (source_id,)
-            ).rowcount
-            self._db.execute("DELETE FROM fetches WHERE source_id = ?", (source_id,))
-        return int(removed)

@@ -2736,3 +2736,10 @@
   - 시험 21개(`tests/screening/test_off_exchange.py`·`test_off_exchange_api.py`, `httpx.MockTransport`), 계약 fixture 유효·무효 각 1개.
   - 실제 실행: STAK cutoff 2026-11-06T15:00Z → 5세션 9쪽, `ok`. AAPL cutoff 2026-11-06T21:00Z → 처음 상한(150쪽·90초)에서 1세션 84.6초. 화면 타임아웃 때문에 40초·80쪽으로 낮춘 뒤 71쪽·38.6초, 1세션, `incomplete`.
 - **미확인:** TRF 보고분이 `D`에 모두 들어 있는지(거래량 비중으로 추정), `t`가 어느 시각인지, 패널 D 열·차트 겹쳐 그리기(S1 쪽), 결과 캐시, 엔드포인트의 실제 키 실행(명령으로만 실행해 봄). 대형주는 40초 상한에서 5세션을 다 못 읽는다(가장 최근 세션만, 다 못 읽으면 `truncated`).
+
+## 스크리닝 B를 news-analysis 서비스로 옮김(ADR 0052 §3) — 2026-11-09
+
+- **사용자 결정:** "뉴스 수집, 개별 뉴스 분석, 개별 종목의 뉴스 사이클 분석은 각각 별도의 모듈"이고, 셋을 별도 프로젝트·서비스(`~/Trading/news-analysis`, `127.0.0.1:8776`, `news-contract-v1`)에 둔다.
+- **변경:** 검사 B는 서비스 클라이언트(`services/screening/news_service.py`)로 바뀌었다. 서비스에 요청한 뒤 15초까지 기다리고, 꺼져 있거나 덜 끝났으면 `pending`이다. `POST /v1/screening/checks/news/{check_id}/refresh`로 같은 cutoff에서 다시 본다. 서비스 결과는 원문 그대로 `result.news_check`에 둔다. SIW 안의 뉴스 수집·규칙 코드와 Keys 화면의 MarketNewsAPI·Finnhub 항목은 지웠다(등록 키 없음).
+- **시험:** `tests/screening/test_news_service.py`(가짜 서비스: 완료·대기·실패·꺼짐·다른 계약, 경로·새로 보기). 시험 표본은 서비스 JSON Schema(`news-check-v1.json`, news-analysis 143e9b0)로 한 번 검증했다(오류 0).
+- **미확인:** 실제 서비스를 띄워 SIW에서 부른 확인. 서비스 키 등록. 패널의 뉴스 열(S1).
