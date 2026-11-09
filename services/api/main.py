@@ -152,6 +152,8 @@ from services.review.claude import ask_for_report, convert_principles
 from services.review.conversation import call_claude
 from services.review.period_ai import ask_period_commentary
 from services.review.store import ReviewStore
+from services.screening.dilution import DilutionService
+from services.screening.dilution import service_url as dilution_url
 from services.screening.store import ScreeningStore
 
 LOG = logging.getLogger("siw.api")
@@ -1770,6 +1772,7 @@ def create_app(
         get_adjusted=lambda: getattr(provider.get(), "get_adjusted_daily_bars", None),
         error_response=_error_response,
         clock=clock,
+        dilution_service=lambda: DilutionService(dilution_url()),
     )
 
     # Provider and cache I/O are blocking; a sync endpoint runs in FastAPI's threadpool

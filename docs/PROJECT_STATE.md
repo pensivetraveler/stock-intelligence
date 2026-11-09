@@ -2708,3 +2708,10 @@
 - **추가:** 조건검색 기록(ADR 0051)을 읽기 전용으로 읽는 후보 목록, 저장한 규칙 전략의 확정 일봉 진입조건 검사(A), `screening.sqlite3`, `/v1/screening/*`, 계약 `screening_candidates`·`screening_check`, Research "오늘의 후보" 패널.
 - **확인:** `tests/screening/test_screening.py`(기록 읽기·쓰지 않음·cutoff·재구독 목록, 진입조건 값·시간대 조건 거부, 경로), `CandidatesPanel.test.tsx`.
 - **미확인:** 실제 조건검색 기록으로 본 후보 목록(기록기는 2026-11-09 18:01 KST부터 첫 기록), 실제 Alpaca 일봉으로 돌린 검사, 실행 중인 API·앱에서의 화면.
+
+## 당일 후보 스크리닝 C 희석 공급(ADR 0052) — 2026-11-09
+
+- **사용자 확정:** 후보 전부는 규칙만, LLM은 고른 2~3종목만, 이름 "희석 공급 가격대"(분석기 세션 회신 `#SIW-screen-1` 권고).
+- **추가:** `services/screening/dilution.py`, `POST /v1/screening/checks/dilution`, `POST /v1/screening/checks/{id}/refresh`, "오늘의 후보" 패널의 희석 공급 열과 상세.
+- **확인:** `tests/screening/test_dilution.py`(가짜 분석기: 완료·불완전·대기 후 다시 확인·서비스 꺼짐·차단/미지원, 이 컴퓨터 주소만), `CandidatesPanel.test.tsx` 희석 시험.
+- **실제 서비스:** 2026-11-09 LABT 규칙만 요청은 분석기 작업자의 "엔진 파일 바뀜, 작업자 재시작 필요"로 실패, SIW는 `error`로 기록. 재시작 뒤 성공 경로는 미확인.
