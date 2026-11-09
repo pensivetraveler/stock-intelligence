@@ -502,12 +502,12 @@ class AlpacaMarketDataProvider:
         return self._fetch_pages(symbol, timeframe, start, end, max_pages, adjustment)
 
     def trade_pages(
-        self, symbol: str, start: datetime, end: datetime
+        self, symbol: str, start: datetime, end: datetime, sort: Literal["asc", "desc"] = "asc"
     ) -> Iterator[list[dict[str, Any]]]:
         """SIP trades of one ticker, one page at a time (prices as Decimal), ADR 0052 §5.
 
         `GET /v2/stocks/{symbol}/trades` only. Pages are yielded as they arrive so the
-        caller can stop between pages; nothing is kept here.
+        caller can stop between pages; nothing is kept here. `desc` reads newest first.
         """
         if not SYMBOL_PATTERN.fullmatch(symbol):
             raise InvalidBarsQueryError("a ticker is 1-10 letters, digits or dots")
@@ -516,7 +516,7 @@ class AlpacaMarketDataProvider:
             "end": end.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
             "limit": self.config.page_limit,
             "feed": "sip",
-            "sort": "asc",
+            "sort": sort,
         }
         while True:
             try:

@@ -142,3 +142,31 @@ def test_a_past_session_is_after_the_fact(tmp_path: Path) -> None:
     assert check["after_the_fact"] is True
     assert check["cutoff_utc"] == "2026-11-06T01:00:00.000Z"
     assert check["status"] == "no_data"
+
+
+def test_finra_time_comes_out_of_the_trade_budget(tmp_path: Path) -> None:
+    clock = {"now": 0.0}
+
+    def review(instrument_id: str, cutoff: datetime) -> Any:
+        clock["now"] += 35.0  # a slow FINRA context
+        raise SourceConfigError("finra_unconfigured", "no FINRA credential")
+
+    screening = ScreeningStore(tmp_path / "screening.sqlite3", lambda: NOW)
+    app = FastAPI()
+    register_screening_off_exchange_routes(
+        app,
+        store=lambda: screening,
+        trades=lambda: adapter(friday_and_thursday()),
+        listing_for=listing_for,
+        finra_review=lambda: review,
+        error_response=_error_response,
+        clock=lambda: NOW,
+        monotonic=lambda: clock["now"],
+    )
+    with TestClient(app) as http:
+        check = http.post("/v1/screening/checks/off_exchange", json={"symbol": "STAK"}).json()
+    screening.close()
+    validate_document(check)
+    # 40 s in all, 35 s spent on FINRA: the trades get the 10 s floor, not 5 s.
+    assert check["result"]["limits"]["max_seconds"] == 10.0
+    assert check["result"]["limits"]["max_pages"] == 80

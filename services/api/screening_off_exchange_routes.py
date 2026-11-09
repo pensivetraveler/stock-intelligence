@@ -5,6 +5,7 @@ levels from Alpaca SIP trades. Stored like every screening check; never places o
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -19,13 +20,15 @@ from services.market_data.calendar import NEW_YORK, UsEquityCalendar
 from services.market_data.provider import MarketDataError
 from services.public_sources.http import SourceError
 from services.screening.candidates import utc_text
-from services.screening.off_exchange import finra_context, off_exchange_check
+from services.screening.off_exchange import OffExchangeLimits, finra_context, off_exchange_check
 from services.screening.store import ScreeningStore
 
 SYMBOL = re.compile(r"^[A-Z][A-Z0-9.]{0,9}$")
 MAX_DAYS_BACK = 10
 #: FINRA weeks read for the weekly ATS context (ADR 0024).
 FINRA_WEEKS = 12
+#: The trades never get less than this, however long the FINRA context took.
+MIN_TRADE_SECONDS = 10.0
 
 #: FINRA weekly ATS evidence for (instrument_id, cutoff), or None when not set up.
 FinraReview = Callable[[str, datetime], Any]
@@ -45,6 +48,7 @@ def register_screening_off_exchange_routes(
     finra_review: Callable[[], FinraReview | None],
     error_response: ErrorResponse,
     clock: Callable[[], datetime],
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> None:
     """`trades()` returns an Alpaca adapter (anything with `trade_pages` and `config`)."""
     calendar = UsEquityCalendar("XNAS")
@@ -102,14 +106,24 @@ def register_screening_off_exchange_routes(
         instrument_id = str(listing["instrument"]["instrument_id"])
         now = clock()
         cutoff = min(now, window.post_close_utc)
+        started = monotonic()
         context, problem = finra(instrument_id, cutoff)
+        # One time budget for the whole request (the screen waits 60 s): FINRA first.
+        budget = OffExchangeLimits()
+        spent = monotonic() - started
+        limits = OffExchangeLimits(
+            max_pages=budget.max_pages,
+            max_seconds=max(MIN_TRADE_SECONDS, budget.max_seconds - spent),
+        )
         outcome = off_exchange_check(
             adapter.trade_pages,
             symbol=symbol,
             cutoff=cutoff,
             now=now,
             publication_delay_minutes=adapter.config.publication_delay_minutes,
+            limits=limits,
             finra=context,
+            monotonic=monotonic,
         )
         if problem is not None:
             outcome["warnings"].append(problem)

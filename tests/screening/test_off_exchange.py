@@ -145,6 +145,7 @@ def test_off_exchange_levels_from_trf_reported_trades() -> None:
     assert document["result"]["data_until_utc"] == "2026-11-06T15:00:00Z"
     friday, thursday = document["result"]["sessions"]
     assert friday["session_date"] == "2026-11-06" and friday["partial"] is True
+    assert friday["truncated"] is False
     assert friday["range_utc"] == ["2026-11-06T09:00:00Z", "2026-11-06T15:00:00Z"]
     assert friday["pages"] == 2
     assert friday["total_volume"] == "2100"
@@ -209,6 +210,7 @@ def test_off_exchange_levels_from_trf_reported_trades() -> None:
     first = tape.requests[0]
     assert first.url.path == "/v2/stocks/STAK/trades"
     assert first.url.params["feed"] == "sip"
+    assert first.url.params["sort"] == "desc"  # newest first
     assert first.url.params["start"] == "2026-11-06T09:00:00Z"
     assert first.url.params["end"] == "2026-11-06T15:00:00Z"
     assert tape.requests[1].url.params["page_token"] == "next"
@@ -240,20 +242,38 @@ def test_page_budget_drops_the_unfinished_session_whole() -> None:
     document = run(tape, limits=OffExchangeLimits(sessions=2, max_pages=2))
     validate_document(document)
     assert document["status"] == "incomplete"
+    # The older session read in part is dropped whole, not truncated.
     assert [s["session_date"] for s in document["result"]["sessions"]] == ["2026-11-06"]
+    assert document["result"]["sessions"][0]["truncated"] is False
     assert "session:2026-11-05" in document["result"]["missing"]
     assert document["result"]["limits"]["pages"] == 2
     assert {b["price_low"] for b in document["result"]["histogram"]} == {"2"}
     assert any("상한" in note for note in document["result"]["notes"])
 
 
-def test_time_budget_stops_between_pages() -> None:
+def test_time_budget_keeps_the_newest_hours_read() -> None:
     clock = iter([0.0, 0.0, 100.0, 100.0, 100.0])
-    tape = Tape({"2026-11-06": [page(trade("2026-11-06T13:00:00Z", "2", 100), token="a")]})
+    tape = Tape(
+        {
+            "2026-11-06": [
+                # Newest first: the first page holds the hours just before the cutoff.
+                page(
+                    trade("2026-11-06T14:59:00Z", "2.0", 300),
+                    trade("2026-11-06T14:10:30.123456789Z", "1.9", 100),
+                    token="a",
+                )
+            ]
+        }
+    )
     document = run(tape, monotonic=lambda: next(clock, 100.0))
+    validate_document(document)
     assert document["status"] == "incomplete"
-    assert document["result"]["sessions"] == []
+    (session,) = document["result"]["sessions"]
+    assert session["truncated"] is True
+    assert session["range_utc"] == ["2026-11-06T14:10:30Z", "2026-11-06T15:00:00Z"]
     assert document["result"]["missing"][:2] == ["session:2026-11-06", "session:2026-11-05"]
+    assert document["result"]["levels"]
+    assert any("가장 최근 세션의 일부" in note for note in document["result"]["notes"])
     assert len(tape.requests) == 1
 
 

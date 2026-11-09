@@ -64,16 +64,19 @@ UNVERIFIED = (
 @dataclass(frozen=True)
 class OffExchangeLimits:
     sessions: int = 5
-    #: 10,000 trades a page: a large cap session is about 70 pages (AAPL, 2026-11-06).
-    max_pages: int = 150
-    max_seconds: float = 90.0
+    #: 10,000 trades a page at about 0.45 s each: a large cap session is about 70 pages
+    #: (AAPL, 2026-11-06). The time limit keeps a request inside the screen's 60 s
+    #: timeout; the page limit is the same budget at the measured page speed.
+    max_pages: int = 80
+    max_seconds: float = 40.0
     top_levels: int = 5
     #: Peaks holding less than this share of priced volume are noise, not levels.
     min_level_share_pct: Decimal = Decimal(1)
     max_bins: int = 500
 
 
-TradePages = Callable[[str, datetime, datetime], Iterator[list[dict[str, Any]]]]
+#: (symbol, start, end, sort) -> pages; the check reads newest first (`desc`).
+TradePages = Callable[..., Iterator[list[dict[str, Any]]]]
 
 
 @dataclass
@@ -94,6 +97,8 @@ class _Session:
     by_price: dict[Decimal, Decimal] = field(default_factory=dict)
     last_price: Decimal | None = None
     last_time: str | None = None
+    first_time: str | None = None
+    truncated: bool = False
 
     def add(self, trade: dict[str, Any]) -> None:
         if trade.get("u") in REMOVED_UPDATES:
@@ -112,6 +117,8 @@ class _Session:
             AVERAGE_PRICE_ON_TAPES_AB in conditions and trade.get("z") in ("A", "B")
         )
         stamp = str(trade["t"])
+        if self.first_time is None or stamp < self.first_time:
+            self.first_time = stamp
         if not off_market and (self.last_time is None or stamp >= self.last_time):
             self.last_price, self.last_time = price, stamp
         if trade.get("x") != OFF_EXCHANGE_CODE:
@@ -130,10 +137,15 @@ class _Session:
         share = None
         if self.total_volume > 0:
             share = _text((self.off_volume * 100 / self.total_volume).quantize(Decimal("0.01")))
+        start = self.start
+        if self.truncated and self.first_time is not None:
+            # Read newest first and stopped: only trades from here to the end were read.
+            start = datetime.fromisoformat(self.first_time[:19] + "+00:00")
         return {
             "session_date": self.session_date.isoformat(),
-            "range_utc": [_utc(self.start), _utc(self.end)],
+            "range_utc": [_utc(start), _utc(self.end)],
             "partial": self.partial,
+            "truncated": self.truncated,
             "pages": self.pages,
             "trades": self.trades,
             "total_volume": _text(self.total_volume),
@@ -284,7 +296,7 @@ def off_exchange_check(
     budget_hit = False
     for session_date, start, end, partial in planned:
         session = _Session(session_date, start, end, partial)
-        pager = trade_pages(symbol, start, end)
+        pager = trade_pages(symbol, start, end, sort="desc")
         finished = False
         try:
             while True:
@@ -308,17 +320,29 @@ def off_exchange_check(
             if close is not None:
                 close()
         if not finished:
-            # A session read only in part would bias the levels: it is dropped whole.
             missing.append(f"session:{session_date.isoformat()}")
+            if not done and not errors and session.trades:
+                # The newest session, read back from the cutoff: its latest hours are
+                # kept and marked. An older session read in part is dropped whole.
+                session.truncated = True
+                done.append(session)
             break
         done.append(session)
-    for session_date, _start, _end, _partial in planned[len(done) + (1 if missing else 0) :]:
+    read = len(done) - (1 if done and done[-1].truncated else 0)
+    for session_date, _start, _end, _partial in planned[read + 1 if missing else read :]:
         missing.append(f"session:{session_date.isoformat()}")
     if budget_hit:
-        notes.append(
-            f"받는 상한(쪽 {limits.max_pages}, {limits.max_seconds:g}초)에 걸려 "
-            f"최근 {len(done)}개 세션만 계산했다."
-        )
+        if done and done[0].truncated:
+            notes.append(
+                f"받는 상한(쪽 {limits.max_pages}, {limits.max_seconds:g}초)에 걸려 "
+                f"가장 최근 세션의 일부({done[0].document()['range_utc'][0]}부터 cutoff까지)만 "
+                "계산했다."
+            )
+        else:
+            notes.append(
+                f"받는 상한(쪽 {limits.max_pages}, {limits.max_seconds:g}초)에 걸려 "
+                f"최근 {len(done)}개 세션만 계산했다."
+            )
     if len(planned) < limits.sessions:
         notes.append(f"cutoff 전 세션이 {len(planned)}개뿐이다.")
 

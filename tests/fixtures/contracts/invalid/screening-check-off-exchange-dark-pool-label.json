@@ -19,6 +19,7 @@
         "session_date": "2026-11-06",
         "range_utc": ["2026-11-06T09:00:00Z", "2026-11-06T15:00:00Z"],
         "partial": true,
+        "truncated": false,
         "pages": 2,
         "trades": 5,
         "total_volume": "2100",
@@ -34,6 +35,7 @@
         "session_date": "2026-11-05",
         "range_utc": ["2026-11-05T09:00:00Z", "2026-11-06T01:00:00Z"],
         "partial": false,
+        "truncated": false,
         "pages": 1,
         "trades": 5,
         "total_volume": "650",
@@ -111,8 +113,8 @@
     "limits": {
       "pages": 3,
       "seconds": 0.0,
-      "max_pages": 150,
-      "max_seconds": 90.0,
+      "max_pages": 80,
+      "max_seconds": 40.0,
       "min_level_share_pct": "1",
       "max_bins": 500
     },

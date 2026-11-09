@@ -12368,6 +12368,7 @@
               "session_date",
               "range_utc",
               "partial",
+              "truncated",
               "pages",
               "trades",
               "total_volume",
@@ -12395,6 +12396,10 @@
               "partial": {
                 "type": "boolean",
                 "description": "True when the data ends inside the session's 04:00-20:00 ET window."
+              },
+              "truncated": {
+                "type": "boolean",
+                "description": "The newest session, read back from the cutoff, hit the fetch limit: range_utc starts at the earliest trade read (to the second). Older sessions read in part are dropped, not truncated."
               },
               "pages": {
                 "type": "integer",
