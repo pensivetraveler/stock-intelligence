@@ -83,6 +83,33 @@
 - **한계:** 장외 체결의 보고 시각은 실제 체결과 다를 수 있고, 늦게 보고된 체결·정정 체결이 있다. 매수·매도 방향은 모른다. 1분봉으로 체결을 만들어 내지 않는다. 체결 자료는 급등 소형주에서 하루 수백만 건일 수 있어, 받는 쪽수와 시간을 재고 상한을 둔다.
 - **출처:** Alpaca SIP 체결 하나뿐이다. 다른 출처 체결과 섞지 않는다.
 
+#### S2 확인 결과 (2026-11-09, 지금 쓰는 Alpaca 키, 읽기 전용)
+
+- **거래소 코드:** `GET /v2/stocks/meta/exchanges`는 `D`를 "FINRA ADF"라고만 부른다. 문서(stocktrades, meta 페이지)에는 코드 표가 없고 메타 엔드포인트를 보라고만 한다. ADF 자체 체결은 아주 적은데 `D` 거래량 비중이 대형주 35.8%, 급등 소형주 61.6~68.5%였다. 그래서 **FINRA TRF 보고분이 `D`에 들어 있다고 판단**한다. 공급자 문서로 확인한 것은 아니라 결과의 `unverified`에 늘 적는다.
+- **조건 코드:** `GET /v2/stocks/meta/conditions/trade?tape=A|B|C`로 읽었다. 늦은 보고는 `L`(Sold Last, Late Reporting), `Z`(Sold Out Of Sequence), `U`(Extended Hours Sold Out Of Sequence). 시장 가격이 아닌 체결은 `4`(Derivatively Priced), `W`·`B`(평균가, `B`는 테이프 A/B에서만 평균가이고 C에서는 Bunched), `P`(Prior Reference Price), `7`(QCT), `V`(Contingent), `C`·`N`·`R`(결제 조건), `H`(Price Variation). `M`·`Q`·`9`는 공식 시가·종가 보고라 체결이 아니다.
+- **정정·취소:** 과거 체결에는 별도 정정 엔드포인트가 없고 체결의 `u` 필드가 `canceled`·`incorrect`·`corrected`를 표시한다(없으면 유효). 측정에서 AAPL 하루 11건, 소형주 0~1건이 `canceled`였다. `u`는 받은 시점 상태다.
+- **자료량**(2026-11-06 하루, 04:00~20:00 ET, 쪽당 10,000건):
+
+  | 종목              | 체결 건수 | 쪽  | 걸린 시간 | 받은 양 | `D` 거래량 비중 |
+  | ----------------- | --------- | --- | --------- | ------- | --------------- |
+  | AAPL(대형주)      | 714,759   | 72  | 36.1초    | 69.6MB  | 35.8%           |
+  | SDA(+145%, $0.38) | 618,236   | 62  | 28.3초    | 59.0MB  | 68.5%           |
+  | STAK(+82%, $3.26) | 181,131   | 19  | 9.2초     | 17.2MB  | 66.2%           |
+  | GOGO(+72%, $3.89) | 120,063   | 13  | 6.6초     | 11.3MB  | 61.6%           |
+
+  쪽당 평균 0.42~0.48초(최대 1.5초). 거래소로 거르는 인자가 없어 모든 체결을 받아야 한다. 대형주 5세션은 약 360쪽·3분이라 상한이 필요하다.
+
+#### S2 구현 규칙 (`services/screening/off_exchange.py`, `version off-exchange-check-1`)
+
+- **창:** cutoff 전에 장전(04:00 ET)이 열린 최근 N세션(기본 5), 최신부터. 마지막 세션은 `min(cutoff, 계산 시각 − 공개 지연)`에서 자르고 `partial`로 표시한다. 그 뒤 체결은 받지 않는다.
+- **세는 것:** `u`가 `canceled`·`incorrect`인 체결은 빼고(`corrected`는 남김), `M`·`Q`·`9`는 체결로 세지 않는다. 전체 거래량은 모든 거래소, 장외 거래량은 `x == "D"`. 가격대에는 위의 "시장 가격이 아닌" 조건을 뺀 `D` 체결만 넣는다(그 양은 `off_market_price_volume`으로 따로 적는다). 늦은 보고(`L`·`Z`·`U`)는 가격이 실제 체결가라 가격대에 넣고, 양을 `late_report_volume`으로 적는다. 홀수주(`I`)는 넣는다.
+- **가격대:** 기준가는 cutoff 전 마지막 시장가 체결(거래소 무관). 칸 폭은 기준가의 0.5%에 가까운 1·2·5 단위(최소 $0.0001), 칸이 500개를 넘으면 폭을 두 배로. 양옆 칸 이상인 칸(봉우리) 중 가격대 거래량의 1% 이상인 것을 큰 순서로 5개 고르고 기준가 위·아래·걸침을 적는다. 모두 Decimal 문자열.
+- **상한:** 쪽 150개(150만 건), 90초. 쪽 사이에서 확인하고, 다 못 읽은 세션은 통째로 빼서 `missing`에 적고 `status: incomplete`. 최신 세션부터 읽으므로 상한에 걸려도 최근 세션은 남는다. 대형주는 하루치에서 상한에 걸릴 수 있다(AAPL 실측: 1세션, 150쪽, 84.6초).
+- **결과:** S1의 공통 계약 `screening_check`(`check: "off_exchange"`)로 저장한다(`ScreeningStore.add_check`, 덧붙이기만). `status`는 ok·incomplete·no_data·error(사유는 `result.reason`). `result`는 하위 정의 `ScreeningOffExchangeResult`로 검사한다: `label: "장외 체결(TRF 보고)"`, `data_until_utc`, 세션별 수치, `reference_price`, `bin_width`, `histogram`, `levels`, `context.finra_weekly_ats`(Dark Pool Agent의 FINRA 주간 ATS 사실을 그대로, 가격대 계산에는 쓰지 않음), `limits`, `limitations`(증권사 내부 체결이 섞임·방향 모름·보고 시각 ≠ 체결 시각·FINRA 주간 자료는 맥락), `missing`, `unverified`. 봉투의 `warnings`에도 한계 문구가 늘 앞에 들어간다. 지난 cutoff를 나중에 다시 계산하면 `u` 상태가 나중 것이라는 "나중에 받아 재구성" 문구를 붙인다.
+- **엔드포인트:** `POST /v1/screening/checks/off_exchange` `{symbol, session_date?}`(`services/api/screening_off_exchange_routes.py`). 세션 창, `cutoff = min(now, 세션 끝)`, `after_the_fact`는 검사 A와 같다. Alpaca 키가 없으면 503. FINRA 맥락은 공개 자료 저장소가 있으면 최근 12주를 읽고, 없거나 실패하면 경고만 남긴다. 화면 타임아웃(60초)을 넘을 수 있는 대형주는 쪽 상한에 걸려 `incomplete`로 답한다.
+- **명령:** `uv run python -m services.screening.off_exchange STAK --cutoff 2026-11-06T15:00:00Z`(등록한 Alpaca 키, 읽기 전용, 결과 JSON 출력).
+- **아직 안 한 것:** 후보 패널의 D 열과 차트 겹쳐 그리기(`result.levels`, `result.histogram`)는 S1 쪽에서 붙인다. 같은 종목·같은 날 결과 다시 쓰기(캐시)는 정하지 않았다(지금은 요청마다 새로 계산해 덧붙인다).
+
 ### 6. 시점과 기록
 
 - 카드마다 `cutoff_utc`(이 시각까지 알 수 있던 자료만)를 둔다. 뉴스는 `published_at ≤ cutoff`, 공시는 접수 시각 ≤ cutoff, 봉은 cutoff 전에 닫힌 것만 쓴다.

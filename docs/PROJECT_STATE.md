@@ -2708,3 +2708,13 @@
 - **추가:** 조건검색 기록(ADR 0051)을 읽기 전용으로 읽는 후보 목록, 저장한 규칙 전략의 확정 일봉 진입조건 검사(A), `screening.sqlite3`, `/v1/screening/*`, 계약 `screening_candidates`·`screening_check`, Research "오늘의 후보" 패널.
 - **확인:** `tests/screening/test_screening.py`(기록 읽기·쓰지 않음·cutoff·재구독 목록, 진입조건 값·시간대 조건 거부, 경로), `CandidatesPanel.test.tsx`.
 - **미확인:** 실제 조건검색 기록으로 본 후보 목록(기록기는 2026-11-09 18:01 KST부터 첫 기록), 실제 Alpaca 일봉으로 돌린 검사, 실행 중인 API·앱에서의 화면.
+
+## 장외 체결 가격대 검사(ADR 0052 D, S2) — 2026-11-09
+
+- **요청:** ADR 0052의 D("다크풀 분석")를 별도 세션이 개발한다(2026-11-09 사용자 결정). FINRA 주간 자료는 가격이 없어 Alpaca SIP 장외 체결로 대신한다.
+- **추가:** Alpaca adapter에 `trade_pages`(`GET /v2/stocks/{symbol}/trades`, 쪽 단위). `services/screening/off_exchange.py`의 `off_exchange_check`가 cutoff 전 최근 N세션(기본 5) 거래소 코드 `D` 체결의 가격대별 거래량, 봉우리 가격대(지지·저항 후보), 장외 비중을 낸다. S1의 `screening_check`(`check: "off_exchange"`, `result`는 `ScreeningOffExchangeResult`)로 `POST /v1/screening/checks/off_exchange`가 저장한다. 이름은 "장외 체결(TRF 보고)". 명령 `uv run python -m services.screening.off_exchange SYMBOL [--cutoff …]`(저장하지 않음).
+- **확인:**
+  - 거래소·조건 코드: Alpaca 메타 엔드포인트(실제 키, 2026-11-09). `D` = "FINRA ADF". 자료량과 `D` 비중은 ADR 0052 D 절 표.
+  - 시험 21개(`tests/screening/test_off_exchange.py`·`test_off_exchange_api.py`, `httpx.MockTransport`), 계약 fixture 유효·무효 각 1개.
+  - 실제 실행: STAK cutoff 2026-11-06T15:00Z → 5세션 9쪽, `ok`. AAPL cutoff 2026-11-06T21:00Z → 150쪽 상한, 1세션, `incomplete`.
+- **미확인:** TRF 보고분이 `D`에 모두 들어 있는지(거래량 비중으로 추정), `t`가 어느 시각인지, 패널 D 열·차트 겹쳐 그리기(S1 쪽), 결과 캐시, 엔드포인트의 실제 키 실행(명령으로만 실행해 봄).

@@ -1,6 +1,7 @@
 """Alpaca Market Data API v2 adapter (prototype, read-only).
 
-Only `GET /v2/stocks/bars` is called; no trading endpoint is ever used. Day-market
+Only `GET /v2/stocks/bars` and, for the off-exchange screening check (ADR 0052),
+`GET /v2/stocks/{symbol}/trades` are called; no trading endpoint is ever used. Day-market
 (overnight) bars come from the same endpoint with `feed=boats` and are kept apart from the
 SIP/IEX bars (ADR 0030). Credentials
 come from the environment and are never logged, stored or echoed in errors.
@@ -13,7 +14,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -499,6 +500,50 @@ class AlpacaMarketDataProvider:
         if not SYMBOL_PATTERN.fullmatch(symbol):
             raise InvalidBarsQueryError("a ticker is 1-10 letters, digits or dots")
         return self._fetch_pages(symbol, timeframe, start, end, max_pages, adjustment)
+
+    def trade_pages(
+        self, symbol: str, start: datetime, end: datetime
+    ) -> Iterator[list[dict[str, Any]]]:
+        """SIP trades of one ticker, one page at a time (prices as Decimal), ADR 0052 §5.
+
+        `GET /v2/stocks/{symbol}/trades` only. Pages are yielded as they arrive so the
+        caller can stop between pages; nothing is kept here.
+        """
+        if not SYMBOL_PATTERN.fullmatch(symbol):
+            raise InvalidBarsQueryError("a ticker is 1-10 letters, digits or dots")
+        params: dict[str, str | int] = {
+            "start": start.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "end": end.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "limit": self.config.page_limit,
+            "feed": "sip",
+            "sort": "asc",
+        }
+        while True:
+            try:
+                response = self._client.get(
+                    f"/v2/stocks/{symbol}/trades",
+                    params=params,
+                    timeout=httpx.Timeout(60.0, connect=5.0),
+                )
+            except httpx.TimeoutException as exc:
+                raise ProviderUnavailableError("Alpaca did not answer in time") from exc
+            except httpx.HTTPError as exc:
+                raise ProviderUnavailableError(
+                    f"could not reach Alpaca: {type(exc).__name__}"
+                ) from exc
+            self._raise_for_status(response)
+            try:
+                payload = json.loads(response.text, parse_float=Decimal)
+            except ValueError as exc:
+                raise ProviderDataError("Alpaca returned a response that is not JSON") from exc
+            trades = payload.get("trades") or []
+            if not isinstance(trades, list):
+                raise ProviderDataError("Alpaca returned trades that are not a list")
+            yield trades
+            token = payload.get("next_page_token")
+            if not token:
+                return
+            params["page_token"] = token
 
     def get_adjusted_daily_bars(self, query: BarsQuery, adjustment: str) -> BarsResult:
         """Alpaca "1Day" bars adjusted for splits or for splits and dividends.

@@ -165,6 +165,59 @@ export type RealtimeEvent1 =
       subscribed: string[];
       rejected: string[];
     };
+/**
+ * ADR 0052: one stored check of one candidate. `result` depends on `check`; for `entry` it holds the last closed daily bar, the bars used and every simple condition with the values it compared. Stored results are only added, never changed.
+ */
+export type ScreeningCheck = {
+  [k: string]: unknown;
+} & {
+  kind: "screening_check";
+  schema_version: SchemaVersion;
+  check_id: number;
+  check: "entry" | "news" | "off_exchange" | "dilution";
+  session_date: string;
+  symbol: string;
+  instrument_id: Identifier;
+  cutoff_utc: UtcTimestamp;
+  created_at_utc: UtcTimestamp;
+  /**
+   * Run after the session ended: stored data, not what was live at the cutoff.
+   */
+  after_the_fact: boolean;
+  /**
+   * passed/failed: check A. material/no_material: check B. ok/incomplete: checks C and D. The rest: any check.
+   */
+  status:
+    | "passed"
+    | "failed"
+    | "material"
+    | "no_material"
+    | "ok"
+    | "incomplete"
+    | "unsupported"
+    | "no_data"
+    | "error"
+    | "pending";
+  strategy?: null | {
+    strategy_id: Identifier;
+    name: string;
+    version: number;
+    definition_sha256: string;
+  };
+  result: {
+    [k: string]: unknown;
+  };
+  versions: {
+    [k: string]: string;
+  };
+  /**
+   * @maxItems 200
+   */
+  warnings: string[];
+  sources: {
+    [k: string]: unknown;
+  };
+};
 
 export interface InstrumentRef {
   kind: "instrument_ref";
@@ -7662,55 +7715,4 @@ export interface ScreeningCandidates {
       };
     };
   }[];
-}
-/**
- * ADR 0052: one stored check of one candidate. `result` depends on `check`; for `entry` it holds the last closed daily bar, the bars used and every simple condition with the values it compared. Stored results are only added, never changed.
- */
-export interface ScreeningCheck {
-  kind: "screening_check";
-  schema_version: SchemaVersion;
-  check_id: number;
-  check: "entry" | "news" | "off_exchange" | "dilution";
-  session_date: string;
-  symbol: string;
-  instrument_id: Identifier;
-  cutoff_utc: UtcTimestamp;
-  created_at_utc: UtcTimestamp;
-  /**
-   * Run after the session ended: stored data, not what was live at the cutoff.
-   */
-  after_the_fact: boolean;
-  /**
-   * passed/failed: check A. material/no_material: check B. ok/incomplete: checks C and D. The rest: any check.
-   */
-  status:
-    | "passed"
-    | "failed"
-    | "material"
-    | "no_material"
-    | "ok"
-    | "incomplete"
-    | "unsupported"
-    | "no_data"
-    | "error"
-    | "pending";
-  strategy?: null | {
-    strategy_id: Identifier;
-    name: string;
-    version: number;
-    definition_sha256: string;
-  };
-  result: {
-    [k: string]: unknown;
-  };
-  versions: {
-    [k: string]: string;
-  };
-  /**
-   * @maxItems 200
-   */
-  warnings: string[];
-  sources: {
-    [k: string]: unknown;
-  };
 }
