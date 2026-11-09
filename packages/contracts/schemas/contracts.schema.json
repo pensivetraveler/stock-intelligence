@@ -12233,11 +12233,16 @@
           "enum": [
             "passed",
             "failed",
+            "material",
+            "no_material",
+            "ok",
+            "incomplete",
             "unsupported",
             "no_data",
             "error",
             "pending"
-          ]
+          ],
+          "description": "passed/failed: check A. material/no_material: check B. ok/incomplete: checks C and D. The rest: any check."
         },
         "strategy": {
           "oneOf": [

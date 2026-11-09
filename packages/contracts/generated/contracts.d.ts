@@ -7680,7 +7680,20 @@ export interface ScreeningCheck {
    * Run after the session ended: stored data, not what was live at the cutoff.
    */
   after_the_fact: boolean;
-  status: "passed" | "failed" | "unsupported" | "no_data" | "error" | "pending";
+  /**
+   * passed/failed: check A. material/no_material: check B. ok/incomplete: checks C and D. The rest: any check.
+   */
+  status:
+    | "passed"
+    | "failed"
+    | "material"
+    | "no_material"
+    | "ok"
+    | "incomplete"
+    | "unsupported"
+    | "no_data"
+    | "error"
+    | "pending";
   strategy?: null | {
     strategy_id: Identifier;
     name: string;

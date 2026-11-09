@@ -43,6 +43,10 @@ function remember(strategyId: string): void {
 const STATUSES = [
   "passed",
   "failed",
+  "material",
+  "no_material",
+  "ok",
+  "incomplete",
   "unsupported",
   "no_data",
   "error",
