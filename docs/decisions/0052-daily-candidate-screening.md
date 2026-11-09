@@ -54,9 +54,14 @@
 
 ### 3. B — 뉴스 재료
 
-- **출처 후보:** Alpaca News API(`GET /v1beta1/news`, Benzinga 제공). 지금 쓰는 Alpaca 키로 열리는지, 약관상 이 용도에 써도 되는지는 **미확인**이다. 확인 전에는 호출하지 않는다. 크롤링은 하지 않는다.
-- **저장:** 제목, 요약, 종목, `published_at`(공급자 게시 시각), `first_observed_utc`(SIW가 처음 받은 시각), 원문 링크. 기사 본문은 저장하지 않는다(권리 미확인).
-- **분류 1단계(규칙):** 제목과 요약의 정해진 낱말로 재료 종류를 붙인다. 예: 유상증자·공모, 실적, 임상·FDA, 계약·수주, 인수합병, 역분할, 상장 유지 통지, 재료 없음. 규칙과 낱말 목록은 버전을 붙여 저장한다.
+- **출처:** Alpaca News API(`GET /v1beta1/news`). 기사는 여러 공급원에서 온다(`source`: Benzinga, fiscal.ai 등). Benzinga만이 아니다.
+- **확인 결과(2026-11-09, S4 세션):**
+  - **권한:** Keys 화면의 첫 Alpaca 키로 읽기 전용 2회 호출(AAPL, 3건), HTTP 200. 한도 헤더 `X-RateLimit-Limit: 10000`(분당). 응답 필드는 `id, headline, summary, author, created_at, updated_at, url, symbols, source, content, images`. `include_content`를 주지 않아도 `content`는 빈 문자열이었다.
+  - **약관:** Alpaca Terms and Conditions(`files.alpaca.markets/disclosures/library/TermsAndConditions.pdf`, 2026-11-09 받음)는 뉴스를 포함한 "Content"를 개인·비상업 용도로만 쓰게 하고, 다른 매체로 게시·배포하려고 복사·재게시하는 것을 금한다. 제3자(Benzinga 등) 콘텐츠도 이 Content에 들어간다. 그래서 제목·요약을 **이 컴퓨터의 로컬 캐시에만** 두고 화면에 보이는 것은 개인 연구로 보고 진행한다. 내보내기·공유·커밋은 하지 않는다. 시험 자료는 지어낸 기사만 쓴다.
+  - **미확인(unverified):** 뉴스가 어느 요금제에 들어가는지(공식 문서에 표 없음, 한도 10000/분은 유료 요금제 값과 같다), 뉴스 전용 과거 기간·한도, `created_at`이 게시 시각인지(문서는 "만든 시각"이라고만 함), 기사 수정 때 `updated_at`이 바뀌는지, Benzinga 쪽 별도 사용 조건. 약관 해석은 법률 검토가 아니다.
+- **저장:** 제목, 요약, 작성자, 종목, `published_at`(= Alpaca `created_at`), `updated_at`, `first_observed_utc`(SIW가 처음 받은 시각), 원문 링크, 공급원. 요청에 `include_content=false`를 보내고 본문·이미지는 받아도 버린다. `public_sources.sqlite3`(ADR 0024 캐시)에 `alpaca-news` 출처로, 종목별 기록(`<TICKER>:<id>`)으로 넣는다. 기사가 바뀌면 새 판으로 옆에 쌓고 덮지 않는다. 받는 창은 cutoff 72시간 전(최대 30일)부터 지금까지이고, 한 번에 50건씩 최대 10쪽(500건)이다. 더 있으면 "다 읽지 못함"으로 표시한다.
+- **분류 1단계(규칙, `news-rules-1`):** 제목과 요약에서 정해진 낱말·구절(대소문자 무시, 단어 경계)로 재료 종류를 붙인다. 종류: `offering`(유상증자·공모), `earnings`(실적), `clinical_fda`(임상·FDA), `contract_order`(계약·수주), `merger_acquisition`(인수합병), `reverse_split`(역분할), `listing_notice`(상장 유지 통지), `none`(규칙상 재료 없음). 한 기사에 여러 종류가 붙을 수 있다. 낱말 목록은 `services/screening/news_rules.py`에 있고, 결과에 판 이름과 SHA-256을 남긴다. 낱말 목록 첫 판은 사용자 검토 전이다.
+- **검사 결과:** `POST /v1/screening/checks/news`(body `{symbol, session_date?, lookback_hours?}`, 기본 72시간)가 S1의 `screening_check` 하나(`check: "news"`)를 `screening.sqlite3`에 덧붙인다. 세션 창과 `cutoff = min(지금, 세션 끝)`, `after_the_fact`는 A와 같다. `status`는 `material`(재료 기사 있음), `no_material`(기사는 있으나 규칙에 안 걸림), `no_data`(창 안에 기사 없음), `unsupported`(미국 종목 아님), `error`(`result.reason`: `alpaca_credential_missing`, `source_unavailable`). `result`에 `window_start_utc`, `lookback_hours`, `categories`, `articles`, `facts`, `missing`, `uncertainty`, `reason`을 둔다. 기사마다 종류·걸린 낱말·게시·수정·처음 받은 시각·판 수, 그리고 `observed_by_cutoff`(cutoff 전에 SIW가 실제로 받았는지)와 `revised_after_cutoff`(보이는 글이 cutoff 뒤 수정본일 수 있음)를 둔다. `sources`는 `{source_id: "alpaca-news", records: [source_record…]}`, `versions`는 규칙 판·해시·파서 판, 캐시 사용 같은 알림은 `warnings`. `created_at > cutoff`인 기사는 결과에 넣지 않는다. 판은 ADR 0024 규칙대로 cutoff까지 SIW가 본 판을 쓰고, 본 판이 없으면 최신 판을 쓰되 표시한다. "오늘의 후보" 패널의 뉴스 열(`checks.news`)은 S1이 붙인다.
 - **분류 2단계(LLM, 선택):** 규칙으로 정하지 못한 기사만 LLM에 묻는다. 정하기 전에 "Local AI Gateway 개발·유지보수" 세션에 모델 배정을 상담하고(`[요청 #SIW-<번호>] 모델 배정: 뉴스 재료 분류`), 회신을 이 ADR에 적어 사용자 확정을 받는다. LLM의 답은 "추론"으로 표시하고 근거 기사와 분리한다.
 - **진입조건 조정:** 재료 종류 → A의 조건 프리셋을 고르는 **표**를 사용자가 정한다(예: 공모 재료는 후보에서 뺌, 실적 재료는 거래량 배수 문턱을 높임). LLM이 조건 값을 직접 바꾸지 않는다. 카드에 어떤 표의 어떤 줄로 어떤 프리셋이 골라졌는지 남긴다.
 
@@ -147,6 +152,6 @@
 ## Revisit when
 
 - S2에서 Alpaca 체결 거래소 코드·자료량을 잰 뒤.
-- Alpaca News 권한·약관을 확인한 뒤.
+- Alpaca News 권한·약관을 확인한 뒤. → 2026-11-09 확인(§3). 요금제·`created_at` 뜻·Benzinga 조건은 미확인으로 남았다. 낱말 목록 첫 판을 사용자가 검토한 뒤, 그리고 S1 카드 연결 모양이 정해진 뒤 다시 본다.
 - 분석기 세션이 회신한 뒤.
 - 유료 다크풀·뉴스 피드를 검토할 때.

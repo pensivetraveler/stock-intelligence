@@ -1,4 +1,4 @@
-"""Builds per-request SEC and FINRA clients over one shared cache, pacing and HTTP client."""
+"""Per-request SEC, FINRA and Alpaca News clients over one shared cache and HTTP client."""
 
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ from pathlib import Path
 
 import httpx
 
-from services.public_sources import finra, sec
+from services.public_sources import alpaca_news, finra, sec
+from services.public_sources.alpaca_news import AlpacaNews, AlpacaNewsCredential
 from services.public_sources.cache import PublicSourceCache
 from services.public_sources.finra import Finra, FinraCredential, TokenHolder
 from services.public_sources.http import RateLimiter
@@ -26,6 +27,8 @@ class PublicSources:
         client: httpx.Client | None = None,
         sec_limiter: RateLimiter | None = None,
         finra_limiter: RateLimiter | None = None,
+        alpaca_credential: Callable[[], AlpacaNewsCredential | None] = lambda: None,
+        news_limiter: RateLimiter | None = None,
     ) -> None:
         self.cache = PublicSourceCache(path, clock)
         self._user_agent = user_agent
@@ -34,6 +37,8 @@ class PublicSources:
         self._sec_limiter = sec_limiter or RateLimiter(sec.REQUEST_INTERVAL)
         self._finra_limiter = finra_limiter or RateLimiter(finra.REQUEST_INTERVAL)
         self._tokens = TokenHolder()
+        self._alpaca_credential = alpaca_credential
+        self._news_limiter = news_limiter or RateLimiter(alpaca_news.REQUEST_INTERVAL)
 
     def sec(self) -> SecEdgar:
         return SecEdgar(
@@ -48,3 +53,6 @@ class PublicSources:
             self._finra_limiter,
             self._tokens,
         )
+
+    def alpaca_news(self) -> AlpacaNews:
+        return AlpacaNews(self.cache, self._alpaca_credential(), self._client, self._news_limiter)
