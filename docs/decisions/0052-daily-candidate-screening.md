@@ -75,6 +75,7 @@
   - 대기: 작업자 하나, 들어온 순서, 우선순위·취소 없음. 규칙만+SEC 캐시 4~7초, LLM 새 분석 1~9분, 캐시 재실행 10~60초, 작업 예산 20분. 장 전 30종목 규칙만은 몇 분, LLM이면 1시간 넘을 수 있다.
   - 이름: "스트레스"는 판단처럼 읽힌다 → **"희석 공급 가격대"** 또는 "행사·전환가 분포"를 권한다. 가격축 필드: `securities[].price`, `price_range`, `pricing`, `conditions[].threshold`, `clause_terms`, `capacity`, `shelves`, `resale`, `scenarios[].undetermined_security_ids`. `proposals`에는 가격이 없다.
   - 서비스가 꺼져 있으면 "대기"로 두고 띄우지 않는다(`127.0.0.1:8775`의 `GET /` 제목이 "주식 희석 분석기"가 아니거나 연결 거부면 꺼짐, 작업자만 꺼지면 `queued`에 머문다).
+- **사용자 확정(2026-11-09, "그렇게 확정"):** 후보 전부는 규칙만(`llm=false`)으로 요청하고, LLM 분석은 사용자가 고른 종목(하루 2~3개)에만 요청한다. 화면 이름은 "희석 공급 가격대"다.
 
 ### 5. D — 장외 체결 가격대(“다크풀” 대신)
 
@@ -140,6 +141,14 @@
 - **API:** `GET/POST /v1/screening/candidates`, `POST /v1/screening/checks/entry`, `GET /v1/screening/checks/{id}`. 새 계약 `screening_candidates`, `screening_check`(`check`는 `entry`·`news`·`off_exchange`·`dilution`; B·C·D 세션이 같은 문서 모양으로 붙인다).
 - **화면:** SIW Research 오른쪽 "조건검색" 패널 위에 "오늘의 후보". 전략 고르기(이 화면에서만 기억), 모두 검사·종목별 검사, 검사 결과 펼쳐 보기, 종목 추가, 종목을 누르면 차트.
 - **아직 없음:** 편입 즉시 자동 검사(지금은 버튼), 프리마켓 장전 봉 조건, B·C·D, SIW Agent로 넘기기(S5).
+
+### C 구현 (2026-11-09)
+
+- `services/screening/dilution.py`: 분석기 서비스(`SIW_DILUTION_URL`, 기본 `http://127.0.0.1:8775`, 이 컴퓨터 주소만 허용)에 `POST /api/v1/analyses {ticker, as_of, llm}` → 작업 상태 → 결과를 읽는다. `price`는 보내지 않는다(Alpaca 시세가 결과에 남지 않게, 현재가는 SIW 차트에 있다).
+- `POST /v1/screening/checks/dilution {symbol, session_date?, llm=false}`: 15초까지 기다려 끝나면 `ok`(불완전 사유가 있으면 `incomplete`), 아니면 `pending`(작업 번호 보관). `POST /v1/screening/checks/{id}/refresh`가 대기 중인 작업을 다시 보고 끝났으면 새 결과를 덧붙인다. 서비스가 꺼져 있으면 `pending`과 사유, 띄우지 않는다. `blocked`·`failed`는 `error`, `unsupported`는 `unsupported`이고 결과가 없다.
+- 결과에는 분석기 계약 JSON을 그대로(`result.contract`) 두고, 가격축 요약(증권별 행사·전환가, 구간, 하한, 잔량, 조건 문턱, 승인 미확인 게이트, 기준 시점 뒤 발행, ATM 여력, 선반·재매도, 불완전 사유, 발행인 경고)을 붙인다. 값은 분석기 상태와 함께 두고, 모르는 값은 `null`이다.
+- 화면: "희석 공급" 열, "희석 모두 검사(규칙만)", 결과 펼치기(모르는 값은 "?", 사실이 아닌 값은 상태 표시, "승인 전 전환 불가일 수 있음"), "LLM으로 분석(비용 듦)"은 종목별로만, 대기 중이면 "다시 확인".
+- 한계: 분석기의 as-of는 날짜라 같은 날 cutoff 뒤 공시가 들어갈 수 있다(경고로 남김). 실제 서비스 확인(2026-11-09)에서는 분석기 작업자가 "엔진 파일이 바뀌었으니 다시 시작하라"로 실패했고, SIW는 `error`와 그 사유로 기록했다. 작업자 재시작 뒤 성공 경로는 미확인이다.
 
 ### 진행 방식 (2026-11-09 사용자 결정)
 

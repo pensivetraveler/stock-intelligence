@@ -12300,25 +12300,21 @@
           "type": "object"
         }
       },
-      "allOf": [
-        {
-          "if": {
-            "required": ["check"],
-            "properties": {
-              "check": {
-                "const": "off_exchange"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "result": {
-                "$ref": "#/$defs/ScreeningOffExchangeResult"
-              }
-            }
+      "if": {
+        "required": ["check"],
+        "properties": {
+          "check": {
+            "const": "off_exchange"
           }
         }
-      ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/ScreeningOffExchangeResult"
+          }
+        }
+      }
     },
     "ScreeningOffExchangeResult": {
       "description": "ADR 0052 §5 (S2): `result` of an `off_exchange` screening check. Off-exchange (TRF-reported, Alpaca SIP exchange code D) volume by price over the latest sessions known at the cutoff, shown as '장외 체결(TRF 보고)', never 'dark pool': ATS and broker internalization are mixed, direction is unknown, and timestamps are report times.",
