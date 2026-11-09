@@ -7,6 +7,7 @@ import { createIndicatorAssistantApi } from "./indicator-assistant-api";
 import { createStrategyResearchApi } from "./strategy-research-api";
 import { createReviewApi } from "./review-api";
 import { createBacktestApi } from "./backtest-api";
+import { createScreeningApi } from "./screening-api";
 import { createCredentialApi } from "./credential-api";
 import { createCustomIndicatorApi } from "./custom-indicator-api";
 import { desktopBridge } from "./desktop-bridge";
@@ -68,6 +69,10 @@ function AppContent({
   );
   const backtestApi = useMemo(
     () => createBacktestApi(apiBaseUrl, fetcher),
+    [apiBaseUrl, fetcher],
+  );
+  const screeningApi = useMemo(
+    () => createScreeningApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
   );
   const agentApi = useMemo(
@@ -150,6 +155,7 @@ function AppContent({
             api={api}
             keysPanel={<KeysPanel api={credentialApi} />}
             backtestApi={backtestApi}
+            screeningApi={screeningApi}
             agentApi={agentApi}
             reviewApi={reviewApi}
             customApi={customApi}

@@ -371,6 +371,10 @@ class RuleEvaluator:
             return float(getattr(self.bars[i], operand["price"]))
         return float(operand["value"])
 
+    def value(self, operand: dict[str, Any], i: int) -> float | None:
+        """An operand's value at index i, as a condition sees it (None when missing)."""
+        return self._value(operand, i)
+
     def _in_window(self, window: dict[str, str], i: int) -> bool:
         start = datetime.fromtimestamp(self.bars[i].time, ZoneInfo(self.time_zone))
         return window["from"] <= start.strftime("%H:%M") < window["to"]

@@ -37,6 +37,7 @@ from services.api.paper_routes import register_paper_routes
 from services.api.parent_watch import parent_pid_from_env, start_parent_watch
 from services.api.review_routes import register_review_routes
 from services.api.screener_routes import register_screener_routes
+from services.api.screening_routes import register_screening_routes, saved_strategy
 from services.api.strategy_research_routes import register_strategy_research_routes
 from services.assistant.conversion import call_convert_claude
 from services.assistant.indicator import call_indicator_claude
@@ -151,6 +152,7 @@ from services.review.claude import ask_for_report, convert_principles
 from services.review.conversation import call_claude
 from services.review.period_ai import ask_period_commentary
 from services.review.store import ReviewStore
+from services.screening.store import ScreeningStore
 
 LOG = logging.getLogger("siw.api")
 FILING_COMPARE_SECONDS = 6 * 3600
@@ -491,6 +493,27 @@ class _LazyBacktests:
 
     def started(self) -> BacktestRunner | None:
         return self._runner
+
+
+class _LazyScreening:
+    """Open screening.sqlite3 on first use (needs SIW_DATA_DIR)."""
+
+    def __init__(self, clock: Callable[[], datetime]) -> None:
+        self._clock = clock
+        self._store: ScreeningStore | None = None
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def data_dir() -> Path | None:
+        configured = os.getenv("SIW_DATA_DIR", "").strip()
+        return Path(configured) if configured else None
+
+    def get(self) -> ScreeningStore | None:
+        with self._lock:
+            root = self.data_dir()
+            if self._store is None and root is not None:
+                self._store = ScreeningStore(root / "screening.sqlite3", self._clock)
+            return self._store
 
 
 class _LazyAgents:
@@ -1735,6 +1758,18 @@ def create_app(
         error_response=_error_response,
         clock=clock,
         connect=kiwoom_conditions_connect,
+    )
+    screening = _LazyScreening(clock)
+    register_screening_routes(
+        application,
+        store=screening.get,
+        data_dir=screening.data_dir,
+        strategy=saved_strategy(backtests.get),
+        listing_for=listing_for,
+        get_bars=lambda: MarketBarsService(provider.get()).get_bars,
+        get_adjusted=lambda: getattr(provider.get(), "get_adjusted_daily_bars", None),
+        error_response=_error_response,
+        clock=clock,
     )
 
     # Provider and cache I/O are blocking; a sync endpoint runs in FastAPI's threadpool

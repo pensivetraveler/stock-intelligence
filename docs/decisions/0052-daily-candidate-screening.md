@@ -68,6 +68,13 @@
 - **상태 존중:** `confirmed`·`computed`·`inferred`만 사실로 보이고, 나머지(`unverified`, 불완전 판, 차단)는 그렇다고 표시한다. FPI 경고 등 계약이 함께 보이라는 고지는 그대로 보인다.
 - **시간과 비용:** 분석 하나는 몇 분 걸릴 수 있다(분석기 시간 예산 20분). 그래서 편입 즉시 요청하고, 카드는 먼저 다른 검사 결과로 보이다가 결과가 오면 채운다. 분석기의 LLM 비용 상한(종목·날짜당 $0.15, 월 $10)은 하루 후보가 많으면 월 상한에 걸릴 수 있다. 하루 요청 수 상한을 둔다(사용자가 정함).
 - **분석기 세션과의 합의가 먼저다:** 요청 빈도, 비용 상한, 규칙만 모드(`llm=false`) 사용 여부, 실패 시 동작을 "주식 희석 분석기" 세션에 요청해 회신을 받은 뒤 구현한다.
+- **분석기 세션 회신(2026-11-09, `[회신 #SIW-screen-1]`, 분석기 main 945e5eb 기준):** 사용 방식은 계약 v1·서비스 API 의도에 맞다. 지킬 것과 권고:
+  - 봉투 `state`가 `blocked`·`unsupported`·`failed`면 결과가 없다(`blocked`면 결과 요청이 422). `incomplete_reasons`가 있으면 합계·하한은 `null`·`unverified`이고 0으로 보이지 않는다. 기준 시점 뒤 8-K 증권은 "(기준 시점 뒤 발행)"·`inferred`, `shareholder_approval`(unknown) 게이트는 "승인 전 전환 불가일 수 있음"으로 보인다.
+  - 요청한 `price`는 결과(`user_price`)에 남는다. Alpaca 시세로 만든 결과는 로컬 화면에서만 쓴다.
+  - 비용: 종목·ET 날짜당 $0.15, 월 $10(LLM 새 분석 최대 약 $0.106 → 월 90건쯤에서 막힘). **권고: 후보 전부는 규칙만(`llm=false`), LLM은 사용자가 고른 하루 2~3종목에만.** 규칙만은 늘 불완전(`llm_disabled`)이라 합계 희석률은 없고, 개별 증권 값은 약 49%만 나오지만 행사·전환가 가격축 용도로는 쓸 만하다.
+  - 대기: 작업자 하나, 들어온 순서, 우선순위·취소 없음. 규칙만+SEC 캐시 4~7초, LLM 새 분석 1~9분, 캐시 재실행 10~60초, 작업 예산 20분. 장 전 30종목 규칙만은 몇 분, LLM이면 1시간 넘을 수 있다.
+  - 이름: "스트레스"는 판단처럼 읽힌다 → **"희석 공급 가격대"** 또는 "행사·전환가 분포"를 권한다. 가격축 필드: `securities[].price`, `price_range`, `pricing`, `conditions[].threshold`, `clause_terms`, `capacity`, `shelves`, `resale`, `scenarios[].undetermined_security_ids`. `proposals`에는 가격이 없다.
+  - 서비스가 꺼져 있으면 "대기"로 두고 띄우지 않는다(`127.0.0.1:8775`의 `GET /` 제목이 "주식 희석 분석기"가 아니거나 연결 거부면 꺼짐, 작업자만 꺼지면 `queued`에 머문다).
 
 ### 5. D — 장외 체결 가격대(“다크풀” 대신)
 
@@ -97,6 +104,15 @@
 5. **S5:** 재료별 조건 조정 표와 SIW Agent로 넘기기.
 
 순서는 외부 의존이 적은 것부터다. 사용자가 바꿀 수 있다.
+
+### S1 구현 (2026-11-09)
+
+- **후보:** `services/screening/candidates.py`가 ADR 0051 기록 파일을 **읽기 전용 SQLite 연결**로 연다. `ConditionWatchStore`로 열면 스키마를 만들고 끝나지 않은 구독을 `interrupted`로 닫아, 기록 중인 기록기를 방해한다. cutoff 전에 SIW가 받은 이벤트만 쓴다. 종목마다 처음 받은 시각, cutoff 직전 구독 기준 목록 포함 여부를 내고, 구독 수·중단 수·지금 기록 중인지로 기록의 빈틈을 함께 보인다. 직접 넣은 종목은 `manual`.
+- **A:** `services/screening/entry.py`. 저장한 규칙 전략의 `entry`를 cutoff 전에 정규장이 마감한 마지막 세션까지의 확정 일봉(분할 조정, 없으면 원가격과 경고)에 백테스트와 같은 `RuleEvaluator`로 평가한다. 단순 조건마다 비교한 두 값과 충족 여부를 남긴다. 시간대 조건과 Python 지표는 `unsupported`로 답한다.
+- **저장:** `SIW_DATA_DIR/screening.sqlite3`(`services/screening/store.py`). 검사 결과는 덧붙이기만 하고 카드는 종류별 최신 결과를 보인다.
+- **API:** `GET/POST /v1/screening/candidates`, `POST /v1/screening/checks/entry`, `GET /v1/screening/checks/{id}`. 새 계약 `screening_candidates`, `screening_check`(`check`는 `entry`·`news`·`off_exchange`·`dilution`; B·C·D 세션이 같은 문서 모양으로 붙인다).
+- **화면:** SIW Research 오른쪽 "조건검색" 패널 위에 "오늘의 후보". 전략 고르기(이 화면에서만 기억), 모두 검사·종목별 검사, 검사 결과 펼쳐 보기, 종목 추가, 종목을 누르면 차트.
+- **아직 없음:** 편입 즉시 자동 검사(지금은 버튼), 프리마켓 장전 봉 조건, B·C·D, SIW Agent로 넘기기(S5).
 
 ### 진행 방식 (2026-11-09 사용자 결정)
 
