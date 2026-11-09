@@ -2726,3 +2726,13 @@
 - **미확인:** 뉴스 포함 요금제, 뉴스 전용 과거 기간·한도, `created_at`이 게시 시각인지, 수정 때 `updated_at` 변화, Benzinga 별도 조건, 낱말 목록의 실제 적중률(실제 급등주 기사로 재 보지 않았다).
 - **추가(같은 날, 사용자 결정 "MarketNewsAPI, Finnhub 모두 사용"):** 원본 보도자료를 모으려고 두 공급원을 별도 출처로 붙였다. `services/public_sources/marketnews.py`(보도자료 본문 보관, 비미국 거래소 전용 기사 제외, 무료 지연 경고), `services/public_sources/finnhub_news.py`(날짜 단위 조회, cutoff는 받은 뒤 적용), 공통 틀 `news_common.py`, Keys 화면 항목 `marketnewsapi`·`finnhub`(키 공급자 계약 갱신), `PublicSourceCache.delete_source`(Finnhub 구독 종료 시 삭제 의무). 뉴스 검사는 세 출처를 모두 읽고 출처별 상태(`result.feeds`)를 적으며, 같은 제목은 `same_headline_as`로만 가리킨다. 시험 `tests/screening/test_news_feeds.py`.
 - **미확인(두 공급원):** 키 발급 전이라 실제 호출 없음. 응답 모양·소형주 적중·Finnhub 날짜의 시간대·쪽 넘김 상한·MarketNewsAPI 거래소 코드 목록. `screening.sqlite3` 결과 문서 안 Finnhub 제목 삭제 방법.
+
+## 장외 체결 가격대 검사(ADR 0052 D, S2) — 2026-11-09
+
+- **요청:** ADR 0052의 D("다크풀 분석")를 별도 세션이 개발한다(2026-11-09 사용자 결정). FINRA 주간 자료는 가격이 없어 Alpaca SIP 장외 체결로 대신한다.
+- **추가:** Alpaca adapter에 `trade_pages`(`GET /v2/stocks/{symbol}/trades`, 쪽 단위). `services/screening/off_exchange.py`의 `off_exchange_check`가 cutoff 전 최근 N세션(기본 5) 거래소 코드 `D` 체결의 가격대별 거래량, 봉우리 가격대(지지·저항 후보), 장외 비중을 낸다. S1의 `screening_check`(`check: "off_exchange"`, `result`는 `ScreeningOffExchangeResult`)로 `POST /v1/screening/checks/off_exchange`가 저장한다. 이름은 "장외 체결(TRF 보고)". 명령 `uv run python -m services.screening.off_exchange SYMBOL [--cutoff …]`(저장하지 않음).
+- **확인:**
+  - 거래소·조건 코드: Alpaca 메타 엔드포인트(실제 키, 2026-11-09). `D` = "FINRA ADF". 자료량과 `D` 비중은 ADR 0052 D 절 표.
+  - 시험 21개(`tests/screening/test_off_exchange.py`·`test_off_exchange_api.py`, `httpx.MockTransport`), 계약 fixture 유효·무효 각 1개.
+  - 실제 실행: STAK cutoff 2026-11-06T15:00Z → 5세션 9쪽, `ok`. AAPL cutoff 2026-11-06T21:00Z → 처음 상한(150쪽·90초)에서 1세션 84.6초. 화면 타임아웃 때문에 40초·80쪽으로 낮춘 뒤 71쪽·38.6초, 1세션, `incomplete`.
+- **미확인:** TRF 보고분이 `D`에 모두 들어 있는지(거래량 비중으로 추정), `t`가 어느 시각인지, 패널 D 열·차트 겹쳐 그리기(S1 쪽), 결과 캐시, 엔드포인트의 실제 키 실행(명령으로만 실행해 봄). 대형주는 40초 상한에서 5세션을 다 못 읽는다(가장 최근 세션만, 다 못 읽으면 `truncated`).

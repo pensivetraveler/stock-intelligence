@@ -12303,6 +12303,385 @@
         "sources": {
           "type": "object"
         }
+      },
+      "if": {
+        "required": ["check"],
+        "properties": {
+          "check": {
+            "const": "off_exchange"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/ScreeningOffExchangeResult"
+          }
+        }
+      }
+    },
+    "ScreeningOffExchangeResult": {
+      "description": "ADR 0052 §5 (S2): `result` of an `off_exchange` screening check. Off-exchange (TRF-reported, Alpaca SIP exchange code D) volume by price over the latest sessions known at the cutoff, shown as '장외 체결(TRF 보고)', never 'dark pool': ATS and broker internalization are mixed, direction is unknown, and timestamps are report times.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "data_until_utc",
+        "sessions_requested",
+        "sessions",
+        "reference_price",
+        "reference_time_utc",
+        "bin_width",
+        "total_volume",
+        "off_exchange_volume",
+        "off_exchange_share_pct",
+        "priced_volume",
+        "histogram",
+        "levels",
+        "context",
+        "limits",
+        "limitations",
+        "notes",
+        "missing",
+        "unverified"
+      ],
+      "properties": {
+        "label": {
+          "const": "장외 체결(TRF 보고)"
+        },
+        "data_until_utc": {
+          "$ref": "#/$defs/UtcTimestamp",
+          "description": "min(cutoff, created_at - publication delay): no later trade is read."
+        },
+        "sessions_requested": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "sessions": {
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "session_date",
+              "range_utc",
+              "partial",
+              "truncated",
+              "pages",
+              "trades",
+              "total_volume",
+              "off_exchange_volume",
+              "off_exchange_trades",
+              "off_exchange_share_pct",
+              "priced_volume",
+              "off_market_price_volume",
+              "late_report_volume",
+              "removed_trades"
+            ],
+            "properties": {
+              "session_date": {
+                "type": "string",
+                "format": "date"
+              },
+              "range_utc": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                }
+              },
+              "partial": {
+                "type": "boolean",
+                "description": "True when the data ends inside the session's 04:00-20:00 ET window."
+              },
+              "truncated": {
+                "type": "boolean",
+                "description": "The newest session, read back from the cutoff, hit the fetch limit: range_utc starts at the earliest trade read (to the second). Older sessions read in part are dropped, not truncated."
+              },
+              "pages": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "trades": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "total_volume": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "off_exchange_volume": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "off_exchange_trades": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "off_exchange_share_pct": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/NonNegativeDecimalString"
+                  }
+                ]
+              },
+              "priced_volume": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "off_market_price_volume": {
+                "$ref": "#/$defs/NonNegativeDecimalString",
+                "description": "Off-exchange volume whose condition (derivatively priced, average price, prior reference, contingent, ...) keeps it out of the price levels."
+              },
+              "late_report_volume": {
+                "$ref": "#/$defs/NonNegativeDecimalString",
+                "description": "Off-exchange volume reported late or out of sequence (L, Z, U)."
+              },
+              "removed_trades": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Trades marked canceled or incorrect by Alpaca's `u` field."
+              }
+            }
+          },
+          "description": "Fully read sessions, newest first."
+        },
+        "reference_price": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            }
+          ]
+        },
+        "reference_time_utc": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "maxLength": 40
+            }
+          ],
+          "description": "Last trade at a market price (any venue) before data_until_utc, as Alpaca sent it (nanoseconds)."
+        },
+        "bin_width": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            }
+          ]
+        },
+        "total_volume": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "off_exchange_volume": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "off_exchange_share_pct": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            }
+          ]
+        },
+        "priced_volume": {
+          "$ref": "#/$defs/NonNegativeDecimalString"
+        },
+        "histogram": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["price_low", "price_high", "volume"],
+            "properties": {
+              "price_low": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "price_high": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "volume": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              }
+            }
+          }
+        },
+        "levels": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "price_low",
+              "price_high",
+              "volume",
+              "share_pct",
+              "side"
+            ],
+            "properties": {
+              "price_low": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "price_high": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "volume": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "share_pct": {
+                "$ref": "#/$defs/NonNegativeDecimalString"
+              },
+              "side": {
+                "enum": ["above", "below", "at"],
+                "description": "Where the bin sits against reference_price. A candidate support/resistance zone, never a forecast."
+              }
+            }
+          }
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["finra_weekly_ats"],
+          "properties": {
+            "finra_weekly_ats": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["cutoff_utc", "facts", "missing", "uncertainty"],
+                  "properties": {
+                    "cutoff_utc": {
+                      "$ref": "#/$defs/UtcTimestamp"
+                    },
+                    "facts": {
+                      "type": "array",
+                      "maxItems": 50,
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "missing": {
+                      "type": "array",
+                      "maxItems": 50,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      }
+                    },
+                    "uncertainty": {
+                      "type": "array",
+                      "maxItems": 50,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      }
+                    }
+                  }
+                }
+              ],
+              "description": "FINRA weekly ATS facts from the Dark Pool Agent (ADR 0024), context only: never used for the levels."
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "pages",
+            "seconds",
+            "max_pages",
+            "max_seconds",
+            "min_level_share_pct",
+            "max_bins"
+          ],
+          "properties": {
+            "pages": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "seconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "max_pages": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "min_level_share_pct": {
+              "$ref": "#/$defs/NonNegativeDecimalString"
+            },
+            "max_bins": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "notes": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "missing": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "unverified": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        }
       }
     }
   }

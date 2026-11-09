@@ -38,6 +38,10 @@ from services.api.parent_watch import parent_pid_from_env, start_parent_watch
 from services.api.review_routes import register_review_routes
 from services.api.screener_routes import register_screener_routes
 from services.api.screening_news_routes import register_screening_news_routes
+from services.api.screening_off_exchange_routes import (
+    finra_review_from,
+    register_screening_off_exchange_routes,
+)
 from services.api.screening_routes import register_screening_routes, saved_strategy
 from services.api.strategy_research_routes import register_strategy_research_routes
 from services.assistant.conversion import call_convert_claude
@@ -1810,6 +1814,17 @@ def create_app(
         error_response=_error_response,
         clock=clock,
         dilution_service=lambda: DilutionService(dilution_url()),
+    )
+    register_screening_off_exchange_routes(
+        application,
+        store=screening.get,
+        trades=boats,
+        listing_for=listing_for,
+        finra_review=finra_review_from(
+            sources.get, lambda: MarketBarsService(provider.get()).get_bars
+        ),
+        error_response=_error_response,
+        clock=clock,
     )
     register_screening_news_routes(
         application,
