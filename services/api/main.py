@@ -43,6 +43,10 @@ from services.api.screening_off_exchange_routes import (
     register_screening_off_exchange_routes,
 )
 from services.api.screening_routes import register_screening_routes, saved_strategy
+from services.api.screening_structure_routes import (
+    LazyStructure,
+    register_screening_structure_routes,
+)
 from services.api.strategy_research_routes import register_strategy_research_routes
 from services.assistant.conversion import call_convert_claude
 from services.assistant.indicator import call_indicator_claude
@@ -1789,6 +1793,15 @@ def create_app(
         finra_review=finra_review_from(
             sources.get, lambda: MarketBarsService(provider.get()).get_bars
         ),
+        error_response=_error_response,
+        clock=clock,
+    )
+    register_screening_structure_routes(
+        application,
+        store=screening.get,
+        structure=LazyStructure(boats, clock).get,
+        trades=boats,
+        listing_for=listing_for,
         error_response=_error_response,
         clock=clock,
     )

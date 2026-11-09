@@ -2743,3 +2743,10 @@
 - **변경:** 검사 B는 서비스 클라이언트(`services/screening/news_service.py`)로 바뀌었다. 서비스에 요청한 뒤 15초까지 기다리고, 꺼져 있거나 덜 끝났으면 `pending`이다. `POST /v1/screening/checks/news/{check_id}/refresh`로 같은 cutoff에서 다시 본다. 서비스 결과는 원문 그대로 `result.news_check`에 둔다. SIW 안의 뉴스 수집·규칙 코드와 Keys 화면의 MarketNewsAPI·Finnhub 항목은 지웠다(등록 키 없음).
 - **시험:** `tests/screening/test_news_service.py`(가짜 서비스: 완료·대기·실패·꺼짐·다른 계약, 경로·새로 보기). 시험 표본은 서비스 JSON Schema(`news-check-v1.json`, news-analysis 143e9b0)로 한 번 검증했다(오류 0).
 - **미확인:** 실제 서비스를 띄워 SIW에서 부른 확인. 서비스 키 등록. 패널의 뉴스 열(S1).
+
+## 장외 체결 가격 구조 모델(ADR 0053) — 2026-11-09
+
+- **요청:** 장외 체결·희석 데이터를 토대로 한 스트레스 모델(2026-11-09 사용자 결정). 다크풀 쪽 설계안은 `~/Trading/darkpool-analysis` 스트레스 모델 v2. 사용자 결정: Alpaca SIP 체결로 이식, 승인 절차까지 이식, 화면 이름 "장외 체결 가격 구조", 20세션과 세션별 캐시, 연구 점수는 등록부에만 기록.
+- **추가:** `services/screening/structure/`(세션 가격대 캐시 `sessions.py`, Decimal 모델 `model.py`, 불변 등록부 `registry.py`, 사후 판정·walk-forward 평가·shadow audit `evaluation.py`, 카드 검사 `check.py`, 연결·명령 `service.py`, 연구 기준 parameter·판정 기준·평가 계획 예시 `config/`). `POST /v1/screening/checks/off_exchange_structure`(`services/api/screening_structure_routes.py`), `screening_check.check`에 `off_exchange_structure`, 계약 `ScreeningOffExchangeStructureResult`. 저장은 `SIW_DATA_DIR/screening_structure.sqlite3`(캐시·등록부)와 `screening.sqlite3`(카드).
+- **확인:** `tests/screening/test_structure_model.py`(gate·연구 점수 분리·결정론·세션 부족은 UNKNOWN·분할·기준 가격 누출·sub-penny), `test_structure_registry.py`(세션 읽기·캐시 해시·등록부 불변·승인 증거·사후 판정 원래 구간·label 시각·walk-forward split·shadow 20세션), `test_structure_api.py`(저장·연구 점수 미노출·분할 차단·대기 후 이어 받기·계약 거절), 계약 fixture 유효·무효 각 1개.
+- **미확인:** 실제 Alpaca 키로 20세션 받기, Alpaca 일봉이 정규장만인지, 실제 평가 데이터셋과 승인. 패널 "가격 구조" 열은 S1 세션이 붙인다([회신 #SIW-stress-1]). 희석 스트레스 설계안은 아직 받지 않았다.

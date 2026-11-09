@@ -12206,7 +12206,13 @@
           "minimum": 0
         },
         "check": {
-          "enum": ["entry", "news", "off_exchange", "dilution"]
+          "enum": [
+            "entry",
+            "news",
+            "off_exchange",
+            "dilution",
+            "off_exchange_structure"
+          ]
         },
         "session_date": {
           "type": "string",
@@ -12242,7 +12248,7 @@
             "error",
             "pending"
           ],
-          "description": "passed/failed: check A. material/no_material: check B. ok/incomplete: checks C and D. The rest: any check."
+          "description": "passed/failed: check A. material/no_material: check B. ok/incomplete: checks C, D and the off-exchange structure (ADR 0053). The rest: any check."
         },
         "strategy": {
           "oneOf": [
@@ -12312,6 +12318,23 @@
         "properties": {
           "result": {
             "$ref": "#/$defs/ScreeningOffExchangeResult"
+          }
+        }
+      },
+      "else": {
+        "if": {
+          "required": ["check"],
+          "properties": {
+            "check": {
+              "const": "off_exchange_structure"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/ScreeningOffExchangeStructureResult"
+            }
           }
         }
       }
@@ -12677,6 +12700,327 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 300
+        }
+      }
+    },
+    "ScreeningOffExchangeStructureResult": {
+      "description": "ADR 0053: `result` of an `off_exchange_structure` screening check, shown as '장외 체결 가격 구조'. The dark-pool stress model v2 (darkpool-stress/2.0.0) moved onto Alpaca SIP trades: price zones and gaps of off-exchange plus lit volume over the latest closed sessions. A stage (LOW~EXTREME) and scores appear only for a forecast ISSUED under a parameter set the registry approved; research scores never appear here. Not a price forecast or an order.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "data_until_utc",
+        "progress",
+        "limitations",
+        "unverified"
+      ],
+      "properties": {
+        "label": {
+          "const": "장외 체결 가격 구조"
+        },
+        "data_until_utc": {
+          "$ref": "#/$defs/UtcTimestamp",
+          "description": "min(cutoff, created_at - publication delay): the decision time; no later trade is used."
+        },
+        "progress": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "total_sessions",
+            "cached_sessions",
+            "reading_sessions",
+            "missing"
+          ],
+          "properties": {
+            "total_sessions": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 60
+            },
+            "cached_sessions": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 60
+            },
+            "reading_sessions": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 60
+            },
+            "missing": {
+              "type": "array",
+              "maxItems": 60,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["session_date", "reason"],
+                "properties": {
+                  "session_date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "reason": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "maxLength": 300
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "forecast_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "forecast_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "forecast_status": {
+          "enum": ["ISSUED", "NOT_ISSUED"]
+        },
+        "stage": {
+          "enum": ["LOW", "MODERATE", "HIGH", "EXTREME", "UNKNOWN"]
+        },
+        "deployment_stage": {
+          "enum": [
+            "RESEARCH_ONLY",
+            "SHADOW_APPROVED",
+            "PRODUCTION_APPROVED",
+            "RETIRED"
+          ]
+        },
+        "parameter_set_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "reference_price": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "timestamp_utc", "session", "source"],
+          "properties": {
+            "value": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/DecimalString"
+                }
+              ]
+            },
+            "timestamp_utc": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "maxLength": 40
+                }
+              ]
+            },
+            "session": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "enum": ["pre", "regular", "post"]
+                }
+              ]
+            },
+            "source": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "maxLength": 60
+                }
+              ]
+            }
+          }
+        },
+        "coverage": {
+          "type": "object"
+        },
+        "corporate_actions": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": {
+              "enum": ["PASS", "IN_WINDOW", "UNRESOLVED"]
+            }
+          }
+        },
+        "binning": {
+          "type": "object"
+        },
+        "zones": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": ["zone_id", "low", "high", "side"],
+            "properties": {
+              "zone_id": {
+                "type": "string"
+              },
+              "low": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "high": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "side": {
+                "enum": ["above", "below", "at"]
+              },
+              "period_share": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/DecimalString"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "zone_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gaps": {
+          "type": "object"
+        },
+        "features": {
+          "type": "object"
+        },
+        "scores": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "expected_responses": {
+          "type": "array",
+          "maxItems": 500
+        },
+        "eligibility": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "hard_failures", "soft_failures"],
+          "properties": {
+            "status": {
+              "enum": ["PASS", "UNKNOWN"]
+            },
+            "hard_failures": {
+              "type": "array",
+              "maxItems": 30,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["code", "text"],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[HS][0-9]{2}_[A-Z0-9_]+$"
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                }
+              }
+            },
+            "soft_failures": {
+              "type": "array",
+              "maxItems": 30,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["code", "text"],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[HS][0-9]{2}_[A-Z0-9_]+$"
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                }
+              }
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "unverified": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "if": {
+        "not": {
+          "required": ["forecast_status"],
+          "properties": {
+            "forecast_status": {
+              "const": "ISSUED"
+            }
+          }
+        }
+      },
+      "then": {
+        "description": "Not issued: no stage, no scores, no expected responses on the card.",
+        "properties": {
+          "stage": {
+            "const": "UNKNOWN"
+          },
+          "scores": {
+            "type": "null"
+          },
+          "expected_responses": {
+            "type": "array",
+            "maxItems": 0
+          }
         }
       }
     }

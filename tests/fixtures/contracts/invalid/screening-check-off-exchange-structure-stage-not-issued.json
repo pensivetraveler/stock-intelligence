@@ -1,0 +1,197 @@
+{
+  "kind": "screening_check",
+  "schema_version": "0.1",
+  "check": "off_exchange_structure",
+  "session_date": "2026-11-06",
+  "symbol": "STAK",
+  "instrument_id": "us:stak:xnas:2026",
+  "cutoff_utc": "2026-11-06T15:30:00.000Z",
+  "created_at_utc": "2026-11-06T15:30:00.000Z",
+  "after_the_fact": false,
+  "strategy": null,
+  "status": "ok",
+  "result": {
+    "label": "장외 체결 가격 구조",
+    "data_until_utc": "2026-11-06T15:15:00Z",
+    "progress": {
+      "total_sessions": 20,
+      "cached_sessions": 20,
+      "reading_sessions": 0,
+      "missing": []
+    },
+    "limitations": [
+      "장외 체결(TRF 보고)은 다크풀(ATS) 체결과 증권사 내부 체결이 섞여 있다. 다크풀만의 가격대가 아니다.",
+      "매수·매도 방향은 알 수 없다. 거래량이 몰린 가격대는 지지·저항 '후보'일 뿐이다.",
+      "체결 시각은 SIP가 받은 보고 시각이다. 실제 체결 시각과 다를 수 있고, 늦게 보고된 체결이 있다.",
+      "FINRA 주간 ATS 자료는 2~4주 늦은 주간 합계라 맥락으로만 함께 보인다.",
+      "가격대 구조는 장외 체결과 거래소 체결을 합친 가격별 거래량에서 나온다. 구간·빈 구간은 과거 거래가 몰렸거나 비었던 곳이지 가격 전망이 아니다.",
+      "단계(LOW~EXTREME)는 승인된 parameter set이 있을 때만 나온다. 승인 전에는 UNKNOWN이다."
+    ],
+    "unverified": [
+      "Alpaca 일봉(분할 미조정)의 고가·저가·종가가 정규장만의 값인지 공급자 문서로 확인하지 않았다. ATR20과 종가 경로에만 쓴다.",
+      "원본 모델(darkpool-stress/2.0.0)은 Unusual Whales 가격대별 자료를 썼다. Alpaca SIP 체결로 바꾼 뒤의 성능은 아직 평가하지 않았다."
+    ],
+    "forecast_id": "50b3ccab-0eac-46d3-a1e1-d19986774b89",
+    "forecast_sha256": "43f773d8095607d60217b341111b8f6dd25f99a340b9f7ae8eb1bd165706e70a",
+    "forecast_status": "NOT_ISSUED",
+    "stage": "HIGH",
+    "deployment_stage": "RESEARCH_ONLY",
+    "parameter_set_id": "darkpool-stress-siw-research-baseline/2.0.0",
+    "reference_price": {
+      "value": "2.01",
+      "timestamp_utc": "2026-11-06T13:00:00Z",
+      "session": "pre",
+      "source": "alpaca-sip"
+    },
+    "coverage": {
+      "expected_complete_sessions": 20,
+      "available_complete_sessions": 20,
+      "coverage_ratio": "1",
+      "missing_sessions": [],
+      "source_scope": "ALPACA_SIP_OFF_EXCHANGE_D_PLUS_LIT"
+    },
+    "corporate_actions": {
+      "status": "PASS",
+      "splits": [],
+      "reason": null,
+      "range": ["2026-10-09", "2026-11-06"],
+      "source": "alpaca corporate actions"
+    },
+    "binning": {
+      "tick": "0.01",
+      "fine_width": "0.01",
+      "coarse_width": "0.02",
+      "atr20": "0.2"
+    },
+    "zones": [
+      {
+        "zone_id": "Z1",
+        "low": "1.8",
+        "high": "1.81",
+        "center_price": "1.805",
+        "width_bps": "49.75124378",
+        "period_share": "0.39688716",
+        "off_share": "0.98039216",
+        "active_session_count": 20,
+        "dominant_day_share": "0.05",
+        "last_contribution_date": "2026-11-05",
+        "resolution_stable": true,
+        "coarse_overlap": "0.5",
+        "side": "below"
+      },
+      {
+        "zone_id": "Z2",
+        "low": "2.4",
+        "high": "2.41",
+        "center_price": "2.405",
+        "width_bps": "49.75124378",
+        "period_share": "0.53696498",
+        "off_share": "0.86956522",
+        "active_session_count": 20,
+        "dominant_day_share": "0.05",
+        "last_contribution_date": "2026-11-05",
+        "resolution_stable": true,
+        "coarse_overlap": "0.5",
+        "side": "above"
+      }
+    ],
+    "zone_count": 2,
+    "gaps": {
+      "up": {
+        "direction": "up",
+        "gap_is_open_ended": false,
+        "gap_low": "2.01",
+        "gap_high": "2.4",
+        "gap_width_bps": "1940.29850746",
+        "gap_density_ratio": "0.68181818",
+        "next_zone_distance_bps": "1940.29850746"
+      },
+      "down": {
+        "direction": "down",
+        "gap_is_open_ended": false,
+        "gap_low": "1.81",
+        "gap_high": "2.01",
+        "gap_width_bps": "995.02487562",
+        "gap_density_ratio": "3.18181818",
+        "next_zone_distance_bps": "995.02487562"
+      }
+    },
+    "features": {
+      "zone_stability": [
+        {
+          "zone_id": "Z1",
+          "state": "MATCHED_UNCALIBRATED",
+          "short_long_overlap": "1",
+          "mass_change": "0",
+          "center_migration_bps": "0"
+        },
+        {
+          "zone_id": "Z2",
+          "state": "MATCHED_UNCALIBRATED",
+          "short_long_overlap": "1",
+          "mass_change": "0",
+          "center_migration_bps": "0"
+        }
+      ],
+      "path": {
+        "reentry_count_20": 0,
+        "cross_count_20": 0,
+        "close_hold_rate": null
+      },
+      "off_lit_anomaly": {
+        "off_share_robust_z": null,
+        "off_volume_robust_z": null,
+        "status": "EVALUATED"
+      }
+    },
+    "scores": null,
+    "expected_responses": [],
+    "eligibility": {
+      "status": "UNKNOWN",
+      "hard_failures": [
+        {
+          "code": "H10_PARAMETER_SET_NOT_OPERATIONALLY_APPROVED",
+          "text": "승인된 parameter set이 없어 단계를 내지 않는다"
+        }
+      ],
+      "soft_failures": [
+        {
+          "code": "S04_SOURCE_SCOPE_LIMITED",
+          "text": "체결 출처가 Alpaca SIP 하나뿐이다"
+        }
+      ]
+    },
+    "notes": []
+  },
+  "versions": {
+    "check": "off-exchange-structure-check-1",
+    "model": "darkpool-stress-siw/2.0.0",
+    "session_levels": "structure-session-levels-1",
+    "calendar": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8",
+    "parameter_set": "darkpool-stress-siw-research-baseline/2.0.0"
+  },
+  "warnings": [
+    "장외 체결(TRF 보고)은 다크풀(ATS) 체결과 증권사 내부 체결이 섞여 있다. 다크풀만의 가격대가 아니다.",
+    "매수·매도 방향은 알 수 없다. 거래량이 몰린 가격대는 지지·저항 '후보'일 뿐이다.",
+    "체결 시각은 SIP가 받은 보고 시각이다. 실제 체결 시각과 다를 수 있고, 늦게 보고된 체결이 있다.",
+    "FINRA 주간 ATS 자료는 2~4주 늦은 주간 합계라 맥락으로만 함께 보인다.",
+    "가격대 구조는 장외 체결과 거래소 체결을 합친 가격별 거래량에서 나온다. 구간·빈 구간은 과거 거래가 몰렸거나 비었던 곳이지 가격 전망이 아니다.",
+    "단계(LOW~EXTREME)는 승인된 parameter set이 있을 때만 나온다. 승인 전에는 UNKNOWN이다."
+  ],
+  "sources": {
+    "trades": {
+      "source_id": "alpaca-sip",
+      "endpoint": "GET /v2/stocks/{symbol}/trades",
+      "feed": "sip",
+      "off_exchange_code": "D",
+      "publication_delay_minutes": 15
+    },
+    "daily_bars": "alpaca daily bars, as traded (raw)",
+    "corporate_actions": "alpaca corporate actions (splits)",
+    "model": {
+      "derived_from": "darkpool-stress/2.0.0",
+      "registry": "screening_structure.sqlite3"
+    }
+  },
+  "check_id": 1
+}

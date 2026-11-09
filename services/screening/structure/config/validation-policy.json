@@ -1,0 +1,11 @@
+{
+  "policy_id": "darkpool-stress-siw-zone-validation/2.0.0",
+  "derived_from": "darkpool-stress-zone-validation/2.0.0",
+  "bar_interval": "1d",
+  "buffer_bps": "25",
+  "rejection_distance_bps": "100",
+  "transit_distance_bps": "100",
+  "minimum_dwell_bars": 2,
+  "minimum_inside_ratio": "0.6",
+  "daily_bar_sequence_limitation": "If multiple outcomes are satisfied without intraday ordering, classify AMBIGUOUS."
+}

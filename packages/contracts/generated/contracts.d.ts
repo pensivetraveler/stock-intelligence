@@ -7670,7 +7670,8 @@ export interface ScreeningCheck {
   kind: "screening_check";
   schema_version: SchemaVersion;
   check_id: number;
-  check: "entry" | "news" | "off_exchange" | "dilution";
+  check:
+    "entry" | "news" | "off_exchange" | "dilution" | "off_exchange_structure";
   session_date: string;
   symbol: string;
   instrument_id: Identifier;
@@ -7681,7 +7682,7 @@ export interface ScreeningCheck {
    */
   after_the_fact: boolean;
   /**
-   * passed/failed: check A. material/no_material: check B. ok/incomplete: checks C and D. The rest: any check.
+   * passed/failed: check A. material/no_material: check B. ok/incomplete: checks C, D and the off-exchange structure (ADR 0053). The rest: any check.
    */
   status:
     | "passed"
