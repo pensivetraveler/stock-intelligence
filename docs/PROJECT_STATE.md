@@ -2715,3 +2715,14 @@
 - **추가:** `services/screening/dilution.py`, `POST /v1/screening/checks/dilution`, `POST /v1/screening/checks/{id}/refresh`, "오늘의 후보" 패널의 희석 공급 열과 상세.
 - **확인:** `tests/screening/test_dilution.py`(가짜 분석기: 완료·불완전·대기 후 다시 확인·서비스 꺼짐·차단/미지원, 이 컴퓨터 주소만), `CandidatesPanel.test.tsx` 희석 시험.
 - **실제 서비스:** 2026-11-09 LABT 규칙만 요청은 분석기 작업자의 "엔진 파일 바뀜, 작업자 재시작 필요"로 실패, SIW는 `error`로 기록. 재시작 뒤 성공 경로는 미확인.
+
+## 당일 후보 스크리닝 B — 뉴스 재료(ADR 0052 S4) — 2026-11-09
+
+- **요청:** 조건검색 후보를 거르는 네 검사 중 B(뉴스 재료)를 별도 세션에서 개발. 2026-11-09 사용자 결정.
+- **확인:** Keys 화면의 첫 Alpaca 키로 `GET /v1beta1/news` 읽기 전용 2회, HTTP 200, 한도 헤더 10000/분. Alpaca 약관은 개인·비상업 용도, 게시·배포 금지. 자세한 내용과 미확인은 ADR 0052 §3.
+- **추가:** `services/public_sources/alpaca_news.py`(Alpaca News adapter, `include_content=false`, 본문·이미지 저장 안 함, `public_sources.sqlite3`에 판 누적), `services/screening/news_rules.py`(낱말 규칙 `news-rules-1`), `services/screening/news.py`(`news_check`), `POST /v1/screening/checks/news`(`services/api/screening_news_routes.py`, body `{symbol, session_date?, lookback_hours?}`). 결과는 S1의 `screening_check`(`check: "news"`)로 `screening.sqlite3`에 덧붙인다. 상태는 `material`·`no_material`·`no_data`·`unsupported`·`error`(사유는 `result.reason`). `PublicSources.alpaca_news()`가 첫 활성 Alpaca 키를 쓴다.
+- **안 한 것:** "오늘의 후보" 패널의 뉴스 열(S1이 붙임), LLM 분류(모델 배정 상담 전), 재료별 조건 조정 표(S5), 실시간 뉴스 WebSocket.
+- **시험:** `tests/screening/test_news_check.py`(`httpx.MockTransport`만, 지어낸 기사): 요청 인자·키 헤더, 본문 미저장, 쪽 넘김, 재다운로드 규칙, cutoff 뒤 기사 제외, 판 누적과 cutoff 시점 판 선택, 수정본 표시, 키 없음·403·오프라인 캐시, 국내 종목, 봉투 계약 검증, 규칙 분류, 경로(저장·지난 세션 cutoff·잘못된 종목·날짜).
+- **미확인:** 뉴스 포함 요금제, 뉴스 전용 과거 기간·한도, `created_at`이 게시 시각인지, 수정 때 `updated_at` 변화, Benzinga 별도 조건, 낱말 목록의 실제 적중률(실제 급등주 기사로 재 보지 않았다).
+- **추가(같은 날, 사용자 결정 "MarketNewsAPI, Finnhub 모두 사용"):** 원본 보도자료를 모으려고 두 공급원을 별도 출처로 붙였다. `services/public_sources/marketnews.py`(보도자료 본문 보관, 비미국 거래소 전용 기사 제외, 무료 지연 경고), `services/public_sources/finnhub_news.py`(날짜 단위 조회, cutoff는 받은 뒤 적용), 공통 틀 `news_common.py`, Keys 화면 항목 `marketnewsapi`·`finnhub`(키 공급자 계약 갱신), `PublicSourceCache.delete_source`(Finnhub 구독 종료 시 삭제 의무). 뉴스 검사는 세 출처를 모두 읽고 출처별 상태(`result.feeds`)를 적으며, 같은 제목은 `same_headline_as`로만 가리킨다. 시험 `tests/screening/test_news_feeds.py`.
+- **미확인(두 공급원):** 키 발급 전이라 실제 호출 없음. 응답 모양·소형주 적중·Finnhub 날짜의 시간대·쪽 넘김 상한·MarketNewsAPI 거래소 코드 목록. `screening.sqlite3` 결과 문서 안 Finnhub 제목 삭제 방법.

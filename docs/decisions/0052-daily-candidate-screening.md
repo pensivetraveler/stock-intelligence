@@ -54,9 +54,35 @@
 
 ### 3. B — 뉴스 재료
 
-- **출처 후보:** Alpaca News API(`GET /v1beta1/news`, Benzinga 제공). 지금 쓰는 Alpaca 키로 열리는지, 약관상 이 용도에 써도 되는지는 **미확인**이다. 확인 전에는 호출하지 않는다. 크롤링은 하지 않는다.
-- **저장:** 제목, 요약, 종목, `published_at`(공급자 게시 시각), `first_observed_utc`(SIW가 처음 받은 시각), 원문 링크. 기사 본문은 저장하지 않는다(권리 미확인).
-- **분류 1단계(규칙):** 제목과 요약의 정해진 낱말로 재료 종류를 붙인다. 예: 유상증자·공모, 실적, 임상·FDA, 계약·수주, 인수합병, 역분할, 상장 유지 통지, 재료 없음. 규칙과 낱말 목록은 버전을 붙여 저장한다.
+- **출처(2026-11-09 사용자 결정: "MarketNewsAPI, Finnhub 모두 사용"):** 세 뉴스 공급원을 각각 별도 출처로 읽는다. 서로 섞거나 하나로 합치지 않는다.
+  - **Alpaca News** (`alpaca-news`): `GET /v1beta1/news`. 기사는 여러 공급원에서 온다(`source`: Benzinga, fiscal.ai 등).
+  - **MarketNewsAPI** (`marketnewsapi-news`): `GET https://api.marketnewsapi.com/v1/news`. 발행사 보도자료(GlobeNewswire, Business Wire, PR Newswire, ACCESS Newswire, Newsfile)와 일반 기사를 준다. 원본 보도자료를 모으는 용도다. 키는 `X-API-Key` 헤더로 보낸다.
+  - **Finnhub** (`finnhub-news`): `GET https://finnhub.io/api/v1/company-news`. 북미 기업 뉴스다. 키는 `X-Finnhub-Token` 헤더로 보낸다(URL에 넣지 않는다).
+  - 세 키 모두 Keys 화면에 등록한다(`alpaca`, `marketnewsapi`, `finnhub`). 키가 없는 출처는 건너뛰고 결과에 그렇다고 적는다.
+- **확인 결과(2026-11-09, S4 세션):**
+  - **Alpaca 권한:** Keys 화면의 첫 Alpaca 키로 읽기 전용 2회 호출(AAPL, 3건), HTTP 200. 한도 헤더 `X-RateLimit-Limit: 10000`(분당). 응답 필드는 `id, headline, summary, author, created_at, updated_at, url, symbols, source, content, images`. `include_content`를 주지 않아도 `content`는 빈 문자열이었다.
+  - **Alpaca 약관:** Alpaca Terms and Conditions(`files.alpaca.markets/disclosures/library/TermsAndConditions.pdf`, 2026-11-09 받음)는 뉴스를 포함한 "Content"를 개인·비상업 용도로만 쓰게 하고, 다른 매체로 게시·배포하려고 복사·재게시하는 것을 금한다. 제3자(Benzinga 등) 콘텐츠도 이 Content에 들어간다. 그래서 제목·요약을 **이 컴퓨터의 로컬 캐시에만** 두고 화면에 보이는 것은 개인 연구로 보고 진행한다. 내보내기·공유·커밋은 하지 않는다. 시험 자료는 지어낸 기사만 쓴다.
+  - **Alpaca 미확인(unverified):** 뉴스가 어느 요금제에 들어가는지(공식 문서에 표 없음, 한도 10000/분은 유료 요금제 값과 같다), 뉴스 전용 과거 기간·한도, `created_at`이 게시 시각인지(문서는 "만든 시각"이라고만 함), 기사 수정 때 `updated_at`이 바뀌는지, Benzinga 쪽 별도 사용 조건. 약관 해석은 법률 검토가 아니다.
+  - **MarketNewsAPI(공식 OpenAPI·약관·요금 페이지, 키 없음):**
+    - 요청: `tickers`(최대 50), `type=news,press_release`, `include_legal=false`, `from`·`to`(ISO 8601 UTC, 초 단위), `limit` 1~100, `cursor`로 쪽 넘김.
+    - 응답: `id, title, url, source{name,domain}, published_at, type, tickers, listings, snippet, summary, body`. `summary`는 공급자가 기계로 만든 요약이고, `body`는 보도자료에만 있다.
+    - 요금: 무료는 하루 50회, 15분 지연, 1년치다. Pro는 월 $15.
+    - 약관(`marketnewsapi.com/legal/terms`): 개인·내부 용도, "합리적인 기간"의 캐시, 내부 연구·백테스트를 허용한다. 보도자료 전문은 출처 표시와 원문 링크를 붙이면 보여 줄 수 있다. 피드 재판매·재배포, 서비스를 대신하려는 체계적 보관은 금지한다.
+    - 2026-10-06에 v1.0을 낸 신생 서비스다.
+  - **Finnhub(공식 문서·약관):**
+    - 요청: `symbol`, `from`·`to`. 날짜만 받는다(`YYYY-MM-DD`).
+    - 응답: `id, datetime(UNIX 초), headline, summary, source, url, related, category, image`.
+    - 무료 등급: 분당 60회, 1년치. 문서가 이 엔드포인트의 무료 사용을 명시한다.
+    - 약관(`finnhub.io/terms-of-service`): 개인 용도만 허용한다. 데이터와 그 데이터로 만든 결과의 공유·재배포를 금하고, **구독이 끝나면 모든 데이터를 지워야 한다**.
+  - **두 곳 모두 키를 받기 전이라 실제 호출은 하지 않았다(미확인).** 키를 등록한 뒤 읽기 전용으로 한두 번 호출해 응답 모양, 소형주 적중, 시간대를 확인한다.
+- **저장:** 출처마다 `public_sources.sqlite3`(ADR 0024 캐시)에 종목별 기록(`<TICKER>:<id>`)으로 넣는다. 기사가 바뀌면 새 판으로 옆에 쌓고 덮지 않는다. 공통 필드: 제목, 요약, 작성자, 종목, `created_at`(공급자가 준 게시 시각, UTC), `updated_at`(없으면 null), `first_observed_utc`(SIW가 처음 받은 시각), 원문 링크, 발행처, 종류(`news`/`press_release`).
+  - **Alpaca:** `include_content=false`로 요청하고 본문·이미지는 버린다. 한 번에 50건씩 최대 10쪽.
+  - **MarketNewsAPI:** 보도자료 `body`는 저장한다(약관상 출처 표시와 함께 보여 줄 수 있음). 요약 칸에는 발행처 `snippet`을 넣고, 공급자가 만든 요약은 `generated_summary`로 따로 둔다. 그 종목이 비미국 거래소(TSXV 등)에만 상장된 기사는 뺀다. 무료 플랜 지연(15분)은 경고로 적는다. 한 번에 100건씩 최대 3쪽(무료는 하루 50회).
+  - **Finnhub:** 날짜로만 조회되므로 창 앞뒤로 하루씩 넓혀 받고 cutoff는 받은 뒤 적용한다. 쪽 넘김이 문서에 없어 많은 날은 잘릴 수 있다(미확인). 썸네일은 버린다.
+  - **삭제:** `PublicSourceCache.delete_source(source_id)`로 출처 하나의 기록을 모두 지운다(Finnhub 구독 종료 시). `screening.sqlite3`에 남은 결과 문서 안의 제목은 이 함수가 지우지 않는다(미해결).
+  - 받는 창은 cutoff 72시간 전(최대 30일)부터 지금까지다.
+- **분류 1단계(규칙, `news-rules-1`):** 제목과 요약에서 정해진 낱말·구절(대소문자 무시, 단어 경계)로 재료 종류를 붙인다. 종류: `offering`(유상증자·공모), `earnings`(실적), `clinical_fda`(임상·FDA), `contract_order`(계약·수주), `merger_acquisition`(인수합병), `reverse_split`(역분할), `listing_notice`(상장 유지 통지), `none`(규칙상 재료 없음). 한 기사에 여러 종류가 붙을 수 있다. 낱말 목록은 `services/screening/news_rules.py`에 있고, 결과에 판 이름과 SHA-256을 남긴다. 낱말 목록 첫 판은 사용자 검토 전이다.
+- **검사 결과:** `POST /v1/screening/checks/news`(body `{symbol, session_date?, lookback_hours?}`, 기본 72시간)가 S1의 `screening_check` 하나(`check: "news"`)를 `screening.sqlite3`에 덧붙인다. 세션 창과 `cutoff = min(지금, 세션 끝)`, `after_the_fact`는 A와 같다. `status`는 `material`(재료 기사 있음), `no_material`(기사는 있으나 규칙에 안 걸림), `no_data`(창 안에 기사 없음), `unsupported`(미국 종목 아님), `error`(읽을 수 있는 출처가 하나도 없을 때. `result.reason`: `news_credentials_missing` 또는 `source_unavailable`). `result`에 `window_start_utc`, `lookback_hours`, `feeds`(출처마다 `ok`/`no_key`/`error`, 기사 수, 잘림), `categories`, `articles`, `facts`, `missing`, `uncertainty`, `reason`을 둔다. 기사마다 출처(`source_id`)·발행처·기사 종류·본문 보관 여부, 재료 종류·걸린 낱말·게시·수정·처음 받은 시각·판 수, 그리고 `observed_by_cutoff`(cutoff 전에 SIW가 실제로 받았는지)와 `revised_after_cutoff`(보이는 글이 cutoff 뒤 수정본일 수 있음)를 둔다. 같은 제목이 다른 출처에도 있으면 `same_headline_as`로 가리키되 합치지 않는다. `sources`는 `{records: [source_record…]}`, `versions`는 규칙 판·해시·출처별 파서 판(`parser.<source_id>`), 캐시 사용 같은 알림은 `warnings`. `created_at > cutoff`인 기사는 결과에 넣지 않는다. 판은 ADR 0024 규칙대로 cutoff까지 SIW가 본 판을 쓰고, 본 판이 없으면 최신 판을 쓰되 표시한다. "오늘의 후보" 패널의 뉴스 열(`checks.news`)은 S1이 붙인다.
 - **분류 2단계(LLM, 선택):** 규칙으로 정하지 못한 기사만 LLM에 묻는다. 정하기 전에 "Local AI Gateway 개발·유지보수" 세션에 모델 배정을 상담하고(`[요청 #SIW-<번호>] 모델 배정: 뉴스 재료 분류`), 회신을 이 ADR에 적어 사용자 확정을 받는다. LLM의 답은 "추론"으로 표시하고 근거 기사와 분리한다.
 - **진입조건 조정:** 재료 종류 → A의 조건 프리셋을 고르는 **표**를 사용자가 정한다(예: 공모 재료는 후보에서 뺌, 실적 재료는 거래량 배수 문턱을 높임). LLM이 조건 값을 직접 바꾸지 않는다. 카드에 어떤 표의 어떤 줄로 어떤 프리셋이 골라졌는지 남긴다.
 
@@ -156,6 +182,6 @@
 ## Revisit when
 
 - S2에서 Alpaca 체결 거래소 코드·자료량을 잰 뒤.
-- Alpaca News 권한·약관을 확인한 뒤.
+- Alpaca News 권한·약관을 확인한 뒤. → 2026-11-09 확인(§3). 요금제·`created_at` 뜻·Benzinga 조건은 미확인으로 남았다. 낱말 목록 첫 판을 사용자가 검토한 뒤, 그리고 S1 카드 연결 모양이 정해진 뒤 다시 본다.
 - 분석기 세션이 회신한 뒤.
 - 유료 다크풀·뉴스 피드를 검토할 때.

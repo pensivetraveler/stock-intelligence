@@ -1964,6 +1964,8 @@
             "kiwoom",
             "meritz",
             "finra",
+            "marketnewsapi",
+            "finnhub",
             "ecos",
             "anthropic"
           ]
@@ -2095,6 +2097,8 @@
                   "kiwoom",
                   "meritz",
                   "finra",
+                  "marketnewsapi",
+                  "finnhub",
                   "ecos",
                   "anthropic"
                 ]
