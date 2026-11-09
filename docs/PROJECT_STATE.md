@@ -2756,3 +2756,11 @@
 - **변경:** 뉴스·장외 체결·가격 구조 열과 펼쳐 보기, 검사 결과 가격선을 차트에 그리기(기본 꺼짐), 희석 0개 = "모름" 문구. 후보 목록 계약에 `off_exchange_structure` 추가(빠져 있어 조회가 실패하던 버그).
 - **검증:** `./scripts/verify.sh` 통과(pytest 1259, Vitest 410). 새 UI 테스트 2개, 새 계약 시험 1개(고치기 전 실패 확인).
 - **미확인:** 실제 API·데스크톱 앱에서 열과 차트 선 확인(SIW API 재시작 필요), 분할 조정 차트에서 희석 가격선 위치.
+
+## 하루 내 모멘텀 종목 수집(ADR 0055, ADR 0054 U0) — 2026-11-09
+
+- **사용자 결정:** 범위 제안을 "제안대로 구현"으로 승인(모멘텀 = 편입 자체, Alpaca 1분봉으로 편입 시점 수치, 조건식 내용은 미확인으로 둠).
+- **추가:** 후보 문서에 `selection_noon_utc`, `watch_coverage.gaps`, 종목별 `first_seen_how`·`entered_after_utc`·`enter_count`·`seconds_in_list`, `checks.momentum.summary`. `GET /v1/screening/candidates?as_of=`. 검사 `POST /v1/screening/checks/momentum`(`services/screening/momentum.py`, 계약 `ScreeningMomentumResult`). 패널에 빈틈 줄, 시각 모름 표시, 편입 횟수·머문 시간 열, 편입 시점(Alpaca) 열과 자세히, 정오 전환.
+- **확인:** `tests/screening/test_momentum.py`(빈틈·끝 없는 구독·편입 시각 종류·깜빡임·닫힌 봉만·incomplete·경로·정오 자르기), 패널 테스트 1개. 실제 기록 복사본과 사용자 Alpaca 키로 오늘 20종목 `ok`(ADR 0055 "실제 확인").
+- **발견:** 기록기가 2026-11-09 08:40 ET에 `stopped`로 끝나 정규장 편입이 기록되지 않았다. 편입 때 전일 종가보다 낮았던 종목 3개(HRTX·CDT·SDA): 조건식이 전일 대비 상승률이 아닐 수 있다.
+- **미확인:** 조건식의 실제 조건, 실제 API·데스크톱 앱에서 새 열 확인(SIW API 재시작 필요).

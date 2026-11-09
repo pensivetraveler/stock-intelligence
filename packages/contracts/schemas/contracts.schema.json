@@ -11927,7 +11927,7 @@
       }
     },
     "ScreeningCandidates": {
-      "description": "ADR 0052 S1: a US session's screening candidates — symbols the realtime condition record (ADR 0051) listed or added before the cutoff, plus symbols the user added — with the latest result of each check. Not an order, not a plan approval.",
+      "description": "ADR 0052 S1: a US session's screening candidates — symbols the realtime condition record (ADR 0051) listed or added before the cutoff, plus symbols the user added — with the latest result of each check. ADR 0055 (U0) adds the record's gaps, how each entry time is known, and how often a symbol entered and how long it stayed. Not an order, not a plan approval.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -11935,6 +11935,7 @@
         "schema_version",
         "session_date",
         "cutoff_utc",
+        "selection_noon_utc",
         "condition_name",
         "recorded",
         "watch_coverage",
@@ -11956,6 +11957,10 @@
           "$ref": "#/$defs/UtcTimestamp",
           "description": "Only events SIW received before this time count."
         },
+        "selection_noon_utc": {
+          "$ref": "#/$defs/UtcTimestamp",
+          "description": "12:00 New York time of the session date: selection mostly ends by then (ADR 0054)."
+        },
         "condition_name": {
           "type": "string",
           "minLength": 1,
@@ -11973,7 +11978,8 @@
             "interrupted",
             "first_started_utc",
             "last_heard_utc",
-            "open_now"
+            "open_now",
+            "gaps"
           ],
           "properties": {
             "watches": {
@@ -12006,6 +12012,37 @@
             },
             "open_now": {
               "type": "boolean"
+            },
+            "gaps": {
+              "type": "array",
+              "maxItems": 500,
+              "description": "Stretches of the window before the cutoff that no watch covered (pauses over 5 s). A symbol could enter or leave there unseen; this is not a quiet market.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["from_utc", "to_utc", "reason", "previous_end"],
+                "properties": {
+                  "from_utc": {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  },
+                  "to_utc": {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  },
+                  "reason": {
+                    "enum": [
+                      "before_first_watch",
+                      "between_watches",
+                      "not_recording",
+                      "no_record"
+                    ]
+                  },
+                  "previous_end": {
+                    "type": ["string", "null"],
+                    "maxLength": 300,
+                    "description": "Why the watch before the gap ended (renewed, stopped, interrupted, unclosed, an error)."
+                  }
+                }
+              }
             }
           },
           "description": "How much of the session window the record covers, so a gap is not read as a quiet list."
@@ -12023,7 +12060,11 @@
               "in_list",
               "kiwoom_exchange",
               "listing",
-              "checks"
+              "checks",
+              "first_seen_how",
+              "entered_after_utc",
+              "enter_count",
+              "seconds_in_list"
             ],
             "properties": {
               "symbol": {
@@ -12184,8 +12225,106 @@
                         "$ref": "#/$defs/UtcTimestamp"
                       }
                     }
+                  },
+                  "momentum": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["check_id", "status", "created_at_utc"],
+                    "properties": {
+                      "check_id": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "status": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "created_at_utc": {
+                        "$ref": "#/$defs/UtcTimestamp"
+                      },
+                      "summary": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "price",
+                          "change_percent",
+                          "dollar_volume_estimate",
+                          "entry_time_known"
+                        ],
+                        "properties": {
+                          "price": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string",
+                                "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                              }
+                            ]
+                          },
+                          "change_percent": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string",
+                                "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                              }
+                            ]
+                          },
+                          "dollar_volume_estimate": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string",
+                                "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                              }
+                            ]
+                          },
+                          "entry_time_known": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
                   }
                 }
+              },
+              "first_seen_how": {
+                "enum": [
+                  "enter_event",
+                  "first_list",
+                  "list_after_gap",
+                  "list_on_renewal",
+                  "manual"
+                ],
+                "description": "enter_event: an enter event, so first_seen_utc is the entry time as SIW received it. The list values: first seen in a watch's opening list, so it entered at an unknown time after entered_after_utc. manual: added by the user."
+              },
+              "entered_after_utc": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  }
+                ],
+                "description": "Earliest time the entry could have happened when it is not known; null otherwise."
+              },
+              "enter_count": {
+                "type": ["integer", "null"],
+                "minimum": 0,
+                "description": "Enter events before the cutoff (opening lists not counted). Many in a short time is a symbol flickering at the condition's threshold."
+              },
+              "seconds_in_list": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "description": "Time in the condition's list within covered stretches before the cutoff."
               }
             }
           }
@@ -12230,7 +12369,8 @@
             "news",
             "off_exchange",
             "dilution",
-            "off_exchange_structure"
+            "off_exchange_structure",
+            "momentum"
           ]
         },
         "session_date": {
@@ -12267,7 +12407,7 @@
             "error",
             "pending"
           ],
-          "description": "passed/failed: check A. material/no_material: check B. ok/incomplete: checks C, D and the off-exchange structure (ADR 0053). The rest: any check."
+          "description": "passed/failed: check A. material/no_material: check B. ok/incomplete: checks C, D and the off-exchange structure (ADR 0053). The rest: any check. The momentum check (ADR 0055): ok, incomplete (minutes may still arrive), no_data, error."
         },
         "strategy": {
           "oneOf": [
@@ -12353,6 +12493,23 @@
           "properties": {
             "result": {
               "$ref": "#/$defs/ScreeningOffExchangeStructureResult"
+            }
+          }
+        },
+        "else": {
+          "if": {
+            "required": ["check"],
+            "properties": {
+              "check": {
+                "const": "momentum"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "result": {
+                "$ref": "#/$defs/ScreeningMomentumResult"
+              }
             }
           }
         }
@@ -13039,6 +13196,163 @@
           "expected_responses": {
             "type": "array",
             "maxItems": 0
+          }
+        }
+      }
+    },
+    "ScreeningMomentumResult": {
+      "description": "ADR 0055 (U0): the market before a symbol entered the condition list, from the data provider's 1m bars that had closed by first_seen_utc (rebuilt when the check ran). A label on the candidate, not a filter; the condition itself ran on Kiwoom's prices.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "first_seen_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "entry_time_known": {
+          "type": "boolean"
+        },
+        "first_seen_how": {
+          "enum": [
+            "enter_event",
+            "first_list",
+            "list_after_gap",
+            "list_on_renewal"
+          ]
+        },
+        "entered_after_utc": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            }
+          ]
+        },
+        "bars_until_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "price": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["value", "bar_end_utc", "session"],
+              "properties": {
+                "value": {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                },
+                "bar_end_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                },
+                "session": {
+                  "type": "string",
+                  "maxLength": 20
+                }
+              }
+            }
+          ]
+        },
+        "previous_close": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["value", "session_date", "adjustment", "source_id"],
+              "properties": {
+                "value": {
+                  "type": "string",
+                  "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+                },
+                "session_date": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                },
+                "adjustment": {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                "source_id": {
+                  "type": "string",
+                  "maxLength": 120
+                }
+              }
+            }
+          ]
+        },
+        "change_percent": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "volume": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "dollar_volume_estimate": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "dollar_volume_method": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "bars_used": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minutes_expected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing_minutes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "missing": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "maxLength": 300
           }
         }
       }

@@ -3,7 +3,7 @@ import type {
   ScreeningCandidates,
   ScreeningCheck,
 } from "@siw/contracts/types";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { useI18n } from "./i18n";
 import type { InstrumentListing } from "./market-api";
@@ -33,7 +33,7 @@ export interface ScreeningOverlay {
 
 /** Checks other than entry, run one candidate at a time. */
 type OtherKind =
-  "news" | "dilution" | "off_exchange" | "off_exchange_structure";
+  "news" | "dilution" | "off_exchange" | "off_exchange_structure" | "momentum";
 
 type Candidate = ScreeningCandidates["candidates"][number];
 
@@ -57,7 +57,7 @@ function remember(strategyId: string): void {
   }
 }
 
-const OTHER_KINDS: OtherKind[] = [
+const OTHER_KINDS: Exclude<OtherKind, "momentum">[] = [
   "news",
   "dilution",
   "off_exchange",
@@ -101,6 +101,25 @@ function statusText(
   return known ? t(`candidates.status.${known}`) : status;
 }
 
+/** The record's opening lists: SIW saw the symbol there, not its entry. */
+const LIST_SEEN = ["first_list", "list_after_gap", "list_on_renewal"];
+
+/** Signed percent with two decimals, as the API gave it. */
+function percentText(value: string | null | undefined): string {
+  if (value === null || value === undefined) return "?";
+  return value.startsWith("-") ? `${value}%` : `+${value}%`;
+}
+
+/** A dollar amount in short form: $950, $12.3K, $4.5M. */
+function dollarsText(value: string | null | undefined): string {
+  const number = value === null || value === undefined ? NaN : Number(value);
+  if (!Number.isFinite(number)) return "?";
+  if (number >= 1e9) return `$${(number / 1e9).toFixed(1)}B`;
+  if (number >= 1e6) return `$${(number / 1e6).toFixed(1)}M`;
+  if (number >= 1e3) return `$${(number / 1e3).toFixed(1)}K`;
+  return `$${number.toFixed(0)}`;
+}
+
 /** HH:MM in New York, where the condition and the session live. */
 function newYorkTime(utc: string): string {
   return new Date(utc).toLocaleTimeString("en-GB", {
@@ -132,18 +151,20 @@ export function CandidatesPanel({
   const [runError, setRunError] = useState<string | null>(null);
   const [adding, setAdding] = useState("");
   const [detail, setDetail] = useState<ScreeningCheck | null>(null);
+  // The noon cut (ADR 0055): the record up to 12:00 New York time of the session.
+  const [asOf, setAsOf] = useState<string | null>(null);
 
   useEffect(() => {
     let current = true;
     setLoadError(null);
     api
-      .candidates()
+      .candidates(undefined, asOf ?? undefined)
       .then((found) => current && setDocument(found))
       .catch((reason: unknown) => current && setLoadError(reason));
     return () => {
       current = false;
     };
-  }, [api, reload]);
+  }, [api, reload, asOf]);
 
   useEffect(() => {
     let current = true;
@@ -199,6 +220,7 @@ export function CandidatesPanel({
   const runOne = (kind: OtherKind, symbol: string, llm: boolean) => {
     const date = document?.session_date;
     if (kind === "news") return api.runNewsCheck(symbol, date);
+    if (kind === "momentum") return api.runMomentumCheck(symbol, date);
     if (kind === "off_exchange") return api.runOffExchangeCheck(symbol, date);
     if (kind === "off_exchange_structure")
       return api.runStructureCheck(symbol, date);
@@ -284,6 +306,17 @@ export function CandidatesPanel({
     (item) => item.listing !== null,
   );
   const coverage = document?.watch_coverage;
+  // Only symbols from the condition record have an entry to look before.
+  const fromCondition = (document?.candidates ?? []).filter(
+    (item) => item.listing !== null && item.sources.includes("condition"),
+  );
+  const noon = document?.selection_noon_utc ?? null;
+  const firstAfterNoon =
+    noon === null
+      ? -1
+      : (document?.candidates ?? []).findIndex(
+          (item) => item.first_seen_utc >= noon,
+        );
 
   return (
     <section
@@ -315,6 +348,18 @@ export function CandidatesPanel({
                   : t("candidates.notRecording"),
               })
             : t("candidates.noRecord", { date: document.session_date })}
+        </p>
+      ) : null}
+      {coverage && coverage.gaps.length > 0 ? (
+        <p className="chart-error" role="alert">
+          {t("candidates.gaps", {
+            list: coverage.gaps
+              .map(
+                (gap) =>
+                  `${newYorkTime(gap.from_utc)}–${newYorkTime(gap.to_utc)} ${t(`candidates.gap.${gap.reason}`)}${gap.previous_end ? ` (${gap.previous_end})` : ""}`,
+              )
+              .join(", "),
+          })}
         </p>
       ) : null}
       <div className="trade-fields">
@@ -366,10 +411,27 @@ export function CandidatesPanel({
         <button
           type="button"
           className="secondary"
+          disabled={running.length > 0 || fromCondition.length === 0}
+          onClick={() => void run(["momentum"], fromCondition)}
+        >
+          {t("candidates.momentumAll")}
+        </button>
+        <button
+          type="button"
+          className="secondary"
           onClick={() => setReload(reload + 1)}
         >
           {t("candidates.refresh")}
         </button>
+        <label>
+          <input
+            type="checkbox"
+            checked={asOf !== null}
+            disabled={!noon}
+            onChange={(event) => setAsOf(event.target.checked ? noon : null)}
+          />
+          {t("candidates.noonCut")}
+        </label>
         {overlay && onShowLevels ? (
           <button
             type="button"
@@ -412,6 +474,8 @@ export function CandidatesPanel({
                 <th>{t("screener.symbol")}</th>
                 <th>{t("candidates.firstSeen")}</th>
                 <th>{t("candidates.inList")}</th>
+                <th>{t("candidates.flicker")}</th>
+                <th>{t("candidates.column.momentum")}</th>
                 <th>{t("candidates.entry")}</th>
                 {OTHER_KINDS.map((kind) => (
                   <th key={kind}>{t(`candidates.column.${kind}`)}</th>
@@ -419,10 +483,12 @@ export function CandidatesPanel({
               </tr>
             </thead>
             <tbody>
-              {document.candidates.map((item) => {
+              {document.candidates.map((item, index) => {
                 const listing = item.listing;
                 const entry = item.checks.entry;
-                return (
+                const momentum = item.checks.momentum;
+                const unknown = LIST_SEEN.includes(item.first_seen_how);
+                const row = (
                   <tr key={item.symbol}>
                     <td>
                       {listing ? (
@@ -438,8 +504,19 @@ export function CandidatesPanel({
                         <span title={t("screener.unknown")}>{item.symbol}</span>
                       )}
                     </td>
-                    <td title={item.first_seen_utc}>
-                      {newYorkTime(item.first_seen_utc)}
+                    <td
+                      title={
+                        unknown && item.entered_after_utc
+                          ? t("candidates.entryUnknown", {
+                              from: newYorkTime(item.entered_after_utc),
+                              to: newYorkTime(item.first_seen_utc),
+                            })
+                          : item.first_seen_utc
+                      }
+                    >
+                      {unknown && item.entered_after_utc
+                        ? `${newYorkTime(item.entered_after_utc)}–${newYorkTime(item.first_seen_utc)}?`
+                        : newYorkTime(item.first_seen_utc)}
                     </td>
                     <td>
                       {item.in_list === null
@@ -447,6 +524,43 @@ export function CandidatesPanel({
                         : item.in_list
                           ? t("candidates.yes")
                           : t("candidates.gone")}
+                    </td>
+                    <td>
+                      {item.enter_count === null ||
+                      item.seconds_in_list === null
+                        ? "—"
+                        : t("candidates.flickerValue", {
+                            count: item.enter_count,
+                            minutes: Math.round(item.seconds_in_list / 60),
+                          })}
+                    </td>
+                    <td>
+                      {running.includes(`momentum:${item.symbol}`) ? (
+                        t("screener.running")
+                      ) : momentum ? (
+                        <button
+                          type="button"
+                          className="secondary"
+                          aria-label={`${item.symbol} ${t("candidates.column.momentum")}`}
+                          onClick={() => showDetail(momentum.check_id)}
+                        >
+                          {momentum.summary &&
+                          momentum.summary.change_percent !== null
+                            ? `${percentText(momentum.summary.change_percent)} · ${dollarsText(momentum.summary.dollar_volume_estimate)}`
+                            : statusText(t, momentum.status)}
+                        </button>
+                      ) : listing && item.sources.includes("condition") ? (
+                        <button
+                          type="button"
+                          className="secondary"
+                          aria-label={`${item.symbol} ${t("candidates.column.momentum")}: ${t("candidates.check")}`}
+                          onClick={() => void run(["momentum"], [item])}
+                        >
+                          {t("candidates.check")}
+                        </button>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td>
                       {running.includes(item.symbol) ? (
@@ -507,6 +621,18 @@ export function CandidatesPanel({
                     })}
                   </tr>
                 );
+                return index === firstAfterNoon && asOf === null ? (
+                  <Fragment key={item.symbol}>
+                    <tr>
+                      <th colSpan={6 + OTHER_KINDS.length}>
+                        {t("candidates.afterNoon")}
+                      </th>
+                    </tr>
+                    {row}
+                  </Fragment>
+                ) : (
+                  row
+                );
               })}
             </tbody>
           </table>
@@ -530,6 +656,9 @@ export function CandidatesPanel({
             if (candidate) void dilution([candidate], true);
           }}
         />
+      ) : null}
+      {detail && detail.check === "momentum" ? (
+        <MomentumDetail check={detail} onClose={() => setDetail(null)} />
       ) : null}
       {detail && detail.check === "news" ? (
         <NewsDetail
@@ -620,6 +749,114 @@ function EntryDetail({
           </tbody>
         </table>
       ) : null}
+      {check.warnings.map((warning) => (
+        <p key={warning} className="workspace-note">
+          {warning}
+        </p>
+      ))}
+      <button type="button" className="secondary" onClick={onClose}>
+        {t("candidates.close")}
+      </button>
+    </div>
+  );
+}
+
+interface MomentumResult {
+  reason?: string;
+  first_seen_utc?: string;
+  entry_time_known?: boolean;
+  bars_until_utc?: string;
+  price?: { value: string; bar_end_utc: string; session: string } | null;
+  previous_close?: { value: string; session_date: string } | null;
+  change_percent?: string | null;
+  volume?: string | null;
+  dollar_volume_estimate?: string | null;
+  missing_minutes?: Record<string, number>;
+  missing?: string[];
+}
+
+/** The momentum check (ADR 0055): the market before the symbol entered the list. */
+function MomentumDetail({
+  check,
+  onClose,
+}: {
+  check: ScreeningCheck;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const result = check.result as MomentumResult;
+  const bars = (check.sources as { bars?: { source_feed_scope?: string } })
+    .bars;
+  const missing = Object.entries(result.missing_minutes ?? {});
+  return (
+    <div
+      className="research-scroll"
+      role="region"
+      aria-label={t("candidates.momentumDetail")}
+    >
+      <p className="workspace-note">
+        {t("candidates.momentumMeta", {
+          symbol: check.symbol,
+          time: result.first_seen_utc
+            ? newYorkTime(result.first_seen_utc)
+            : "—",
+          until: result.bars_until_utc
+            ? newYorkTime(result.bars_until_utc)
+            : "—",
+          source: bars?.source_feed_scope ?? "—",
+        })}
+      </p>
+      {result.entry_time_known === false ? (
+        <p className="chart-error">{t("candidates.momentumUnknown")}</p>
+      ) : null}
+      {result.reason ? <p className="chart-error">{result.reason}</p> : null}
+      <table className="quote-trades research-table">
+        <tbody>
+          <tr>
+            <th>{t("candidates.lastClose")}</th>
+            <td>
+              {result.price
+                ? `${result.price.value} (${newYorkTime(result.price.bar_end_utc)}, ${result.price.session})`
+                : "?"}
+            </td>
+          </tr>
+          <tr>
+            <th>{t("candidates.previousClose")}</th>
+            <td>
+              {result.previous_close
+                ? `${result.previous_close.value} (${result.previous_close.session_date})`
+                : "?"}
+            </td>
+          </tr>
+          <tr>
+            <th>{t("candidates.change")}</th>
+            <td>{percentText(result.change_percent)}</td>
+          </tr>
+          <tr>
+            <th>{t("candidates.volume")}</th>
+            <td>{result.volume ?? "?"}</td>
+          </tr>
+          <tr>
+            <th>{t("candidates.dollarVolume")}</th>
+            <td>{dollarsText(result.dollar_volume_estimate)}</td>
+          </tr>
+          <tr>
+            <th>{t("candidates.missingMinutes")}</th>
+            <td>
+              {missing.length > 0
+                ? missing
+                    .map(([reason, count]) => `${reason} ${count}`)
+                    .join(", ")
+                : "0"}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      {(result.missing ?? []).map((line) => (
+        <p key={line} className="workspace-note">
+          {line}
+        </p>
+      ))}
       {check.warnings.map((warning) => (
         <p key={warning} className="workspace-note">
           {warning}
