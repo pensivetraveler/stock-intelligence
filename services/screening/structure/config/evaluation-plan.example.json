@@ -1,0 +1,24 @@
+{
+  "plan_id": "darkpool-stress-siw-evaluation/2.0.0-example",
+  "note": "An example only. The real split, embargo and criteria are the user's decision (ADR 0053).",
+  "train_start_utc": "2025-01-01T00:00:00Z",
+  "train_end_utc": "2025-12-31T23:59:59Z",
+  "validation_start_utc": "2026-01-15T00:00:00Z",
+  "validation_end_utc": "2026-03-31T23:59:59Z",
+  "test_start_utc": "2026-04-15T00:00:00Z",
+  "test_end_utc": "2026-06-30T23:59:59Z",
+  "event_threshold_bps": "500",
+  "subgroup_fields": [
+    "price_bucket",
+    "adv_bucket",
+    "volatility_regime",
+    "coverage_regime",
+    "corporate_action_proximity"
+  ],
+  "approval_criteria": {
+    "minimum_test_records": 200,
+    "maximum_unknown_rate": "0.25",
+    "minimum_spearman": "0.15",
+    "minimum_top_decile_lift": "1.25"
+  }
+}
