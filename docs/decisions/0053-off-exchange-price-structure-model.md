@@ -37,6 +37,7 @@
 
 - 닫힌 세션 하나(04:00~20:00 ET)의 Alpaca SIP 체결을 처음부터 끝까지 읽어 **정확한 체결 가격별** 장외·lit 거래량으로 둔다. 체결 거르기(취소·정정 제외, 공식 시가·종가 보고 제외, 시장가가 아닌 조건은 거래량에만 넣고 가격대에서 뺌)는 D와 같은 규칙(`off-exchange-conditions-1`)이다. 두 검사가 같은 체결을 센다.
 - **세션별 캐시:** `SIW_DATA_DIR/screening_structure.sqlite3`의 `session_levels`. 끝까지 읽은 닫힌 세션만 저장하고, 문서마다 SHA-256을 두어 읽을 때 다시 맞춘다. 상한(세션당 400쪽·300초)이나 오류로 끊긴 세션은 버리고 나중에 다시 읽는다.
+- **D와 공유(2026-11-10):** 장외 체결 D 검사(ADR 0052 §5 "D 확장")가 같은 캐시와 같은 백그라운드 읽기를 쓴다. 문서 버전은 `structure-session-levels-2`(D용 `off_exchange_trades`, `off_exchange_off_market_price_volume` 추가, 모델은 읽지 않음). 읽기는 동시 4개이고, 화면 요청이 장 마감 뒤 미리 받기보다 앞선다. `closed_sessions`는 `sessions.py`로 옮겼다.
 - **기준 가격:** 지금 세션의 장전~cutoff 사이 마지막 시장가 체결(어느 거래소든). 없으면 마지막 닫힌 세션의 마지막 체결. 시각과 세션(pre/regular/post)을 함께 남긴다.
 - **분할:** 체결 가격은 조정되지 않은 값이다. 첫 세션 다음 날부터 cutoff 날짜 사이에 분할·역분할(Alpaca corporate actions)이 있으면 가격 기준이 섞이므로 `H04_CORPORATE_ACTION_IN_WINDOW`로 막는다. 조회가 안 되면 `H04_CORPORATE_ACTION_UNRESOLVED`. 조용히 조정하지 않는다.
 - **일봉:** ATR20과 종가 경로 특징에만 쓴다. Alpaca 일봉(분할 미조정, 체결과 같은 기준), `is_final`인 봉만, 다른 출처 봉은 넣지 않는다. 일봉이 정규장만의 값인지는 미확인이다.

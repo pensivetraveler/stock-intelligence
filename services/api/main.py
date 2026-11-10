@@ -42,6 +42,8 @@ from services.api.screening_off_exchange_routes import (
     finra_review_from,
     register_screening_off_exchange_routes,
 )
+from services.api.screening_prefetch import CandidatePrefetch, prefetch_enabled
+from services.api.screening_routes import CONDITION_NAME as SCREENING_CONDITION_NAME
 from services.api.screening_routes import register_screening_routes, saved_strategy
 from services.api.screening_structure_routes import (
     LazyStructure,
@@ -831,7 +833,22 @@ def create_app(
         provider.get()
         parent_pid = parent_pid_from_env()
         parent_watch = start_parent_watch(parent_pid) if parent_pid is not None else None
+        # After the close, read the day's candidates' closed sessions ahead (ADR 0052 §5).
+        prefetch = (
+            CandidatePrefetch(
+                store=screening.get,
+                structure=structure.get,
+                data_dir=screening.data_dir,
+                trades=boats,
+                clock=clock,
+                condition_name=SCREENING_CONDITION_NAME,
+            ).start()
+            if prefetch_enabled()
+            else None
+        )
         yield
+        if prefetch is not None:
+            prefetch.set()
         if parent_watch is not None:
             parent_watch.set()
         store = ticks_holder[0]
@@ -1773,6 +1790,7 @@ def create_app(
         connect=kiwoom_conditions_connect,
     )
     screening = _LazyScreening(clock)
+    structure = LazyStructure(boats, clock)
     register_screening_routes(
         application,
         store=screening.get,
@@ -1785,9 +1803,11 @@ def create_app(
         clock=clock,
         dilution_service=lambda: DilutionService(dilution_url()),
     )
+    # One session cache and one background reader for check D and the structure check.
     register_screening_off_exchange_routes(
         application,
         store=screening.get,
+        structure=structure.get,
         trades=boats,
         listing_for=listing_for,
         finra_review=finra_review_from(
@@ -1799,7 +1819,7 @@ def create_app(
     register_screening_structure_routes(
         application,
         store=screening.get,
-        structure=LazyStructure(boats, clock).get,
+        structure=structure.get,
         trades=boats,
         listing_for=listing_for,
         error_response=_error_response,

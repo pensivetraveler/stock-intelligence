@@ -19,14 +19,14 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from services.market_data.calendar import SessionWindow
+from services.market_data.calendar import NEW_YORK, ExchangeCalendar, SessionWindow
 from services.market_data.provider import MarketDataError
-from services.screening.off_exchange import (
+from services.screening.trade_conditions import (
     AVERAGE_PRICE_ON_TAPES_AB,
     CONDITION_POLICY_VERSION,
     LATE_REPORT,
@@ -37,7 +37,9 @@ from services.screening.off_exchange import (
     SOURCE_ID,
 )
 
-LEVELS_VERSION = "structure-session-levels-1"
+#: 2: adds `off_exchange_trades` and `off_exchange_off_market_price_volume`, which check D
+#: shows per session (ADR 0052 §5), so check D reads this cache too.
+LEVELS_VERSION = "structure-session-levels-2"
 
 TradePages = Callable[..., Iterator[list[dict[str, Any]]]]
 
@@ -65,11 +67,14 @@ class _Reader:
     pages: int = 0
     total_volume: Decimal = Decimal(0)
     off_volume: Decimal = Decimal(0)
+    off_trades: int = 0
     off_market_price_volume: Decimal = Decimal(0)
+    off_exchange_off_market_volume: Decimal = Decimal(0)
     late_report_volume: Decimal = Decimal(0)
     removed_trades: int = 0
     last_price: Decimal | None = None
     last_time: str | None = None
+    first_time: str | None = None
 
     def add(self, trade: dict[str, Any]) -> None:
         if trade.get("u") in REMOVED_UPDATES:
@@ -84,18 +89,23 @@ class _Reader:
             return
         self.trades += 1
         self.total_volume += size
+        stamp = str(trade["t"])
+        if self.first_time is None or stamp < self.first_time:
+            self.first_time = stamp
         off_exchange = trade.get("x") == OFF_EXCHANGE_CODE
-        if off_exchange:
-            self.off_volume += size
-            if conditions & LATE_REPORT:
-                self.late_report_volume += size
         off_market = bool(conditions & OFF_MARKET_PRICE) or (
             AVERAGE_PRICE_ON_TAPES_AB in conditions and trade.get("z") in ("A", "B")
         )
+        if off_exchange:
+            self.off_volume += size
+            self.off_trades += 1
+            if conditions & LATE_REPORT:
+                self.late_report_volume += size
+            if off_market:
+                self.off_exchange_off_market_volume += size
         if off_market:
             self.off_market_price_volume += size
             return
-        stamp = str(trade["t"])
         if self.last_time is None or stamp >= self.last_time:
             self.last_price, self.last_time = price, stamp
         book = self.off if off_exchange else self.lit
@@ -120,7 +130,9 @@ def session_document(
         "trades": reader.trades,
         "total_volume": text(reader.total_volume),
         "off_exchange_volume": text(reader.off_volume),
+        "off_exchange_trades": reader.off_trades,
         "off_market_price_volume": text(reader.off_market_price_volume),
+        "off_exchange_off_market_price_volume": text(reader.off_exchange_off_market_volume),
         "late_report_volume": text(reader.late_report_volume),
         "removed_trades": reader.removed_trades,
         "last_price": None if reader.last_price is None else text(reader.last_price),
@@ -137,6 +149,22 @@ def session_document(
     }
     document["sha256"] = canonical_sha256(document)
     return document
+
+
+def closed_sessions(
+    calendar: ExchangeCalendar, known_until: datetime, count: int
+) -> list[SessionWindow]:
+    """The `count` latest sessions closed (post-close) by `known_until`, oldest first."""
+    found: list[SessionWindow] = []
+    day = known_until.astimezone(NEW_YORK).date()
+    for _ in range(count * 2 + 15):
+        window = calendar.window_for_date(day)
+        if window is not None and window.post_close_utc <= known_until:
+            found.append(window)
+            if len(found) == count:
+                break
+        day -= timedelta(days=1)
+    return list(reversed(found))
 
 
 class SessionReadError(Exception):
@@ -257,17 +285,23 @@ class SessionCache:
 
 @dataclass(frozen=True)
 class FillLimits:
-    #: A large cap session is about 70 pages (AAPL, 2026-11-06); a busy day can be more.
+    #: A large cap session is 61~131 pages (AAPL, 2026-10-27~11-09); a busy day can be more.
     max_pages_per_session: int = 400
     max_seconds_per_session: float = 300.0
+    #: Sessions read at once. Measured 2026-11-10 with 5 at once: about 0.53 s a page each
+    #: (alone 0.42~0.67 s), 560 requests a minute against Alpaca's 10,000. Four leaves room
+    #: for the charts and the other checks.
+    workers: int = 4
 
 
 class SessionFiller:
-    """Reads missing closed sessions into the cache on one background thread.
+    """Reads missing closed sessions into the cache on background threads.
 
-    The screen waits at most 60 s, and twenty sessions of a busy ticker take minutes, so
-    a request starts the reading and returns; asking again shows the progress. With
-    `inline=True` (tests, command line) the reading happens in the caller.
+    Shared by check D and the structure check (one cache, one queue: a session is read
+    once). The screen waits at most 60 s, and twenty sessions of a busy ticker take
+    minutes, so a request starts the reading and returns; asking again shows the
+    progress. A screen request goes ahead of the after-close prefetch (`background`).
+    With `inline=True` (tests, command line) the reading happens in the caller.
     """
 
     def __init__(
@@ -287,8 +321,7 @@ class SessionFiller:
         self._queue: list[tuple[str, SessionWindow]] = []
         self._queued: set[tuple[str, date]] = set()
         self._errors: dict[tuple[str, date], str] = {}
-        self._wake = threading.Condition(self._lock)
-        self._thread: threading.Thread | None = None
+        self._threads: list[threading.Thread] = []
 
     def error(self, symbol: str, session_date: date) -> str | None:
         with self._lock:
@@ -298,25 +331,42 @@ class SessionFiller:
         with self._lock:
             return sum(1 for queued_symbol, _ in self._queued if queued_symbol == symbol)
 
-    def request(self, symbol: str, windows: list[SessionWindow]) -> None:
-        """Queues the sessions not cached yet (newest first) and returns."""
-        wanted = [w for w in windows if self._cache.get(symbol, w.session_date) is None]
+    def queued(self) -> int:
+        with self._lock:
+            return len(self._queued)
+
+    def request(self, symbol: str, windows: list[SessionWindow], background: bool = False) -> None:
+        """Queues the sessions not cached yet, newest first, and returns. A screen request
+        goes to the front of the queue; `background` (prefetch) to the back."""
+        wanted = sorted(
+            (w for w in windows if self._cache.get(symbol, w.session_date) is None),
+            key=lambda w: w.session_date,
+            reverse=True,
+        )
         if self._inline:
             for window in wanted:
                 self._read(symbol, window)
             return
         with self._lock:
+            fresh = []
             for window in wanted:
                 key = (symbol, window.session_date)
-                if key not in self._queued:
-                    self._queued.add(key)
-                    self._queue.append((symbol, window))
-            if self._thread is None or not self._thread.is_alive():
-                self._thread = threading.Thread(
-                    target=self._run, name="structure-session-filler", daemon=True
+                if key in self._queued:
+                    if not background and (symbol, window) in self._queue:
+                        # Waiting behind the prefetch: move it up (not one being read).
+                        self._queue.remove((symbol, window))
+                        fresh.append((symbol, window))
+                    continue
+                self._queued.add(key)
+                fresh.append((symbol, window))
+            self._queue = self._queue + fresh if background else fresh + self._queue
+            self._threads = [thread for thread in self._threads if thread.is_alive()]
+            while len(self._threads) < min(self._limits.workers, len(self._queue)):
+                thread = threading.Thread(
+                    target=self._run, name="screening-session-filler", daemon=True
                 )
-                self._thread.start()
-            self._wake.notify_all()
+                self._threads.append(thread)
+                thread.start()
 
     def wait(self, symbol: str, seconds: float, sleep: Callable[[float], None]) -> None:
         deadline = time.monotonic() + seconds

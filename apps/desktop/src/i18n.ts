@@ -973,7 +973,9 @@ const en = {
     "{count} articles are about dilution: see the dilution check.",
   "candidates.offExchangeDetail": "Off-exchange price levels",
   "candidates.offExchangeMeta":
-    "{symbol} · {sessions}/{requested} sessions · off-exchange share {share}% · last price {reference} · {status}",
+    "{symbol} · closed sessions {sessions}/{requested}{today} · off-exchange share {share}% · last price {reference} · {status}",
+  "candidates.offExchangeToday": " + today up to the cutoff",
+  "candidates.offExchangeSessions": "Off-exchange sessions",
   "candidates.offExchangeCut":
     "{count} sessions were read only in part (time or page limit).",
   "candidates.priceBand": "Price band",
@@ -2900,7 +2902,9 @@ const ko: Record<MessageKey, string> = {
     "기사 {count}건은 희석 관련입니다. 희석 검사에서 보세요.",
   "candidates.offExchangeDetail": "장외 체결 가격대",
   "candidates.offExchangeMeta":
-    "{symbol} · 세션 {sessions}/{requested}개 · 장외 비중 {share}% · 마지막 가격 {reference} · {status}",
+    "{symbol} · 닫힌 세션 {sessions}/{requested}개{today} · 장외 비중 {share}% · 마지막 가격 {reference} · {status}",
+  "candidates.offExchangeToday": " + 오늘 cutoff까지",
+  "candidates.offExchangeSessions": "장외 체결 거래일",
   "candidates.offExchangeCut":
     "세션 {count}개는 일부만 읽었습니다(시간·쪽수 한도).",
   "candidates.priceBand": "가격대",

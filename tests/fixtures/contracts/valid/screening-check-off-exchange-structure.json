@@ -166,7 +166,7 @@
   "versions": {
     "check": "off-exchange-structure-check-1",
     "model": "darkpool-stress-siw/2.0.0",
-    "session_levels": "structure-session-levels-1",
+    "session_levels": "structure-session-levels-2",
     "calendar": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8",
     "parameter_set": "darkpool-stress-siw-research-baseline/2.0.0"
   },

@@ -17,11 +17,9 @@ from typing import Any
 from services.market_data.calendar import (
     NEW_YORK,
     ExchangeCalendar,
-    SessionWindow,
     TradingSessionName,
 )
 from services.screening.off_exchange import LIMITATIONS as OFF_EXCHANGE_LIMITATIONS
-from services.screening.off_exchange import SOURCE_ID
 from services.screening.structure.model import (
     GATE_TEXT,
     MODEL_VERSION,
@@ -34,9 +32,13 @@ from services.screening.structure.sessions import (
     SessionCache,
     SessionFiller,
     TradePages,
+    closed_sessions,
     latest_trade,
     utc,
 )
+from services.screening.trade_conditions import SOURCE_ID
+
+__all__ = ["closed_sessions", "structure_check"]
 
 CHECK_VERSION = "off-exchange-structure-check-1"
 LABEL = "장외 체결 가격 구조"
@@ -60,22 +62,6 @@ SplitActions = Callable[[str, date, date], list[Any]]
 #: (instrument_id, start, end, as_of) -> closed daily bars as traded:
 #: [{date, high, low, close}] in Decimal.
 DailyBars = Callable[[str, date, date, datetime], list[dict[str, Any]]]
-
-
-def closed_sessions(
-    calendar: ExchangeCalendar, known_until: datetime, count: int
-) -> list[SessionWindow]:
-    """The `count` latest sessions closed (post-close) by `known_until`, oldest first."""
-    found: list[SessionWindow] = []
-    day = known_until.astimezone(NEW_YORK).date()
-    for _ in range(count * 2 + 15):
-        window = calendar.window_for_date(day)
-        if window is not None and window.post_close_utc <= known_until:
-            found.append(window)
-            if len(found) == count:
-                break
-        day -= timedelta(days=1)
-    return list(reversed(found))
 
 
 def _session_of(calendar: ExchangeCalendar, stamp: str) -> str | None:

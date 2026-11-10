@@ -9,9 +9,8 @@ from decimal import Decimal
 from typing import Any
 
 from services.market_data.calendar import UsEquityCalendar
-from services.screening.structure.check import closed_sessions
 from services.screening.structure.service import research_baseline
-from services.screening.structure.sessions import canonical_sha256
+from services.screening.structure.sessions import canonical_sha256, closed_sessions
 
 CALENDAR = UsEquityCalendar("XNAS")
 #: 10:00 ET Friday 2026-11-06; the 20 closed sessions before it end on Thursday.
@@ -37,7 +36,7 @@ def session(
         "source_id": "alpaca-sip",
         "feed": "sip",
         "exchange_code": "D",
-        "levels_version": "structure-session-levels-1",
+        "levels_version": "structure-session-levels-2",
         "condition_policy_version": "off-exchange-conditions-1",
         "range_utc": [
             window.pre_open_utc.isoformat().replace("+00:00", "Z"),
@@ -48,7 +47,9 @@ def session(
         "trades": len(levels),
         "total_volume": str(sum(Decimal(o) + Decimal(lt) for _, o, lt in levels)),
         "off_exchange_volume": str(sum(Decimal(o) for _, o, _ in levels)),
+        "off_exchange_trades": len(levels),
         "off_market_price_volume": "0",
+        "off_exchange_off_market_price_volume": "0",
         "late_report_volume": "0",
         "removed_trades": 0,
         "last_price": last_price,
