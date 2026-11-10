@@ -37,8 +37,10 @@ SYMBOL = re.compile(r"^[A-Z][A-Z0-9.]{0,9}$")
 MAX_DAYS_BACK = 10
 DEFAULT_LOOKBACK_HOURS = 72
 MAX_LOOKBACK_HOURS = 24 * 30
-# Reading three feeds for one ticker takes a few seconds; longer ones are picked up later.
-NEWS_WAIT_SECONDS = 15.0
+# Reading the feeds takes a few seconds, and the service's LLM step adds about six
+# seconds an article (at most five); longer checks stay `pending` and are picked up by
+# the refresh route.
+NEWS_WAIT_SECONDS = 45.0
 
 
 class NewsCheckRequest(BaseModel):
@@ -113,7 +115,7 @@ def register_screening_news_routes(
         check = result.get("news_check") or {}
         versions: dict[str, str] = {"check": CHECK_VERSION, "contract": CONTRACT}
         service_versions = check.get("versions") or {}
-        for key in ("service", "rules_version", "rules_sha256"):
+        for key in ("service", "rules_version", "rules_sha256", "nir_prompt_version", "nir_model"):
             if service_versions.get(key):
                 versions[key] = str(service_versions[key])
         for source_id, parser in (service_versions.get("parsers") or {}).items():

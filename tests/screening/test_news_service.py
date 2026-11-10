@@ -253,6 +253,83 @@ def test_summary_without_categories() -> None:
     assert quiet["article_count"] == 2
 
 
+def nir_block(state: str = "done", items: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    return {
+        "label": "INFERENCE",
+        "notice": "LLM inference, not verified fact.",
+        "state": state,
+        "reason": None if state == "done" else "no_llm_key",
+        "rules_only": not items,
+        "model": "openai/gpt-6-luna",
+        "prompt_version": "nir-judge-1",
+        "items": items or [],
+    }
+
+
+NIR_SUMMARY = {
+    "event_type": "Purchase Order",
+    "counterparty": "Invented Utility Co",
+    "legally_binding": "Yes",
+    "purchase_obligation": "Yes",
+    "committed_amount": "$2 million",
+    "potential_amount": "UNKNOWN",
+    "economic_substance": "Moderate",
+    "promotion_risk": "Low",
+    "evidence_strength": "Company claim",
+    "confidence": "Medium",
+    "summary_ko": "지어낸 회사가 200만 달러 구매 주문을 받았다고 발표(추론).",
+    "verification_failures": 0,
+    "rule_conflicts": [],
+}
+
+
+def test_summary_digests_the_llm_reading_as_inference() -> None:
+    item = {
+        "article": {
+            "source_id": "marketnewsapi-news",
+            "record_id": "ABCD:art_1",
+            "revision_sha256": "c" * 64,
+        },
+        "state": "created",
+        "nir_record_id": "NIR-ABCD-20261109-mna-art_1-001",
+        "cost_usd": 0.0004,
+        "summary": NIR_SUMMARY,
+    }
+    skipped = {**item, "state": "skipped", "reason": "same_headline", "nir_record_id": None}
+    del skipped["summary"]
+    digest = summary({**news_check(), "nir": nir_block("done", [item, skipped])})["nir"]
+    assert digest["label"] == "INFERENCE" and digest["rules_only"] is False
+    [only] = digest["items"]
+    assert only["headline"] == "ABCD Receives $2M Purchase Order"
+    assert only["event_type"] == "Purchase Order" and only["committed_amount"] == "$2 million"
+    assert only["nir_record_id"].startswith("NIR-ABCD-")
+    assert "cost_usd" not in only
+
+
+def test_summary_without_llm_is_rules_only() -> None:
+    old = summary(news_check())["nir"]  # made before the LLM step existed
+    assert old["rules_only"] is True and old["state"] is None and old["items"] == []
+    stopped = summary({**news_check(), "nir": nir_block("skipped")})["nir"]
+    assert stopped["rules_only"] is True and stopped["reason"] == "no_llm_key"
+
+
+def test_llm_versions_are_recorded(tmp_path: Path) -> None:
+    check = news_check()
+    check["nir"] = nir_block("not_needed")
+    check["versions"] = {
+        **check["versions"],
+        "nir_prompt_version": "nir-judge-1",
+        "nir_model": "openai/gpt-6-luna",
+    }
+    http, screening = app_for(tmp_path, FakeService(check=check))
+    stored = http.post("/v1/screening/checks/news", json={"symbol": "ABCD"}).json()
+    validate_document(stored)
+    assert stored["status"] == "material"  # the LLM never changes the status
+    assert stored["versions"]["nir_prompt_version"] == "nir-judge-1"
+    assert stored["result"]["nir"]["state"] == "not_needed"
+    screening.close()
+
+
 # --- routes ---------------------------------------------------------------------------
 
 
