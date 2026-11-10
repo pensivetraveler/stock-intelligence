@@ -1099,13 +1099,97 @@ interface NewsResult {
     published_at_utc?: string;
     categories: string[];
   } | null;
+  /** The service's LLM reading (news-analysis ADR 0002): inference, not fact. */
+  nir?: {
+    label: "INFERENCE";
+    state: string | null;
+    reason: string | null;
+    rules_only: boolean;
+    model: string | null;
+    items: NirItem[];
+  };
+}
+
+interface NirItem {
+  nir_record_id: string | null;
+  headline?: string | null;
+  published_at_utc?: string | null;
+  event_type?: string;
+  counterparty?: string;
+  legally_binding?: string;
+  committed_amount?: string;
+  potential_amount?: string;
+  economic_substance?: string;
+  promotion_risk?: string;
+  confidence?: string;
+  summary_ko?: string;
+  verification_failures?: number;
+  rule_conflicts?: string[];
 }
 
 const NEWS_CATEGORIES = [
   "binding_contract",
   "non_binding_intent",
   "partnership",
+  "earnings",
+  "clinical_fda",
+  "merger_acquisition",
+  "reverse_split",
+  "listing_notice",
 ] as const;
+
+/** Check B's LLM digest, always marked as inference; or a "rules only" note. */
+export function NirDigest({ result }: { result: NewsResult }) {
+  const { t } = useI18n();
+  const nir = result.nir;
+  const tagged = Object.values(result.categories ?? {}).some((n) => n > 0);
+  if (nir && nir.items.length > 0) {
+    return (
+      <section aria-label={t("candidates.nirTitle")}>
+        <p className="workspace-note" role="note">
+          {t("candidates.nirNotice")}
+        </p>
+        <ul>
+          {nir.items.map((item, index) => (
+            <li key={item.nir_record_id ?? index}>
+              {t("candidates.nirItem", {
+                event: item.event_type ?? "UNKNOWN",
+                binding: item.legally_binding ?? "UNKNOWN",
+                amount: item.committed_amount ?? "UNKNOWN",
+                potential: item.potential_amount ?? "UNKNOWN",
+                substance: item.economic_substance ?? "UNKNOWN",
+                promotion: item.promotion_risk ?? "UNKNOWN",
+                confidence: item.confidence ?? "UNKNOWN",
+              })}
+              {item.summary_ko ? <> — {item.summary_ko}</> : null}
+              {item.headline ? (
+                <span className="workspace-note"> ({item.headline})</span>
+              ) : null}
+              {(item.verification_failures ?? 0) > 0 ||
+              (item.rule_conflicts ?? []).length > 0 ? (
+                <span className="chart-error">
+                  {" "}
+                  {t("candidates.nirChecks", {
+                    failures: item.verification_failures ?? 0,
+                    conflicts: (item.rule_conflicts ?? []).length,
+                  })}
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
+  if (!tagged || nir?.state === "not_needed") return null;
+  return (
+    <p className="workspace-note" role="note">
+      {nir?.reason
+        ? t("candidates.nirRulesOnlyReason", { reason: nir.reason })
+        : t("candidates.nirRulesOnly")}
+    </p>
+  );
+}
 
 function categoryText(
   t: ReturnType<typeof useI18n>["t"],
@@ -1168,6 +1252,7 @@ function NewsDetail({
           })}
         </p>
       ) : null}
+      <NirDigest result={result} />
       {dilution > 0 ? (
         <p className="workspace-note" role="status">
           {t("candidates.newsDilution", { count: dilution })}

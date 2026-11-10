@@ -2737,6 +2737,13 @@
   - 실제 실행: STAK cutoff 2026-11-06T15:00Z → 5세션 9쪽, `ok`. AAPL cutoff 2026-11-06T21:00Z → 처음 상한(150쪽·90초)에서 1세션 84.6초. 화면 타임아웃 때문에 40초·80쪽으로 낮춘 뒤 71쪽·38.6초, 1세션, `incomplete`.
 - **미확인:** TRF 보고분이 `D`에 모두 들어 있는지(거래량 비중으로 추정), `t`가 어느 시각인지, 패널 D 열·차트 겹쳐 그리기(S1 쪽), 결과 캐시, 엔드포인트의 실제 키 실행(명령으로만 실행해 봄). 대형주는 40초 상한에서 5세션을 다 못 읽는다(가장 최근 세션만, 다 못 읽으면 `truncated`).
 
+## 스크리닝 B 카드에 NIR 요약(ADR 0052 §3) — 2026-11-10
+
+- **사용자 결정:** 검사 B 카드에 news-analysis 서비스의 LLM 판단(NIR) 요약을 추론 표시와 함께 보이고, 없으면 "규칙 결과만"으로 표시한다. 대기 시간도 조정한다.
+- **변경:** `summary()`가 `result.nir`(label `INFERENCE`, state·reason·rules_only·model, 기사별 요약 최대 5건)를 만든다. 검사 판 `screening-news-3`. 대기 15초 → 45초(넘으면 지금처럼 `pending`, refresh로 다시 봄). `versions`에 `nir_prompt_version`·`nir_model`. 카드(`CandidatesPanel` `NirDigest`)는 추론 안내문과 함께 요약을 보이고, 서비스 범주 여덟 개 모두에 이름을 붙인다.
+- **시험:** `tests/screening/test_news_service.py`(요약·규칙 결과만·판 기록), `CandidatesPanel.test.tsx`(추론 표시·검증 실패 표시·규칙 결과만·not_needed). 기사는 모두 지어낸 것.
+- **남은 위험:** 실제 서비스와 이어 카드 화면을 눈으로 확인하지 않음(미실행). LLM이 걸리면 45초 안에 못 끝나 `pending`이 될 수 있음.
+
 ## 스크리닝 B를 news-analysis 서비스로 옮김(ADR 0052 §3) — 2026-11-09
 
 - **사용자 결정:** "뉴스 수집, 개별 뉴스 분석, 개별 종목의 뉴스 사이클 분석은 각각 별도의 모듈"이고, 셋을 별도 프로젝트·서비스(`~/Trading/news-analysis`, `127.0.0.1:8776`, `news-contract-v1`)에 둔다.

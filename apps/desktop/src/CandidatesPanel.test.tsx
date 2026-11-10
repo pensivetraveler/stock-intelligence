@@ -6,7 +6,7 @@ import type {
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { CandidatesPanel } from "./CandidatesPanel";
+import { CandidatesPanel, NirDigest } from "./CandidatesPanel";
 import type { ScreeningApi } from "./screening-api";
 
 const listing = {
@@ -476,6 +476,8 @@ describe("CandidatesPanel", () => {
     );
     await screen.findByText(/Binding contract: 1/);
     await screen.findByText(/1 articles are about dilution/);
+    // A result made before the LLM step: the card says it is rules only.
+    await screen.findByText(/Rules only: no LLM reading for this check/);
 
     fireEvent.click(
       screen.getByRole("button", { name: "AAPL Off-exchange: done" }),
@@ -604,5 +606,69 @@ describe("CandidatesPanel", () => {
         "2026-11-09T17:00:00.000Z",
       ),
     );
+  });
+});
+
+describe("NirDigest", () => {
+  const base = { categories: { binding_contract: 1 } };
+  it("marks the LLM reading as inference and flags failed checks", () => {
+    render(
+      <NirDigest
+        result={{
+          ...base,
+          nir: {
+            label: "INFERENCE",
+            state: "done",
+            reason: null,
+            rules_only: false,
+            model: "openai/gpt-6-luna",
+            items: [
+              {
+                nir_record_id: "NIR-ABCD-20261109-mna-1-001",
+                headline: "ABCD Receives $2M Purchase Order",
+                event_type: "Purchase Order",
+                legally_binding: "Yes",
+                committed_amount: "$2 million",
+                potential_amount: "UNKNOWN",
+                economic_substance: "Moderate",
+                promotion_risk: "Low",
+                confidence: "Medium",
+                summary_ko: "Invented summary",
+                verification_failures: 1,
+                rule_conflicts: [],
+              },
+            ],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByRole("note")).toHaveTextContent(/Inference by an LLM/);
+    expect(screen.getByText(/Purchase Order · binding Yes/)).toHaveTextContent(
+      /committed \$2 million/,
+    );
+    expect(screen.getByText(/not found in the article: 1/)).toBeInTheDocument();
+  });
+  it("says rules only with the reason, and nothing when no article was tagged", () => {
+    const stopped = {
+      label: "INFERENCE" as const,
+      state: "stopped",
+      reason: "monthly_cap_reached",
+      rules_only: true,
+      model: null,
+      items: [],
+    };
+    const { unmount } = render(
+      <NirDigest result={{ ...base, nir: stopped }} />,
+    );
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "Rules only: no LLM reading (monthly_cap_reached).",
+    );
+    unmount();
+    const { container } = render(
+      <NirDigest
+        result={{ categories: {}, nir: { ...stopped, state: "not_needed" } }}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 });

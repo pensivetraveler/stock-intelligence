@@ -10,6 +10,10 @@ for a news check at the screening cutoff, waits a little, and keeps the service'
 - The service keeps its own keys and its own article store; SIW stores no article.
 - Dilution news (offerings, warrants, converts) is only flagged by the service
   (`out_of_scope.dilution`); dilution is judged by check C.
+- The service may add an LLM reading of the tagged articles (`nir`, news-analysis ADR
+  0002). It is inference, never verified fact, and never changes `status`. The card shows
+  a short digest marked as inference; without one it says the result is rules only.
+  News is optional: no articles, no LLM or a stopped service never drops a candidate.
 """
 
 from __future__ import annotations
@@ -25,13 +29,30 @@ from urllib.parse import urlsplit
 
 import httpx
 
-CHECK_VERSION = "screening-news-2"
+CHECK_VERSION = "screening-news-3"
 CONTRACT = "news-contract-v1"
 SERVICE_NAME = "news-analysis"
 DEFAULT_URL = "http://127.0.0.1:8776"
 LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
 #: The service's statuses that are also screening statuses.
 STATUSES = frozenset({"material", "no_material", "no_data", "error"})
+#: NIR digest fields copied for the card (all inference).
+NIR_FIELDS = (
+    "event_type",
+    "counterparty",
+    "legally_binding",
+    "purchase_obligation",
+    "committed_amount",
+    "potential_amount",
+    "economic_substance",
+    "promotion_risk",
+    "evidence_strength",
+    "confidence",
+    "summary_ko",
+    "verification_failures",
+    "rule_conflicts",
+)
+MAX_NIR_ITEMS = 5
 
 
 class NewsServiceDown(RuntimeError):
@@ -110,8 +131,55 @@ class NewsService:
         return document
 
 
+def nir_digest(check: dict[str, Any]) -> dict[str, Any]:
+    """The card's view of the service's LLM step: inference only, or rules only.
+
+    A result made before the step existed, or by a service without it, has no `nir`
+    block; that is shown as rules only (`state: null`).
+    """
+    block = check.get("nir")
+    if not isinstance(block, dict):
+        return {
+            "label": "INFERENCE",
+            "state": None,
+            "reason": None,
+            "rules_only": True,
+            "model": None,
+            "items": [],
+        }
+    headlines = {(a.get("source_id"), a.get("record_id")): a for a in check.get("articles") or ()}
+    items = []
+    for item in block.get("items") or ():
+        digest = item.get("summary")
+        if item.get("state") not in ("created", "reused") or not isinstance(digest, dict):
+            continue
+        ref = item.get("article") or {}
+        article = headlines.get((ref.get("source_id"), ref.get("record_id"))) or {}
+        items.append(
+            {
+                "nir_record_id": item.get("nir_record_id"),
+                "source_id": ref.get("source_id"),
+                "record_id": ref.get("record_id"),
+                "headline": article.get("headline"),
+                "published_at_utc": article.get("published_at_utc"),
+                **{name: digest.get(name) for name in NIR_FIELDS},
+            }
+        )
+        if len(items) >= MAX_NIR_ITEMS:
+            break
+    return {
+        "label": "INFERENCE",
+        "state": block.get("state"),
+        "reason": block.get("reason"),
+        "rules_only": not items,
+        "model": block.get("model"),
+        "items": items,
+    }
+
+
 def summary(check: dict[str, Any]) -> dict[str, Any]:
-    """What the card shows: categories, dilution flags, feeds and the article count."""
+    """What the card shows: categories, dilution flags, feeds, the article count and the
+    service's LLM digest (inference)."""
     feeds = [
         {
             "source_id": feed.get("source_id"),
@@ -143,6 +211,7 @@ def summary(check: dict[str, Any]) -> dict[str, Any]:
         "out_of_scope": dict(check.get("out_of_scope") or {}),
         "feeds": feeds,
         "latest_categorized": latest,
+        "nir": nir_digest(check),
     }
 
 
