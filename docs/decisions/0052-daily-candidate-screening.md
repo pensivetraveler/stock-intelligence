@@ -149,7 +149,20 @@
 - **결과:** S1의 공통 계약 `screening_check`(`check: "off_exchange"`)로 저장한다(`ScreeningStore.add_check`, 덧붙이기만). `status`는 ok·incomplete·no_data·error(사유는 `result.reason`). `result`는 하위 정의 `ScreeningOffExchangeResult`로 검사한다: `label: "장외 체결(TRF 보고)"`, `data_until_utc`, 세션별 수치, `reference_price`, `bin_width`, `histogram`, `levels`, `context.finra_weekly_ats`(Dark Pool Agent의 FINRA 주간 ATS 사실을 그대로, 가격대 계산에는 쓰지 않음), `limits`, `limitations`(증권사 내부 체결이 섞임·방향 모름·보고 시각 ≠ 체결 시각·FINRA 주간 자료는 맥락), `missing`, `unverified`. 봉투의 `warnings`에도 한계 문구가 늘 앞에 들어간다. 지난 cutoff를 나중에 다시 계산하면 `u` 상태가 나중 것이라는 "나중에 받아 재구성" 문구를 붙인다.
 - **엔드포인트:** `POST /v1/screening/checks/off_exchange` `{symbol, session_date?}`(`services/api/screening_off_exchange_routes.py`). 세션 창, `cutoff = min(now, 세션 끝)`, `after_the_fact`는 검사 A와 같다. Alpaca 키가 없으면 503. FINRA 맥락은 공개 자료 저장소가 있으면 최근 12주를 읽고, 없거나 실패하면 경고만 남긴다. 화면 타임아웃(60초)을 넘을 수 있는 대형주는 쪽 상한에 걸려 `incomplete`로 답한다.
 - **명령:** `uv run python -m services.screening.off_exchange STAK --cutoff 2026-11-06T15:00:00Z`(등록한 Alpaca 키, 읽기 전용, 결과 JSON 출력).
-- **아직 안 한 것:** 후보 패널의 D 열과 차트 겹쳐 그리기(`result.levels`, `result.histogram`)는 S1 쪽에서 붙인다. 같은 종목·같은 날 결과 다시 쓰기(캐시)는 정하지 않았다(지금은 요청마다 새로 계산해 덧붙인다).
+- **아직 안 한 것:** 후보 패널의 D 열과 차트 겹쳐 그리기(`result.levels`, `result.histogram`)는 S1 쪽에서 붙인다. 같은 종목·같은 날 결과 다시 쓰기(캐시)는 정하지 않았다(지금은 요청마다 새로 계산해 덧붙인다). → 2026-11-10 닫힌 세션 캐시를 붙였다(아래 "D 확장").
+
+#### D 확장: 닫힌 20세션 + 오늘 (2026-11-10, `off-exchange-check-2`)
+
+- **사용자 결정(2026-11-10):** 가격 구조 모델의 세션 캐시와 백그라운드 읽기를 같이 쓴다(동기 대기만 하는 안은 고르지 않음). 기본은 닫힌 20세션 + cutoff까지의 오늘. 세션은 동시 4개로 받는다. 장 마감 뒤 그날 후보 종목의 세션을 미리 받는다.
+- **실측(2026-11-10, 등록 키, 읽기 전용, 동시 5개):** STAK 21세션 100쪽 15.4초(세션별 시간 합 46.7초), 캐시 JSON 0.61MB. AAPL 10세션 926쪽 106.0초(합 492.9초), 8.28MB. 동시에도 쪽당 약 0.53초라 4.6배 빨라지고, 벽시간은 가장 큰 세션 하나가 정한다(AAPL 11-04 131쪽 67초). 응답 헤더의 요청 한도는 분당 10,000건이고 동시 5개는 분당 약 560건이었다. AAPL 하루는 61~131쪽이라 예전 상한(40초·80쪽)으로는 하루도 다 못 읽는 날이 있었다. 추정: AAPL 20세션 첫 받기 약 1,850쪽, 동시 4개 약 4분, 캐시 약 17MB. 소형주 20세션 약 0.6MB.
+- **닫힌 세션:** ADR 0053의 `session_levels`(`SIW_DATA_DIR/screening_structure.sqlite3`)를 그대로 읽는다. 캐시 문서는 `structure-session-levels-2`로 올려 D가 세션마다 보이는 두 값(`off_exchange_trades`, 장외 중 시장가 아닌 거래량 `off_exchange_off_market_price_volume`)을 더했다. 조건 규칙은 같은 `off-exchange-conditions-1`이고 공통 상수는 `services/screening/trade_conditions.py`로 옮겼다. 두 검사가 같은 큐(`SessionFiller`)를 써서 한 세션은 한 번만 받는다. 화면 요청은 큐 앞에, 미리 받기는 뒤에 넣고, 미리 받기 뒤에서 기다리던 세션을 화면이 요청하면 앞으로 옮긴다. 끝까지 읽은 닫힌 세션만 저장한다(세션당 400쪽·300초).
+- **오늘:** cutoff에 열려 있는 세션은 캐시에 넣지 않고 요청 안에서 최신부터(`sort=desc`) `data_until_utc`까지 읽는다(`source: "live"`, `partial: true`). 상한(쪽 80, 25초)에 걸리면 읽은 부분만 `truncated: true`로 남긴다.
+- **시간:** 요청 하나의 체결 예산은 40초다(화면 60초 안). 닫힌 세션을 큐에 넣고 → 오늘을 읽고 → 남은 시간만큼 큐를 기다린다. FINRA 맥락을 읽은 시간은 예산에서 뺀다(최소 10초). 다 못 받았으면 `status: "pending"`이고 그때까지 받은 세션으로 계산한 가격대와 `result.progress`(전체·받은·받는 중·빠진 세션과 사유)를 저장한다. 같은 POST를 다시 보내면 이어서 보인다(가격 구조 검사와 같은 방식). 받지 못한 세션은 `missing`에 남고 `incomplete`다.
+- **요청:** `POST /v1/screening/checks/off_exchange {symbol, session_date?, sessions?}`, `sessions`는 1~20(기본 20). 5나 10이어도 캐시는 공유라 더 받는 것은 없다. 패널에 "장외 체결 거래일"(5·10·20)을 두었다.
+- **결과 계약 변경:** 세션마다 `source`(`live`·`cache`)와 `read_at_utc`, `progress`, `limits.live_max_seconds`. `sessions_requested`는 닫힌 세션 수다. 캐시 세션을 `data_until_utc`보다 1시간 넘게 뒤에 받았으면 "나중에 받아 재구성"을 적는다(ADR 0053 S09와 같은 기준).
+- **장 마감 뒤 미리 받기(`services/api/screening_prefetch.py`):** 앱이 켜져 있는 동안 5분마다 본다. 세션이 닫히고 공개 지연이 지나면 그 세션의 후보(조건검색 기록 + 직접 추가한 종목, 패널 목록과 같다)마다 닫힌 20세션을 큐 뒤에 넣는다. 세션당 한 번이다. 앱이 꺼져 있던 날은 다음에 켤 때 마지막 닫힌 세션의 후보를 넣는다(이미 받은 세션은 건너뜀). 모든 종목이 아니라 후보만이다. `SIW_SCREENING_PREFETCH=0`이면 끈다.
+- **명령:** `uv run python -m services.screening.off_exchange STAK [--cutoff …] [--sessions 20]`은 이제 빠진 닫힌 세션을 모두 받아(기다림 없음) 캐시에 넣고 결과를 출력한다(검사 결과는 저장하지 않음).
+- **하지 않은 것:** 세션 하나를 시간대로 나눠 동시에 받기(대형주 하루 67초를 줄이는 방법, 지금은 세션 단위로만 동시), 캐시 압축(zlib로 약 1/6), 오래된 캐시 지우기.
 
 ### 6. 시점과 기록
 

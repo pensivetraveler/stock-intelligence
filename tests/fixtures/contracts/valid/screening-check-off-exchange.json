@@ -13,10 +13,12 @@
   "result": {
     "label": "장외 체결(TRF 보고)",
     "data_until_utc": "2026-11-06T15:00:00Z",
-    "sessions_requested": 2,
+    "sessions_requested": 1,
     "sessions": [
       {
         "session_date": "2026-11-06",
+        "source": "live",
+        "read_at_utc": "2026-11-06T15:30:00Z",
         "range_utc": ["2026-11-06T09:00:00Z", "2026-11-06T15:00:00Z"],
         "partial": true,
         "truncated": false,
@@ -33,6 +35,8 @@
       },
       {
         "session_date": "2026-11-05",
+        "source": "cache",
+        "read_at_utc": "2026-11-06T15:30:00Z",
         "range_utc": ["2026-11-05T09:00:00Z", "2026-11-06T01:00:00Z"],
         "partial": false,
         "truncated": false,
@@ -48,6 +52,12 @@
         "removed_trades": 0
       }
     ],
+    "progress": {
+      "total_sessions": 1,
+      "cached_sessions": 1,
+      "reading_sessions": 0,
+      "missing": []
+    },
     "reference_price": "2.0101",
     "reference_time_utc": "2026-11-06T14:59:59.123456789Z",
     "bin_width": "0.01",
@@ -111,9 +121,10 @@
       "finra_weekly_ats": null
     },
     "limits": {
-      "pages": 3,
+      "pages": 2,
       "seconds": 0.0,
       "max_pages": 80,
+      "live_max_seconds": 25.0,
       "max_seconds": 40.0,
       "min_level_share_pct": "1",
       "max_bins": 500
@@ -132,8 +143,9 @@
     ]
   },
   "versions": {
-    "check": "off-exchange-check-1",
+    "check": "off-exchange-check-2",
     "condition_policy": "off-exchange-conditions-1",
+    "session_levels": "structure-session-levels-2",
     "calendar": "xnys-regular-2000-01-03-2030-12-31-sha256-2c7e1ffbb903c8b8"
   },
   "warnings": [
@@ -148,7 +160,8 @@
       "endpoint": "GET /v2/stocks/{symbol}/trades",
       "feed": "sip",
       "exchange_code": "D",
-      "publication_delay_minutes": 15
+      "publication_delay_minutes": 15,
+      "closed_sessions": "screening_structure.sqlite3 session_levels (ADR 0053)"
     },
     "finra_weekly_ats": null
   }

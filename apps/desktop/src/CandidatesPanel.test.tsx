@@ -469,7 +469,11 @@ describe("CandidatesPanel", () => {
     );
     await waitFor(() => expect(api.runStructureCheck).toHaveBeenCalled());
     expect(api.runNewsCheck).toHaveBeenCalledWith("AAPL", "2026-11-09");
-    expect(api.runOffExchangeCheck).toHaveBeenCalledWith("AAPL", "2026-11-09");
+    expect(api.runOffExchangeCheck).toHaveBeenCalledWith(
+      "AAPL",
+      "2026-11-09",
+      20,
+    );
 
     fireEvent.click(
       await screen.findByRole("button", { name: "AAPL News: catalyst" }),
@@ -503,6 +507,82 @@ describe("CandidatesPanel", () => {
     );
     await screen.findByText(/4\/20 sessions read/);
     expect(api.runStructureCheck).toHaveBeenCalledTimes(2);
+  });
+  it("asks a waiting off-exchange check again with the sessions chosen", async () => {
+    const waiting = {
+      kind: "screening_check",
+      check_id: 31,
+      check: "off_exchange",
+      symbol: "AAPL",
+      instrument_id: "us:aapl:xnas:2026",
+      status: "pending",
+      result: {
+        sessions_requested: 10,
+        sessions: [
+          {
+            session_date: "2026-11-09",
+            source: "live",
+            partial: true,
+            truncated: false,
+          },
+          {
+            session_date: "2026-11-06",
+            source: "cache",
+            partial: false,
+            truncated: false,
+          },
+        ],
+        progress: {
+          total_sessions: 10,
+          cached_sessions: 1,
+          reading_sessions: 9,
+          missing: [],
+        },
+        reference_price: "101.5",
+        off_exchange_share_pct: "41.2",
+        levels: [],
+        notes: [],
+      },
+      warnings: [],
+    } as unknown as ScreeningCheck;
+    const api = {
+      candidates: vi.fn(() => {
+        const found = candidates();
+        found.candidates[0].checks = {
+          off_exchange: {
+            check_id: 31,
+            status: "pending",
+            created_at_utc: "x",
+          },
+        };
+        return Promise.resolve(found);
+      }),
+      addCandidate: vi.fn(),
+      runEntryCheck: vi.fn(),
+      check: vi.fn(() => Promise.resolve(waiting)),
+      runOffExchangeCheck: vi.fn(() => Promise.resolve(waiting)),
+      ...unused(["runOffExchangeCheck"]),
+    } as ScreeningApi;
+    render(
+      <CandidatesPanel
+        api={api}
+        strategies={() => Promise.resolve([])}
+        onPick={vi.fn()}
+      />,
+    );
+    fireEvent.change(await screen.findByLabelText("Off-exchange sessions"), {
+      target: { value: "10" },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "AAPL Off-exchange: waiting" }),
+    );
+    await screen.findByText(/1\/10 sessions read/);
+    await screen.findByText(/closed sessions 1\/10 \+ today up to the cutoff/);
+    expect(api.runOffExchangeCheck).toHaveBeenCalledWith(
+      "AAPL",
+      "2026-11-09",
+      10,
+    );
   });
   it("shows record gaps, unknown entry times, the noon cut and values at entry", async () => {
     let measured = false;

@@ -6,6 +6,8 @@ meta endpoints read 2026-11-09). No test reaches the network.
 from __future__ import annotations
 
 import json
+import sqlite3
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -24,6 +26,7 @@ from services.screening.off_exchange import (
     finra_context,
     off_exchange_check,
 )
+from services.screening.structure.sessions import FillLimits, SessionCache, SessionFiller
 
 SECRET = "test-secret-not-real"
 CUTOFF = datetime(2026, 11, 6, 15, 0, tzinfo=timezone.utc)  # 10:00 ET Friday
@@ -88,16 +91,26 @@ def validate_document(outcome: dict[str, Any]) -> None:
     validate_contract(stored(outcome))
 
 
-def run(tape: Tape, **changes: Any) -> dict[str, Any]:
+def memory_cache() -> SessionCache:
+    return SessionCache(sqlite3.connect(":memory:", check_same_thread=False), threading.Lock())
+
+
+def run(tape: Tape, cache: SessionCache | None = None, **changes: Any) -> dict[str, Any]:
+    """The check with the closed sessions read inline into a fresh cache (no threads)."""
+    pages = adapter(tape).trade_pages
+    cache = cache or memory_cache()
     values: dict[str, Any] = {
         "symbol": "STAK",
         "cutoff": CUTOFF,
         "now": NOW,
         "publication_delay_minutes": 15,
-        "limits": OffExchangeLimits(sessions=2),
+        "limits": OffExchangeLimits(sessions=1),
+        "cache": cache,
+        "filler": SessionFiller(cache, lambda: pages, lambda: changes.get("now", NOW), inline=True),
+        "sleep": lambda _seconds: None,
     }
     values.update(changes)
-    return off_exchange_check(adapter(tape).trade_pages, **values)
+    return off_exchange_check(pages, **values)
 
 
 def friday_and_thursday() -> Tape:
@@ -145,6 +158,7 @@ def test_off_exchange_levels_from_trf_reported_trades() -> None:
     assert document["result"]["data_until_utc"] == "2026-11-06T15:00:00Z"
     friday, thursday = document["result"]["sessions"]
     assert friday["session_date"] == "2026-11-06" and friday["partial"] is True
+    assert friday["source"] == "live" and thursday["source"] == "cache"
     assert friday["truncated"] is False
     assert friday["range_utc"] == ["2026-11-06T09:00:00Z", "2026-11-06T15:00:00Z"]
     assert friday["pages"] == 2
@@ -154,9 +168,21 @@ def test_off_exchange_levels_from_trf_reported_trades() -> None:
     assert friday["late_report_volume"] == "200"
     assert friday["removed_trades"] == 1
     assert thursday["partial"] is False
+    assert thursday["range_utc"] == ["2026-11-05T09:00:00Z", "2026-11-06T01:00:00Z"]
+    assert thursday["read_at_utc"] == "2026-11-06T15:30:00Z"
     assert thursday["total_volume"] == "650"  # the official close print is not a trade
     assert thursday["off_exchange_volume"] == "650"
     assert thursday["off_market_price_volume"] == "70"
+    assert thursday["off_exchange_trades"] == 5
+    assert thursday["priced_volume"] == "580"
+    assert document["result"]["progress"] == {
+        "total_sessions": 1,
+        "cached_sessions": 1,
+        "reading_sessions": 0,
+        "missing": [],
+    }
+    # Read before the cutoff plus an hour: not a reconstruction.
+    assert not any("나중에 받아 재구성" in text for text in document["result"]["unverified"])
     # Reference: last market-price trade (any venue) before the cutoff, exact decimals.
     assert document["result"]["reference_price"] == "2.0101"
     assert document["result"]["reference_time_utc"] == "2026-11-06T14:59:59.123456789Z"
@@ -207,29 +233,68 @@ def test_off_exchange_levels_from_trf_reported_trades() -> None:
         document["result"]["limitations"]
     )
 
-    first = tape.requests[0]
-    assert first.url.path == "/v2/stocks/STAK/trades"
-    assert first.url.params["feed"] == "sip"
-    assert first.url.params["sort"] == "desc"  # newest first
-    assert first.url.params["start"] == "2026-11-06T09:00:00Z"
-    assert first.url.params["end"] == "2026-11-06T15:00:00Z"
-    assert tape.requests[1].url.params["page_token"] == "next"
-    assert tape.requests[2].url.params["start"] == "2026-11-05T09:00:00Z"
-    assert tape.requests[2].url.params["end"] == "2026-11-06T01:00:00Z"
+    # The closed session is read whole into the cache first, then the open one newest first.
+    closed, live, live_next = tape.requests
+    assert closed.url.path == live.url.path == "/v2/stocks/STAK/trades"
+    assert closed.url.params["feed"] == live.url.params["feed"] == "sip"
+    assert closed.url.params["sort"] == "asc"
+    assert closed.url.params["start"] == "2026-11-05T09:00:00Z"
+    assert closed.url.params["end"] == "2026-11-06T01:00:00Z"
+    assert live.url.params["sort"] == "desc"  # newest first
+    assert live.url.params["start"] == "2026-11-06T09:00:00Z"
+    assert live.url.params["end"] == "2026-11-06T15:00:00Z"  # nothing after the cutoff
+    assert live_next.url.params["page_token"] == "next"
     assert SECRET not in json.dumps(document)
+
+
+def test_cached_sessions_are_not_read_again() -> None:
+    cache = memory_cache()
+    first = run(friday_and_thursday(), cache=cache)
+    tape = friday_and_thursday()
+    again = run(tape, cache=cache)
+    # Only the open session is read again; Thursday comes from the cache.
+    assert {r.url.params["start"][:10] for r in tape.requests} == {"2026-11-06"}
+    assert again["result"]["levels"] == first["result"]["levels"]
+
+
+def test_closed_sessions_still_reading_leave_the_check_pending() -> None:
+    tape = friday_and_thursday()
+    pages = adapter(tape).trade_pages
+    cache = memory_cache()
+    gate = threading.Event()
+
+    def slow(*args: Any, **kwargs: Any) -> Any:
+        gate.wait(5)
+        return pages(*args, **kwargs)
+
+    filler = SessionFiller(cache, lambda: slow, lambda: NOW)
+    # No time left to wait: the answer comes while both closed sessions are still read.
+    limits = OffExchangeLimits(sessions=2, max_seconds=0.001)
+    document = run(tape, cache=cache, filler=filler, limits=limits)
+    gate.set()
+    validate_document(document)
+    assert document["status"] == "pending"
+    assert document["result"]["progress"]["reading_sessions"] == 2
+    assert document["result"]["progress"]["cached_sessions"] == 0
+    # What is known so far is shown: the open session.
+    assert [s["source"] for s in document["result"]["sessions"]] == ["live"]
+    assert any("뒤에서 받는 중" in note for note in document["result"]["notes"])
+    filler.wait("STAK", 5, lambda seconds: gate.wait(seconds))
+    done = run(friday_and_thursday(), cache=cache, limits=OffExchangeLimits(sessions=2))
+    assert done["result"]["progress"]["cached_sessions"] == 2
 
 
 def test_publication_delay_caps_the_data_at_a_live_cutoff() -> None:
     tape = Tape({})
     document = run(tape, cutoff=NOW)
     assert document["result"]["data_until_utc"] == "2026-11-06T15:15:00Z"
-    assert tape.requests[0].url.params["end"] == "2026-11-06T15:15:00Z"
+    assert tape.requests[-1].url.params["end"] == "2026-11-06T15:15:00Z"
     assert document["status"] == "no_data"
     assert "levels" in document["result"]["missing"]
     validate_document(document)
 
 
-def test_page_budget_drops_the_unfinished_session_whole() -> None:
+def test_a_closed_session_cut_by_its_limit_is_missing_not_cached() -> None:
     tape = Tape(
         {
             "2026-11-06": [page(trade("2026-11-06T13:00:00Z", "2", 100))],
@@ -239,16 +304,21 @@ def test_page_budget_drops_the_unfinished_session_whole() -> None:
             ],
         }
     )
-    document = run(tape, limits=OffExchangeLimits(sessions=2, max_pages=2))
+    pages = adapter(tape).trade_pages
+    cache = memory_cache()
+    filler = SessionFiller(
+        cache, lambda: pages, lambda: NOW, FillLimits(max_pages_per_session=1), inline=True
+    )
+    document = run(tape, cache=cache, filler=filler)
     validate_document(document)
     assert document["status"] == "incomplete"
-    # The older session read in part is dropped whole, not truncated.
+    # The closed session read in part is dropped whole, never cached.
     assert [s["session_date"] for s in document["result"]["sessions"]] == ["2026-11-06"]
-    assert document["result"]["sessions"][0]["truncated"] is False
     assert "session:2026-11-05" in document["result"]["missing"]
-    assert document["result"]["limits"]["pages"] == 2
+    (gap,) = document["result"]["progress"]["missing"]
+    assert gap["session_date"] == "2026-11-05" and "limit 1 pages" in gap["reason"]
+    assert cache.get("STAK", datetime(2026, 11, 5).date()) is None
     assert {b["price_low"] for b in document["result"]["histogram"]} == {"2"}
-    assert any("상한" in note for note in document["result"]["notes"])
 
 
 def test_time_budget_keeps_the_newest_hours_read() -> None:
@@ -268,13 +338,13 @@ def test_time_budget_keeps_the_newest_hours_read() -> None:
     document = run(tape, monotonic=lambda: next(clock, 100.0))
     validate_document(document)
     assert document["status"] == "incomplete"
-    (session,) = document["result"]["sessions"]
-    assert session["truncated"] is True
-    assert session["range_utc"] == ["2026-11-06T14:10:30Z", "2026-11-06T15:00:00Z"]
-    assert document["result"]["missing"][:2] == ["session:2026-11-06", "session:2026-11-05"]
+    live, _thursday = document["result"]["sessions"]
+    assert live["truncated"] is True
+    assert live["range_utc"] == ["2026-11-06T14:10:30Z", "2026-11-06T15:00:00Z"]
+    assert document["result"]["missing"][0] == "session:2026-11-06"
     assert document["result"]["levels"]
-    assert any("가장 최근 세션의 일부" in note for note in document["result"]["notes"])
-    assert len(tape.requests) == 1
+    assert any("열려 있는 세션의 일부" in note for note in document["result"]["notes"])
+    assert len([r for r in tape.requests if r.url.params["sort"] == "desc"]) == 1
 
 
 def test_provider_error_fails_without_levels() -> None:
@@ -285,17 +355,23 @@ def test_provider_error_fails_without_levels() -> None:
         AlpacaConfig(key_id="test-key-id", secret_key=SECRET),
         transport=httpx.MockTransport(refuse),
     )
+    cache = memory_cache()
     document = off_exchange_check(
         provider.trade_pages,
         symbol="STAK",
         cutoff=CUTOFF,
         now=NOW,
         publication_delay_minutes=15,
+        cache=cache,
+        filler=SessionFiller(cache, lambda: provider.trade_pages, lambda: NOW, inline=True),
+        sleep=lambda _seconds: None,
     )
     validate_document(document)
     assert document["status"] == "error"
     assert document["result"]["levels"] == []
     assert document["result"]["reason"].startswith("ProviderRateLimitError")
+    assert len(document["result"]["progress"]["missing"]) == 20
+    assert "ProviderRateLimitError" in document["result"]["progress"]["missing"][0]["reason"]
 
 
 def test_small_peaks_are_not_levels() -> None:

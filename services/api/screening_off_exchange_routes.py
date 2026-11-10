@@ -1,5 +1,9 @@
 """Check D of the daily screening (ADR 0052 §5, S2): off-exchange (TRF-reported) price
 levels from Alpaca SIP trades. Stored like every screening check; never places orders.
+
+The closed sessions come from the structure model's session cache and its background
+reader (ADR 0053), shared with the structure check. The first run for a ticker may answer
+`pending` with the sessions read so far; posting again shows the rest.
 """
 
 from __future__ import annotations
@@ -22,6 +26,8 @@ from services.public_sources.http import SourceError
 from services.screening.candidates import utc_text
 from services.screening.off_exchange import OffExchangeLimits, finra_context, off_exchange_check
 from services.screening.store import ScreeningStore
+from services.screening.structure.service import StructureStore
+from services.screening.structure.sessions import SessionFiller
 
 SYMBOL = re.compile(r"^[A-Z][A-Z0-9.]{0,9}$")
 MAX_DAYS_BACK = 10
@@ -37,18 +43,23 @@ FinraReview = Callable[[str, datetime], Any]
 class OffExchangeCheckRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=10)
     session_date: date | None = None
+    #: Closed sessions; the cache holds the structure model's twenty, so 5 and 10 read
+    #: nothing more.
+    sessions: int = Field(default=OffExchangeLimits.sessions, ge=1, le=20)
 
 
 def register_screening_off_exchange_routes(
     application: FastAPI,
     *,
     store: Callable[[], ScreeningStore | None],
+    structure: Callable[[], tuple[StructureStore, SessionFiller] | None],
     trades: Callable[[], Any],
     listing_for: Callable[[str], dict[str, Any] | None],
     finra_review: Callable[[], FinraReview | None],
     error_response: ErrorResponse,
     clock: Callable[[], datetime],
     monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> None:
     """`trades()` returns an Alpaca adapter (anything with `trade_pages` and `config`)."""
     calendar = UsEquityCalendar("XNAS")
@@ -77,7 +88,8 @@ def register_screening_off_exchange_routes(
     def run_off_exchange_check(request: Request, body: OffExchangeCheckRequest) -> Response:
         """Check D: off-exchange (TRF-reported) volume by price before the cutoff."""
         screening = store()
-        if screening is None:
+        opened = structure()
+        if screening is None or opened is None:
             return error_response(
                 request,
                 503,
@@ -103,6 +115,7 @@ def register_screening_off_exchange_routes(
                 "alpaca_unconfigured",
                 "Check D reads Alpaca SIP trades: register an enabled Alpaca key",
             )
+        structure_store, filler = opened
         instrument_id = str(listing["instrument"]["instrument_id"])
         now = clock()
         cutoff = min(now, window.post_close_utc)
@@ -112,8 +125,9 @@ def register_screening_off_exchange_routes(
         budget = OffExchangeLimits()
         spent = monotonic() - started
         limits = OffExchangeLimits(
-            max_pages=budget.max_pages,
+            sessions=body.sessions,
             max_seconds=max(MIN_TRADE_SECONDS, budget.max_seconds - spent),
+            live_max_seconds=max(MIN_TRADE_SECONDS, budget.live_max_seconds - spent),
         )
         outcome = off_exchange_check(
             adapter.trade_pages,
@@ -121,9 +135,12 @@ def register_screening_off_exchange_routes(
             cutoff=cutoff,
             now=now,
             publication_delay_minutes=adapter.config.publication_delay_minutes,
+            cache=structure_store.cache,
+            filler=filler,
             limits=limits,
             finra=context,
             monotonic=monotonic,
+            sleep=sleep,
         )
         if problem is not None:
             outcome["warnings"].append(problem)

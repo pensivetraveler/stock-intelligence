@@ -35,9 +35,11 @@ export interface ScreeningApi {
   /** A waiting news check looked at again (the news service has its own route). */
   refreshNewsCheck(checkId: number): Promise<ScreeningCheck>;
   /** Check D: off-exchange (TRF-reported) volume by price. */
+  /** Check D; closed sessions come from the shared cache, posting again shows progress. */
   runOffExchangeCheck(
     symbol: string,
     sessionDate?: string,
+    sessions?: number,
   ): Promise<ScreeningCheck>;
   /** Off-exchange price structure (ADR 0053); posting again shows progress. */
   runStructureCheck(
@@ -121,12 +123,19 @@ export function createScreeningApi(
         { method: "POST" },
       );
     },
-    runOffExchangeCheck(symbol, sessionDate) {
+    runOffExchangeCheck(symbol, sessionDate, sessions) {
       return callForKind<ScreeningCheck>(
         target,
         "/v1/screening/checks/off_exchange",
         "screening_check",
-        { method: "POST", body: { symbol, ...dated(sessionDate) } },
+        {
+          method: "POST",
+          body: {
+            symbol,
+            ...dated(sessionDate),
+            ...(sessions === undefined ? {} : { sessions }),
+          },
+        },
       );
     },
     runStructureCheck(symbol, sessionDate) {

@@ -2771,3 +2771,11 @@
 - **확인:** `tests/screening/test_momentum.py`(빈틈·끝 없는 구독·편입 시각 종류·깜빡임·닫힌 봉만·incomplete·경로·정오 자르기), 패널 테스트 1개. 실제 기록 복사본과 사용자 Alpaca 키로 오늘 20종목 `ok`(ADR 0055 "실제 확인").
 - **발견:** 기록기가 2026-11-09 08:40 ET에 `stopped`로 끝나 정규장 편입이 기록되지 않았다. 편입 때 전일 종가보다 낮았던 종목 3개(HRTX·CDT·SDA): 조건식이 전일 대비 상승률이 아닐 수 있다.
 - **미확인:** 조건식의 실제 조건, 실제 API·데스크톱 앱에서 새 열 확인(SIW API 재시작 필요).
+
+## 장외 체결 D 확장: 닫힌 20세션 + 오늘(ADR 0052 §5) — 2026-11-10
+
+- **사용자 결정:** 가격 구조 모델의 세션 캐시와 백그라운드 읽기를 같이 쓴다, 닫힌 20세션 + 오늘, 동시 4개, 장 마감 뒤 후보 미리 받기도 이번에(mondash -81 닫음).
+- **실측(읽기 전용, 동시 5개):** STAK 21세션 15.4초·0.61MB, AAPL 10세션 106.0초·8.28MB, 요청 한도 분당 10,000건. 자세한 표는 ADR 0052 §5 "D 확장".
+- **변경:** D(`off-exchange-check-2`)가 닫힌 세션을 `screening_structure.sqlite3`의 `session_levels`(`structure-session-levels-2`)에서 읽고 오늘만 직접 읽는다. 다 못 받았으면 `pending`과 `progress`, 같은 POST로 이어 보기. 요청에 `sessions`(1~20). `SessionFiller`가 동시 4개·화면 우선 큐. 장 마감 뒤 미리 받기 `services/api/screening_prefetch.py`(`SIW_SCREENING_PREFETCH=0`이면 끔). 패널에 "장외 체결 거래일"(5·10·20), D 대기 결과는 같은 POST로 다시 보기. 공통 체결 조건 상수는 `services/screening/trade_conditions.py`.
+- **시험:** `tests/screening/test_off_exchange.py`(캐시 세션·다시 안 받기·대기·한도로 끊긴 닫힌 세션·오늘 자르기), `test_off_exchange_api.py`(세션 수 요청), 새 `test_session_filler.py`(동시 읽기·화면 우선·미리 받기 한 번·공개 지연 전에는 전날), 패널 테스트 1개, 계약 fixture 갱신.
+- **미확인:** 실제 앱에서 D 카드·미리 받기 확인(SIW API 재시작 필요), 동시 4개의 실제 시간(측정은 5개), 대형주 하루 131쪽보다 큰 날의 세션당 상한(400쪽·300초) 여유.
