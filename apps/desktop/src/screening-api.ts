@@ -1,4 +1,8 @@
-import type { ScreeningCandidates, ScreeningCheck } from "@siw/contracts/types";
+import type {
+  ScreeningCandidates,
+  ScreeningCheck,
+  ScreeningFlowWatch,
+} from "@siw/contracts/types";
 
 import { callForKind, type ApiTarget } from "./market-api";
 
@@ -49,6 +53,11 @@ export interface ScreeningApi {
   /** A waiting dilution check looked at again; a new result when there is one. */
   refreshCheck(checkId: number): Promise<ScreeningCheck>;
   check(checkId: number): Promise<ScreeningCheck>;
+  /**
+   * Stage 3 realtime flow (ADR 0057 §3): every candidate's state at the newest closed
+   * minute, rebuilt from 1m bars on each call. States only; nothing orders.
+   */
+  flow?(sessionDate?: string): Promise<ScreeningFlowWatch>;
 }
 
 export function createScreeningApi(
@@ -89,6 +98,14 @@ export function createScreeningApi(
           method: "POST",
           body: { symbol, strategy_id: strategyId, ...dated(sessionDate) },
         },
+      );
+    },
+    flow(sessionDate) {
+      const query = sessionDate ? `?session_date=${sessionDate}` : "";
+      return callForKind<ScreeningFlowWatch>(
+        target,
+        `/v1/screening/flow${query}`,
+        "screening_flow_watch",
       );
     },
     runMomentumCheck(symbol, sessionDate) {

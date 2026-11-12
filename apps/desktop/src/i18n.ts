@@ -884,6 +884,19 @@ const en = {
   "candidates.flicker": "Entries · time in list",
   "candidates.flickerValue": "{count}× · {minutes} min",
   "candidates.column.momentum": "At entry (Alpaca)",
+  "candidates.column.flow": "Flow now (stage 3)",
+  "candidates.flow.state.eligible": "In",
+  "candidates.flow.state.excluded": "Out",
+  "candidates.flow.state.warming_up": "Too few minutes",
+  "candidates.flow.state.unknown": "Unknown",
+  "candidates.flow.state.halted": "Halted",
+  "candidates.flow.status.unsupported": "Not listed",
+  "candidates.flow.status.error": "Error",
+  "candidates.flow.asOf": "Judged at the minute ending {time} (New York)",
+  "candidates.flow.rules":
+    "Liquidity: 4 of the last 5 1m bars with $5,000 and 1,000 shares or more. Volatility: 3 of the last 20 bars moving 1% and 2 ticks or more. Out blocks new buys only; resting orders stay.",
+  "candidates.flow.noHalts":
+    "No halt record: empty minutes during a halt count as failing minutes.",
   "candidates.momentumAll": "Values at entry for all",
   "candidates.momentumDetail": "The market before the entry",
   "candidates.momentumMeta":
@@ -2813,6 +2826,19 @@ const ko: Record<MessageKey, string> = {
   "candidates.flicker": "편입 횟수 · 머문 시간",
   "candidates.flickerValue": "{count}회 · {minutes}분",
   "candidates.column.momentum": "편입 시점(Alpaca)",
+  "candidates.column.flow": "지금 수급(3단계)",
+  "candidates.flow.state.eligible": "대상",
+  "candidates.flow.state.excluded": "제외",
+  "candidates.flow.state.warming_up": "봉 부족",
+  "candidates.flow.state.unknown": "판정 불가",
+  "candidates.flow.state.halted": "거래 정지",
+  "candidates.flow.status.unsupported": "종목 없음",
+  "candidates.flow.status.error": "오류",
+  "candidates.flow.asOf": "{time}(뉴욕)에 끝난 1분봉까지로 판정",
+  "candidates.flow.rules":
+    "유동성: 최근 1분봉 5개 중 4개 이상이 거래대금 $5,000·거래량 1,000주 이상. 변동성: 최근 20개 중 3개 이상이 1%·2호가 이상 움직임. 제외는 새 매수만 막고 걸린 주문은 둔다.",
+  "candidates.flow.noHalts":
+    "halt 기록 없음: halt 중의 빈 분도 미달 봉으로 셌다.",
   "candidates.momentumAll": "편입 시점 수치 모두",
   "candidates.momentumDetail": "편입 직전 시장",
   "candidates.momentumMeta":
