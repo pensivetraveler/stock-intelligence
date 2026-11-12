@@ -1,6 +1,7 @@
 # ADR 0054 — 종목 선정에서 SIW Agent 시나리오까지
 
 - **Status:** proposed(초안). 2026-11-09 사용자 정의를 옮겼다. 아래 "사용자가 정할 것"이 정해지기 전에는 새 단계를 구현하지 않는다.
+- **Superseded in part (2026-11-12):** 흐름(1·2·3단계 구성), §1 움직임 예상 분류, §2 실시간 수급, U1~U6, "사용자가 고른 선정 종목 목록"은 [ADR 0057](0057-selection-flow-seven-stages.md)(7단계 흐름)로 대체했다. 움직임 분류와 피보나치 확인은 폐기했다. 참고 문서, 사용자 결정(11-09·11-10), §3 공매도 자료는 유효하다.
 - **Date:** 2026-11-09
 - **Related:** [ADR 0051](0051-kiwoom-realtime-condition-watch.md)(조건검색 실시간 기록), [ADR 0052](0052-daily-candidate-screening.md)(당일 후보 스크리닝 A·B·C·D), [ADR 0053](0053-off-exchange-price-structure-model.md)(장외 체결 가격 구조), [ADR 0036](0036-desktop-app-roles.md)(Research·Agent 역할), [ADR 0047](0047-live-orders-per-order-confirmation.md)(실계좌 주문마다 승인)
 

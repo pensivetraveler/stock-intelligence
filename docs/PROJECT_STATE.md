@@ -2779,3 +2779,10 @@
 - **변경:** D(`off-exchange-check-2`)가 닫힌 세션을 `screening_structure.sqlite3`의 `session_levels`(`structure-session-levels-2`)에서 읽고 오늘만 직접 읽는다. 다 못 받았으면 `pending`과 `progress`, 같은 POST로 이어 보기. 요청에 `sessions`(1~20). `SessionFiller`가 동시 4개·화면 우선 큐. 장 마감 뒤 미리 받기 `services/api/screening_prefetch.py`(`SIW_SCREENING_PREFETCH=0`이면 끔). 패널에 "장외 체결 거래일"(5·10·20), D 대기 결과는 같은 POST로 다시 보기. 공통 체결 조건 상수는 `services/screening/trade_conditions.py`.
 - **시험:** `tests/screening/test_off_exchange.py`(캐시 세션·다시 안 받기·대기·한도로 끊긴 닫힌 세션·오늘 자르기), `test_off_exchange_api.py`(세션 수 요청), 새 `test_session_filler.py`(동시 읽기·화면 우선·미리 받기 한 번·공개 지연 전에는 전날), 패널 테스트 1개, 계약 fixture 갱신.
 - **미확인:** 실제 앱에서 D 카드·미리 받기 확인(SIW API 재시작 필요), 동시 4개의 실제 시간(측정은 5개), 대형주 하루 131쪽보다 큰 날의 세션당 상한(400쪽·300초) 여유.
+
+## 종목 선정 7단계 흐름 확정(ADR 0057) — 2026-11-12
+
+- **사용자 결정:** 1 모멘텀 수집 → 2 재료 영향력(NIR, 저영향이면 그날 제외) → 3 실시간 수급(스크립트, 지금 시점만 제외) → 4 희석·장외 체결·공매도 정보(LLM 없음) → 5 차트 모니터링·가격대 → 6 전략 틀에 진입·청산 가격대 → 7 SIW Agent 키움 모의투자 자동 실행. 사용자는 흐름만 확정하고 종목을 고르지 않는다. 주 1회 희석 LLM 검수. 움직임 분류·피보나치·진입조건 A 폐기. ADR 0054의 흐름 부분과 0052의 "사용자가 고른 종목"을 대체.
+- **변경:** 문서만(ADR 0057 추가, 0052·0054·0055 상태 문구, ADR 목록). 코드 변경 없음.
+- **별도 논의:** 저영향 재료 목록, 5단계 가격대 규칙과 "보수적" 방식, 6단계 전략 틀, 실계좌 무인 실행(ADR 0047 변경).
+- **미확인:** 3단계 halt 감지 방법, `SIW_당일급등주` 조건식 내용.
