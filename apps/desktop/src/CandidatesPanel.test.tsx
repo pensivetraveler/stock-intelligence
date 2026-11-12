@@ -2,6 +2,7 @@ import type {
   BacktestStrategy,
   ScreeningCandidates,
   ScreeningCheck,
+  ScreeningFlowWatch,
 } from "@siw/contracts/types";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -183,6 +184,65 @@ describe("CandidatesPanel", () => {
       screen.getByRole("button", { name: "Show AAPL in the active chart" }),
     );
     expect(onPick).toHaveBeenCalledWith(listing);
+  });
+
+  it("shows each candidate's stage 3 flow state and both window counts", async () => {
+    const flow = {
+      kind: "screening_flow_watch",
+      schema_version: "0.1",
+      session_date: "2026-11-09",
+      created_at_utc: "2026-11-09T15:30:30Z",
+      after_the_fact: false,
+      versions: { check: "flow-watch-1" },
+      candidates: [
+        {
+          symbol: "AAPL",
+          instrument_id: "us:aapl:xnas:2026",
+          status: "ok",
+          result: {
+            state: "excluded",
+            stage2: "not_implemented",
+            new_buys_allowed: false,
+            resting_orders: "keep",
+            as_of_utc: "2026-11-09T15:30:00Z",
+            liquidity: { passing: 3, of: 5 },
+            volatility: { passing: 4, of: 20 },
+            halts: { available: false },
+          },
+          warnings: [],
+          sources: {},
+        },
+        {
+          symbol: "ZZZQ",
+          instrument_id: null,
+          status: "unsupported",
+          result: { reason: "ZZZQ is not in the app's symbol list" },
+          warnings: [],
+          sources: {},
+        },
+      ],
+    } as unknown as ScreeningFlowWatch;
+    const api = {
+      candidates: vi.fn(() => Promise.resolve(candidates())),
+      addCandidate: vi.fn(),
+      runEntryCheck: vi.fn(),
+      check: vi.fn(),
+      flow: vi.fn(() => Promise.resolve(flow)),
+      ...unused(),
+    } as ScreeningApi;
+    render(
+      <CandidatesPanel
+        api={api}
+        strategies={() => Promise.resolve([])}
+        onPick={vi.fn()}
+      />,
+    );
+    const cell = await screen.findByLabelText("AAPL Flow now (stage 3)");
+    await waitFor(() => expect(cell.textContent).toBe("Out · 3/5 · 4/20"));
+    expect(cell.getAttribute("title")).toMatch(/No halt record/);
+    expect(screen.getByLabelText("ZZZQ Flow now (stage 3)").textContent).toBe(
+      "Not listed",
+    );
   });
 
   it("says when there is no condition record and adds a ticker", async () => {

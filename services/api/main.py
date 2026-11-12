@@ -37,6 +37,7 @@ from services.api.paper_routes import register_paper_routes
 from services.api.parent_watch import parent_pid_from_env, start_parent_watch
 from services.api.review_routes import register_review_routes
 from services.api.screener_routes import register_screener_routes
+from services.api.screening_flow_routes import register_screening_flow_routes
 from services.api.screening_news_routes import register_screening_news_routes
 from services.api.screening_off_exchange_routes import (
     finra_review_from,
@@ -1802,6 +1803,16 @@ def create_app(
         error_response=_error_response,
         clock=clock,
         dilution_service=lambda: DilutionService(dilution_url()),
+    )
+    # Stage 3 realtime flow (ADR 0057 §3): every candidate's state at the newest closed minute.
+    register_screening_flow_routes(
+        application,
+        store=screening.get,
+        data_dir=screening.data_dir,
+        listing_for=listing_for,
+        get_bars=lambda: MarketBarsService(provider.get()).get_bars,
+        error_response=_error_response,
+        clock=clock,
     )
     # One session cache and one background reader for check D and the structure check.
     register_screening_off_exchange_routes(
