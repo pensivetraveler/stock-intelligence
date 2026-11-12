@@ -6,7 +6,7 @@ import type {
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { CandidatesPanel } from "./CandidatesPanel";
+import { CandidatesPanel, NirDigest } from "./CandidatesPanel";
 import type { ScreeningApi } from "./screening-api";
 
 const listing = {
@@ -469,13 +469,19 @@ describe("CandidatesPanel", () => {
     );
     await waitFor(() => expect(api.runStructureCheck).toHaveBeenCalled());
     expect(api.runNewsCheck).toHaveBeenCalledWith("AAPL", "2026-11-09");
-    expect(api.runOffExchangeCheck).toHaveBeenCalledWith("AAPL", "2026-11-09");
+    expect(api.runOffExchangeCheck).toHaveBeenCalledWith(
+      "AAPL",
+      "2026-11-09",
+      20,
+    );
 
     fireEvent.click(
       await screen.findByRole("button", { name: "AAPL News: catalyst" }),
     );
     await screen.findByText(/Binding contract: 1/);
     await screen.findByText(/1 articles are about dilution/);
+    // A result made before the LLM step: the card says it is rules only.
+    await screen.findByText(/Rules only: no LLM reading for this check/);
 
     fireEvent.click(
       screen.getByRole("button", { name: "AAPL Off-exchange: done" }),
@@ -501,6 +507,82 @@ describe("CandidatesPanel", () => {
     );
     await screen.findByText(/4\/20 sessions read/);
     expect(api.runStructureCheck).toHaveBeenCalledTimes(2);
+  });
+  it("asks a waiting off-exchange check again with the sessions chosen", async () => {
+    const waiting = {
+      kind: "screening_check",
+      check_id: 31,
+      check: "off_exchange",
+      symbol: "AAPL",
+      instrument_id: "us:aapl:xnas:2026",
+      status: "pending",
+      result: {
+        sessions_requested: 10,
+        sessions: [
+          {
+            session_date: "2026-11-09",
+            source: "live",
+            partial: true,
+            truncated: false,
+          },
+          {
+            session_date: "2026-11-06",
+            source: "cache",
+            partial: false,
+            truncated: false,
+          },
+        ],
+        progress: {
+          total_sessions: 10,
+          cached_sessions: 1,
+          reading_sessions: 9,
+          missing: [],
+        },
+        reference_price: "101.5",
+        off_exchange_share_pct: "41.2",
+        levels: [],
+        notes: [],
+      },
+      warnings: [],
+    } as unknown as ScreeningCheck;
+    const api = {
+      candidates: vi.fn(() => {
+        const found = candidates();
+        found.candidates[0].checks = {
+          off_exchange: {
+            check_id: 31,
+            status: "pending",
+            created_at_utc: "x",
+          },
+        };
+        return Promise.resolve(found);
+      }),
+      addCandidate: vi.fn(),
+      runEntryCheck: vi.fn(),
+      check: vi.fn(() => Promise.resolve(waiting)),
+      runOffExchangeCheck: vi.fn(() => Promise.resolve(waiting)),
+      ...unused(["runOffExchangeCheck"]),
+    } as ScreeningApi;
+    render(
+      <CandidatesPanel
+        api={api}
+        strategies={() => Promise.resolve([])}
+        onPick={vi.fn()}
+      />,
+    );
+    fireEvent.change(await screen.findByLabelText("Off-exchange sessions"), {
+      target: { value: "10" },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "AAPL Off-exchange: waiting" }),
+    );
+    await screen.findByText(/1\/10 sessions read/);
+    await screen.findByText(/closed sessions 1\/10 \+ today up to the cutoff/);
+    expect(api.runOffExchangeCheck).toHaveBeenCalledWith(
+      "AAPL",
+      "2026-11-09",
+      10,
+    );
   });
   it("shows record gaps, unknown entry times, the noon cut and values at entry", async () => {
     let measured = false;
@@ -604,5 +686,69 @@ describe("CandidatesPanel", () => {
         "2026-11-09T17:00:00.000Z",
       ),
     );
+  });
+});
+
+describe("NirDigest", () => {
+  const base = { categories: { binding_contract: 1 } };
+  it("marks the LLM reading as inference and flags failed checks", () => {
+    render(
+      <NirDigest
+        result={{
+          ...base,
+          nir: {
+            label: "INFERENCE",
+            state: "done",
+            reason: null,
+            rules_only: false,
+            model: "openai/gpt-6-luna",
+            items: [
+              {
+                nir_record_id: "NIR-ABCD-20261109-mna-1-001",
+                headline: "ABCD Receives $2M Purchase Order",
+                event_type: "Purchase Order",
+                legally_binding: "Yes",
+                committed_amount: "$2 million",
+                potential_amount: "UNKNOWN",
+                economic_substance: "Moderate",
+                promotion_risk: "Low",
+                confidence: "Medium",
+                summary_ko: "Invented summary",
+                verification_failures: 1,
+                rule_conflicts: [],
+              },
+            ],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByRole("note")).toHaveTextContent(/Inference by an LLM/);
+    expect(screen.getByText(/Purchase Order · binding Yes/)).toHaveTextContent(
+      /committed \$2 million/,
+    );
+    expect(screen.getByText(/not found in the article: 1/)).toBeInTheDocument();
+  });
+  it("says rules only with the reason, and nothing when no article was tagged", () => {
+    const stopped = {
+      label: "INFERENCE" as const,
+      state: "stopped",
+      reason: "monthly_cap_reached",
+      rules_only: true,
+      model: null,
+      items: [],
+    };
+    const { unmount } = render(
+      <NirDigest result={{ ...base, nir: stopped }} />,
+    );
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "Rules only: no LLM reading (monthly_cap_reached).",
+    );
+    unmount();
+    const { container } = render(
+      <NirDigest
+        result={{ categories: {}, nir: { ...stopped, state: "not_needed" } }}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 });

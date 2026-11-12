@@ -7746,7 +7746,7 @@ export interface ScreeningCheck {
    */
   after_the_fact: boolean;
   /**
-   * passed/failed: check A. material/no_material: check B. ok/incomplete: checks C, D and the off-exchange structure (ADR 0053). The rest: any check. The momentum check (ADR 0055): ok, incomplete (minutes may still arrive), no_data, error.
+   * passed/failed: check A. material/no_material: check B. ok/incomplete: checks C, D and the off-exchange structure (ADR 0053); pending: C, D and the structure while their input is still being read. The rest: any check. The momentum check (ADR 0055): ok, incomplete (minutes may still arrive), no_data, error.
    */
   status:
     | "passed"

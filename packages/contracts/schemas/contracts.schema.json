@@ -12407,7 +12407,7 @@
             "error",
             "pending"
           ],
-          "description": "passed/failed: check A. material/no_material: check B. ok/incomplete: checks C, D and the off-exchange structure (ADR 0053). The rest: any check. The momentum check (ADR 0055): ok, incomplete (minutes may still arrive), no_data, error."
+          "description": "passed/failed: check A. material/no_material: check B. ok/incomplete: checks C, D and the off-exchange structure (ADR 0053); pending: C, D and the structure while their input is still being read. The rest: any check. The momentum check (ADR 0055): ok, incomplete (minutes may still arrive), no_data, error."
         },
         "strategy": {
           "oneOf": [
@@ -12516,7 +12516,7 @@
       }
     },
     "ScreeningOffExchangeResult": {
-      "description": "ADR 0052 §5 (S2): `result` of an `off_exchange` screening check. Off-exchange (TRF-reported, Alpaca SIP exchange code D) volume by price over the latest sessions known at the cutoff, shown as '장외 체결(TRF 보고)', never 'dark pool': ATS and broker internalization are mixed, direction is unknown, and timestamps are report times.",
+      "description": "ADR 0052 §5 (S2): `result` of an `off_exchange` screening check. Off-exchange (TRF-reported, Alpaca SIP exchange code D) volume by price over the latest sessions known at the cutoff, shown as '장외 체결(TRF 보고)', never 'dark pool': ATS and broker internalization are mixed, direction is unknown, and timestamps are report times. Closed sessions come from the structure model's session cache (ADR 0053, shared); the open session is read live up to the cutoff.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -12524,6 +12524,7 @@
         "data_until_utc",
         "sessions_requested",
         "sessions",
+        "progress",
         "reference_price",
         "reference_time_utc",
         "bin_width",
@@ -12551,7 +12552,8 @@
         "sessions_requested": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 30
+          "maximum": 30,
+          "description": "Closed sessions asked for (default 20, the structure model's window). The session still open at the cutoff comes on top."
         },
         "sessions": {
           "type": "array",
@@ -12561,6 +12563,8 @@
             "additionalProperties": false,
             "required": [
               "session_date",
+              "source",
+              "read_at_utc",
               "range_utc",
               "partial",
               "truncated",
@@ -12579,6 +12583,14 @@
               "session_date": {
                 "type": "string",
                 "format": "date"
+              },
+              "source": {
+                "enum": ["live", "cache"],
+                "description": "live: the session open at the cutoff, read in this request. cache: a closed session from screening_structure.sqlite3 (read once, whole)."
+              },
+              "read_at_utc": {
+                "$ref": "#/$defs/UtcTimestamp",
+                "description": "When the trades were read. More than an hour after data_until_utc: reconstructed after the cutoff."
               },
               "range_utc": {
                 "type": "array",
@@ -12642,7 +12654,58 @@
               }
             }
           },
-          "description": "Fully read sessions, newest first."
+          "description": "Fully read closed sessions and the open session (partial, maybe truncated), newest first."
+        },
+        "progress": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "total_sessions",
+            "cached_sessions",
+            "reading_sessions",
+            "missing"
+          ],
+          "description": "Closed sessions: cached so far, still being read in the background (status pending), and missing with the reader's reason.",
+          "properties": {
+            "total_sessions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cached_sessions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "reading_sessions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "missing": {
+              "type": "array",
+              "maxItems": 30,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["session_date", "reason"],
+                "properties": {
+                  "session_date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "reason": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "maxLength": 300
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
         },
         "reference_price": {
           "oneOf": [
@@ -12805,6 +12868,7 @@
             "pages",
             "seconds",
             "max_pages",
+            "live_max_seconds",
             "max_seconds",
             "min_level_share_pct",
             "max_bins"
@@ -12812,7 +12876,8 @@
           "properties": {
             "pages": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "description": "Pages of the open session read in this request."
             },
             "seconds": {
               "type": "number",
@@ -12820,11 +12885,18 @@
             },
             "max_pages": {
               "type": "integer",
-              "minimum": 1
+              "minimum": 1,
+              "description": "Page limit for the open session."
+            },
+            "live_max_seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Time for reading the open session."
             },
             "max_seconds": {
               "type": "number",
-              "exclusiveMinimum": 0
+              "exclusiveMinimum": 0,
+              "description": "The whole trade budget: the open session, then waiting for the closed sessions."
             },
             "min_level_share_pct": {
               "$ref": "#/$defs/NonNegativeDecimalString"

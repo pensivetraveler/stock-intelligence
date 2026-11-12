@@ -7,7 +7,10 @@ trades and broker internalization mixed together, with no buy/sell direction, an
 SIP timestamp is when the trade was reported, which can differ from when it happened.
 Every result says so. Nothing is built from 1-minute bars.
 
-The result is the `off_exchange` part of one `screening_check` (ADR 0052 S1).
+Closed sessions come from the structure model's session cache (ADR 0053), read once on
+background threads and shared by both checks; only the session still open at the cutoff
+is read here, newest first, up to the cutoff. The result is the `off_exchange` part of
+one `screening_check` (ADR 0052 S1).
 """
 
 from __future__ import annotations
@@ -16,35 +19,52 @@ import argparse
 import json
 import sys
 import time
-from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_FLOOR, Decimal
 from typing import Any
 
 from services.market_data.calendar import NEW_YORK, ExchangeCalendar, UsEquityCalendar
 from services.market_data.provider import MarketDataError
+from services.screening.structure.sessions import (
+    LEVELS_VERSION,
+    SessionCache,
+    SessionFiller,
+    TradePages,
+    _Reader,
+    closed_sessions,
+)
+from services.screening.trade_conditions import (
+    AVERAGE_PRICE_ON_TAPES_AB,
+    CONDITION_POLICY_VERSION,
+    LATE_REPORT,
+    NOT_TRADES,
+    OFF_EXCHANGE_CODE,
+    OFF_MARKET_PRICE,
+    REMOVED_UPDATES,
+    SOURCE_ID,
+)
 
-CHECK_VERSION = "off-exchange-check-1"
-CONDITION_POLICY_VERSION = "off-exchange-conditions-1"
+__all__ = [
+    "AVERAGE_PRICE_ON_TAPES_AB",
+    "CONDITION_POLICY_VERSION",
+    "LATE_REPORT",
+    "NOT_TRADES",
+    "OFF_EXCHANGE_CODE",
+    "OFF_MARKET_PRICE",
+    "REMOVED_UPDATES",
+    "SOURCE_ID",
+    "OffExchangeLimits",
+    "bin_width",
+    "finra_context",
+    "off_exchange_check",
+]
+
+#: 2: twenty closed sessions from the shared cache plus the open session (2026-11-10).
+CHECK_VERSION = "off-exchange-check-2"
 LABEL = "장외 체결(TRF 보고)"
-OFF_EXCHANGE_CODE = "D"
-SOURCE_ID = "alpaca-sip"
 ENDPOINT = "GET /v2/stocks/{symbol}/trades"
-
-#: `u` values that mean the trade no longer stands (Alpaca trade schema).
-REMOVED_UPDATES = frozenset({"canceled", "incorrect"})
-#: Official open/close and corrected-close reports repeat prices, not new volume.
-NOT_TRADES = frozenset({"M", "Q", "9"})
-#: Real volume whose price does not show the market at that moment, so it is left out
-#: of the price levels (it still counts toward volume shares): derivatively priced,
-#: average price, prior reference price, qualified contingent, contingent, cash,
-#: next day, seller, price variation.
-OFF_MARKET_PRICE = frozenset({"4", "W", "P", "7", "V", "C", "N", "R", "H"})
-#: `B` is "Average Price Trade" on tapes A/B but "Bunched Trade" on tape C.
-AVERAGE_PRICE_ON_TAPES_AB = "B"
-#: Reported late or out of sequence: the price is real, the timestamp is the report.
-LATE_REPORT = frozenset({"Z", "L", "U"})
 
 LIMITATIONS = (
     "장외 체결(TRF 보고)은 다크풀(ATS) 체결과 증권사 내부 체결이 섞여 있다. "
@@ -59,104 +79,28 @@ UNVERIFIED = (
     "공급자 문서로 확인하지 않았다.",
     "Alpaca 체결의 `t`가 SIP 시각인지 보고 주체 시각인지 문서에 없다.",
 )
+RECONSTRUCTED = (
+    "지난 cutoff를 나중에 다시 계산했거나 cutoff 뒤에 받은 세션이 있다. 체결의 취소·정정 "
+    "표시(`u`)는 받은 시점 상태라 cutoff 때 보였던 것과 다를 수 있다(나중에 받아 재구성)."
+)
 
 
 @dataclass(frozen=True)
 class OffExchangeLimits:
-    sessions: int = 5
-    #: 10,000 trades a page at about 0.45 s each: a large cap session is about 70 pages
-    #: (AAPL, 2026-11-06). The time limit keeps a request inside the screen's 60 s
-    #: timeout; the page limit is the same budget at the measured page speed.
+    #: Closed sessions, the structure model's twenty (ADR 0053): one shared cache, so the
+    #: two checks never read a session twice.
+    sessions: int = 20
+    #: The open session is read here, newest first: a large cap's full day is 61~131
+    #: pages (AAPL, 2026-10-27~11-09) at about 0.5 s a page.
     max_pages: int = 80
+    live_max_seconds: float = 25.0
+    #: The whole trade budget: reading the open session, then waiting for the closed
+    #: sessions being read in the background. Inside the screen's 60 s timeout.
     max_seconds: float = 40.0
     top_levels: int = 5
     #: Peaks holding less than this share of priced volume are noise, not levels.
     min_level_share_pct: Decimal = Decimal(1)
     max_bins: int = 500
-
-
-#: (symbol, start, end, sort) -> pages; the check reads newest first (`desc`).
-TradePages = Callable[..., Iterator[list[dict[str, Any]]]]
-
-
-@dataclass
-class _Session:
-    session_date: date
-    start: datetime
-    end: datetime
-    partial: bool
-    pages: int = 0
-    trades: int = 0
-    total_volume: Decimal = Decimal(0)
-    off_volume: Decimal = Decimal(0)
-    off_trades: int = 0
-    priced_off_volume: Decimal = Decimal(0)
-    off_market_price_volume: Decimal = Decimal(0)
-    late_report_volume: Decimal = Decimal(0)
-    removed_trades: int = 0
-    by_price: dict[Decimal, Decimal] = field(default_factory=dict)
-    last_price: Decimal | None = None
-    last_time: str | None = None
-    first_time: str | None = None
-    truncated: bool = False
-
-    def add(self, trade: dict[str, Any]) -> None:
-        if trade.get("u") in REMOVED_UPDATES:
-            self.removed_trades += 1
-            return
-        conditions = {str(item) for item in trade.get("c") or []}
-        if conditions & NOT_TRADES:
-            return
-        price = Decimal(str(trade["p"]))
-        size = Decimal(str(trade["s"]))
-        if price <= 0 or size <= 0:
-            return
-        self.trades += 1
-        self.total_volume += size
-        off_market = bool(conditions & OFF_MARKET_PRICE) or (
-            AVERAGE_PRICE_ON_TAPES_AB in conditions and trade.get("z") in ("A", "B")
-        )
-        stamp = str(trade["t"])
-        if self.first_time is None or stamp < self.first_time:
-            self.first_time = stamp
-        if not off_market and (self.last_time is None or stamp >= self.last_time):
-            self.last_price, self.last_time = price, stamp
-        if trade.get("x") != OFF_EXCHANGE_CODE:
-            return
-        self.off_trades += 1
-        self.off_volume += size
-        if conditions & LATE_REPORT:
-            self.late_report_volume += size
-        if off_market:
-            self.off_market_price_volume += size
-            return
-        self.priced_off_volume += size
-        self.by_price[price] = self.by_price.get(price, Decimal(0)) + size
-
-    def document(self) -> dict[str, Any]:
-        share = None
-        if self.total_volume > 0:
-            share = _text((self.off_volume * 100 / self.total_volume).quantize(Decimal("0.01")))
-        start = self.start
-        if self.truncated and self.first_time is not None:
-            # Read newest first and stopped: only trades from here to the end were read.
-            start = datetime.fromisoformat(self.first_time[:19] + "+00:00")
-        return {
-            "session_date": self.session_date.isoformat(),
-            "range_utc": [_utc(start), _utc(self.end)],
-            "partial": self.partial,
-            "truncated": self.truncated,
-            "pages": self.pages,
-            "trades": self.trades,
-            "total_volume": _text(self.total_volume),
-            "off_exchange_volume": _text(self.off_volume),
-            "off_exchange_trades": self.off_trades,
-            "off_exchange_share_pct": share,
-            "priced_volume": _text(self.priced_off_volume),
-            "off_market_price_volume": _text(self.off_market_price_volume),
-            "late_report_volume": _text(self.late_report_volume),
-            "removed_trades": self.removed_trades,
-        }
 
 
 def _utc(value: datetime) -> str:
@@ -166,6 +110,12 @@ def _utc(value: datetime) -> str:
 def _text(value: Decimal) -> str:
     text = format(value.normalize(), "f")
     return "0" if text in ("-0", "") else text
+
+
+def _share(part: Decimal, whole: Decimal) -> str | None:
+    if whole <= 0:
+        return None
+    return _text((part * 100 / whole).quantize(Decimal("0.01")))
 
 
 def bin_width(reference: Decimal) -> Decimal:
@@ -225,24 +175,6 @@ def _levels(
     return levels
 
 
-def _sessions(
-    calendar: ExchangeCalendar, known_until: datetime, count: int
-) -> list[tuple[date, datetime, datetime, bool]]:
-    """The `count` latest sessions whose extended hours opened before `known_until`,
-    newest first; the last one is cut at `known_until` (partial) when still open."""
-    found: list[tuple[date, datetime, datetime, bool]] = []
-    day = known_until.astimezone(NEW_YORK).date()
-    for _ in range(count * 3 + 10):
-        window = calendar.window_for_date(day)
-        if window is not None and window.pre_open_utc < known_until:
-            end = min(window.post_close_utc, known_until)
-            found.append((day, window.pre_open_utc, end, end < window.post_close_utc))
-            if len(found) == count:
-                break
-        day -= timedelta(days=1)
-    return found
-
-
 def finra_context(evidence: Any) -> dict[str, Any]:
     """FINRA weekly ATS context from a Dark Pool Agent `Evidence` (ADR 0024), unchanged."""
     wanted = {
@@ -259,6 +191,62 @@ def finra_context(evidence: Any) -> dict[str, Any]:
     }
 
 
+def _live_session(
+    reader: _Reader,
+    session_date: date,
+    start: datetime,
+    end: datetime,
+    truncated: bool,
+    read_at: datetime,
+) -> dict[str, Any]:
+    if truncated and reader.first_time is not None:
+        # Read newest first and stopped: only trades from here to the end were read.
+        start = datetime.fromisoformat(reader.first_time[:19] + "+00:00")
+    priced = sum(reader.off.values(), Decimal(0))
+    return {
+        "session_date": session_date.isoformat(),
+        "source": "live",
+        "read_at_utc": _utc(read_at),
+        "range_utc": [_utc(start), _utc(end)],
+        "partial": True,
+        "truncated": truncated,
+        "pages": reader.pages,
+        "trades": reader.trades,
+        "total_volume": _text(reader.total_volume),
+        "off_exchange_volume": _text(reader.off_volume),
+        "off_exchange_trades": reader.off_trades,
+        "off_exchange_share_pct": _share(reader.off_volume, reader.total_volume),
+        "priced_volume": _text(priced),
+        "off_market_price_volume": _text(reader.off_exchange_off_market_volume),
+        "late_report_volume": _text(reader.late_report_volume),
+        "removed_trades": reader.removed_trades,
+    }
+
+
+def _cached_session(document: dict[str, Any]) -> dict[str, Any]:
+    total = Decimal(document["total_volume"])
+    off = Decimal(document["off_exchange_volume"])
+    priced = sum((Decimal(level[1]) for level in document["levels"]), Decimal(0))
+    return {
+        "session_date": document["session_date"],
+        "source": "cache",
+        "read_at_utc": document["read_at_utc"],
+        "range_utc": list(document["range_utc"]),
+        "partial": False,
+        "truncated": False,
+        "pages": document["pages"],
+        "trades": document["trades"],
+        "total_volume": document["total_volume"],
+        "off_exchange_volume": document["off_exchange_volume"],
+        "off_exchange_trades": document["off_exchange_trades"],
+        "off_exchange_share_pct": _share(off, total),
+        "priced_volume": _text(priced),
+        "off_market_price_volume": document["off_exchange_off_market_price_volume"],
+        "late_report_volume": document["late_report_volume"],
+        "removed_trades": document["removed_trades"],
+    }
+
+
 def off_exchange_check(
     trade_pages: TradePages,
     *,
@@ -266,12 +254,19 @@ def off_exchange_check(
     cutoff: datetime,
     now: datetime,
     publication_delay_minutes: int,
+    cache: SessionCache,
+    filler: SessionFiller,
     limits: OffExchangeLimits | None = None,
     finra: dict[str, Any] | None = None,
     calendar: ExchangeCalendar | None = None,
     monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
-    """Off-exchange volume by price over the latest sessions known at `cutoff`.
+    """Off-exchange volume by price over the closed sessions and the open one at `cutoff`.
+
+    The closed sessions not cached yet are queued on `filler` first; then the open
+    session is read here; then the check waits for the queue up to `max_seconds` in all.
+    Sessions still being read leave the check `pending`: posting again shows the rest.
 
     Returns the check-specific part of a `screening_check` document (ADR 0052 S1):
     `status`, `result`, `versions`, `warnings` and `sources`. The caller adds the
@@ -285,32 +280,33 @@ def off_exchange_check(
     calendar = calendar or UsEquityCalendar("XNAS")
     known_until = min(cutoff, now - timedelta(minutes=publication_delay_minutes))
     known_until = known_until.replace(microsecond=0)
-    planned = _sessions(calendar, known_until, limits.sessions)
+    started = monotonic()
+    windows = closed_sessions(calendar, known_until, limits.sessions)
+    filler.request(symbol, windows)
 
     missing: list[str] = []
     notes: list[str] = []
     errors: list[str] = []
-    done: list[_Session] = []
-    pages = 0
-    started = monotonic()
-    budget_hit = False
-    for session_date, start, end, partial in planned:
-        session = _Session(session_date, start, end, partial)
-        pager = trade_pages(symbol, start, end, sort="desc")
+    live: dict[str, Any] | None = None
+    live_reader: _Reader | None = None
+    live_pages = 0
+    current = calendar.window_for_date(known_until.astimezone(NEW_YORK).date())
+    if current is not None and current.pre_open_utc < known_until < current.post_close_utc:
+        reader = _Reader()
+        pager = trade_pages(symbol, current.pre_open_utc, known_until, sort="desc")
         finished = False
         try:
             while True:
-                if pages >= limits.max_pages or monotonic() - started >= limits.max_seconds:
-                    budget_hit = True
+                elapsed = monotonic() - started
+                if reader.pages >= limits.max_pages or elapsed >= limits.live_max_seconds:
                     break
                 page = next(pager, None)
                 if page is None:
                     finished = True
                     break
-                pages += 1
-                session.pages += 1
+                reader.pages += 1
                 for trade in page:
-                    session.add(trade)
+                    reader.add(trade)
         except MarketDataError as exc:
             errors.append(f"{type(exc).__name__}: {str(exc)[:200]}")
         except (KeyError, ValueError, ArithmeticError, TypeError) as exc:
@@ -319,42 +315,82 @@ def off_exchange_check(
             close = getattr(pager, "close", None)
             if close is not None:
                 close()
-        if not finished:
-            missing.append(f"session:{session_date.isoformat()}")
-            if not done and not errors and session.trades:
-                # The newest session, read back from the cutoff: its latest hours are
-                # kept and marked. An older session read in part is dropped whole.
-                session.truncated = True
-                done.append(session)
-            break
-        done.append(session)
-    read = len(done) - (1 if done and done[-1].truncated else 0)
-    for session_date, _start, _end, _partial in planned[read + 1 if missing else read :]:
-        missing.append(f"session:{session_date.isoformat()}")
-    if budget_hit:
-        if done and done[0].truncated:
-            notes.append(
-                f"받는 상한(쪽 {limits.max_pages}, {limits.max_seconds:g}초)에 걸려 "
-                f"가장 최근 세션의 일부({done[0].document()['range_utc'][0]}부터 cutoff까지)만 "
-                "계산했다."
-            )
+        live_pages = reader.pages
+        session_date = current.session_date.isoformat()
+        if errors:
+            missing.append(f"session:{session_date}")
+        elif not finished:
+            missing.append(f"session:{session_date}")
+            if reader.trades:
+                live_reader = reader
+                live = _live_session(
+                    reader, current.session_date, current.pre_open_utc, known_until, True, now
+                )
+                notes.append(
+                    f"받는 상한(쪽 {limits.max_pages}, {limits.live_max_seconds:g}초)에 걸려 "
+                    f"열려 있는 세션의 일부({live['range_utc'][0]}부터 cutoff까지)만 계산했다."
+                )
         else:
-            notes.append(
-                f"받는 상한(쪽 {limits.max_pages}, {limits.max_seconds:g}초)에 걸려 "
-                f"최근 {len(done)}개 세션만 계산했다."
+            live_reader = reader
+            live = _live_session(
+                reader, current.session_date, current.pre_open_utc, known_until, False, now
             )
-    if len(planned) < limits.sessions:
-        notes.append(f"cutoff 전 세션이 {len(planned)}개뿐이다.")
 
+    filler.wait(symbol, max(0.0, limits.max_seconds - (monotonic() - started)), sleep)
+
+    cached: list[dict[str, Any]] = []
+    progress_missing: list[dict[str, Any]] = []
+    for window in windows:
+        try:
+            document = cache.get(symbol, window.session_date)
+        except ValueError as exc:
+            notes.append(str(exc)[:200])
+            document = None
+        if document is None:
+            progress_missing.append(
+                {
+                    "session_date": window.session_date.isoformat(),
+                    "reason": filler.error(symbol, window.session_date),
+                }
+            )
+            missing.append(f"session:{window.session_date.isoformat()}")
+        else:
+            cached.append(document)
+    reading = filler.pending(symbol) if progress_missing else 0
+    if reading:
+        notes.append(
+            f"닫힌 세션 {len(cached)}/{len(windows)}개를 받았다. 나머지는 뒤에서 받는 중이다. "
+            "같은 검사를 다시 하면 이어서 보인다."
+        )
+    if len(windows) < limits.sessions:
+        notes.append(f"cutoff 전 닫힌 세션이 {len(windows)}개뿐이다.")
+
+    # Newest first: the open session, then the closed ones.
+    newest = sorted(cached, key=lambda d: d["session_date"], reverse=True)
+    sessions = ([live] if live is not None else []) + [_cached_session(d) for d in newest]
     by_price: dict[Decimal, Decimal] = {}
-    for session in done:
-        for price, volume in session.by_price.items():
+    if live_reader is not None:
+        for price, volume in live_reader.off.items():
             by_price[price] = by_price.get(price, Decimal(0)) + volume
-    reference_session = next((s for s in done if s.last_price is not None), None)
-    reference = None if reference_session is None else reference_session.last_price
+    for document in cached:
+        for price_text, off_text, _lit in document["levels"]:
+            off_volume = Decimal(off_text)
+            if off_volume > 0:
+                price = Decimal(price_text)
+                by_price[price] = by_price.get(price, Decimal(0)) + off_volume
+    reference: Decimal | None = None
+    reference_time: str | None = None
+    if live_reader is not None and live_reader.last_price is not None:
+        reference, reference_time = live_reader.last_price, live_reader.last_time
+    else:
+        for document in newest:
+            if document["last_price"] is not None:
+                reference = Decimal(document["last_price"])
+                reference_time = document["last_time_utc"]
+                break
     priced_total = sum(by_price.values(), Decimal(0))
-    total = sum((s.total_volume for s in done), Decimal(0))
-    off_total = sum((s.off_volume for s in done), Decimal(0))
+    total = sum((Decimal(s["total_volume"]) for s in sessions), Decimal(0))
+    off_total = sum((Decimal(s["off_exchange_volume"]) for s in sessions), Decimal(0))
 
     width: Decimal | None = None
     histogram: list[dict[str, str]] = []
@@ -373,23 +409,25 @@ def off_exchange_check(
     else:
         missing.append("levels")
 
-    if errors and not done:
+    if reading:
+        status = "pending"
+    elif errors and not sessions:
         status = "error"
-    elif not done:
+    elif not sessions:
         status = "incomplete"
     elif priced_total == 0:
         status = "no_data"
-    elif missing and any(item.startswith("session:") for item in missing):
+    elif any(item.startswith("session:") for item in missing):
         status = "incomplete"
     else:
         status = "ok"
 
     unverified = list(UNVERIFIED)
-    if now - cutoff > timedelta(minutes=publication_delay_minutes + 60):
-        unverified.append(
-            "지난 cutoff를 나중에 다시 계산했다. 체결의 취소·정정 표시(`u`)는 받은 시점 상태라 "
-            "cutoff 때 보였던 것과 다를 수 있다(나중에 받아 재구성)."
-        )
+    late_run = now - cutoff > timedelta(minutes=publication_delay_minutes + 60)
+    # The structure model's rule too (S09): read more than an hour past data_until.
+    read_late = _utc(known_until + timedelta(hours=1))
+    if late_run or any(d["read_at_utc"] > read_late for d in cached):
+        unverified.append(RECONSTRUCTED)
     if finra is None:
         missing.append("finra_weekly_ats")
 
@@ -397,23 +435,28 @@ def off_exchange_check(
         "label": LABEL,
         "data_until_utc": _utc(known_until),
         "sessions_requested": limits.sessions,
-        "sessions": [s.document() for s in done],
+        "sessions": sessions,
+        "progress": {
+            "total_sessions": len(windows),
+            "cached_sessions": len(cached),
+            "reading_sessions": reading,
+            "missing": progress_missing,
+        },
         "reference_price": None if reference is None else _text(reference),
-        "reference_time_utc": None if reference_session is None else reference_session.last_time,
+        "reference_time_utc": reference_time,
         "bin_width": None if width is None else _text(width),
         "total_volume": _text(total),
         "off_exchange_volume": _text(off_total),
-        "off_exchange_share_pct": None
-        if total == 0
-        else _text((off_total * 100 / total).quantize(Decimal("0.01"))),
+        "off_exchange_share_pct": _share(off_total, total),
         "priced_volume": _text(priced_total),
         "histogram": histogram,
         "levels": levels,
         "context": {"finra_weekly_ats": finra},
         "limits": {
-            "pages": pages,
+            "pages": live_pages,
             "seconds": round(monotonic() - started, 1),
             "max_pages": limits.max_pages,
+            "live_max_seconds": limits.live_max_seconds,
             "max_seconds": limits.max_seconds,
             "min_level_share_pct": _text(limits.min_level_share_pct),
             "max_bins": limits.max_bins,
@@ -433,6 +476,7 @@ def off_exchange_check(
         "versions": {
             "check": CHECK_VERSION,
             "condition_policy": CONDITION_POLICY_VERSION,
+            "session_levels": LEVELS_VERSION,
             "calendar": calendar.calendar_version,
         },
         # Shown on every card: what these numbers are not.
@@ -444,6 +488,7 @@ def off_exchange_check(
                 "feed": "sip",
                 "exchange_code": OFF_EXCHANGE_CODE,
                 "publication_delay_minutes": publication_delay_minutes,
+                "closed_sessions": "screening_structure.sqlite3 session_levels (ADR 0053)",
             },
             "finra_weekly_ats": None if finra is None else "dark_pool_review (ADR 0024)",
         },
@@ -451,31 +496,39 @@ def off_exchange_check(
 
 
 def _main(argv: list[str]) -> int:
-    """Read-only run with the registered Alpaca key; prints the check (not stored)."""
+    """Run with the registered Alpaca key; prints the check (the check is not stored, the
+    closed sessions read go into `SIW_DATA_DIR/screening_structure.sqlite3`)."""
     parser = argparse.ArgumentParser(prog="python -m services.screening.off_exchange")
     parser.add_argument("symbol")
     parser.add_argument("--cutoff", help="UTC, e.g. 2026-11-06T14:00:00Z (default: now)")
     parser.add_argument("--sessions", type=int, default=OffExchangeLimits.sessions)
-    parser.add_argument("--max-pages", type=int, default=OffExchangeLimits.max_pages)
-    parser.add_argument("--max-seconds", type=float, default=OffExchangeLimits.max_seconds)
     parser.add_argument("--histogram", action="store_true", help="include every price bin")
     args = parser.parse_args(argv)
-    from services.api.main import _LazyBoats, _LazyCredentials
+    import os
+    from pathlib import Path
 
+    from services.api.main import _LazyBoats, _LazyCredentials
+    from services.screening.structure.service import DATABASE, open_structure
+
+    root = os.getenv("SIW_DATA_DIR", "").strip()
     adapter = _LazyBoats(_LazyCredentials(None).get).get()
-    if adapter is None:
+    if adapter is None or not root:
         print(json.dumps({"status": "error", "error": "no enabled Alpaca key (SIW_DATA_DIR)"}))
         return 2
     now = datetime.now(timezone.utc)
+    store = open_structure(Path(root) / DATABASE, lambda: now)
+    # Read every missing session before answering (no 60 s screen to stay inside).
+    filler = SessionFiller(store.cache, lambda: adapter.trade_pages, lambda: now, inline=True)
     cutoff = datetime.fromisoformat(args.cutoff.replace("Z", "+00:00")) if args.cutoff else now
-    symbol = args.symbol.upper()
     document = off_exchange_check(
         adapter.trade_pages,
-        symbol=symbol,
+        symbol=args.symbol.upper(),
         cutoff=cutoff,
         now=now,
         publication_delay_minutes=adapter.config.publication_delay_minutes,
-        limits=OffExchangeLimits(args.sessions, args.max_pages, args.max_seconds),
+        cache=store.cache,
+        filler=filler,
+        limits=OffExchangeLimits(sessions=args.sessions),
     )
     if not args.histogram:
         bins = document["result"]["histogram"]

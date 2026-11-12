@@ -953,13 +953,29 @@ const en = {
   "candidates.news.binding_contract": "Binding contract",
   "candidates.news.non_binding_intent": "Non-binding intent",
   "candidates.news.partnership": "Partnership",
+  "candidates.news.earnings": "Earnings",
+  "candidates.news.clinical_fda": "Clinical / FDA",
+  "candidates.news.merger_acquisition": "Merger / acquisition",
+  "candidates.news.reverse_split": "Reverse split",
+  "candidates.news.listing_notice": "Listing notice",
+  "candidates.nirTitle": "LLM reading of the tagged articles",
+  "candidates.nirNotice":
+    "Inference by an LLM from the article text, not verified fact; it does not change the status.",
+  "candidates.nirItem":
+    "{event} · binding {binding} · committed {amount} · potential {potential} · substance {substance} · promotion risk {promotion} · confidence {confidence}",
+  "candidates.nirChecks":
+    "(not found in the article: {failures} · conflicts with the rules: {conflicts})",
+  "candidates.nirRulesOnly": "Rules only: no LLM reading for this check.",
+  "candidates.nirRulesOnlyReason": "Rules only: no LLM reading ({reason}).",
   "candidates.newsLatest":
     "Latest tagged ({time} NY): {headline} — {categories}",
   "candidates.newsDilution":
     "{count} articles are about dilution: see the dilution check.",
   "candidates.offExchangeDetail": "Off-exchange price levels",
   "candidates.offExchangeMeta":
-    "{symbol} · {sessions}/{requested} sessions · off-exchange share {share}% · last price {reference} · {status}",
+    "{symbol} · closed sessions {sessions}/{requested}{today} · off-exchange share {share}% · last price {reference} · {status}",
+  "candidates.offExchangeToday": " + today up to the cutoff",
+  "candidates.offExchangeSessions": "Off-exchange sessions",
   "candidates.offExchangeCut":
     "{count} sessions were read only in part (time or page limit).",
   "candidates.priceBand": "Price band",
@@ -2866,13 +2882,29 @@ const ko: Record<MessageKey, string> = {
   "candidates.news.binding_contract": "구속력 있는 계약",
   "candidates.news.non_binding_intent": "구속력 없는 의향",
   "candidates.news.partnership": "제휴",
+  "candidates.news.earnings": "실적",
+  "candidates.news.clinical_fda": "임상·FDA",
+  "candidates.news.merger_acquisition": "인수합병",
+  "candidates.news.reverse_split": "역분할",
+  "candidates.news.listing_notice": "상장 유지 통지",
+  "candidates.nirTitle": "분류된 기사의 LLM 판단",
+  "candidates.nirNotice":
+    "LLM이 기사 글을 읽고 한 추론이며 확인된 사실이 아닙니다. 상태는 바꾸지 않습니다.",
+  "candidates.nirItem":
+    "{event} · 구속력 {binding} · 확정 금액 {amount} · 잠재 금액 {potential} · 경제적 실체 {substance} · 홍보성 위험 {promotion} · 확신 {confidence}",
+  "candidates.nirChecks":
+    "(기사에서 못 찾은 값: {failures} · 규칙과 어긋남: {conflicts})",
+  "candidates.nirRulesOnly": "규칙 결과만: 이 검사에는 LLM 판단이 없습니다.",
+  "candidates.nirRulesOnlyReason": "규칙 결과만: LLM 판단 없음({reason}).",
   "candidates.newsLatest":
     "최근 분류 기사({time} 뉴욕): {headline} — {categories}",
   "candidates.newsDilution":
     "기사 {count}건은 희석 관련입니다. 희석 검사에서 보세요.",
   "candidates.offExchangeDetail": "장외 체결 가격대",
   "candidates.offExchangeMeta":
-    "{symbol} · 세션 {sessions}/{requested}개 · 장외 비중 {share}% · 마지막 가격 {reference} · {status}",
+    "{symbol} · 닫힌 세션 {sessions}/{requested}개{today} · 장외 비중 {share}% · 마지막 가격 {reference} · {status}",
+  "candidates.offExchangeToday": " + 오늘 cutoff까지",
+  "candidates.offExchangeSessions": "장외 체결 거래일",
   "candidates.offExchangeCut":
     "세션 {count}개는 일부만 읽었습니다(시간·쪽수 한도).",
   "candidates.priceBand": "가격대",

@@ -18,6 +18,8 @@ from services.api.screening_off_exchange_routes import register_screening_off_ex
 from services.market_data.broker_common import instrument_listing
 from services.public_sources.http import SourceConfigError
 from services.screening.store import ScreeningStore
+from services.screening.structure.service import open_structure
+from services.screening.structure.sessions import SessionFiller
 from tests.screening.test_off_exchange import NOW, Tape, adapter, friday_and_thursday
 
 
@@ -25,6 +27,18 @@ class Stub:
     def __init__(self) -> None:
         self.review: Any = None
         self.trades: Any = None
+
+
+def shared(tmp_path: Path, trades: Any) -> Any:
+    """The structure model's session cache with an inline reader, as the app shares it."""
+    structure = open_structure(tmp_path / "screening_structure.sqlite3", lambda: NOW)
+
+    def pages() -> Any:
+        adapter = trades()
+        return None if adapter is None else adapter.trade_pages
+
+    filler = SessionFiller(structure.cache, pages, lambda: NOW, inline=True)
+    return lambda: (structure, filler)
 
 
 def listing_for(symbol: str) -> dict[str, Any] | None:
@@ -42,6 +56,7 @@ def client(tmp_path: Path) -> Iterator[tuple[TestClient, Stub, ScreeningStore]]:
     register_screening_off_exchange_routes(
         app,
         store=lambda: screening,
+        structure=shared(tmp_path, lambda: stub.trades),
         trades=lambda: stub.trades,
         listing_for=listing_for,
         finra_review=lambda: stub.review,
@@ -128,6 +143,7 @@ def test_a_past_session_is_after_the_fact(tmp_path: Path) -> None:
     register_screening_off_exchange_routes(
         app,
         store=lambda: screening,
+        structure=shared(tmp_path, lambda: adapter(Tape({}))),
         trades=lambda: adapter(Tape({})),
         listing_for=listing_for,
         finra_review=lambda: None,
@@ -153,15 +169,18 @@ def test_finra_time_comes_out_of_the_trade_budget(tmp_path: Path) -> None:
 
     screening = ScreeningStore(tmp_path / "screening.sqlite3", lambda: NOW)
     app = FastAPI()
+    trades = adapter(friday_and_thursday())
     register_screening_off_exchange_routes(
         app,
         store=lambda: screening,
-        trades=lambda: adapter(friday_and_thursday()),
+        structure=shared(tmp_path, lambda: trades),
+        trades=lambda: trades,
         listing_for=listing_for,
         finra_review=lambda: review,
         error_response=_error_response,
         clock=lambda: NOW,
         monotonic=lambda: clock["now"],
+        sleep=lambda _seconds: None,
     )
     with TestClient(app) as http:
         check = http.post("/v1/screening/checks/off_exchange", json={"symbol": "STAK"}).json()
@@ -169,4 +188,15 @@ def test_finra_time_comes_out_of_the_trade_budget(tmp_path: Path) -> None:
     validate_document(check)
     # 40 s in all, 35 s spent on FINRA: the trades get the 10 s floor, not 5 s.
     assert check["result"]["limits"]["max_seconds"] == 10.0
+    assert check["result"]["limits"]["live_max_seconds"] == 10.0
     assert check["result"]["limits"]["max_pages"] == 80
+
+
+def test_fewer_sessions_can_be_asked(client: Any) -> None:
+    http, _stub, _screening = client
+    route = "/v1/screening/checks/off_exchange"
+    check = http.post(route, json={"symbol": "STAK", "sessions": 5}).json()
+    validate_document(check)
+    assert check["result"]["sessions_requested"] == 5
+    assert check["result"]["progress"]["total_sessions"] == 5
+    assert http.post(route, json={"symbol": "STAK", "sessions": 21}).status_code == 422

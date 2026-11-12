@@ -151,6 +151,8 @@ export function CandidatesPanel({
   const [runError, setRunError] = useState<string | null>(null);
   const [adding, setAdding] = useState("");
   const [detail, setDetail] = useState<ScreeningCheck | null>(null);
+  /** Closed sessions check D reads (ADR 0052 §5); the cache holds twenty. */
+  const [offSessions, setOffSessions] = useState(20);
   // The noon cut (ADR 0055): the record up to 12:00 New York time of the session.
   const [asOf, setAsOf] = useState<string | null>(null);
 
@@ -221,7 +223,8 @@ export function CandidatesPanel({
     const date = document?.session_date;
     if (kind === "news") return api.runNewsCheck(symbol, date);
     if (kind === "momentum") return api.runMomentumCheck(symbol, date);
-    if (kind === "off_exchange") return api.runOffExchangeCheck(symbol, date);
+    if (kind === "off_exchange")
+      return api.runOffExchangeCheck(symbol, date, offSessions);
     if (kind === "off_exchange_structure")
       return api.runStructureCheck(symbol, date);
     return api.runDilutionCheck(symbol, llm, date);
@@ -267,7 +270,13 @@ export function CandidatesPanel({
         : kind === "off_exchange_structure"
           ? // Posting again shows the progress, then the result once sessions are cached.
             api.runStructureCheck(symbol, document?.session_date)
-          : api.refreshCheck(found.check_id);
+          : kind === "off_exchange"
+            ? api.runOffExchangeCheck(
+                symbol,
+                document?.session_date,
+                offSessions,
+              )
+            : api.refreshCheck(found.check_id);
     again
       .then((next) => {
         setDetail(next);
@@ -376,6 +385,19 @@ export function CandidatesPanel({
             {choices.map((item) => (
               <option key={item.strategy_id} value={item.strategy_id}>
                 {item.name} v{item.version}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t("candidates.offExchangeSessions")}
+          <select
+            value={offSessions}
+            onChange={(event) => setOffSessions(Number(event.target.value))}
+          >
+            {[5, 10, 20].map((count) => (
+              <option key={count} value={count}>
+                {count}
               </option>
             ))}
           </select>
@@ -1099,13 +1121,97 @@ interface NewsResult {
     published_at_utc?: string;
     categories: string[];
   } | null;
+  /** The service's LLM reading (news-analysis ADR 0002): inference, not fact. */
+  nir?: {
+    label: "INFERENCE";
+    state: string | null;
+    reason: string | null;
+    rules_only: boolean;
+    model: string | null;
+    items: NirItem[];
+  };
+}
+
+interface NirItem {
+  nir_record_id: string | null;
+  headline?: string | null;
+  published_at_utc?: string | null;
+  event_type?: string;
+  counterparty?: string;
+  legally_binding?: string;
+  committed_amount?: string;
+  potential_amount?: string;
+  economic_substance?: string;
+  promotion_risk?: string;
+  confidence?: string;
+  summary_ko?: string;
+  verification_failures?: number;
+  rule_conflicts?: string[];
 }
 
 const NEWS_CATEGORIES = [
   "binding_contract",
   "non_binding_intent",
   "partnership",
+  "earnings",
+  "clinical_fda",
+  "merger_acquisition",
+  "reverse_split",
+  "listing_notice",
 ] as const;
+
+/** Check B's LLM digest, always marked as inference; or a "rules only" note. */
+export function NirDigest({ result }: { result: NewsResult }) {
+  const { t } = useI18n();
+  const nir = result.nir;
+  const tagged = Object.values(result.categories ?? {}).some((n) => n > 0);
+  if (nir && nir.items.length > 0) {
+    return (
+      <section aria-label={t("candidates.nirTitle")}>
+        <p className="workspace-note" role="note">
+          {t("candidates.nirNotice")}
+        </p>
+        <ul>
+          {nir.items.map((item, index) => (
+            <li key={item.nir_record_id ?? index}>
+              {t("candidates.nirItem", {
+                event: item.event_type ?? "UNKNOWN",
+                binding: item.legally_binding ?? "UNKNOWN",
+                amount: item.committed_amount ?? "UNKNOWN",
+                potential: item.potential_amount ?? "UNKNOWN",
+                substance: item.economic_substance ?? "UNKNOWN",
+                promotion: item.promotion_risk ?? "UNKNOWN",
+                confidence: item.confidence ?? "UNKNOWN",
+              })}
+              {item.summary_ko ? <> — {item.summary_ko}</> : null}
+              {item.headline ? (
+                <span className="workspace-note"> ({item.headline})</span>
+              ) : null}
+              {(item.verification_failures ?? 0) > 0 ||
+              (item.rule_conflicts ?? []).length > 0 ? (
+                <span className="chart-error">
+                  {" "}
+                  {t("candidates.nirChecks", {
+                    failures: item.verification_failures ?? 0,
+                    conflicts: (item.rule_conflicts ?? []).length,
+                  })}
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
+  if (!tagged || nir?.state === "not_needed") return null;
+  return (
+    <p className="workspace-note" role="note">
+      {nir?.reason
+        ? t("candidates.nirRulesOnlyReason", { reason: nir.reason })
+        : t("candidates.nirRulesOnly")}
+    </p>
+  );
+}
 
 function categoryText(
   t: ReturnType<typeof useI18n>["t"],
@@ -1168,6 +1274,7 @@ function NewsDetail({
           })}
         </p>
       ) : null}
+      <NirDigest result={result} />
       {dilution > 0 ? (
         <p className="workspace-note" role="status">
           {t("candidates.newsDilution", { count: dilution })}
@@ -1209,7 +1316,17 @@ interface OffExchangeLevel {
 interface OffExchangeResult {
   reason?: string;
   sessions_requested?: number;
-  sessions?: { session_date: string; partial: boolean; truncated: boolean }[];
+  sessions?: {
+    session_date: string;
+    source?: "live" | "cache";
+    partial: boolean;
+    truncated: boolean;
+  }[];
+  progress?: {
+    total_sessions: number;
+    cached_sessions: number;
+    reading_sessions: number;
+  };
   reference_price?: string | null;
   off_exchange_share_pct?: string | null;
   levels?: OffExchangeLevel[];
@@ -1236,7 +1353,10 @@ function OffExchangeDetail({
   const { t } = useI18n();
   const result = check.result as OffExchangeResult;
   const sessions = result.sessions ?? [];
-  const cut = sessions.filter((item) => item.partial || item.truncated).length;
+  const cut = sessions.filter((item) => item.truncated).length;
+  const live = sessions.some((item) => item.source === "live");
+  const closed = sessions.filter((item) => item.source !== "live").length;
+  const progress = result.progress;
   const levels: ChartPriceLevel[] = [];
   for (const level of result.levels ?? []) {
     const low = priceOf(level.price_low);
@@ -1256,13 +1376,22 @@ function OffExchangeDetail({
       <p className="workspace-note">
         {t("candidates.offExchangeMeta", {
           symbol: check.symbol,
-          sessions: sessions.length,
+          sessions: closed,
           requested: result.sessions_requested ?? "—",
+          today: live ? t("candidates.offExchangeToday") : "",
           share: result.off_exchange_share_pct ?? "?",
           reference: result.reference_price ?? "?",
           status: statusText(t, check.status),
         })}
       </p>
+      {progress && check.status === "pending" ? (
+        <p className="workspace-note" role="status">
+          {t("candidates.structureProgress", {
+            cached: progress.cached_sessions,
+            total: progress.total_sessions,
+          })}
+        </p>
+      ) : null}
       {cut > 0 ? (
         <p className="workspace-note" role="status">
           {t("candidates.offExchangeCut", { count: cut })}
