@@ -29,7 +29,8 @@ Terms = list[list[str]]
 # `accept` is where the answer allows the remark, judged from the sentence alone by the v2 prompt
 # rule (a number could settle it -> ambiguities, otherwise inexpressible), never from model
 # output (gateway #SIW-lib-6). Only a remark that could go either way accepts both; the first
-# entry is where the answer card lists it.
+# entry is where the answer card lists it. `split` (gateway #SIW-lib-7) is set only on a remark
+# holding a word that defines a testable condition by itself ("양봉" = close > open).
 AMBIGUITIES: dict[str, dict[str, Any]] = {
     "volume_dry": {
         "accept": ["ambiguities"],
@@ -42,6 +43,8 @@ AMBIGUITIES: dict[str, dict[str, Any]] = {
         "say": "그리고 양봉이 힘 있게 나와 줘야 됩니다",
         "text": "양봉이 '힘 있게' 나와야 한다 — 크기 기준 없음",
         "terms": [["양봉", "캔들", "봉", "candle"], ["힘", "강", "크", "strong", "large"]],
+        # "양봉" is defined by its own word (close > open), so it may stand alone in entry.
+        "split": {"field": "entry", "terms": [["양봉", "bullish", "종가가 시가"]]},
     },
     "near_line": {
         "accept": ["ambiguities"],
@@ -473,6 +476,8 @@ def build(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             answer["conditions"].append({"field": kind, **entry})
         elif kind in ("ambiguity", "inexpressible"):
             entry["accept"] = list(item["accept"])
+            if "split" in item:
+                entry["split"] = item["split"]
             answer[item["accept"][0]].append(entry)
         else:
             answer["other"].append({"field": kind, **entry})

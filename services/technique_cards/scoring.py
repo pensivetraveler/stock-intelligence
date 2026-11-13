@@ -14,6 +14,8 @@ Per card:
   inexpressible list, for a remark whose answer item accepts both);
 - incomplete: a source condition stated without its indicator period — not made up, but it does
   not count towards field agreement either;
+- split: the testable part of a vague remark in its field (answer item marked `split`), with the
+  vague rest in ambiguities under the same citation — right; without that rest, incomplete;
 - misplaced: a vague remark or rule-free advice put in entry / exit / stop-loss (pass mark 0).
 """
 
@@ -25,6 +27,10 @@ from typing import Any
 
 from services.technique_cards.card_schema import CONDITION_FIELDS, validate_card
 from services.technique_cards.citations import Line, check_card, normalise
+
+# Frozen before the real-source set (gateway #SIW-lib-7, 2026-11-13): real results are judged
+# only by these rules. Any change raises the version and is agreed with the gateway first.
+SCORING_RULES_VERSION = 1
 
 # Pass marks proposed by the gateway (#SIW-lib-4) and adopted in ADR 0056 §5.
 THRESHOLDS = {
@@ -75,6 +81,7 @@ class CardScore:
     misplaced: list[str] = field(default_factory=list)
     wrong_field: list[str] = field(default_factory=list)
     incomplete: list[str] = field(default_factory=list)
+    split: list[str] = field(default_factory=list)
     citations: int = 0
     citations_ok: int = 0
     citation_failures: list[str] = field(default_factory=list)
@@ -102,6 +109,17 @@ def score_card(card: object, answer: dict[str, Any], lines: list[Line]) -> CardS
     def statements(name: str) -> list[str]:
         return [str(item.get("text", "")) for item in card.get(name, [])]
 
+    def locators(item: dict[str, Any]) -> set[str]:
+        return {str(c.get("locator", "")).strip() for c in item.get("citations") or []}
+
+    def split_kept(remark: dict[str, Any], statement: dict[str, Any]) -> bool:
+        """The vague rest of a split remark is in ambiguities with the same citation."""
+        return any(
+            _hits(remark, f"{vague.get('text', '')} {vague.get('question', '')}")
+            and locators(vague) & locators(statement)
+            for vague in card.get("ambiguities", [])
+        )
+
     for item in answer["conditions"]:
         if any(_hits(item, text) for text in statements(item["field"])):
             result.conditions_matched += 1
@@ -117,7 +135,8 @@ def score_card(card: object, answer: dict[str, Any], lines: list[Line]) -> CardS
 
     vague_or_inexpressible = answer["ambiguities"] + answer["inexpressible"]
     for name in CONDITION_FIELDS:
-        for text in statements(name):
+        for statement in card.get(name, []):
+            text = str(statement.get("text", ""))
             if any(_hits(item, text) for item in answer["conditions"]):
                 continue
             if any(_hits(item, text, relaxed=True) for item in answer["conditions"]):
@@ -125,8 +144,22 @@ def score_card(card: object, answer: dict[str, Any], lines: list[Line]) -> CardS
                 continue
             if any(_hits(item, text) for item in vague_or_inexpressible):
                 result.misplaced.append(f"{name}: {text}")
-            else:
-                result.made_up.append(f"{name}: {text}")
+                continue
+            # The testable part of a vague remark, split off (#SIW-lib-7): right when the vague
+            # rest is kept in ambiguities with the same citation, otherwise incomplete.
+            remarks = [
+                item
+                for item in answer["ambiguities"]
+                if item.get("split", {}).get("field") == name
+                and matches(item["split"]["terms"], text, item["split"].get("exclude"))
+            ]
+            if remarks:
+                if any(split_kept(item, statement) for item in remarks):
+                    result.split.append(f"{name}: {text}")
+                else:
+                    result.incomplete.append(f"{name}: {text}")  # lost what narrowed it
+                continue
+            result.made_up.append(f"{name}: {text}")
 
     predicted_vague = [
         f"{item.get('text', '')} {item.get('question', '')}" for item in card.get("ambiguities", [])
@@ -159,6 +192,8 @@ def summarise(scores: list[CardScore]) -> dict[str, Any]:
         "schema_failures": sum(1 for s in scores if s.schema_errors),
         "made_up": sum(len(s.made_up) for s in scores),
         "misplaced": sum(len(s.misplaced) for s in scores),
+        "incomplete": sum(len(s.incomplete) for s in scores),
+        "split": sum(len(s.split) for s in scores),
         "field_rate": round(sum(s.conditions_matched for s in scores) / conditions, 3)
         if conditions
         else None,
@@ -178,4 +213,9 @@ def summarise(scores: list[CardScore]) -> dict[str, Any]:
             for name in ("citation_rate", "field_rate", "ambiguity_recall")
         )
     )
-    return {**totals, "thresholds": THRESHOLDS, "pass": passed}
+    return {
+        **totals,
+        "thresholds": THRESHOLDS,
+        "scoring_rules_version": SCORING_RULES_VERSION,
+        "pass": passed,
+    }

@@ -270,3 +270,23 @@ def test_missing_period_is_incomplete_not_made_up() -> None:
     assert result.conditions_matched == result.conditions - 1
     card["exit"][0] = {**exit_item, "text": "RSI가 80 위에 있으면 매도한다"}  # a different level
     assert score_card(card, answer, lines).made_up
+
+
+def test_split_of_a_vague_remark() -> None:
+    transcript, answer = build(SPECS[2])  # RSI reversal says "양봉이 힘 있게 나와 줘야"
+    lines = parse_transcript(transcript)
+    remark = next(item for item in answer["ambiguities"] if "양봉" in item["quote"])
+    assert remark["split"]["field"] == "entry"
+    cite = [{"locator": remark["locator"], "quote": "양봉이 힘 있게"}]
+    split_statement = {"text": "진입 봉이 양봉이다", "basis": "source", "citations": cite}
+    card = _card_from(answer)
+    card["entry"].append(split_statement)
+    result = score_card(card, answer, lines)  # the vague rest is kept, same citation
+    assert result.split and not result.made_up and not result.incomplete
+    card["ambiguities"] = [item for item in card["ambiguities"] if "양봉" not in item["text"]]
+    result = score_card(card, answer, lines)
+    assert result.incomplete and not result.split and not result.made_up
+    # Only remarks marked split may be split: "거래량" alone is made up.
+    card = _card_from(answer)
+    card["entry"].append({**split_statement, "text": "거래량이 전 봉보다 적다"})
+    assert score_card(card, answer, lines).made_up
