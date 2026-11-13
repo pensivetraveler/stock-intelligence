@@ -186,6 +186,7 @@ def test_condition_fields_and_thresholds_match_the_adr() -> None:
     assert CONDITION_FIELDS == ("entry", "exit", "stop_loss")
     assert THRESHOLDS == {
         "made_up": 0,
+        "misplaced": 0,
         "citation_rate": 0.95,
         "field_rate": 0.90,
         "ambiguity_recall": 0.70,
@@ -230,3 +231,42 @@ def test_real_manifest(tmp_path: Path) -> None:
     (tmp_path / "t.txt").write_text("no times here")
     with pytest.raises(SystemExit):
         evalset.real(manifest, tmp_path / "out2")
+
+
+def test_accept_is_per_item_and_from_the_sentence() -> None:
+    _, answer = build(SPECS[0])  # quick_exit and market_mood are both in this spec
+    by_text = {item["quote"]: item for item in answer["ambiguities"]}
+    quick = next(item for quote, item in by_text.items() if "애매" in quote)
+    mood = next(item for quote, item in by_text.items() if "분위기" in quote)
+    assert quick["accept"] == ["ambiguities", "inexpressible"]
+    assert mood["accept"] == ["ambiguities"]  # an index condition could settle it
+    assert not any("분위기" in item["quote"] for item in answer["inexpressible"])
+
+
+def test_inexpressible_counts_only_where_the_answer_accepts_it() -> None:
+    transcript, answer = build(SPECS[0])
+    lines = parse_transcript(transcript)
+    card = _card_from(answer)
+    moved = [
+        item for item in card["ambiguities"] if "애매" in item["text"] or "분위기" in item["text"]
+    ]
+    card["ambiguities"] = [item for item in card["ambiguities"] if item not in moved]
+    card["inexpressible"] += [
+        {"text": item["text"], "basis": "source", "citations": item["citations"]} for item in moved
+    ]
+    result = score_card(card, answer, lines)
+    assert result.ambiguities_found == result.ambiguities - 1  # 애매: accepted; 분위기: not
+    assert any("분위기" in text for text in result.missed)
+
+
+def test_missing_period_is_incomplete_not_made_up() -> None:
+    transcript, answer = build(SPECS[2])  # RSI(14) reversal
+    lines = parse_transcript(transcript)
+    card = _card_from(answer)
+    exit_item = card["exit"][0]
+    card["exit"][0] = {**exit_item, "text": "RSI가 70 위에 있으면 매도한다"}
+    result = score_card(card, answer, lines)
+    assert result.made_up == [] and len(result.incomplete) == 1
+    assert result.conditions_matched == result.conditions - 1
+    card["exit"][0] = {**exit_item, "text": "RSI가 80 위에 있으면 매도한다"}  # a different level
+    assert score_card(card, answer, lines).made_up

@@ -8,8 +8,9 @@ as automatic Korean captions do, and long sentences are split over two lines.
 
 An answer lists every condition with `terms`: groups of alternatives, all groups needing a hit in
 a predicted statement's text. An alternative starting with `#` is a number matched exactly;
-`exclude` lists words of the opposite direction (a statement holding one does not match,
-so "하향 돌파" is not "상향 돌파").
+`~` marks a soft group (an indicator's period): needed for a full match, but a statement that
+leaves it out is incomplete, not made up. `exclude` lists words of the opposite direction
+(a statement holding one does not match, so "하향 돌파" is not "상향 돌파").
 """
 
 from __future__ import annotations
@@ -24,34 +25,44 @@ from services.technique_cards.citations import Line, format_time, format_transcr
 
 Terms = list[list[str]]
 
-# Fixed vague remarks (each answer's ambiguities); at least two go into every synthetic item.
+# Fixed vague remarks; at least two go into every synthetic item.
+# `accept` is where the answer allows the remark, judged from the sentence alone by the v2 prompt
+# rule (a number could settle it -> ambiguities, otherwise inexpressible), never from model
+# output (gateway #SIW-lib-6). Only a remark that could go either way accepts both; the first
+# entry is where the answer card lists it.
 AMBIGUITIES: dict[str, dict[str, Any]] = {
     "volume_dry": {
+        "accept": ["ambiguities"],
         "say": "거래량이 좀 줄면서 눌려 주는 게 좋아요",
         "text": "눌림 때 거래량이 '좀' 줄어야 한다 — 얼마나 줄어야 하는지 없음",
         "terms": [["거래량", "volume"], ["줄", "감소", "마르", "적", "decreas", "lower", "dry"]],
     },
     "strong_candle": {
+        "accept": ["ambiguities"],
         "say": "그리고 양봉이 힘 있게 나와 줘야 됩니다",
         "text": "양봉이 '힘 있게' 나와야 한다 — 크기 기준 없음",
         "terms": [["양봉", "캔들", "봉", "candle"], ["힘", "강", "크", "strong", "large"]],
     },
     "near_line": {
+        "accept": ["ambiguities"],
         "say": "선 근처까지 내려오면 그때부터 관심 갖고 보세요",
         "text": "선 '근처' — 얼마나 가까워야 하는지 없음",
         "terms": [["근처", "가까", "부근", "근접", "near", "close to"]],
     },
     "not_extended": {
+        "accept": ["ambiguities"],
         "say": "너무 많이 오른 종목은 웬만하면 피하세요",
         "text": "'너무 많이 오른' 종목 제외 — 기준 없음",
         "terms": [["많이 오른", "급등", "과열", "너무", "extended", "overbought", "많이 상승"]],
     },
     "quick_exit": {
+        "accept": ["ambiguities", "inexpressible"],
         "say": "흐름이 애매하다 싶으면 빨리 정리하는 게 낫습니다",
         "text": "'애매하면' 빨리 정리 — 무엇이 애매한지 없음",
         "terms": [["애매", "불확실", "모호", "unclear", "ambigu"]],
     },
     "volume_surge": {
+        "accept": ["ambiguities"],
         "say": "돌파할 때 거래량이 충분히 터져 줘야 돼요",
         "text": "거래량이 '충분히' 터져야 한다 — 기준 없음",
         "terms": [
@@ -61,19 +72,23 @@ AMBIGUITIES: dict[str, dict[str, Any]] = {
     },
 }
 
-# Fixed sentences no rule can express (each answer's inexpressible list).
+# Fixed sentences said as rule-free advice; `accept` as above ("시장 분위기" could be an index
+# condition, so it is an ambiguity).
 INEXPRESSIBLE: dict[str, dict[str, Any]] = {
     "market_mood": {
+        "accept": ["ambiguities"],
         "say": "이건 시장 분위기가 좋을 때만 하세요",
         "text": "시장 분위기가 좋을 때만",
         "terms": [["분위기", "시장 상황", "심리", "sentiment", "mood", "market condition"]],
     },
     "news_check": {
+        "accept": ["inexpressible"],
         "say": "들어가기 전에 뉴스는 꼭 한 번 확인하시고요",
         "text": "진입 전 뉴스 확인",
         "terms": [["뉴스", "news", "재료"]],
     },
     "gut_feel": {
+        "accept": ["inexpressible"],
         "say": "결국은 감이에요 차트를 많이 보셔야 됩니다",
         "text": "감·경험",
         "terms": [["감", "경험", "intuition", "feel", "experience"]],
@@ -224,7 +239,7 @@ def _operand(operand: dict[str, Any], rng: random.Random) -> tuple[str, str, Ter
         written = {"sma": f"SMA({length})", "ema": f"EMA({length})", "rsi": f"RSI({length})"}[
             indicator
         ]
-        return rng.choice(options), written, [kind, [f"#{length}"]]
+        return rng.choice(options), written, [kind, [f"~#{length}"]]
     if indicator == "bb":
         length = _number(params.get("length", 20))
         mult = _number(params.get("mult", 2))
@@ -234,7 +249,7 @@ def _operand(operand: dict[str, Any], rng: random.Random) -> tuple[str, str, Ter
         return (
             said,
             written,
-            [["볼린저", "bollinger", "bb"], band_terms, [f"#{length}"], [f"#{mult}"]],
+            [["볼린저", "bollinger", "bb"], band_terms, [f"~#{length}"], [f"#{mult}"]],
         )
     raise SyntheticError(f"indicator {indicator!r} is not phrased")
 
@@ -318,7 +333,7 @@ def _risk_statements(definition: dict[str, Any], rng: random.Random) -> list[dic
                     ]
                 ),
                 "text": f"손절: 진입가 − ATR({length}) × {mult}",
-                "terms": [["atr"], [f"#{length}"], [f"#{mult}"]],
+                "terms": [["atr"], [f"~#{length}"], [f"#{mult}"]],
             }
         )
     trailing = definition.get("trailing_stop")
@@ -456,10 +471,9 @@ def build(spec: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         }
         if kind in ("entry", "exit", "stop_loss"):
             answer["conditions"].append({"field": kind, **entry})
-        elif kind == "ambiguity":
-            answer["ambiguities"].append(entry)
-        elif kind == "inexpressible":
-            answer["inexpressible"].append(entry)
+        elif kind in ("ambiguity", "inexpressible"):
+            entry["accept"] = list(item["accept"])
+            answer[item["accept"][0]].append(entry)
         else:
             answer["other"].append({"field": kind, **entry})
     return format_transcript(lines), answer

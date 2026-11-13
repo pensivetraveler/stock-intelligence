@@ -10,7 +10,11 @@ Per card:
 - made-up conditions: entry / exit / stop-loss statements matching nothing in the answer
   (a vague remark or an inexpressible sentence put there is counted as misplaced instead);
 - citation agreement: citations passing the script citation check (`citations.check_card`);
-- ambiguity recall: answer ambiguities matched by the card's ambiguities.
+- ambiguity recall: answer ambiguities matched by the card's ambiguities (or by its
+  inexpressible list, for a remark whose answer item accepts both);
+- incomplete: a source condition stated without its indicator period — not made up, but it does
+  not count towards field agreement either;
+- misplaced: a vague remark or rule-free advice put in entry / exit / stop-loss (pass mark 0).
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from services.technique_cards.citations import Line, check_card, normalise
 # Pass marks proposed by the gateway (#SIW-lib-4) and adopted in ADR 0056 §5.
 THRESHOLDS = {
     "made_up": 0,
+    "misplaced": 0,  # added by #SIW-lib-6: an unmeasured remark in entry/exit is untestable
     "citation_rate": 0.95,
     "field_rate": 0.90,
     "ambiguity_recall": 0.70,
@@ -35,14 +40,20 @@ def _number_hit(number: str, text: str) -> bool:
     return re.search(rf"(?<![\d.]){re.escape(number)}(?![\d]|\.\d)", text) is not None
 
 
-def matches(terms: list[list[str]], text: str, exclude: list[str] | None = None) -> bool:
+def matches(
+    terms: list[list[str]], text: str, exclude: list[str] | None = None, relaxed: bool = False
+) -> bool:
+    """All term groups hit; `relaxed` skips soft groups (`~`, an indicator's period)."""
     folded = normalise(text)
     raw = text.casefold()
     if any(normalise(word) in folded for word in exclude or []):
         return False
     for group in terms:
+        if relaxed and all(alternative.startswith("~") for alternative in group):
+            continue
         hit = False
         for alternative in group:
+            alternative = alternative.removeprefix("~")
             if alternative.startswith("#"):
                 hit = _number_hit(alternative[1:], raw)
             else:
@@ -63,6 +74,7 @@ class CardScore:
     made_up: list[str] = field(default_factory=list)
     misplaced: list[str] = field(default_factory=list)
     wrong_field: list[str] = field(default_factory=list)
+    incomplete: list[str] = field(default_factory=list)
     citations: int = 0
     citations_ok: int = 0
     citation_failures: list[str] = field(default_factory=list)
@@ -74,8 +86,8 @@ class CardScore:
         return dict(self.__dict__)
 
 
-def _hits(item: dict[str, Any], text: str) -> bool:
-    return matches(item["terms"], text, item.get("exclude"))
+def _hits(item: dict[str, Any], text: str, relaxed: bool = False) -> bool:
+    return matches(item["terms"], text, item.get("exclude"), relaxed)
 
 
 def score_card(card: object, answer: dict[str, Any], lines: list[Line]) -> CardScore:
@@ -108,6 +120,9 @@ def score_card(card: object, answer: dict[str, Any], lines: list[Line]) -> CardS
         for text in statements(name):
             if any(_hits(item, text) for item in answer["conditions"]):
                 continue
+            if any(_hits(item, text, relaxed=True) for item in answer["conditions"]):
+                result.incomplete.append(f"{name}: {text}")  # the condition, missing its period
+                continue
             if any(_hits(item, text) for item in vague_or_inexpressible):
                 result.misplaced.append(f"{name}: {text}")
             else:
@@ -116,8 +131,11 @@ def score_card(card: object, answer: dict[str, Any], lines: list[Line]) -> CardS
     predicted_vague = [
         f"{item.get('text', '')} {item.get('question', '')}" for item in card.get("ambiguities", [])
     ]
+    predicted_inexpressible = statements("inexpressible")
     for item in answer["ambiguities"]:
-        if any(_hits(item, text) for text in predicted_vague):
+        # A remark the answer accepts in either place (item by item, #SIW-lib-6).
+        also = predicted_inexpressible if "inexpressible" in item.get("accept", []) else []
+        if any(_hits(item, text) for text in predicted_vague + also):
             result.ambiguities_found += 1
         else:
             result.missed.append(f"ambiguity: {item['text']}")
@@ -154,6 +172,7 @@ def summarise(scores: list[CardScore]) -> dict[str, Any]:
     passed = (
         totals["schema_failures"] == 0
         and totals["made_up"] <= THRESHOLDS["made_up"]
+        and totals["misplaced"] <= THRESHOLDS["misplaced"]
         and all(
             totals[name] is not None and totals[name] >= THRESHOLDS[name]
             for name in ("citation_rate", "field_rate", "ambiguity_recall")
