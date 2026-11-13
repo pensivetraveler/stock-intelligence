@@ -2,9 +2,12 @@
 
 `GET /v1/screening/flow` judges every candidate of a session at the newest closed minute
 from the 1m bars of the data provider (Alpaca SIP when `SIW_MARKET_DATA_PROVIDER=alpaca`).
-Nothing is stored: every state, including the changes through the day, is rebuilt from
-bars each time. Stage 2 (U-b) does not exist yet, so every candidate is watched and
-marked `stage2: not_implemented`; `stage2` is where its verdict will come in.
+Nothing is stored here: every state, including the changes through the day, is rebuilt
+from bars each time. Halts come from what `siw-collector watch-halts` recorded under the
+data dir (`screeners/sip_status_watch.sqlite3`); without that record the halted minutes
+stay in the windows and the result says so. Stage 2 (U-b) does not exist yet, so every
+candidate is watched and marked `stage2: not_implemented`; `stage2` is where its verdict
+will come in.
 
 States only: no order is placed, changed or cancelled here.
 """
@@ -23,6 +26,7 @@ from fastapi.responses import JSONResponse
 from packages.contracts.validator import validate_document
 from services.api.journal_routes import ErrorResponse
 from services.backtest.data import GetBars
+from services.collector.halt_watch import store_path
 from services.market_data.calendar import NEW_YORK, SessionWindow, UsEquityCalendar
 from services.market_data.provider import MarketDataError
 from services.screening.candidates import read_watched, utc_text, watch_path
@@ -33,16 +37,13 @@ from services.screening.flow_watch import (
     flow_check,
     stage2_not_implemented,
 )
-from services.screening.halts import HaltRead
+from services.screening.halts import HaltRead, recorded_halts
 from services.screening.store import ScreeningStore
 
 CONDITION_NAME = "SIW_당일급등주"
 MAX_DAYS_BACK = 10
 WORKERS = 4
-NO_HALT_SOURCE = (
-    "halt 감지기가 아직 없다. Alpaca SIP `statuses` 스트림은 이 계정에서 받는 것을 확인했지만"
-    "(2026-11-12) 기록기는 만들지 않았다."
-)
+NO_HALT_SOURCE = "halt 기록을 쓰지 않았다(halts=no_halts)."
 
 GetHalts = Callable[[str, SessionWindow, datetime], HaltRead]
 
@@ -60,7 +61,7 @@ def register_screening_flow_routes(
     get_bars: Callable[[], GetBars],
     error_response: ErrorResponse,
     clock: Callable[[], datetime],
-    halts: GetHalts = no_halts,
+    halts: GetHalts | None = None,
     stage2: GetStage2 = stage2_not_implemented,
 ) -> None:
     calendar = UsEquityCalendar("XNAS")
@@ -96,6 +97,8 @@ def register_screening_flow_routes(
         symbols = [item.symbol for item in watched.symbols]
         symbols += [s for s, _ in screening.manual(window.session_date) if s not in symbols]
         bars = get_bars()
+        # By default, what `siw-collector watch-halts` recorded under the data dir.
+        read_halts = halts or recorded_halts(store_path(root))
 
         def judge(symbol: str) -> dict[str, Any]:
             row: dict[str, Any] = {"symbol": symbol, "instrument_id": None}
@@ -116,7 +119,7 @@ def register_screening_flow_routes(
                     window,
                     now,
                     bars,
-                    halts(symbol, window, now),
+                    read_halts(symbol, window, now),
                     stage2(symbol),
                 )
             except MarketDataError as exc:
