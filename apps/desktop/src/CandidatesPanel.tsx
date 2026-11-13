@@ -2,6 +2,7 @@ import type {
   BacktestStrategy,
   ScreeningCandidates,
   ScreeningCheck,
+  ScreeningFlowWatch,
 } from "@siw/contracts/types";
 import { Fragment, useEffect, useState } from "react";
 
@@ -36,6 +37,58 @@ type OtherKind =
   "news" | "dilution" | "off_exchange" | "off_exchange_structure" | "momentum";
 
 type Candidate = ScreeningCandidates["candidates"][number];
+type FlowRow = ScreeningFlowWatch["candidates"][number];
+
+/** How often the stage 3 flow is read again: one 1m bar closes a minute. */
+const FLOW_REFRESH_MS = 60_000;
+
+interface FlowWindow {
+  passing: number;
+  of: number;
+}
+
+/** Stage 3 (ADR 0057 §3): the state and both windows' counts, e.g. "대상 · 4/5 · 3/20". */
+function flowText(
+  t: ReturnType<typeof useI18n>["t"],
+  row: FlowRow | undefined,
+): { text: string; title: string } {
+  if (!row) return { text: "—", title: "" };
+  if (row.status === "unsupported" || row.status === "error")
+    return {
+      text: t(`candidates.flow.status.${row.status}`),
+      title: String((row.result as { reason?: string }).reason ?? ""),
+    };
+  const result = row.result as {
+    state?: string;
+    liquidity?: FlowWindow | null;
+    volatility?: FlowWindow | null;
+    halts?: { available?: boolean };
+    as_of_utc?: string | null;
+  };
+  const known = [
+    "eligible",
+    "excluded",
+    "warming_up",
+    "unknown",
+    "halted",
+  ] as const;
+  const key = known.find((item) => item === result.state) ?? "unknown";
+  const state = t(`candidates.flow.state.${key}`);
+  const counts =
+    result.liquidity && result.volatility
+      ? ` · ${result.liquidity.passing}/${result.liquidity.of} · ${result.volatility.passing}/${result.volatility.of}`
+      : "";
+  const title = [
+    result.as_of_utc
+      ? t("candidates.flow.asOf", { time: newYorkTime(result.as_of_utc) })
+      : "",
+    t("candidates.flow.rules"),
+    result.halts?.available ? "" : t("candidates.flow.noHalts"),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { text: `${state}${counts}`, title };
+}
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -155,6 +208,7 @@ export function CandidatesPanel({
   const [offSessions, setOffSessions] = useState(20);
   // The noon cut (ADR 0055): the record up to 12:00 New York time of the session.
   const [asOf, setAsOf] = useState<string | null>(null);
+  const [flow, setFlow] = useState<ScreeningFlowWatch | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -165,6 +219,26 @@ export function CandidatesPanel({
       .catch((reason: unknown) => current && setLoadError(reason));
     return () => {
       current = false;
+    };
+  }, [api, reload, asOf]);
+
+  // Stage 3 is a live state: read it again every minute, and not for the noon cut.
+  useEffect(() => {
+    const read = api.flow?.bind(api);
+    if (!read || asOf !== null) {
+      setFlow(null);
+      return;
+    }
+    let current = true;
+    const load = () =>
+      read()
+        .then((found) => current && setFlow(found))
+        .catch(() => current && setFlow(null));
+    void load();
+    const timer = setInterval(() => void load(), FLOW_REFRESH_MS);
+    return () => {
+      current = false;
+      clearInterval(timer);
     };
   }, [api, reload, asOf]);
 
@@ -498,6 +572,9 @@ export function CandidatesPanel({
                 <th>{t("candidates.inList")}</th>
                 <th>{t("candidates.flicker")}</th>
                 <th>{t("candidates.column.momentum")}</th>
+                <th title={t("candidates.flow.rules")}>
+                  {t("candidates.column.flow")}
+                </th>
                 <th>{t("candidates.entry")}</th>
                 {OTHER_KINDS.map((kind) => (
                   <th key={kind}>{t(`candidates.column.${kind}`)}</th>
@@ -509,6 +586,10 @@ export function CandidatesPanel({
                 const listing = item.listing;
                 const entry = item.checks.entry;
                 const momentum = item.checks.momentum;
+                const flowCell = flowText(
+                  t,
+                  flow?.candidates.find((row) => row.symbol === item.symbol),
+                );
                 const unknown = LIST_SEEN.includes(item.first_seen_how);
                 const row = (
                   <tr key={item.symbol}>
@@ -584,6 +665,12 @@ export function CandidatesPanel({
                         "—"
                       )}
                     </td>
+                    <td
+                      title={flowCell.title}
+                      aria-label={`${item.symbol} ${t("candidates.column.flow")}`}
+                    >
+                      {flowCell.text}
+                    </td>
                     <td>
                       {running.includes(item.symbol) ? (
                         t("screener.running")
@@ -646,7 +733,7 @@ export function CandidatesPanel({
                 return index === firstAfterNoon && asOf === null ? (
                   <Fragment key={item.symbol}>
                     <tr>
-                      <th colSpan={6 + OTHER_KINDS.length}>
+                      <th colSpan={7 + OTHER_KINDS.length}>
                         {t("candidates.afterNoon")}
                       </th>
                     </tr>

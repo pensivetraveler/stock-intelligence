@@ -91,7 +91,8 @@ export type StockIntelligenceWorkstationContractsV01 =
   | BrokerConditionList
   | BrokerConditionResult
   | ScreeningCandidates
-  | ScreeningCheck;
+  | ScreeningCheck
+  | ScreeningFlowWatch;
 export type SchemaVersion = "0.1";
 export type Identifier = string;
 export type UtcTimestamp = string;
@@ -7778,4 +7779,48 @@ export interface ScreeningCheck {
   sources: {
     [k: string]: unknown;
   };
+}
+/**
+ * ADR 0057 §3 (U-a): every candidate's stage 3 realtime flow state at the newest closed 1m bar, rebuilt from bars on each request (not stored). `result` holds the state (eligible, excluded, warming_up, unknown, halted), the liquidity and volatility windows with each minute, the state changes through the session, the halt spans used and the rules. States only: excluded blocks new buys and keeps resting orders; nothing here places or cancels an order.
+ */
+export interface ScreeningFlowWatch {
+  kind: "screening_flow_watch";
+  schema_version: SchemaVersion;
+  /**
+   * New York session date.
+   */
+  session_date: string;
+  created_at_utc: UtcTimestamp;
+  /**
+   * Judged after the session ended: final bars, not what was live.
+   */
+  after_the_fact: boolean;
+  versions: {
+    [k: string]: string;
+  };
+  /**
+   * @maxItems 500
+   */
+  candidates: {
+    symbol: string;
+    instrument_id: null | Identifier;
+    /**
+     * incomplete: a window holds a minute the account cannot see yet.
+     */
+    status: "ok" | "incomplete" | "unsupported" | "error";
+    result: {
+      state?: "eligible" | "excluded" | "warming_up" | "unknown" | "halted";
+      stage2?: "passed" | "failed" | "not_judged" | "not_implemented";
+      new_buys_allowed?: boolean;
+      resting_orders?: "keep";
+      [k: string]: unknown;
+    };
+    /**
+     * @maxItems 50
+     */
+    warnings: string[];
+    sources: {
+      [k: string]: unknown;
+    };
+  }[];
 }

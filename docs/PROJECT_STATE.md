@@ -2786,3 +2786,18 @@
 - **변경:** 문서만(ADR 0057 추가, 0052·0054·0055 상태 문구, ADR 목록). 코드 변경 없음.
 - **별도 논의:** 저영향 재료 목록, 5단계 가격대 규칙과 "보수적" 방식, 6단계 전략 틀, 실계좌 무인 실행(ADR 0047 변경).
 - **미확인:** 3단계 halt 감지 방법, `SIW_당일급등주` 조건식 내용.
+
+## 3단계 실시간 수급 감시(ADR 0057 U-a) — 2026-11-12
+
+- **추가:** `services/screening/flow_watch.py`(분마다 거꾸로 센 유동성 4/5·변동성 3/20, 빈 분은 미달, halt 중 빈 분은 창에서 뺌, 호가 단위 $1 경계), `services/screening/halts.py`(SIP 상태 메시지 → halt 구간), `GET /v1/screening/flow`(`services/api/screening_flow_routes.py`, 계약 `screening_flow_watch`), '오늘의 후보' 패널 "지금 수급(3단계)" 열. 주문 기능 없음, 상태 값만.
+- **halt 감지 확인:** Alpaca SIP `statuses` 채널을 이 계정에서 받는 것을 실측(CTA halt가 5초마다 반복). 과거 halt REST는 문서에 없다. 기록기는 만들지 않았다(사용자 결정 대기). 그동안 halt 중 빈 분도 미달로 센다고 경고한다.
+- **시험:** `tests/screening/test_flow_watch.py` 26개(빈 분, halt, $1 호가 경계, 창 경계, 재진입, 미래 데이터 없음, 상태 메시지 구간, 경로), 패널 테스트 1개.
+- **실제 확인:** 사용자 Alpaca 키와 조건 기록 복사본으로 오늘 후보 12개 `ok`(대상 9, 제외 3).
+- **미확인:** halt 기록기, U-b 연결, 판정 시점 여유 20초, 실제 앱에서 열 확인(SIW API 재시작 필요), "장 마감"이 정규장 마감인지 애프터마켓 끝인지.
+
+## halt 기록기(ADR 0057 §3) — 2026-11-13
+
+- **추가:** `siw-collector watch-halts`(`services/collector/halt_watch.py`)가 미국 세션마다 뉴욕 03:58–20:00에 Alpaca SIP `statuses`를 전 종목 구독해 `screeners/sip_status_watch.sqlite3`에 연결(`listens`, 30초 하트비트)과 상태 변화(`status_changes`, 반복은 횟수만)를 덧붙인다. `export-halts --date`로 읽는다. `services/screening/halts.py`의 `recorded_halts`가 판정 시각까지 받은 것만으로 halt 구간과 듣지 않은 구간(`gaps`)을 만들고, `GET /v1/screening/flow`가 이를 기본으로 쓴다.
+- **시험:** `tests/collector/test_halt_watch.py` 10개(반복 횟수, `interrupted` 닫기, 가짜 연결 기록·비밀값 미저장, 402 중단·406 재시도·연결 실패, 창 경계·휴장일, 대기, 기록 없음, 구간·빈 구간·미래 데이터 없음, 연결이 바뀔 때 CTA/UTP, 읽기 전용), 경로 테스트 1개(기록된 halt로 `halted`).
+- **실제 확인:** 02:10 ET 40초 연결(임시 저장소): 인증·구독·하트비트·정상 종료 기록, 상태 메시지 없음(장 전), 저장소에 키 없음.
+- **미확인:** 장중 실제 halt 기록, UTP halt가 반복되는지, 반복 메시지의 `t`가 처음 halt 시각인지, LaunchAgent 설치(사용자 승인 필요).
