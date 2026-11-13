@@ -290,7 +290,9 @@ def test_flow_check_reads_closed_minutes_from_the_premarket_open() -> None:
     assert early["result"]["state"] == "warming_up" and len(asked) == 1
 
 
-def test_flow_route_judges_every_candidate_and_validates(tmp_path: Any) -> None:
+def test_flow_route_judges_every_candidate_and_validates(
+    tmp_path: Any, record_halts: bool = False
+) -> None:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -315,6 +317,26 @@ def test_flow_route_judges_every_candidate_and_validates(tmp_path: Any) -> None:
             item["interval_start_utc"] = start.isoformat().replace("+00:00", "Z")
         return BarsResult(tuple(bars), {"source_id": "fixture", "missing_intervals": []})
 
+    if record_halts:
+        from services.collector.halt_watch import StatusWatchStore
+
+        recorder = StatusWatchStore.in_data_dir(tmp_path)
+        listen = recorder.start("sip", WINDOW.pre_open_utc - timedelta(minutes=2))
+        halt_at = WINDOW.pre_open_utc + timedelta(minutes=44)
+        recorder.record(
+            listen,
+            {
+                "T": "s",
+                "S": "FLIP",
+                "sc": "H",
+                "rc": "LUDP",
+                "z": "C",
+                "t": halt_at.isoformat().replace("+00:00", "Z"),
+            },
+            halt_at,
+        )
+        recorder.heard(listen, now)
+        recorder.close()
     app = FastAPI()
     register_screening_flow_routes(
         app,
@@ -338,6 +360,17 @@ def test_flow_route_judges_every_candidate_and_validates(tmp_path: Any) -> None:
     rows = {row["symbol"]: row for row in document["candidates"]}
     assert "MINE" in rows and rows["OPEN"]["status"] == "unsupported"
     flip = rows["FLIP"]["result"]
-    assert flip["state"] == "eligible" and flip["stage2"] == "not_implemented"
-    assert flip["new_buys_allowed"] and not flip["halts"]["available"]
+    assert flip["stage2"] == "not_implemented"
     assert flip["evaluated_until_utc"] == "2026-11-09T09:45:00Z"
+    if not record_halts:
+        assert flip["state"] == "eligible"
+        assert flip["new_buys_allowed"] and not flip["halts"]["available"]
+        return
+    assert flip["halts"]["available"] and flip["halts"]["source"] == "sip_status_watch"
+    assert flip["halts"]["gaps"] == [] and flip["state"] == "halted"
+    assert flip["halts"]["spans"][0]["code"] == "H" and not flip["new_buys_allowed"]
+    assert not any("halt" in w for w in rows["FLIP"]["warnings"])
+
+
+def test_flow_route_reads_the_recorded_halts(tmp_path: Any) -> None:
+    test_flow_route_judges_every_candidate_and_validates(tmp_path, record_halts=True)

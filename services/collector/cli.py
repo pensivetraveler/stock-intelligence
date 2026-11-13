@@ -16,7 +16,16 @@ WATCHED = "SIW_당일급등주"
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="siw-collector")
     parser.add_argument(
-        "command", choices=("doctor", "run", "backfill", "watch-condition", "export-condition")
+        "command",
+        choices=(
+            "doctor",
+            "run",
+            "backfill",
+            "watch-condition",
+            "export-condition",
+            "watch-halts",
+            "export-halts",
+        ),
     )
     parser.add_argument("--config", type=Path)
     backfill = parser.add_argument_group("backfill (provider from SIW_MARKET_DATA_PROVIDER)")
@@ -214,6 +223,57 @@ def _export_condition(args: argparse.Namespace) -> int:
     return 0
 
 
+def _watch_halts(args: argparse.Namespace) -> int:
+    """Record Alpaca SIP trading statuses (halts) in realtime, every US session, until stopped."""
+    from services.collector.halt_watch import StatusWatchStore, run_halt_watch
+    from services.credentials.store import CredentialStore, KeyringSecretBackend
+
+    data_dir = _data_dir(args)
+    if data_dir is None:
+        _error("invalid_config", "watch-halts requires --data-dir or SIW_DATA_DIR")
+        return 2
+    credentials = CredentialStore(data_dir, KeyringSecretBackend())
+    record = next((item for item in credentials.list("alpaca") if item.enabled), None)
+    if record is None:
+        _error("invalid_config", "no enabled Alpaca key is registered")
+        return 2
+    secrets = credentials.secrets(record)
+    stop = threading.Event()
+    signal.signal(signal.SIGINT, lambda _signum, _frame: stop.set())
+    signal.signal(signal.SIGTERM, lambda _signum, _frame: stop.set())
+    store = StatusWatchStore.in_data_dir(data_dir)
+    try:
+        return run_halt_watch(
+            secrets["api_key_id"],
+            secrets["api_secret_key"],
+            store,
+            stop=stop,
+            clock=lambda: datetime.now(timezone.utc),
+            report=lambda payload: _print({**payload, "service": "collector"}),
+        )
+    finally:
+        store.close()
+
+
+def _export_halts(args: argparse.Namespace) -> int:
+    """Print the listens and status changes received during one New York date, as JSON."""
+    from services.collector.halt_watch import StatusWatchStore
+    from services.market_data.calendar import NEW_YORK
+
+    data_dir = _data_dir(args)
+    if data_dir is None or args.date is None:
+        _error("invalid_arguments", "export-halts requires --date and a data dir")
+        return 2
+    start = datetime.combine(args.date, datetime.min.time(), NEW_YORK)
+    store = StatusWatchStore.in_data_dir(data_dir)
+    try:
+        document = store.export(start, start + timedelta(days=1))
+    finally:
+        store.close()
+    print(json.dumps(document, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "doctor":
@@ -224,4 +284,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _watch_condition(args)
     if args.command == "export-condition":
         return _export_condition(args)
+    if args.command == "watch-halts":
+        return _watch_halts(args)
+    if args.command == "export-halts":
+        return _export_halts(args)
     return _run(args.config)

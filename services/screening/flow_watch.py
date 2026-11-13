@@ -309,6 +309,9 @@ def flow_document(
             "available": halt_read.available,
             "source": halt_read.source,
             "note": halt_read.note,
+            "gaps": [
+                {"start_utc": _utc(start), "end_utc": _utc(end)} for start, end in halt_read.gaps
+            ],
             "spans": [
                 {
                     "start_utc": _utc(span.start_utc),
@@ -396,6 +399,13 @@ def flow_check(
     if not halt_read.available:
         warnings.append(
             "halt 기록이 없다: halt 중의 빈 분도 미달 봉으로 셌다(ADR 0057은 창에서 빼라고 정했다)."
+        )
+    elif halt_read.gaps:
+        spans = ", ".join(f"{_utc(start)}–{_utc(end)}" for start, end in halt_read.gaps[:3])
+        more = f" 외 {len(halt_read.gaps) - 3}개" if len(halt_read.gaps) > 3 else ""
+        warnings.append(
+            f"halt 기록기가 듣지 않은 구간이 있다({spans}{more}): "
+            "그 구간의 halt는 모르고, 빈 분은 미달 봉으로 셌다."
         )
     outcome: dict[str, Any] = {
         "status": "ok",
