@@ -2801,3 +2801,10 @@
 - **시험:** `tests/collector/test_halt_watch.py` 10개(반복 횟수, `interrupted` 닫기, 가짜 연결 기록·비밀값 미저장, 402 중단·406 재시도·연결 실패, 창 경계·휴장일, 대기, 기록 없음, 구간·빈 구간·미래 데이터 없음, 연결이 바뀔 때 CTA/UTP, 읽기 전용), 경로 테스트 1개(기록된 halt로 `halted`).
 - **실제 확인:** 02:10 ET 40초 연결(임시 저장소): 인증·구독·하트비트·정상 종료 기록, 상태 메시지 없음(장 전), 저장소에 키 없음.
 - **미확인:** 장중 실제 halt 기록, UTP halt가 반복되는지, 반복 메시지의 `t`가 처음 halt 시각인지, LaunchAgent 설치(사용자 승인 필요).
+
+## 기법 카드 평가 세트(ADR 0056 §5) — 2026-11-13
+
+- **추가:** `services/technique_cards/` — 카드 strict JSON 스키마(`card_schema.py`, 모든 객체 `required`·`additionalProperties: false`), 인용 대조(`citations.py`, `[mm:ss]` 자막에서 인용 시각 줄 앞 1·뒤 2줄 안에 정규화한 인용문이 있는지, PDF 쪽 인용은 아직 실패 처리), 합성 자막 생성기(`synthetic.py`, 검증된 규칙 빌더 전략 → 같은 뜻 문장 템플릿·고정 모호 표현·규칙 불가 문장·잡담, 시각은 스크립트, LLM 없음), 채점(`scoring.py`, 필드 일치·지어낸 조건·잘못 둔 조건·인용 일치·모호한 점 재현율, 합격 기준 #SIW-lib-4), 추출 프롬프트(`prompt.py` v1), 명령(`python -m services.technique_cards.evalset synthetic|real|score`). 합성 명세 5건(`synthetic_specs.json`).
+- **산출물(로컬, gitignore):** `data/technique_eval/synthetic/{evalset.json,smoke.json,answers.json}` — data public, maxTokens 8000, 1건짜리 `smoke.json`은 strict 스키마 HTTP 400 확인용.
+- **시험:** `tests/technique_cards/test_technique_cards.py` 15개(스키마 strict·누락/추가 필드, 자막 파싱, 인용 창·실패, 합성 정답이 자기 자막과 인용·용어 일치, 같은 필드 조건끼리 섞이지 않음, 방향 반대 문장 불일치, 완벽 카드 합격, 지어낸·잘못 둔 조건·인용 실패, 평가 파일·리포트 채점, 실제 자료 목록). 전체 `pytest` 1328개 통과.
+- **미확인:** 실제 모델 응답(게이트웨이 eval 전), strict 스키마가 공급자에서 400 없이 받아지는지, 실제 자료(영상 등록·정답 카드 작성 전), 용어 일치 방식이 모델의 다양한 표현에서 너무 엄하거나 느슨한지.
