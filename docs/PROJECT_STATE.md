@@ -2808,3 +2808,4 @@
 - **산출물(로컬, gitignore):** `data/technique_eval/synthetic/{evalset.json,smoke.json,answers.json}` — data public, maxTokens 8000, 1건짜리 `smoke.json`은 strict 스키마 HTTP 400 확인용.
 - **시험:** `tests/technique_cards/test_technique_cards.py` 15개(스키마 strict·누락/추가 필드, 자막 파싱, 인용 창·실패, 합성 정답이 자기 자막과 인용·용어 일치, 같은 필드 조건끼리 섞이지 않음, 방향 반대 문장 불일치, 완벽 카드 합격, 지어낸·잘못 둔 조건·인용 실패, 평가 파일·리포트 채점, 실제 자료 목록). 전체 `pytest` 1328개 통과.
 - **미확인:** 실제 모델 응답(게이트웨이 eval 전), strict 스키마가 공급자에서 400 없이 받아지는지, 실제 자료(영상 등록·정답 카드 작성 전), 용어 일치 방식이 모델의 다양한 표현에서 너무 엄하거나 느슨한지.
+- **합성 평가(#SIW-lib-5, 2026-11-13):** 카드 스키마를 `$defs/$ref`로 바꿈(원래 스키마는 Anthropic이 grammar 크기로 400). 세 모델 모두 합격 기준 통과(지어낸 0·인용 100%·필드 100%, 모호 재현 sonnet 72.7%·haiku 90.9%·luna 100%), 그러나 기준 없는 말을 진입·청산에 넣음(잘못 둔 조건 sonnet 2·haiku 6·luna 9). 프롬프트 v2로 다시 평가 요청. 채점 결과 `data/technique_eval/synthetic/score-refschema.json`(로컬).

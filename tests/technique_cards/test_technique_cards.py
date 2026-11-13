@@ -19,6 +19,8 @@ SPECS: list[dict[str, Any]] = json.loads(evalset.SPECS.read_text())
 
 
 def _objects(schema: dict[str, Any]) -> list[dict[str, Any]]:
+    if "$ref" in schema:
+        return _objects(CARD_SCHEMA["$defs"][schema["$ref"].removeprefix("#/$defs/")])
     found = []
     if schema.get("type") == "object":
         found.append(schema)
@@ -66,9 +68,19 @@ def _card_from(answer: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_schema_is_strict_everywhere() -> None:
-    for item in _objects(CARD_SCHEMA):
+    objects = _objects(CARD_SCHEMA)
+    assert len(objects) == 1 + 7 * 2 + 2  # card, 7 fields x (statement, citation), ambiguity
+    for item in objects:
         assert item["additionalProperties"] is False
         assert item["required"] == list(item["properties"])
+
+
+def test_statement_object_is_defined_once() -> None:
+    """Written out seven times, Anthropic refused the grammar as too large (#SIW-lib-5)."""
+    text = json.dumps(CARD_SCHEMA)
+    assert text.count('"basis"') == 2  # its property and its required entry, once each
+    for name in ("timeframe", "entry", "inexpressible"):
+        assert CARD_SCHEMA["properties"][name]["items"] == {"$ref": "#/$defs/condition"}
 
 
 def test_schema_rejects_missing_and_extra_fields() -> None:

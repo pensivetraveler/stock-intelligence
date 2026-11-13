@@ -2,7 +2,8 @@
 
 Strict mode (OpenAI / OpenRouter `json_schema` with `strict: true`) needs every property listed in
 `required` and `additionalProperties: false` on every object, so absent values are empty lists.
-The schema stays shallow (four levels) to keep within provider limits on size and depth.
+The schema stays shallow and defines the repeated statement object once (`$defs`) to keep
+within provider limits on grammar size and depth.
 """
 
 from __future__ import annotations
@@ -71,14 +72,23 @@ _AMBIGUITY = _object(
     }
 )
 
-CARD_SCHEMA: dict[str, Any] = _object(
-    {
-        "source_id": {"type": "string"},
-        "title": {"type": "string"},
-        **{name: {"type": "array", "items": _STATEMENT} for name in STATEMENT_FIELDS},
-        "ambiguities": {"type": "array", "items": _AMBIGUITY},
-    }
-)
+# The statement object is defined once and referenced by the seven fields: written out seven
+# times, Anthropic's strict grammar was refused as too large (HTTP 400, gateway #SIW-lib-5).
+# Any change here needs one strict call through a small model (haiku) before use.
+CARD_SCHEMA: dict[str, Any] = {
+    **_object(
+        {
+            "source_id": {"type": "string"},
+            "title": {"type": "string"},
+            **{
+                name: {"type": "array", "items": {"$ref": "#/$defs/condition"}}
+                for name in STATEMENT_FIELDS
+            },
+            "ambiguities": {"type": "array", "items": _AMBIGUITY},
+        }
+    ),
+    "$defs": {"condition": _STATEMENT},
+}
 
 
 def response_schema() -> dict[str, Any]:
