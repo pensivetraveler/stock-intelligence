@@ -2854,3 +2854,11 @@
 - **사용자 결정:** 카드 추출 `claude-sonnet-5.5`(max_tokens 16000), 대체 `gpt-6-luna`. 합격 기준 미달·상대 비교로 확정, 평가 반복 끝(local-ai-gateway `4d6b2f5`).
 - **다음(L2):** 스크립트 검사(근거 없는 숫자·기준 없는 조건 표시, 확인 전 전략 변환 금지), 원문 시각과 카드 나란히 보기, 실패 재시도(sonnet → luna → 사용자), 건별 기록. L1(도서관 조회·캐시)은 도서관 M3·M4가 끝나 착수 가능.
 - **변경:** 문서만(ADR 0056, 이 파일). 코드 변경 없음.
+
+## 4단계 자동 실행(ADR 0057 U-c) — 2026-11-14
+
+- **추가:** `services/api/screening_stage4.py`(`Stage4Runner`, 30초마다, 미국 세션 창 안에서만, `SIW_SCREENING_STAGE4=0`이면 끔). 2단계 통과(재료 미확인 포함) 후보에 희석 규칙만(`llm=false`, 이 실행기가 넣은 분석은 한 번에 한 건)·장외 체결(주기마다 최대 2종목)을 돌린다. 그날 제외는 안 돌린다. 이미 결과가 있으면(패널 실행 포함) 다시 돌리지 않는다. 공매도는 자료가 없어 생략하고 표시한다.
+- **변경:** 희석·장외 체결 실행을 라우트 밖 `DilutionChecks`(`screening_routes.py`)·`OffExchangeChecks`(`screening_off_exchange_routes.py`)로 옮겨 라우트와 실행기가 같이 쓴다(응답은 그대로). 실행기가 만든 검사는 `result.stage4`(계약 `$defs/ScreeningStage4Request`)에 요청자·시각·그때의 2단계 판정을 남긴다.
+- **API·패널:** 후보 목록 `candidates[].stage4`(계약 `$defs/ScreeningStage4`: 희석 공급 가격, 장외 체결 봉우리, 공매도 `available: false`, 부분마다 cutoff·생성 시각, `as_of` 뒤 검사는 뺌). '오늘의 후보' "정보(4단계)" 열.
+- **시험:** `tests/screening/test_stage4.py` 11개, 패널 테스트 1개, fixture `screening-candidates-stage4.json`.
+- **미확인:** 실제 분석기·Alpaca 키로 장중 실행(배포·재시작 뒤), 후보가 많은 날의 희석 처리량. 세션 뒤 실행과 오류 자동 재시도는 하지 않는다.
