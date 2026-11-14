@@ -432,10 +432,6 @@ export function Workspace({
     return () => window.removeEventListener("keydown", cancel);
   }, [drawTool]);
   // A watchlist reopened floating after a reload is not also shown in the side panel.
-  const backtestStrategies = useMemo(
-    () => () => backtestApi?.strategies() ?? Promise.resolve([]),
-    [backtestApi],
-  );
   // Screening levels drawn on charts of one instrument; none until the user asks.
   const [screeningOverlay, setScreeningOverlay] =
     useState<ScreeningOverlay | null>(null);
@@ -2033,7 +2029,6 @@ export function Workspace({
           {panel === "screener" && screeningApi && backtestApi ? (
             <CandidatesPanel
               api={screeningApi}
-              strategies={backtestStrategies}
               onPick={(listing) => chooseListing(listing)}
               onShowLevels={setScreeningOverlay}
               overlay={screeningOverlay}

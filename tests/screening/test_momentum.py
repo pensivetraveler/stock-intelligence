@@ -219,10 +219,8 @@ def http(tmp_path: Path) -> Iterator[TestClient]:
         app,
         store=lambda: screening,
         data_dir=lambda: tmp_path,
-        strategy=lambda *_: None,
         listing_for=lambda symbol: instrument_listing(symbol, "XNAS", "test", "test-r1", "test"),
         get_bars=lambda: minute_bars({2: "4.5", 9: "5"}),
-        get_adjusted=lambda: None,
         error_response=_error_response,
         clock=lambda: NOW,
     )

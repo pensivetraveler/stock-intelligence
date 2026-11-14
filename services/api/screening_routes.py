@@ -1,4 +1,4 @@
-"""Daily candidate screening (ADR 0052): candidates, the entry check and the dilution check.
+"""Daily candidate screening (ADR 0052): candidates and the stage checks (ADR 0057).
 
 Candidates are the symbols the realtime condition record (ADR 0051) listed or added in a
 US session window, plus symbols the user added. Checks are stored in screening.sqlite3
@@ -20,7 +20,6 @@ from pydantic import BaseModel, Field
 from packages.contracts.validator import validate_document
 from services.api.journal_routes import ErrorResponse
 from services.backtest.data import GetBars
-from services.backtest.store import BacktestNotFoundError
 from services.market_data.calendar import NEW_YORK, UsEquityCalendar
 from services.market_data.provider import MarketDataError
 from services.screening.candidates import read_watched, utc_text, watch_path
@@ -33,7 +32,6 @@ from services.screening.dilution import (
     DilutionServiceError,
     follow,
 )
-from services.screening.entry import entry_check
 from services.screening.material import stage2_by_symbol, stage2_verdict
 from services.screening.momentum import momentum_check
 from services.screening.store import CheckNotFoundError, ScreeningStore
@@ -47,13 +45,6 @@ DILUTION_WAIT_SECONDS = 15.0
 
 class CandidateRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=10)
-    session_date: date | None = None
-
-
-class EntryCheckRequest(BaseModel):
-    symbol: str = Field(min_length=1, max_length=10)
-    strategy_id: str = Field(min_length=1, max_length=200)
-    strategy_version: int | None = Field(default=None, ge=1)
     session_date: date | None = None
 
 
@@ -74,10 +65,8 @@ def register_screening_routes(
     *,
     store: Callable[[], ScreeningStore | None],
     data_dir: Callable[[], Path | None],
-    strategy: Callable[[str, int | None], dict[str, Any] | None],
     listing_for: Callable[[str], dict[str, Any] | None],
     get_bars: Callable[[], GetBars],
-    get_adjusted: Callable[[], Callable[..., Any] | None],
     error_response: ErrorResponse,
     clock: Callable[[], datetime],
     dilution_service: Callable[[], DilutionService] | None = None,
@@ -233,56 +222,6 @@ def register_screening_routes(
             return bad_date(request)
         screening.add_manual(window.session_date, symbol)
         return respond(candidates_document(window))
-
-    @application.post("/v1/screening/checks/entry", response_model=None)
-    def run_entry_check(request: Request, body: EntryCheckRequest) -> Response:
-        """Check A: a saved rules strategy's entry condition on the last closed daily bar."""
-        screening = store()
-        if screening is None:
-            return unavailable(request)
-        symbol = body.symbol.strip().upper()
-        if not SYMBOL.fullmatch(symbol):
-            return error_response(request, 422, "invalid_symbol", "a US ticker such as AAPL")
-        window = session_window(body.session_date)
-        if window is None:
-            return bad_date(request)
-        saved = strategy(body.strategy_id, body.strategy_version)
-        if saved is None:
-            return error_response(request, 404, "strategy_not_found", "No such strategy")
-        listing = listing_for(symbol)
-        if listing is None:
-            return error_response(
-                request, 422, "unknown_symbol", f"{symbol} is not in the app's symbol list"
-            )
-        instrument_id = str(listing["instrument"]["instrument_id"])
-        now = clock()
-        cutoff = min(now, window.post_close_utc)
-        try:
-            outcome = entry_check(saved, instrument_id, cutoff, get_bars(), get_adjusted())
-        except MarketDataError as exc:
-            outcome = {
-                "status": "error",
-                "result": {"reason": str(exc)[:300]},
-                "strategy": None,
-                "versions": {},
-                "warnings": [],
-                "sources": {},
-            }
-        document = {
-            "kind": "screening_check",
-            "schema_version": "0.1",
-            "check": "entry",
-            "session_date": window.session_date.isoformat(),
-            "symbol": symbol,
-            "instrument_id": instrument_id,
-            "cutoff_utc": utc_text(cutoff),
-            "created_at_utc": utc_text(now),
-            # A later run for an earlier time sees stored data, not what was live then.
-            "after_the_fact": now > window.post_close_utc,
-            **outcome,
-        }
-        validate_document({**document, "check_id": 0})
-        return respond(screening.add_check(document))
 
     @application.post("/v1/screening/checks/momentum", response_model=None)
     def run_momentum_check(request: Request, body: MomentumCheckRequest) -> Response:
@@ -452,18 +391,3 @@ def register_screening_routes(
             return respond(screening.check(check_id))
         except CheckNotFoundError:
             return error_response(request, 404, "check_not_found", "No such check")
-
-
-def saved_strategy(
-    runner: Callable[[], Any],
-) -> Callable[[str, int | None], dict[str, Any] | None]:
-    def find(strategy_id: str, version: int | None) -> dict[str, Any] | None:
-        jobs = runner()
-        if jobs is None:
-            return None
-        try:
-            return dict(jobs.store.strategy(strategy_id, version))
-        except BacktestNotFoundError:
-            return None
-
-    return find

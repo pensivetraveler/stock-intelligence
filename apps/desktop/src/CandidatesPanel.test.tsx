@@ -1,5 +1,4 @@
 import type {
-  BacktestStrategy,
   ScreeningCandidates,
   ScreeningCheck,
   ScreeningFlowWatch,
@@ -28,7 +27,7 @@ const listing = {
 } as unknown as NonNullable<ScreeningCandidates["candidates"][0]["listing"]>;
 
 function candidates(
-  entry?: ScreeningCandidates["candidates"][0]["checks"]["entry"],
+  checks: ScreeningCandidates["candidates"][0]["checks"] = {},
 ): ScreeningCandidates {
   return {
     kind: "screening_candidates",
@@ -58,7 +57,7 @@ function candidates(
         enter_count: 0,
         seconds_in_list: 23_340,
         listing,
-        checks: entry ? { entry } : {},
+        checks,
       },
       {
         symbol: "ZZZQ",
@@ -76,41 +75,6 @@ function candidates(
     ],
   };
 }
-
-const strategy = {
-  kind: "backtest_strategy",
-  strategy_id: "strategy-1",
-  name: "Breakout",
-  version: 2,
-  strategy_type: "rules",
-} as unknown as BacktestStrategy;
-
-const check = {
-  kind: "screening_check",
-  check_id: 7,
-  check: "entry",
-  symbol: "AAPL",
-  status: "passed",
-  strategy: {
-    strategy_id: "strategy-1",
-    name: "Breakout",
-    version: 2,
-    definition_sha256: "0".repeat(64),
-  },
-  result: {
-    bar: { session_date: "2026-11-06", close: "101.5" },
-    conditions: [
-      {
-        path: "entry",
-        op: "gt",
-        left_value: "101.5",
-        right_value: "100",
-        holds: true,
-      },
-    ],
-  },
-  warnings: [],
-} as unknown as ScreeningCheck;
 
 type ApiKey = keyof ScreeningApi;
 
@@ -131,56 +95,30 @@ function unused(keep: ApiKey[] = []): Partial<ScreeningApi> {
 }
 
 describe("CandidatesPanel", () => {
-  it("checks entry rules for chartable candidates and shows why", async () => {
-    let checked = false;
+  it("lists candidates without the retired entry check and opens a chart", async () => {
     const api = {
+      // A stored entry check from before ADR 0057 is not shown.
       candidates: vi.fn(() =>
         Promise.resolve(
-          candidates(
-            checked
-              ? {
-                  check_id: 7,
-                  status: "passed",
-                  created_at_utc: "2026-11-09T15:31:00Z",
-                }
-              : undefined,
-          ),
+          candidates({
+            entry: {
+              check_id: 7,
+              status: "passed",
+              created_at_utc: "2026-11-09T15:31:00Z",
+            },
+          }),
         ),
       ),
       addCandidate: vi.fn(() => Promise.resolve(candidates())),
-      runEntryCheck: vi.fn(() => {
-        checked = true;
-        return Promise.resolve(check);
-      }),
-      check: vi.fn(() => Promise.resolve(check)),
+      check: vi.fn(),
       ...unused(),
     } as ScreeningApi;
     const onPick = vi.fn();
-    render(
-      <CandidatesPanel
-        api={api}
-        strategies={() => Promise.resolve([strategy])}
-        onPick={onPick}
-      />,
-    );
+    render(<CandidatesPanel api={api} onPick={onPick} />);
     await screen.findByText(/2 condition watches/);
-    fireEvent.change(await screen.findByLabelText("Entry rules from"), {
-      target: { value: "strategy-1" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Check all" }));
-    await waitFor(() =>
-      expect(api.runEntryCheck).toHaveBeenCalledWith(
-        "AAPL",
-        "strategy-1",
-        "2026-11-09",
-      ),
-    );
-    // The ticker the app does not know is neither checked nor chartable.
-    expect(api.runEntryCheck).toHaveBeenCalledTimes(1);
-    fireEvent.click(await screen.findByRole("button", { name: "met" }));
-    expect(
-      await screen.findByText(/last closed daily bar 2026-11-06/),
-    ).toBeTruthy();
+    expect(screen.queryByText("Entry rules")).toBeNull();
+    expect(screen.queryByLabelText("Entry rules from")).toBeNull();
+    expect(screen.queryByRole("button", { name: "met" })).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "Show AAPL in the active chart" }),
     );
@@ -226,18 +164,11 @@ describe("CandidatesPanel", () => {
     const api = {
       candidates: vi.fn(() => Promise.resolve(candidates())),
       addCandidate: vi.fn(),
-      runEntryCheck: vi.fn(),
       check: vi.fn(),
       flow: vi.fn(() => Promise.resolve(flow)),
       ...unused(),
     } as ScreeningApi;
-    render(
-      <CandidatesPanel
-        api={api}
-        strategies={() => Promise.resolve([])}
-        onPick={vi.fn()}
-      />,
-    );
+    render(<CandidatesPanel api={api} onPick={vi.fn()} />);
     const cell = await screen.findByLabelText("AAPL Flow now (stage 3)");
     await waitFor(() => expect(cell.textContent).toBe("Out · 3/5 · 4/20"));
     expect(cell.getAttribute("title")).toMatch(/No halt record/);
@@ -321,18 +252,11 @@ describe("CandidatesPanel", () => {
     const api = {
       candidates: vi.fn(() => Promise.resolve(document)),
       addCandidate: vi.fn(),
-      runEntryCheck: vi.fn(),
       check: vi.fn(),
       flow: vi.fn(() => Promise.resolve(flow)),
       ...unused(),
     } as ScreeningApi;
-    render(
-      <CandidatesPanel
-        api={api}
-        strategies={() => Promise.resolve([])}
-        onPick={vi.fn()}
-      />,
-    );
+    render(<CandidatesPanel api={api} onPick={vi.fn()} />);
     const passed = await screen.findByLabelText(
       "AAPL Material (stage 2): Pass · rally reason · normal",
     );
@@ -354,17 +278,10 @@ describe("CandidatesPanel", () => {
     const api = {
       candidates: vi.fn(() => Promise.resolve(empty)),
       addCandidate: vi.fn(() => Promise.resolve(candidates())),
-      runEntryCheck: vi.fn(),
       check: vi.fn(),
       ...unused(),
     } as ScreeningApi;
-    render(
-      <CandidatesPanel
-        api={api}
-        strategies={() => Promise.resolve([])}
-        onPick={vi.fn()}
-      />,
-    );
+    render(<CandidatesPanel api={api} onPick={vi.fn()} />);
     await screen.findByText(/no condition record/);
     fireEvent.change(screen.getByLabelText("Add a ticker"), {
       target: { value: "aapl" },
@@ -427,7 +344,6 @@ describe("CandidatesPanel", () => {
         return Promise.resolve(found);
       }),
       addCandidate: vi.fn(),
-      runEntryCheck: vi.fn(),
       check: vi.fn(() => Promise.resolve(supply)),
       runDilutionCheck: vi.fn(() => {
         done = true;
@@ -435,13 +351,7 @@ describe("CandidatesPanel", () => {
       }),
       ...unused(["runDilutionCheck"]),
     } as ScreeningApi;
-    render(
-      <CandidatesPanel
-        api={api}
-        strategies={() => Promise.resolve([])}
-        onPick={vi.fn()}
-      />,
-    );
+    render(<CandidatesPanel api={api} onPick={vi.fn()} />);
     fireEvent.click(
       await screen.findByRole("button", {
         name: "Dilution for all (rules only)",
@@ -504,17 +414,10 @@ describe("CandidatesPanel", () => {
         return Promise.resolve(found);
       }),
       addCandidate: vi.fn(),
-      runEntryCheck: vi.fn(),
       check: vi.fn(() => Promise.resolve(none)),
       ...unused(),
     } as ScreeningApi;
-    render(
-      <CandidatesPanel
-        api={api}
-        strategies={() => Promise.resolve([])}
-        onPick={vi.fn()}
-      />,
-    );
+    render(<CandidatesPanel api={api} onPick={vi.fn()} />);
     fireEvent.click(
       await screen.findByRole("button", {
         name: "AAPL Dilution supply: partial",
@@ -604,7 +507,6 @@ describe("CandidatesPanel", () => {
         return Promise.resolve(found);
       }),
       addCandidate: vi.fn(),
-      runEntryCheck: vi.fn(),
       check: vi.fn((id: number) =>
         Promise.resolve(id === 21 ? offExchange : news),
       ),
@@ -619,12 +521,7 @@ describe("CandidatesPanel", () => {
     const onShowLevels = vi.fn();
     const onPick = vi.fn();
     render(
-      <CandidatesPanel
-        api={api}
-        strategies={() => Promise.resolve([])}
-        onPick={onPick}
-        onShowLevels={onShowLevels}
-      />,
+      <CandidatesPanel api={api} onPick={onPick} onShowLevels={onShowLevels} />,
     );
     fireEvent.click(
       await screen.findByRole("button", {
@@ -722,18 +619,11 @@ describe("CandidatesPanel", () => {
         return Promise.resolve(found);
       }),
       addCandidate: vi.fn(),
-      runEntryCheck: vi.fn(),
       check: vi.fn(() => Promise.resolve(waiting)),
       runOffExchangeCheck: vi.fn(() => Promise.resolve(waiting)),
       ...unused(["runOffExchangeCheck"]),
     } as ScreeningApi;
-    render(
-      <CandidatesPanel
-        api={api}
-        strategies={() => Promise.resolve([])}
-        onPick={vi.fn()}
-      />,
-    );
+    render(<CandidatesPanel api={api} onPick={vi.fn()} />);
     fireEvent.change(await screen.findByLabelText("Off-exchange sessions"), {
       target: { value: "10" },
     });
@@ -806,7 +696,6 @@ describe("CandidatesPanel", () => {
     const api = {
       candidates: vi.fn(() => Promise.resolve(document())),
       addCandidate: vi.fn(),
-      runEntryCheck: vi.fn(),
       check: vi.fn(() => Promise.resolve(momentum)),
       ...unused(["runMomentumCheck"]),
       runMomentumCheck: vi.fn(() => {
@@ -814,13 +703,7 @@ describe("CandidatesPanel", () => {
         return Promise.resolve(momentum);
       }),
     } as ScreeningApi;
-    render(
-      <CandidatesPanel
-        api={api}
-        strategies={() => Promise.resolve([])}
-        onPick={vi.fn()}
-      />,
-    );
+    render(<CandidatesPanel api={api} onPick={vi.fn()} />);
     expect(
       await screen.findByText(/08:40–10:30 not recording \(stopped\)/),
     ).toBeTruthy();

@@ -1,5 +1,5 @@
-"""Daily candidate screening S1 (ADR 0052): candidates from the condition record, the
-entry check on daily bars, and the routes. No test reaches the network."""
+"""Daily candidate screening S1 (ADR 0052): candidates from the condition record and the
+routes. Entry check A was retired (ADR 0057). No test reaches the network."""
 
 from __future__ import annotations
 
@@ -16,16 +16,13 @@ from fastapi.testclient import TestClient
 from packages.contracts.validator import validate_document
 from services.api.main import _error_response
 from services.api.screening_routes import register_screening_routes
-from services.backtest.store import BacktestStore
 from services.collector.condition_watch import ConditionWatchStore
 from services.market_data.broker_common import instrument_listing
 from services.market_data.calendar import UsEquityCalendar
 from services.market_data.kiwoom_conditions import Condition, ConditionEvent, ConditionTicker
-from services.market_data.provider import InvalidBarsQueryError
 from services.screening.candidates import read_watched, watch_path
-from services.screening.entry import entry_check
 from services.screening.store import ScreeningStore
-from tests.backtest.test_backtest_api import adjusted_bars, synthetic_bars
+from tests.backtest.test_backtest_api import synthetic_bars
 
 CALENDAR = UsEquityCalendar("XNAS")
 DAY = date(2026, 11, 9)  # Monday
@@ -34,20 +31,6 @@ assert WINDOW is not None
 CONDITION = Condition("2", "SIW_당일급등주")
 # 10:30 New York time, during the regular session.
 NOW = datetime(2026, 11, 9, 15, 30, tzinfo=timezone.utc)
-RULES = {
-    "type": "rules",
-    "entry": {
-        "all": [
-            {"op": "gt", "left": {"price": "close"}, "right": {"value": 0}},
-            {
-                "op": "gte",
-                "left": {"price": "volume"},
-                "right": {"indicator": "sma", "params": {"length": 5}, "output": "value"},
-            },
-        ]
-    },
-    "exit": {"op": "lt", "left": {"price": "close"}, "right": {"value": 0}},
-}
 
 
 def at(minutes: int) -> datetime:
@@ -99,43 +82,9 @@ def test_no_record_is_said_plainly(tmp_path: Path) -> None:
     assert not read.recorded and read.symbols == []
 
 
-def strategy(tmp_path: Path, definition: dict[str, Any]) -> dict[str, Any]:
-    store = BacktestStore(tmp_path / "backtests.sqlite3", lambda: NOW)
-    return store.save_strategy("screen", definition)
-
-
-def test_entry_check_reports_each_condition_on_the_last_closed_bar(tmp_path: Path) -> None:
-    saved = strategy(tmp_path, RULES)
-    outcome = entry_check(saved, "us:aapl:xnas:2026", NOW, synthetic_bars, adjusted_bars)
-    assert outcome["status"] == "passed"
-    result = outcome["result"]
-    # 10:30 on Monday: Friday is the last session that has closed.
-    assert result["bar"]["session_date"] == "2026-11-06"
-    assert result["adjustment"] == "split_adjusted"
-    assert [c["holds"] for c in result["conditions"]] == [True, True]
-    assert result["conditions"][1]["left_value"] == "1000"
-    assert outcome["strategy"]["version"] == 1
-
-
-def test_entry_check_refuses_what_daily_bars_cannot_answer(tmp_path: Path) -> None:
-    timed = {
-        **RULES,
-        "entry": {
-            "all": [
-                RULES["entry"]["all"][0],
-                {"time": {"from": "09:30", "to": "10:00"}},
-            ]
-        },
-    }
-    outcome = entry_check(strategy(tmp_path, timed), "us:aapl:xnas:2026", NOW, synthetic_bars, None)
-    assert outcome["status"] == "unsupported"
-    assert "time-of-day" in outcome["result"]["reason"]
-
-
 @pytest.fixture
-def client(tmp_path: Path) -> Iterator[tuple[TestClient, dict[str, Any]]]:
+def client(tmp_path: Path) -> Iterator[TestClient]:
     record(tmp_path)
-    saved = strategy(tmp_path, RULES)
     screening = ScreeningStore(tmp_path / "screening.sqlite3", lambda: NOW)
     known = {"AAPL", "COIN", "CDT", "TSLA"}
 
@@ -149,20 +98,18 @@ def client(tmp_path: Path) -> Iterator[tuple[TestClient, dict[str, Any]]]:
         app,
         store=lambda: screening,
         data_dir=lambda: tmp_path,
-        strategy=lambda sid, version: saved if sid == saved["strategy_id"] else None,
         listing_for=listing_for,
         get_bars=lambda: synthetic_bars,
-        get_adjusted=lambda: adjusted_bars,
         error_response=_error_response,
         clock=lambda: NOW,
     )
     with TestClient(app) as test_client:
-        yield test_client, saved
+        yield test_client
     screening.close()
 
 
 def test_candidates_route_merges_the_record_and_manual_symbols(client: Any) -> None:
-    http, _saved = client
+    http = client
     document = http.get("/v1/screening/candidates").json()
     validate_document(document)
     assert document["session_date"] == "2026-11-09"
@@ -178,31 +125,16 @@ def test_candidates_route_merges_the_record_and_manual_symbols(client: Any) -> N
     assert http.get("/v1/screening/candidates?session_date=2026-11-07").status_code == 422
 
 
-def test_entry_check_route_stores_a_result_the_card_shows(client: Any) -> None:
-    http, saved = client
-    body = {"symbol": "AAPL", "strategy_id": saved["strategy_id"]}
-    first = http.post("/v1/screening/checks/entry", json=body)
-    assert first.status_code == 200, first.text
-    check = first.json()
-    validate_document(check)
-    assert check["status"] == "passed" and check["check_id"] >= 1
-    assert check["after_the_fact"] is False
-    assert http.get(f"/v1/screening/checks/{check['check_id']}").json() == check
-
-    second = http.post("/v1/screening/checks/entry", json=body).json()
-    listed = http.get("/v1/screening/candidates").json()["candidates"][0]
-    # Running again adds a result; the card shows the latest.
-    assert listed["checks"]["entry"]["check_id"] == second["check_id"] > check["check_id"]
-
-    missing = http.post("/v1/screening/checks/entry", json={**body, "symbol": "LATE"})
-    assert missing.status_code == 422
-    unknown = http.post("/v1/screening/checks/entry", json={**body, "strategy_id": "nope"})
-    assert unknown.status_code == 404
+def test_entry_check_a_is_retired(client: Any) -> None:
+    http = client
+    # ADR 0057 retired check A: the route is gone, unknown checks are still 404.
+    gone = http.post("/v1/screening/checks/entry", json={"symbol": "AAPL", "strategy_id": "x"})
+    assert gone.status_code in (404, 405)
     assert http.get("/v1/screening/checks/999").status_code == 404
 
 
 def test_the_candidate_list_carries_every_check_kind(client: Any, tmp_path: Path) -> None:
-    http, _saved = client
+    http = client
     other = ScreeningStore(tmp_path / "screening.sqlite3", lambda: NOW)
     for kind in ("news", "off_exchange", "dilution", "off_exchange_structure"):
         other.add_check(
@@ -220,14 +152,3 @@ def test_the_candidate_list_carries_every_check_kind(client: Any, tmp_path: Path
     validate_document(document)
     checks = document["candidates"][0]["checks"]
     assert set(checks) == {"news", "off_exchange", "dilution", "off_exchange_structure"}
-
-
-def test_without_adjusted_bars_the_check_uses_prices_as_traded(tmp_path: Path) -> None:
-    def refuses(*_: Any) -> Any:
-        raise InvalidBarsQueryError("this data provider does not offer adjusted daily bars")
-
-    saved = strategy(tmp_path, RULES)
-    outcome = entry_check(saved, "us:aapl:xnas:2026", NOW, synthetic_bars, refuses)
-    assert outcome["status"] == "passed"
-    assert outcome["result"]["adjustment"] == "raw"
-    assert "raw prices used" in outcome["warnings"][0]

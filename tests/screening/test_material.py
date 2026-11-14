@@ -372,10 +372,8 @@ def test_excluded_symbols_are_not_watched_and_passed_ones_carry_the_strategy(
         listing_app,
         store=lambda: screening,
         data_dir=lambda: tmp_path,
-        strategy=lambda _sid, _version: None,
         listing_for=lambda s: instrument_listing(s, "XNAS", "test", "test-r1", "test"),
         get_bars=lambda: get_bars,
-        get_adjusted=lambda: None,
         error_response=_error_response,
         clock=lambda: now,
     )
