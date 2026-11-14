@@ -67,6 +67,7 @@ def test_register_list_and_never_echo_secrets(client: TestClient) -> None:
         "finra",  # the dark pool Agent's FINRA API credential
         "ecos",  # the Bank of Korea USD/KRW rate for paper-order limits
         "anthropic",  # the review Agent's commentary key, not a market-data source
+        "openrouter",  # the technique card fallback model (ADR 0056)
     ]
     for response in (created, listing):
         assert SECRET not in response.text

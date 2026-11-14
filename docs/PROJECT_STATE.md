@@ -2855,3 +2855,15 @@
 - **API·패널:** 후보 목록 `candidates[].stage4`(계약 `$defs/ScreeningStage4`: 희석 공급 가격, 장외 체결 봉우리, 공매도 `available: false`, 부분마다 cutoff·생성 시각, `as_of` 뒤 검사는 뺌). '오늘의 후보' "정보(4단계)" 열.
 - **시험:** `tests/screening/test_stage4.py` 11개, 패널 테스트 1개, fixture `screening-candidates-stage4.json`.
 - **미확인:** 실제 분석기·Alpaca 키로 장중 실행(배포·재시작 뒤), 후보가 많은 날의 희석 처리량. 세션 뒤 실행과 오류 자동 재시도는 하지 않는다.
+
+## 기법 자료 조회·카드 추출 백엔드(ADR 0056 L1·L2) — 2026-11-14
+
+- **사용자 결정:** L1·L2 착수(2026-11-14 "L1·L2 시작"). 카드 추출 모델은 sonnet-5.5 확정·대체 luna(§5), 기준 미달은 스크립트 검사로 막는다.
+- **L1 `services/technique_cards/library.py`:** 도서관 CLI(`python -I -m kl.cli`)만 쓴다. 봉투 `status`로 판정(종료 코드로 판정하지 않음). 목록은 태그 구독 `매매기법`의 전달(`delivery list`, 커서 끝까지) → `item get`(태그 `매매기법`이 있는 current 자료만). 원문은 `context assemble` + `context hydrate`로 받아 `[mm:ss]` 줄이 가장 많은 층을 자막으로 남기고, 저장소 밖 캐시(`SIW_KL_CACHE_DIR`, 기본 `~/Library/Caches/siw/technique_sources`, 폴더 0700·파일 0600)에 둔다. 다시 쓰기 전마다 `context hydration-check`: `still_usable`·`conditional`이면 쓰고, `stop_using`·`unknown`이면 캐시를 지우고 카드에 근거 철회를 표시한다.
+- **L2 `extract.py`·`checks.py`·`store.py`·`service.py`:** 30분 넘는 자막은 평가와 같은 방식으로 나눠 구간마다 호출 → 스크립트로 합침. 구간마다 sonnet(strict json_schema, 16000) → 실패(length·거절·스키마·HTTP) 시 sonnet 한 번 더 → luna(OpenRouter, `provider.data_collection: deny`) 한 번 → 그래도 실패면 작업 실패로 사용자에게 알림. 스크립트 검사: 근거 없음(`ground_condition`, 숫자마다 ±15초 value_citation·지표 이름·인용 통과), 기준 없음(비교·비교 대상·숫자 없음), Claude 추론 표시, 원문 줄마다 인용한 조건·대상 표시(타임라인). 표시가 있는 조건은 사용자가 확인·수정·삭제해야 카드가 "준비됨"이 된다(규칙 빌더로 가는 L3의 문). 건마다 모델·토큰·비용·표시 수·사용자가 고친 조건 수를 남긴다. 저장은 `SIW_DATA_DIR/technique_cards.sqlite3`(원문은 저장하지 않고 해시만).
+- **API `services/api/technique_card_routes.py`:** `GET /v1/technique-sources`(5분 캐시, `?refresh=true`), `POST /v1/technique-sources/preview`(보낼 구간 수·글자 수·추정 비용, 원문은 응답에 없음), `POST /v1/technique-cards`(백그라운드 작업), `GET /v1/technique-cards/jobs/{id}`, `GET /v1/technique-cards`, `GET /v1/technique-cards/{id}`, `POST …/{id}/resolutions`(판 번호로 충돌 거절), `POST …/{id}/recheck`. 설정: `SIW_KL_ROOT`·`SIW_KL_TASK`·`SIW_KL_TAGSUBSCRIPTION`(`.env.example`). 계약 스키마 밖 문서(앱 내부).
+- **키:** 키 화면에 OpenRouter(`openrouter`, luna 대체용) 추가 — 계약 `provider` 목록 두 곳·생성 타입·키 목록 시험.
+- **수정:** `structured_scoring.merge_parts`가 같은 구간 안의 서로 다른 조건(같은 필드·같은 첫 인용 시각)을 겹침 중복으로 지우던 결함. 앞 구간과 겹친 것만 지운다. 확인 평가(입력 sha256 `ab41c235…5e05`) 재채점: 요약 수치(필드·인용률·모호 재현·지어낸·잘못 둔) 변화 없음, 한 모델의 인용 수만 130→140.
+- **실제 도서관 확인(읽기만):** 18건 조회(18.2초), `at8brpnawyE` 자막 238줄 받기(0600/0700, unverified·private), 재확인 `conditional`, 캐시 재사용.
+- **시험:** `tests/technique_cards/test_card_pipeline.py` 15개(설정, 쪽 넘김·태그 거르기, 오류 봉투, 캐시 권한·변조·삭제, 철회 시 캐시 삭제, 재시도 사다리·실패, 구간 호출·합치기, Anthropic·OpenRouter 요청 모양·가격, 근거 없음·기준 없음, 타임라인, 경로 전 흐름·실패 작업).
+- **미확인:** 실제 sonnet·luna 호출(키 화면 키로, 비용 발생 — 확인 화면과 함께 사용자가 첫 실행), OpenRouter에서 strict 스키마+`data_collection: deny`로 luna가 받아지는지, 확인 화면(SIW Research, 다음 작업), 실행 중 앱 종료 시 작업은 다음 시작 때 실패로 바뀜.

@@ -300,7 +300,8 @@ def _numbers_of(condition: dict[str, Any]) -> tuple[Decimal | None, ...]:
 def merge_parts(parts: list[object], source_id: str) -> object:
     """Cards written for the time slices of one long source, merged into one card (#SIW-lib-16).
 
-    - An item said twice in the 30 s overlap (same field and first citation time) is kept once.
+    - An item said twice in the 30 s overlap (same field and first citation time as an item of
+      an earlier slice) is kept once. Two items of one slice are never merged.
     - Conditions of different slices with the same slots but different numbers are both kept,
       and an ambiguity is added: the script does not choose which one the speaker meant.
     """
@@ -308,16 +309,18 @@ def merge_parts(parts: list[object], source_id: str) -> object:
         return None
     merged: dict[str, Any] = {"source_id": source_id, "title": ""}
     for name in ("conditions", "timeframe", "universe", "position", "inexpressible", "ambiguities"):
-        seen: set[tuple[str, str]] = set()
+        seen: set[tuple[str, str]] = set()  # keys of earlier slices only
         merged[name] = []
         for part in parts:
             assert isinstance(part, dict)
+            keys = set()
             for item in part.get(name, []):
                 key = (str(item.get("field", name)), _first_locator(item))
                 if key[1] and key in seen:
-                    continue
-                seen.add(key)
+                    continue  # said again in the overlap with an earlier slice
+                keys.add(key)
                 merged[name].append(item)
+            seen |= keys
     by_slots: dict[tuple[str, ...], list[dict[str, Any]]] = {}
     for condition in merged["conditions"]:
         if _direction(str(condition.get("comparator"))) is not None:

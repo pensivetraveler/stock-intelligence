@@ -636,7 +636,8 @@ export interface CredentialSummary {
     | "meritz"
     | "finra"
     | "ecos"
-    | "anthropic";
+    | "anthropic"
+    | "openrouter";
   label: string;
   account_suffix: string | null;
   /**
@@ -671,7 +672,8 @@ export interface CredentialListResponse {
       | "meritz"
       | "finra"
       | "ecos"
-      | "anthropic";
+      | "anthropic"
+      | "openrouter";
     display_name: string;
     per_account: boolean;
     /**
