@@ -4,6 +4,10 @@ Transcripts are lines of `[mm:ss] text` (Commonplace stores YouTube captions thi
 passes when, after normalising, it is inside the cited line joined with one line before and two
 after; automatic captions split a sentence across lines, and a citation may point at its start.
 PDF citations (`p.<page>`) are not checked yet: PDF text comes with knowledge-library-113.
+
+Scoring rules v2 (gateway #SIW-lib-12) use a time window instead: every line starting within
+±15 seconds of the cited time. Automatic captions put two lines on one time, so a window of lines
+was a few seconds wide; a time window treats automatic and uploaded captions alike.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ LOCATOR = re.compile(r"^\s*\[?(?:(\d+):)?(\d{1,2}):(\d{2})\]?\s*$")
 DOT_OUTSIDE_NUMBER = re.compile(r"(?<!\d)\.|\.(?!\d)")
 WINDOW_BEFORE = 1
 WINDOW_AFTER = 2
+WINDOW_SECONDS = 15  # rules v2
 
 
 @dataclass(frozen=True)
@@ -73,7 +78,15 @@ class CitationResult:
     reason: str
 
 
-def check_citation(lines: list[Line], locator: str, quote: str) -> CitationResult:
+def window_text(lines: list[Line], at: int, seconds: int = WINDOW_SECONDS) -> str:
+    """The text of every line starting within `seconds` of `at` (rules v2)."""
+    return " ".join(line.text for line in lines if at - seconds <= line.seconds <= at + seconds)
+
+
+def check_citation(
+    lines: list[Line], locator: str, quote: str, window_seconds: int | None = None
+) -> CitationResult:
+    """`window_seconds` None: rules v1 (cited line, one before, two after); else a time window."""
     if locator.strip().lower().startswith("p."):
         return CitationResult(locator, quote, False, "pdf citations are not checked yet")
     at = locator_seconds(locator)
@@ -82,6 +95,12 @@ def check_citation(lines: list[Line], locator: str, quote: str) -> CitationResul
     wanted = normalise(quote)
     if not wanted:
         return CitationResult(locator, quote, False, "empty quote")
+    if window_seconds is not None:
+        if not lines or at < lines[0].seconds - window_seconds:
+            return CitationResult(locator, quote, False, "cited time is before the transcript")
+        if wanted in normalise(window_text(lines, at, window_seconds)):
+            return CitationResult(locator, quote, True, "")
+        return CitationResult(locator, quote, False, "quote not found near the cited time")
     # The cited line: the last one starting at or before the cited time.
     index = max((i for i, line in enumerate(lines) if line.seconds <= at), default=None)
     if index is None:
@@ -92,7 +111,9 @@ def check_citation(lines: list[Line], locator: str, quote: str) -> CitationResul
     return CitationResult(locator, quote, False, "quote not found near the cited time")
 
 
-def check_card(card: dict[str, Any], lines: list[Line]) -> list[CitationResult]:
+def check_card(
+    card: dict[str, Any], lines: list[Line], window_seconds: int | None = None
+) -> list[CitationResult]:
     """Every citation in a card, checked; a sourced statement with no citation fails too."""
     results: list[CitationResult] = []
     for name, value in card.items():
@@ -107,7 +128,10 @@ def check_card(card: dict[str, Any], lines: list[Line]) -> list[CitationResult]:
             for citation in citations:
                 results.append(
                     check_citation(
-                        lines, str(citation.get("locator", "")), str(citation.get("quote", ""))
+                        lines,
+                        str(citation.get("locator", "")),
+                        str(citation.get("quote", "")),
+                        window_seconds,
                     )
                 )
     return results

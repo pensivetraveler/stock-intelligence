@@ -2818,6 +2818,14 @@
 - **변경:** 문서만(ADR 0057 2단계, ADR 목록). 코드 변경 없음.
 - **구현 때 메울 차이:** 공모 기사는 news-analysis에서 범위 밖이라 NIR이 없고 신청·완료 구분 규칙이 없음, 실적 보도자료 문구 누락 가능, NIR 입력(시가총액·이전 매출·시장 규모·p값)과 두 결론 출력이 없음.
 
+## 기법 카드 실제 자료 평가·채점 규칙 v2(ADR 0056 §5) — 2026-11-14
+
+- **실제 자료:** 사용자가 영상 12개를 Commonplace로 등록(서명 3회), 도서관 CLI로 자막 hydrate, 정답 카드 12개(모델 결과 전에), 게이트웨이가 세 모델로 eval(maxTokens 16000). 자료·정답은 `data/technique_eval/real/`(로컬, gitignore).
+- **추가:** `services/technique_cards/grounding.py`(숫자·숫자 낱말·지표 이름 근거 대조), 인용 ±15초 창(`citations.window_text`), 채점 규칙 v2(`SCORING_RULES_VERSION = 2`, v1은 `--rules 1`로 재현), 정답 `post_hoc` 항목과 `score --without-post-hoc`.
+- **결과:** v1은 세 모델 모두 불합격이었으나 지어낸 조건 28건 중 원문에 없는 것 0건 → v2로 바꿈. 같은 리포트 참고 재채점: 지어낸 sonnet 2·luna 2·haiku 0, 필드 일치 (가) 89.3%·87.5%·85.7%, 모호 재현 82.1%·56.4%·82.1% — 확정에 쓰지 않음.
+- **시험:** `tests/technique_cards` 24개(숫자 낱말·한국어 수사 오인 방지, 근거 대조, 15초 창, 문장 합치기, post_hoc).
+- **미확인:** 새 실제 자료 4~6건으로 v2 확인(배정 확정 전), PDF 근거 대조(PDF 글자 추출 전).
+
 ## 2단계 재료 판정(ADR 0057 U-b, SIW 몫) — 2026-11-14
 
 - **추가:** `services/screening/material.py`(뉴스 검사의 `news_check.conclusions` → 통과·그날 제외·재료 미확인, 전략 보통·보수적, 기사별 근거 rules·nir·rules_fallback·상속 NIR), `services/screening/market_cap.py`(요청 `context`의 cutoff 시가총액 = Toss 발행주식수 × cutoff 전 마지막 확정 1분봉 종가, cutoff 뒤 값은 보내지 않음, 끝난 세션은 보내지 않음, 이전 매출은 출처 없어 안 보냄), `ScreeningStore.documents`. 검사 B 판 `screening-news-4`(`result.context_sent`·`context_note`).
