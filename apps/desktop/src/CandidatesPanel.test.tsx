@@ -3,8 +3,11 @@ import type {
   ScreeningCheck,
   ScreeningFlowWatch,
   ScreeningStage2,
+  ScreeningStage4,
 } from "@siw/contracts/types";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { CandidatesPanel, NirDigest } from "./CandidatesPanel";
@@ -271,6 +274,46 @@ describe("CandidatesPanel", () => {
     expect(basis.textContent).toMatch(/AAPL Wins Purchase Order/);
     expect(basis.textContent).toMatch(/no · rules/);
     expect(basis.textContent).toMatch(/yes · nir · twin article's LLM answer/);
+  });
+
+  it("shows stage 4's facts, the skipped stage 2 exclusion and no short data", async () => {
+    // The contract fixture the API made (tests/screening/test_stage4.py).
+    const made = JSON.parse(
+      readFileSync(
+        resolve(
+          import.meta.dirname,
+          "../../../tests/fixtures/contracts/valid/screening-candidates-stage4.json",
+        ),
+        "utf8",
+      ),
+    ) as ScreeningCandidates;
+    const info = (symbol: string): ScreeningStage4 => {
+      const found = made.candidates.find((item) => item.symbol === symbol);
+      if (!found?.stage4) throw new Error(`no stage 4 for ${symbol}`);
+      return found.stage4;
+    };
+    const document = candidates();
+    document.candidates[0].stage4 = info("PASS");
+    document.candidates[1].stage4 = info("EXCL");
+    const api = {
+      candidates: vi.fn(() => Promise.resolve(document)),
+      addCandidate: vi.fn(),
+      check: vi.fn(),
+      flow: vi.fn(() => Promise.reject(new Error("no flow"))),
+      ...unused(),
+    } as ScreeningApi;
+    render(<CandidatesPanel api={api} onPick={vi.fn()} />);
+    const passed = await screen.findByLabelText("AAPL Information (stage 4)");
+    const levels = info("PASS").off_exchange?.levels.length ?? 0;
+    expect(passed.textContent).toBe(
+      `Dilution done · Off-exchange peaks ${levels} · no short data`,
+    );
+    expect(passed.getAttribute("title")).toMatch(/warrant \$1\.25/);
+    expect(passed.getAttribute("title")).toMatch(/automatic/);
+    expect(passed.getAttribute("title")).toMatch(/공매도 자료 없음/);
+    expect(
+      screen.getByLabelText("ZZZQ Information (stage 4)").textContent,
+    ).toBe("Not run (stage 2)");
   });
 
   it("says when there is no condition record and adds a ticker", async () => {

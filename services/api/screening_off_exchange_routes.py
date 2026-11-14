@@ -48,6 +48,92 @@ class OffExchangeCheckRequest(BaseModel):
     sessions: int = Field(default=OffExchangeLimits.sessions, ge=1, le=20)
 
 
+class OffExchangeChecks:
+    """Check D runs, shared by the route and the stage 4 runner (ADR 0057 §4)."""
+
+    def __init__(
+        self,
+        *,
+        finra_review: Callable[[], FinraReview | None],
+        clock: Callable[[], datetime],
+        monotonic: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self._finra_review = finra_review
+        self._clock = clock
+        self._monotonic = monotonic
+        self._sleep = sleep
+
+    def _finra(
+        self, instrument_id: str, cutoff: datetime
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        review = self._finra_review()
+        if review is None:
+            return None, "FINRA 주간 ATS 맥락: 공개 자료 저장소가 설정되지 않아 넣지 않았다."
+        try:
+            return finra_context(review(instrument_id, cutoff)), None
+        except (SourceError, MarketDataError, ValueError) as exc:
+            return None, f"FINRA 주간 ATS 맥락을 읽지 못했다: {type(exc).__name__}"
+
+    def run(
+        self,
+        screening: ScreeningStore,
+        opened: tuple[StructureStore, SessionFiller],
+        adapter: Any,
+        window: Any,
+        symbol: str,
+        instrument_id: str,
+        sessions: int = OffExchangeLimits.sessions,
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Runs check D at now (or the session's close) and stores it."""
+        structure_store, filler = opened
+        now = self._clock()
+        cutoff = min(now, window.post_close_utc)
+        started = self._monotonic()
+        context, problem = self._finra(instrument_id, cutoff)
+        # One time budget for the whole request (the screen waits 60 s): FINRA first.
+        budget = OffExchangeLimits()
+        spent = self._monotonic() - started
+        limits = OffExchangeLimits(
+            sessions=sessions,
+            max_seconds=max(MIN_TRADE_SECONDS, budget.max_seconds - spent),
+            live_max_seconds=max(MIN_TRADE_SECONDS, budget.live_max_seconds - spent),
+        )
+        outcome = off_exchange_check(
+            adapter.trade_pages,
+            symbol=symbol,
+            cutoff=cutoff,
+            now=now,
+            publication_delay_minutes=adapter.config.publication_delay_minutes,
+            cache=structure_store.cache,
+            filler=filler,
+            limits=limits,
+            finra=context,
+            monotonic=self._monotonic,
+            sleep=self._sleep,
+        )
+        if problem is not None:
+            outcome["warnings"].append(problem)
+        if extra:
+            outcome["result"] = {**outcome["result"], **extra}
+        document = {
+            "kind": "screening_check",
+            "schema_version": "0.1",
+            "check": "off_exchange",
+            "session_date": window.session_date.isoformat(),
+            "symbol": symbol,
+            "instrument_id": instrument_id,
+            "cutoff_utc": utc_text(cutoff),
+            "created_at_utc": utc_text(now),
+            # A later run for an earlier time sees stored data, not what was live then.
+            "after_the_fact": now > window.post_close_utc,
+            **outcome,
+        }
+        validate_document({**document, "check_id": 0})
+        return screening.add_check(document)
+
+
 def register_screening_off_exchange_routes(
     application: FastAPI,
     *,
@@ -75,14 +161,9 @@ def register_screening_off_exchange_routes(
             day -= timedelta(days=1)
         return None
 
-    def finra(instrument_id: str, cutoff: datetime) -> tuple[dict[str, Any] | None, str | None]:
-        review = finra_review()
-        if review is None:
-            return None, "FINRA 주간 ATS 맥락: 공개 자료 저장소가 설정되지 않아 넣지 않았다."
-        try:
-            return finra_context(review(instrument_id, cutoff)), None
-        except (SourceError, MarketDataError, ValueError) as exc:
-            return None, f"FINRA 주간 ATS 맥락을 읽지 못했다: {type(exc).__name__}"
+    checks = OffExchangeChecks(
+        finra_review=finra_review, clock=clock, monotonic=monotonic, sleep=sleep
+    )
 
     @application.post("/v1/screening/checks/off_exchange", response_model=None)
     def run_off_exchange_check(request: Request, body: OffExchangeCheckRequest) -> Response:
@@ -115,50 +196,10 @@ def register_screening_off_exchange_routes(
                 "alpaca_unconfigured",
                 "Check D reads Alpaca SIP trades: register an enabled Alpaca key",
             )
-        structure_store, filler = opened
         instrument_id = str(listing["instrument"]["instrument_id"])
-        now = clock()
-        cutoff = min(now, window.post_close_utc)
-        started = monotonic()
-        context, problem = finra(instrument_id, cutoff)
-        # One time budget for the whole request (the screen waits 60 s): FINRA first.
-        budget = OffExchangeLimits()
-        spent = monotonic() - started
-        limits = OffExchangeLimits(
-            sessions=body.sessions,
-            max_seconds=max(MIN_TRADE_SECONDS, budget.max_seconds - spent),
-            live_max_seconds=max(MIN_TRADE_SECONDS, budget.live_max_seconds - spent),
+        stored = checks.run(
+            screening, opened, adapter, window, symbol, instrument_id, body.sessions
         )
-        outcome = off_exchange_check(
-            adapter.trade_pages,
-            symbol=symbol,
-            cutoff=cutoff,
-            now=now,
-            publication_delay_minutes=adapter.config.publication_delay_minutes,
-            cache=structure_store.cache,
-            filler=filler,
-            limits=limits,
-            finra=context,
-            monotonic=monotonic,
-            sleep=sleep,
-        )
-        if problem is not None:
-            outcome["warnings"].append(problem)
-        document = {
-            "kind": "screening_check",
-            "schema_version": "0.1",
-            "check": "off_exchange",
-            "session_date": window.session_date.isoformat(),
-            "symbol": symbol,
-            "instrument_id": instrument_id,
-            "cutoff_utc": utc_text(cutoff),
-            "created_at_utc": utc_text(now),
-            # A later run for an earlier time sees stored data, not what was live then.
-            "after_the_fact": now > window.post_close_utc,
-            **outcome,
-        }
-        validate_document({**document, "check_id": 0})
-        stored = screening.add_check(document)
         validate_document(stored)
         return JSONResponse(content=stored)
 

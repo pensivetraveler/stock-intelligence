@@ -3,6 +3,7 @@ import type {
   ScreeningCheck,
   ScreeningFlowWatch,
   ScreeningStage2,
+  ScreeningStage4,
 } from "@siw/contracts/types";
 import { Fragment, useEffect, useState } from "react";
 
@@ -133,6 +134,73 @@ function stage2Text(
     .filter(Boolean)
     .join("\n");
   return { text, title };
+}
+
+/** Stage 4 (ADR 0057 §4): e.g. "희석 완료 · 장외 봉우리 3 · 공매도 없음". Facts only. */
+function stage4Text(
+  t: ReturnType<typeof useI18n>["t"],
+  info: ScreeningStage4 | undefined,
+): { text: string; title: string } {
+  if (!info) return { text: "—", title: "" };
+  if (info.state === "stage2_excluded")
+    return {
+      text: t("candidates.stage4.excluded"),
+      title: t("candidates.stage4.excludedTitle"),
+    };
+  if (info.state === "not_started")
+    return {
+      text: t("candidates.stage4.notStarted"),
+      title: t("candidates.stage4.notStartedTitle"),
+    };
+  const dilution = info.dilution;
+  const off = info.off_exchange;
+  const parts = [
+    dilution
+      ? `${t("candidates.stage4.dilution")} ${statusText(t, dilution.status)}`
+      : `${t("candidates.stage4.dilution")} —`,
+    off
+      ? off.status === "pending"
+        ? `${t("candidates.stage4.offExchange")} ${statusText(t, off.status)}`
+        : t("candidates.stage4.peaks", { count: off.levels.length })
+      : `${t("candidates.stage4.offExchange")} —`,
+    t("candidates.stage4.noShort"),
+  ];
+  const prices = (dilution?.securities ?? [])
+    .map((item) => {
+      const security = item as { kind?: string; price?: SupplyValue | null };
+      const amount = security.price?.amount;
+      return amount ? `${security.kind ?? "?"} $${amount}` : null;
+    })
+    .filter((item): item is string => item !== null);
+  const title = [
+    dilution
+      ? t("candidates.stage4.dilutionTitle", {
+          asOf: dilution.analysis_as_of,
+          prices: prices.length > 0 ? prices.join(", ") : "—",
+          by: t(`candidates.stage4.by.${dilution.requested_by}`),
+        })
+      : "",
+    off
+      ? t("candidates.stage4.offTitle", {
+          until: off.data_until_utc ? newYorkTime(off.data_until_utc) : "—",
+          levels:
+            off.levels.length > 0
+              ? off.levels
+                  .map(
+                    (level) =>
+                      `$${level.price_low}–${level.price_high} (${level.share_pct}%)`,
+                  )
+                  .join(", ")
+              : "—",
+          by: t(`candidates.stage4.by.${off.requested_by}`),
+        })
+      : "",
+    info.short_interest.note,
+    ...info.notes,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { text: parts.join(" · "), title };
 }
 
 function errorText(error: unknown): string {
@@ -544,6 +612,9 @@ export function CandidatesPanel({
                 <th title={t("candidates.flow.rules")}>
                   {t("candidates.column.flow")}
                 </th>
+                <th title={t("candidates.stage4.facts")}>
+                  {t("candidates.column.stage4")}
+                </th>
                 {OTHER_KINDS.map((kind) => (
                   <th key={kind}>{t(`candidates.column.${kind}`)}</th>
                 ))}
@@ -558,6 +629,7 @@ export function CandidatesPanel({
                   flow?.candidates.find((row) => row.symbol === item.symbol),
                 );
                 const stage2Cell = stage2Text(t, item.stage2);
+                const stage4Cell = stage4Text(t, item.stage4);
                 const unknown = LIST_SEEN.includes(item.first_seen_how);
                 const row = (
                   <tr key={item.symbol}>
@@ -658,6 +730,12 @@ export function CandidatesPanel({
                     >
                       {flowCell.text}
                     </td>
+                    <td
+                      title={stage4Cell.title}
+                      aria-label={`${item.symbol} ${t("candidates.column.stage4")}`}
+                    >
+                      {stage4Cell.text}
+                    </td>
                     {OTHER_KINDS.map((kind) => {
                       const found = item.checks[kind];
                       return (
@@ -697,7 +775,7 @@ export function CandidatesPanel({
                 return index === firstAfterNoon && asOf === null ? (
                   <Fragment key={item.symbol}>
                     <tr>
-                      <th colSpan={7 + OTHER_KINDS.length}>
+                      <th colSpan={8 + OTHER_KINDS.length}>
                         {t("candidates.afterNoon")}
                       </th>
                     </tr>
