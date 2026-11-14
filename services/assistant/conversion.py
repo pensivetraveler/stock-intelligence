@@ -308,12 +308,21 @@ Call = Callable[[str, list[dict[str, Any]]], dict[str, Any]]
 
 
 def convert(
-    code: str, conditions: list[str], language: str, call: Call
+    code: str,
+    conditions: list[str],
+    language: str,
+    call: Call,
+    system: str | None = None,
+    request: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """(the conversion as stored, each reply's usage). A definition that fails validation goes
-    back to Claude with the error; a mapping problem does not, it is shown to the investor."""
-    system = system_prompt(language)
-    messages: list[dict[str, Any]] = [{"role": "user", "content": request_text(code, conditions)}]
+    back to Claude with the error; a mapping problem does not, it is shown to the investor.
+
+    `system` and `request` replace the Pine prompt and first message for another source of
+    conditions (technique cards, ADR 0056); the checks are the same."""
+    system = system if system is not None else system_prompt(language)
+    first = request if request is not None else request_text(code, conditions)
+    messages: list[dict[str, Any]] = [{"role": "user", "content": first}]
     usage: list[dict[str, Any]] = []
     answer: dict[str, Any] = {}
     definition: dict[str, Any] | None = None

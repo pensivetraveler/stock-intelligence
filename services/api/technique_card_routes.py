@@ -8,6 +8,10 @@
 - `GET  /v1/technique-cards/{card_id}`              card, checks, resolutions, timeline
 - `POST /v1/technique-cards/{card_id}/resolutions`  the user's confirm / edit / drop + answers
 - `POST /v1/technique-cards/{card_id}/recheck`      library recheck before reuse
+- `POST /v1/technique-cards/{card_id}/drafts`       rules strategy draft from a ready card (L3)
+- `GET  /v1/technique-cards/{card_id}/drafts`       that card's drafts
+- `GET  /v1/technique-drafts/{draft_id}`            one draft with what blocks saving it
+- `POST /v1/technique-drafts/{draft_id}/save`       save as a rules strategy (the user's button)
 
 The extraction runs in a background thread (a long source takes minutes); one at a time per
 item. Error messages never carry transcript text. These documents are local to the app and
@@ -27,6 +31,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import Response
 
 from services.api.journal_routes import ErrorResponse
+from services.review.conversation import ConversationError
+from services.technique_cards import strategy_draft
 from services.technique_cards.extract import ExtractionError, Keys
 from services.technique_cards.library import LibraryError
 from services.technique_cards.service import SourceWithdrawnError, TechniqueCards
@@ -46,6 +52,21 @@ class ItemRequest(BaseModel):
     model: Literal["claude-sonnet-5-5", "google/gemini-4-argon", "openai/gpt-6-luna"] = (
         "claude-sonnet-5-5"
     )
+
+
+ModelChoice = Literal["claude-sonnet-5-5", "google/gemini-4-argon", "openai/gpt-6-luna"]
+
+
+class DraftRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+    model: ModelChoice = "claude-sonnet-5-5"
+
+
+class SaveDraftRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=120)
+    # Items the rules cannot express are left out only when the user ticks this.
+    accept_unconvertible: bool = False
 
 
 class ConditionResolution(BaseModel):
@@ -91,6 +112,7 @@ def register_technique_card_routes(
     keys: Callable[[], Keys],
     error_response: ErrorResponse,
     start: Callable[[Callable[[], None]], None] | None = None,
+    strategies: Callable[[], Any] = lambda: None,
 ) -> None:
     running = threading.Lock()
 
@@ -271,3 +293,102 @@ def register_technique_card_routes(
             return JSONResponse({"kind": "technique_card", **_summary(service.recheck(card_id))})
         except CardNotFoundError:
             return error_response(request, 404, "technique_card_not_found", "No such card")
+
+    def draft_document(service: TechniqueCards, draft_id: str) -> dict[str, Any]:
+        found = service.store.draft(draft_id)
+        card = service.store.get(found["card_id"])
+        result = found["result"]
+        blocks = [] if result is None else strategy_draft.save_blocks(result, card, accept=True)
+        return {
+            "kind": "technique_card_draft",
+            **found,
+            "save_blocks": blocks,
+            "needs_accept": bool(result and result["unconvertible"]),
+        }
+
+    @application.post("/v1/technique-cards/{card_id}/drafts", response_model=None)
+    def start_draft(request: Request, card_id: str, body: DraftRequest) -> Response:
+        service = cards()
+        if service is None:
+            return unavailable(request)
+        try:
+            card = service.store.get(card_id)
+        except CardNotFoundError:
+            return error_response(request, 404, "technique_card_not_found", "No such card")
+        if not card["ready"]:
+            return error_response(
+                request, 409, "technique_card_not_ready", "; ".join(card["blocks"])
+            )
+        with running:
+            existing = service.store.running_draft(card_id)
+            if existing is not None:
+                return JSONResponse(
+                    status_code=202,
+                    content={"kind": "technique_card_draft_job", "draft_id": existing},
+                )
+            draft_id = service.store.new_draft(card_id, body.model)
+        current_keys = keys()
+
+        def work() -> None:
+            result, error = None, ""
+            try:
+                result = strategy_draft.draft(card, body.model, current_keys)
+            except ConversationError as exc:
+                error = str(exc)
+            except Exception as exc:  # noqa: BLE001 - the draft must end, and say why
+                error = f"unexpected {type(exc).__name__}"
+            service.store.finish_draft(draft_id, result, error)
+
+        launch(work)
+        return JSONResponse(
+            status_code=202, content={"kind": "technique_card_draft_job", "draft_id": draft_id}
+        )
+
+    @application.get("/v1/technique-cards/{card_id}/drafts", response_model=None)
+    def list_drafts(request: Request, card_id: str) -> Response:
+        service = cards()
+        if service is None:
+            return unavailable(request)
+        return JSONResponse(
+            {
+                "kind": "technique_card_drafts",
+                "drafts": [
+                    draft_document(service, d["draft_id"]) for d in service.store.drafts(card_id)
+                ],
+            }
+        )
+
+    @application.get("/v1/technique-drafts/{draft_id}", response_model=None)
+    def get_draft(request: Request, draft_id: str) -> Response:
+        service = cards()
+        if service is None:
+            return unavailable(request)
+        try:
+            return JSONResponse(draft_document(service, draft_id))
+        except CardNotFoundError:
+            return error_response(request, 404, "technique_draft_not_found", "No such draft")
+
+    @application.post("/v1/technique-drafts/{draft_id}/save", response_model=None)
+    def save_draft(request: Request, draft_id: str, body: SaveDraftRequest) -> Response:
+        service = cards()
+        store = strategies()
+        if service is None:
+            return unavailable(request)
+        if store is None:
+            return error_response(
+                request, 503, "backtest_storage_unconfigured", "Set SIW_DATA_DIR to keep strategies"
+            )
+        try:
+            found = service.store.draft(draft_id)
+            card = service.store.get(found["card_id"])
+        except CardNotFoundError:
+            return error_response(request, 404, "technique_draft_not_found", "No such draft")
+        result = found["result"]
+        if result is None:
+            return error_response(request, 409, "technique_draft_not_done", found["error"] or "")
+        blocks = strategy_draft.save_blocks(result, card, body.accept_unconvertible)
+        if blocks:
+            return error_response(request, 409, "technique_draft_blocked", "; ".join(blocks))
+        saved = store.save_strategy(body.name, result["conversion"]["definition"])
+        service.store.saved_as(draft_id, str(saved["strategy_id"]), int(saved["version"]))
+        return JSONResponse(draft_document(service, draft_id))

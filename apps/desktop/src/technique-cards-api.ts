@@ -148,6 +148,47 @@ export interface TechniqueCard extends CardSummary {
   timeline: TimelineRow[] | null;
 }
 
+/** Models the user may pick for one extraction or draft; the first is the assigned one. */
+export const CHOOSABLE_MODELS = [
+  "claude-sonnet-5-5",
+  "google/gemini-4-argon",
+  "openai/gpt-6-luna",
+] as const;
+
+export interface DraftMapping {
+  index: number;
+  condition: string;
+  status: "mapped" | "unconvertible";
+  rule_paths: string[];
+  reason: string;
+}
+
+export interface TechniqueDraft {
+  kind: "technique_card_draft";
+  draft_id: string;
+  card_id: string;
+  state: "running" | "done" | "failed";
+  model: string;
+  error: string;
+  result: {
+    items: string[];
+    conversion: {
+      definition: Record<string, unknown> | null;
+      mapping: DraftMapping[];
+      problems: string[];
+      notes: string;
+      complete: boolean;
+    };
+    unconvertible: number;
+    blocking: string[];
+    cost_usd: string;
+  } | null;
+  strategy_id: string | null;
+  strategy_version: number | null;
+  save_blocks: string[];
+  needs_accept: boolean;
+}
+
 export interface TechniqueCardsApi {
   sources(refresh?: boolean): Promise<TechniqueSource[]>;
   /** `model`: the assigned sonnet when left out, or another choosable model. */
@@ -163,6 +204,15 @@ export interface TechniqueCardsApi {
     ambiguities: Record<string, string>,
   ): Promise<CardSummary>;
   recheck(cardId: string): Promise<CardSummary>;
+  /** Rules strategy draft from a ready card (ADR 0056 L3). */
+  startDraft(cardId: string, model: string): Promise<{ draft_id: string }>;
+  draft(draftId: string): Promise<TechniqueDraft>;
+  drafts(cardId: string): Promise<TechniqueDraft[]>;
+  saveDraft(
+    draftId: string,
+    name: string,
+    acceptUnconvertible: boolean,
+  ): Promise<TechniqueDraft>;
 }
 
 export function createTechniqueCardsApi(
@@ -233,6 +283,37 @@ export function createTechniqueCardsApi(
         `/v1/technique-cards/${encodeURIComponent(cardId)}/recheck`,
         "technique_card",
         { method: "POST" },
+      ),
+    startDraft: (cardId, model) =>
+      callForKind<{ kind: "technique_card_draft_job"; draft_id: string }>(
+        target,
+        `/v1/technique-cards/${encodeURIComponent(cardId)}/drafts`,
+        "technique_card_draft_job",
+        { body: { model } },
+      ),
+    draft: (draftId) =>
+      callForKind<TechniqueDraft>(
+        target,
+        `/v1/technique-drafts/${encodeURIComponent(draftId)}`,
+        "technique_card_draft",
+      ),
+    drafts: async (cardId) =>
+      (
+        await callForKind<{
+          kind: "technique_card_drafts";
+          drafts: TechniqueDraft[];
+        }>(
+          target,
+          `/v1/technique-cards/${encodeURIComponent(cardId)}/drafts`,
+          "technique_card_drafts",
+        )
+      ).drafts,
+    saveDraft: (draftId, name, acceptUnconvertible) =>
+      callForKind<TechniqueDraft>(
+        target,
+        `/v1/technique-drafts/${encodeURIComponent(draftId)}/save`,
+        "technique_card_draft",
+        { body: { name, accept_unconvertible: acceptUnconvertible } },
       ),
   };
 }

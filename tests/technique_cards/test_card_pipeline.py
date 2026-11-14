@@ -518,3 +518,219 @@ def test_routes_pass_the_model_and_refuse_others(
     )
     refused = client.post("/v1/technique-cards", json={"item_ref": ITEM, "model": "x/y"})
     assert refused.status_code == 422
+
+
+# --- L3: strategy drafts ------------------------------------------------------------------
+
+from services.technique_cards import strategy_draft  # noqa: E402
+
+DONCHIAN = {
+    "type": "rules",
+    "entry": {
+        "op": "gt",
+        "left": {"price": "close"},
+        "right": {"indicator": "dc", "params": {"length": 20}, "output": "upper", "offset": 1},
+    },
+    "exit": {
+        "op": "lt",
+        "left": {"price": "close"},
+        "right": {"indicator": "dc", "params": {"length": 10}, "output": "lower", "offset": 1},
+    },
+}
+
+
+def _ready_card(store: CardStore) -> dict[str, Any]:
+    card = _card()
+    card["position"] = [{"text": "Bet small", "basis": "source", "citations": []}]
+    card["conditions"] = [
+        _condition(),
+        _condition(field="exit", text="Sell under the 10-day low", comparator="below"),
+        card["conditions"][3],  # "skip when the tools disagree": the user drops it
+    ]
+    card_id = store.add(
+        {
+            "item_ref": ITEM, "title": "Demo", "url": "u", "card": card,
+            "checks": check_card(card, LINES), "usage": {}, "attempts": [], "versions": {},
+            "context_ref": "c", "revision_ref": "r", "transcript_sha256": "s",
+            "verification_status": "unverified", "recheck_outcome": "conditional",
+        }
+    )  # fmt: skip
+    conditions = {
+        str(c["index"]): {"action": "confirm", "condition": None, "note": ""}
+        for c in check_card(card, LINES)["conditions"]
+        if c["flags"]
+    }
+    conditions["2"] = {"action": "drop", "condition": None, "note": ""}
+    return store.resolve(card_id, 1, conditions, {"0": "2x"})
+
+
+def _reply(definition: dict[str, Any] | None, mapping: list[dict[str, Any]]) -> dict[str, Any]:
+    answer = {
+        "definition_json": json.dumps(definition) if definition else "",
+        "mapping": mapping,
+        "notes": "",
+    }
+    return {"content": [{"type": "text", "text": json.dumps(answer)}], "stop_reason": "end_turn"}
+
+
+def _store(tmp_path: Path) -> CardStore:
+    return CardStore(
+        tmp_path / "cards.sqlite3", lambda: datetime(2026, 11, 15, tzinfo=timezone.utc)
+    )
+
+
+def test_card_items_skip_dropped_conditions_and_add_positions(tmp_path: Path) -> None:
+    row = _ready_card(_store(tmp_path))
+    items = strategy_draft.card_items(row)
+    assert len(items) == 3
+    assert items[0].startswith("[entry, long, from the source]")
+    assert items[2] == "[position] Bet small"
+    assert "2x" in strategy_draft.request_text(row, items)
+
+
+def test_draft_maps_every_item_and_marks_unconvertible(tmp_path: Path) -> None:
+    row = _ready_card(_store(tmp_path))
+    seen: list[list[dict[str, Any]]] = []
+
+    def call(system: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        seen.append(messages)
+        assert "technique card" in system and "dc" in system
+        return _reply(
+            DONCHIAN,
+            [
+                {"index": 0, "status": "mapped", "rule_paths": ["/entry"], "reason": ""},
+                {"index": 1, "status": "mapped", "rule_paths": ["/exit"], "reason": ""},
+                {"index": 2, "status": "unconvertible", "rule_paths": [], "reason": "no size"},
+            ],
+        )
+
+    result = strategy_draft.draft(row, "google/gemini-4-argon", KEYS, call=call)
+    assert result["conversion"]["definition"]["entry"]["right"]["offset"] == 1
+    assert result["unconvertible"] == 1 and result["blocking"] == []
+    assert "Numbered card items" in seen[0][0]["content"]
+    assert strategy_draft.save_blocks(result, row, accept=False) == [
+        "1 item(s) cannot be expressed: tick to leave out"
+    ]
+    assert strategy_draft.save_blocks(result, row, accept=True) == []
+
+
+def test_draft_with_an_invented_condition_is_blocked(tmp_path: Path) -> None:
+    row = _ready_card(_store(tmp_path))
+    invented = {**DONCHIAN, "stop_loss_pct": "5"}
+
+    def call(system: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        return _reply(
+            invented,
+            [
+                {"index": 0, "status": "mapped", "rule_paths": ["/entry"], "reason": ""},
+                {"index": 1, "status": "mapped", "rule_paths": ["/exit"], "reason": ""},
+                {"index": 2, "status": "unconvertible", "rule_paths": [], "reason": "no size"},
+            ],
+        )
+
+    result = strategy_draft.draft(row, "google/gemini-4-argon", KEYS, call=call)
+    assert any("/stop_loss_pct" in p for p in result["blocking"])
+    assert strategy_draft.save_blocks(result, row, accept=True)
+
+
+def test_openrouter_draft_call_returns_the_anthropic_shape_with_cost() -> None:
+    seen: list[dict[str, Any]] = []
+    message = {
+        "choices": [{"finish_reason": "length", "message": {"content": "{}"}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 20, "cost": 0.004},
+    }
+    call, costs = strategy_draft.model_call(
+        "google/gemini-4-argon", KEYS, _anthropic_transport(message, seen)
+    )
+    reply = call("sys", [{"role": "user", "content": "hi"}])
+    assert reply["stop_reason"] == "max_tokens"
+    assert seen[0]["messages"][0] == {"role": "system", "content": "sys"}
+    assert seen[0]["provider"]["data_collection"] == "deny"
+    assert costs == [
+        {"model": "google/gemini-4-argon", "input_tokens": 10, "output_tokens": 20,
+         "cost_usd": "0.004"}
+    ]  # fmt: skip
+
+
+class FakeStrategies:
+    def __init__(self) -> None:
+        self.saved: list[tuple[str, dict[str, Any]]] = []
+
+    def save_strategy(self, name: str, definition: dict[str, Any]) -> dict[str, Any]:
+        self.saved.append((name, definition))
+        return {"strategy_id": "strategy-abc", "version": 1}
+
+
+def test_draft_routes_need_a_ready_card_and_the_users_tick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    service = TechniqueCards(Library(_config(), tmp_path / "cache", FakeCli()), store)
+    strategies = FakeStrategies()
+    app = FastAPI()
+
+    def error(request: Any, status: int, code: str, message: str) -> JSONResponse:
+        return JSONResponse(
+            status_code=status, content={"error": {"code": code, "message": message}}
+        )
+
+    register_technique_card_routes(
+        app, cards=lambda: service, keys=lambda: KEYS, error_response=error,
+        start=lambda w: w(), strategies=lambda: strategies,
+    )  # fmt: skip
+    client = TestClient(app)
+    unready = store.add(
+        {
+            "item_ref": ITEM, "title": "x", "url": "u", "card": _card(),
+            "checks": check_card(_card(), LINES), "usage": {}, "attempts": [], "versions": {},
+            "context_ref": "c", "revision_ref": "r", "transcript_sha256": "s",
+            "verification_status": "unverified", "recheck_outcome": "conditional",
+        }
+    )  # fmt: skip
+    assert client.post(f"/v1/technique-cards/{unready}/drafts", json={}).status_code == 409
+
+    row = _ready_card(store)
+    models: list[str] = []
+    real_draft = strategy_draft.draft
+
+    def fake_draft(card: dict[str, Any], model: str, keys: Keys) -> dict[str, Any]:
+        models.append(model)
+        return real_draft(
+            card, model, keys,
+            call=lambda s, m: _reply(
+                DONCHIAN,
+                [
+                    {"index": 0, "status": "mapped", "rule_paths": ["/entry"], "reason": ""},
+                    {"index": 1, "status": "mapped", "rule_paths": ["/exit"], "reason": ""},
+                    {"index": 2, "status": "unconvertible", "rule_paths": [], "reason": "size"},
+                ],
+            ),
+        )  # fmt: skip
+
+    monkeypatch.setattr(strategy_draft, "draft", fake_draft)
+    started = client.post(
+        f"/v1/technique-cards/{row['card_id']}/drafts", json={"model": "google/gemini-4-argon"}
+    )
+    draft_id = started.json()["draft_id"]
+    found = client.get(f"/v1/technique-drafts/{draft_id}").json()
+    assert found["state"] == "done" and found["needs_accept"] is True
+    assert found["save_blocks"] == [] and models == ["google/gemini-4-argon"]
+
+    refused = client.post(f"/v1/technique-drafts/{draft_id}/save", json={"name": "Seykota"})
+    assert refused.status_code == 409 and strategies.saved == []
+    saved = client.post(
+        f"/v1/technique-drafts/{draft_id}/save",
+        json={"name": "Seykota", "accept_unconvertible": True},
+    ).json()
+    assert saved["strategy_id"] == "strategy-abc" and saved["strategy_version"] == 1
+    assert strategies.saved[0][1]["exit"]["right"]["output"] == "lower"
+    listed = client.get(f"/v1/technique-cards/{row['card_id']}/drafts").json()["drafts"]
+    assert [d["draft_id"] for d in listed] == [draft_id]
+
+    # The user changes the card after the draft: the draft can no longer be saved.
+    store.resolve(row["card_id"], row["version"], {**row["resolutions"]["conditions"]}, {})
+    stale = client.post(
+        f"/v1/technique-drafts/{draft_id}/save",
+        json={"name": "Seykota", "accept_unconvertible": True},
+    )
+    assert stale.status_code == 409 and "changed" in stale.json()["error"]["message"]

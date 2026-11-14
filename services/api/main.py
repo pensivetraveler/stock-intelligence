@@ -1920,6 +1920,7 @@ def create_app(
             openrouter=_openrouter_key(credentials.get()),
         ),
         error_response=_error_response,
+        strategies=lambda: runner.store if (runner := backtests.get()) else None,
     )
     register_screening_news_routes(
         application,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useI18n } from "./i18n";
+import { TechniqueDraftPanel } from "./TechniqueDraftPanel";
 import { MarketApiError } from "./market-api";
 import {
   slotsLabel,
@@ -564,6 +565,15 @@ export function TechniqueCardsScreen({
                 >
                   {t("tc.save")}
                 </button>
+
+                {card.ready && !card.withdrawn ? (
+                  <TechniqueDraftPanel
+                    key={`${card.card_id}:${card.version}`}
+                    api={api}
+                    card={card}
+                    pollMs={pollMs}
+                  />
+                ) : null}
 
                 <section aria-label={t("tc.timeline")}>
                   <h4>{t("tc.timeline")}</h4>

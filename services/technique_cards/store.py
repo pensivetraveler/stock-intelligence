@@ -13,6 +13,7 @@ The transcript is not stored here (it stays in the 0600 cache); only its hash.
 
 from __future__ import annotations
 
+import builtins
 import json
 import sqlite3
 import threading
@@ -51,6 +52,18 @@ CREATE TABLE IF NOT EXISTS technique_card_versions (
     resolutions TEXT NOT NULL,
     saved_at TEXT NOT NULL,
     PRIMARY KEY (card_id, version)
+);
+CREATE TABLE IF NOT EXISTS technique_card_drafts (
+    draft_id TEXT PRIMARY KEY,
+    card_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    model TEXT NOT NULL,
+    error TEXT NOT NULL DEFAULT '',
+    result TEXT,
+    strategy_id TEXT,
+    strategy_version INTEGER,
+    created_at TEXT NOT NULL,
+    finished_at TEXT
 );
 CREATE TABLE IF NOT EXISTS technique_card_jobs (
     job_id TEXT PRIMARY KEY,
@@ -153,6 +166,11 @@ class CardStore:
     def fail_running_jobs(self) -> None:
         """At start-up: a job left running by a closed process will never finish."""
         with self._lock:
+            self._db.execute(
+                "UPDATE technique_card_drafts SET state = 'failed', error = 'app closed during the"
+                " draft', finished_at = ? WHERE state = 'running'",
+                (_utc(self._clock()),),
+            )
             self._db.execute(
                 "UPDATE technique_card_jobs SET state = 'failed', error = 'app closed during the"
                 " extraction', finished_at = ? WHERE state = 'running'",
@@ -262,3 +280,71 @@ class CardStore:
                 (outcome, _utc(self._clock()), int(withdrawn), card_id),
             )
         return self.get(card_id)
+
+    # --- strategy drafts (ADR 0056 L3) -----------------------------------------------------
+
+    def new_draft(self, card_id: str, model: str) -> str:
+        draft_id = uuid.uuid4().hex
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO technique_card_drafts (draft_id, card_id, state, model, created_at)"
+                " VALUES (?, ?, 'running', ?, ?)",
+                (draft_id, card_id, model, _utc(self._clock())),
+            )
+        return draft_id
+
+    def finish_draft(self, draft_id: str, result: dict[str, Any] | None, error: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "UPDATE technique_card_drafts SET state = ?, result = ?, error = ?,"
+                " finished_at = ? WHERE draft_id = ?",
+                (
+                    "failed" if error else "done",
+                    None if result is None else json.dumps(result, ensure_ascii=False),
+                    error[:500],
+                    _utc(self._clock()),
+                    draft_id,
+                ),
+            )
+
+    def _draft_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        out = dict(row)
+        out["result"] = None if out["result"] is None else json.loads(out["result"])
+        return out
+
+    def draft(self, draft_id: str) -> dict[str, Any]:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT * FROM technique_card_drafts WHERE draft_id = ?", (draft_id,)
+            ).fetchone()
+        if row is None:
+            raise CardNotFoundError(draft_id)
+        return self._draft_row(row)
+
+    def drafts(self, card_id: str) -> builtins.list[dict[str, Any]]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM technique_card_drafts WHERE card_id = ?"
+                " ORDER BY created_at DESC, draft_id",
+                (card_id,),
+            ).fetchall()
+        return [self._draft_row(row) for row in rows]
+
+    def running_draft(self, card_id: str) -> str | None:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT draft_id FROM technique_card_drafts"
+                " WHERE card_id = ? AND state = 'running'",
+                (card_id,),
+            ).fetchone()
+        return None if row is None else str(row[0])
+
+    def saved_as(self, draft_id: str, strategy_id: str, version: int) -> dict[str, Any]:
+        """The strategy (and version) a draft became: the card side of the provenance link."""
+        with self._lock:
+            self._db.execute(
+                "UPDATE technique_card_drafts SET strategy_id = ?, strategy_version = ?"
+                " WHERE draft_id = ?",
+                (strategy_id, version, draft_id),
+            )
+        return self.draft(draft_id)
