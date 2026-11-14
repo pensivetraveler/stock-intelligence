@@ -246,6 +246,13 @@ SIW Research "기법 자료" 목록 ◀─────────────�
   5. 기록: 건마다 모델, 입력·출력 토큰, 비용, 스크립트 표시 수(근거 없음·기준 없음), 사용자가 고친 조건 수.
 - **다시 볼 조건:** 실제 사용 20건 뒤(사용자가 고친 조건 비율·스크립트 표시 수), 근거 없는 숫자가 표시 없이 전략까지 간 사례 1건, length 1건, 건당 $0.3 또는 월 $40 초과. PDF 경로는 글자 추출(knowledge-library-113) 뒤 따로 평가.
 
+#### 기본 모델 바꿈과 설정 (2026-11-15)
+
+- **배경:** 키 화면의 Claude 키가 HTTP 401로 거절돼 첫 실제 추출이 luna 대체로 만들어졌다. 사용자 요청으로 추출 모델을 실행마다 고를 수 있게 하고(SIW PR #176), 같은 자료를 Gemini 4 Argon으로 추출했다: 1회 성공, 잘림 없음, $0.036, 진입·청산·검사 결과는 luna 카드와 같음(`[안내 #SIW-lib-17]`).
+- **배정 변경(사용자 결정 2026-11-15 "Argon 기본으로", 게이트웨이 `[요청 #LAG-SIW-1]`, local-ai-gateway `9f2994a` `docs/model-assignments.md`):** 카드 추출 기본 `google/gemini-4-argon`(strict json_schema, max_tokens 16000, OpenRouter `provider.data_collection: deny`), 대체 `openai/gpt-6-luna`, 선택 `claude-sonnet-5.5`. 게이트웨이 기록상 "시험 사용"(평가 세트 없이 한 건 비교).
+- **기본 모델 설정(사용자 지시 2026-11-15 "기본 모델을 fable, argon, astra 선택할 수 있는 설정 기능"):** 기법 카드 설정 `default_model` = `anthropic/claude-fable-5.2` · `google/gemini-4-argon`(처음 값) · `openai/gpt-6-astra`, 화면 "기본 모델"에서 바꾼다(SIW PR #178). 추출·전략 초안(L3)은 설정값을 쓰고, 실행마다 다른 모델(세 모델 + sonnet + luna)을 고를 수 있다. 사다리는 고른 모델 2회 → luna 1회. 카드·초안에 실제 모델이 남는다.
+- **위험:** 평가 세트로 돈 모델은 sonnet·luna뿐이다. Argon은 한 건, Fable·Astra는 이 작업에서 써 본 적 없다. 위의 스크립트 검사(근거 없음·기준 없음)와 사용자 확인이 모델과 상관없이 같은 문이다. 다시 볼 조건에 "확인용 구조화 세트(7 case)로 기본 모델을 sonnet·luna와 비교"를 더한다(게이트웨이 제안, 약 $0.3, 실제 사용 20건 재검토 전).
+
 ## 단계(초안)
 
 | 단계 | 내용                                                                                                             | 선행 조건                      |
