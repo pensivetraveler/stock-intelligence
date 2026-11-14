@@ -13,7 +13,11 @@ the end of the aftermarket on US session days and appends to
   store opens, so a gap in the record is never mistaken for a session without halts;
 - one row per *change* of a symbol's status within a listen. A CTA halt repeats every five
   seconds while it lasts (measured 2026-11-12); a repeat only bumps `repeats` and
-  `last_seen_utc` of the row it repeats.
+  `last_seen_utc` of the row it repeats, and keeps the exchange time `t` of its first and
+  last repeat (`first_repeat_exchange_time`, `last_repeat_exchange_time`). A message with
+  the same status code and no reason code repeats the latest change whatever its reason:
+  a CTA LULD pause arrives once with reason `M` and then repeats without a reason
+  (measured 2026-11-13), and is one change, not two.
 
 Only status messages are kept: no trade, quote or bar. Nothing here places an order.
 The key is the first enabled Alpaca key in the SIW key store; it is sent to Alpaca only
@@ -71,11 +75,18 @@ CREATE TABLE IF NOT EXISTS status_changes (
     received_at_utc TEXT NOT NULL,
     last_seen_utc TEXT NOT NULL,
     repeats INTEGER NOT NULL DEFAULT 0,
+    first_repeat_exchange_time TEXT,
+    last_repeat_exchange_time TEXT,
     raw TEXT
 );
 CREATE INDEX IF NOT EXISTS status_changes_by_symbol ON status_changes (symbol, received_at_utc);
 CREATE INDEX IF NOT EXISTS listens_by_time ON listens (started_at_utc);
 """
+# Columns added after the first stores were written (2026-11-14); added in place on open.
+ADDED_COLUMNS = (
+    ("status_changes", "first_repeat_exchange_time", "TEXT"),
+    ("status_changes", "last_repeat_exchange_time", "TEXT"),
+)
 
 
 def _utc(moment: datetime) -> str:
@@ -97,6 +108,10 @@ class StatusWatchStore:
         self._db.execute("PRAGMA foreign_keys = ON")
         self._db.execute("PRAGMA journal_mode = WAL")
         self._db.executescript(SCHEMA)
+        for table, column, kind in ADDED_COLUMNS:
+            present = {row["name"] for row in self._db.execute(f"PRAGMA table_info({table})")}
+            if column not in present:
+                self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
         self._lock = threading.Lock()
         # Per listen: symbol -> (status code, reason code, change_id) of its latest change.
         self._latest: dict[str, tuple[str, str, int]] = {}
@@ -143,11 +158,13 @@ class StatusWatchStore:
         received = _utc(at)
         with self._lock:
             latest = self._latest.get(symbol)
-            if latest is not None and latest[:2] == (code, reason):
+            if latest is not None and latest[0] == code and reason in ("", latest[1]):
+                exchange_time = str(message["t"])
                 self._db.execute(
-                    "UPDATE status_changes SET repeats = repeats + 1, last_seen_utc = ? "
-                    "WHERE change_id = ?",
-                    (received, latest[2]),
+                    "UPDATE status_changes SET repeats = repeats + 1, last_seen_utc = ?, "
+                    "first_repeat_exchange_time = COALESCE(first_repeat_exchange_time, ?), "
+                    "last_repeat_exchange_time = ? WHERE change_id = ?",
+                    (received, exchange_time, exchange_time, latest[2]),
                 )
                 return False
             cursor = self._db.execute(
