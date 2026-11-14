@@ -2,6 +2,7 @@ import type {
   ScreeningCandidates,
   ScreeningCheck,
   ScreeningFlowWatch,
+  ScreeningStage2,
 } from "@siw/contracts/types";
 import { Fragment, useEffect, useState } from "react";
 
@@ -48,6 +49,11 @@ function flowText(
   row: FlowRow | undefined,
 ): { text: string; title: string } {
   if (!row) return { text: "—", title: "" };
+  if (row.status === "stage2_excluded")
+    return {
+      text: t("candidates.flow.status.stage2_excluded"),
+      title: t("candidates.stage2.notWatched"),
+    };
   if (row.status === "unsupported" || row.status === "error")
     return {
       text: t(`candidates.flow.status.${row.status}`),
@@ -83,6 +89,50 @@ function flowText(
     .filter(Boolean)
     .join("\n");
   return { text: `${state}${counts}`, title };
+}
+
+/** Why stage 2 decided as it did (`material.py` reasons). */
+const STAGE2_REASONS = [
+  "no_material",
+  "low_impact_material",
+  "rally_rationale",
+  "no_rally_rationale",
+  "rationale_unknown",
+  "filter_unknown",
+  "material_unknown",
+  "no_news_check",
+  "news_pending",
+  "news_error",
+  "no_conclusions",
+] as const;
+
+/** Stage 2 (ADR 0057 §2): e.g. "통과 · 명분 있음 · 보통" or "그날 제외". */
+function stage2Text(
+  t: ReturnType<typeof useI18n>["t"],
+  verdict: ScreeningStage2 | undefined,
+): { text: string; title: string } {
+  if (!verdict) return { text: "—", title: "" };
+  const material = t(`candidates.stage2.material.${verdict.material}`);
+  const text =
+    verdict.outcome === "excluded_today"
+      ? t("candidates.stage2.excluded")
+      : `${t("candidates.stage2.passed")} · ${material} · ${t(`candidates.stage2.strategy.${verdict.strategy ?? "conservative"}`)}`;
+  const conclusions = verdict.conclusions;
+  const reason = STAGE2_REASONS.find((item) => item === verdict.reason);
+  const title = [
+    reason ? t(`candidates.stage2.reason.${reason}`) : verdict.reason,
+    conclusions
+      ? t("candidates.stage2.conclusions", {
+          material: conclusions.material ?? "—",
+          filter: conclusions.filter ?? "—",
+          rationale: conclusions.rationale ?? "—",
+        })
+      : "",
+    t("candidates.stage2.inference"),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { text, title };
 }
 
 function errorText(error: unknown): string {
@@ -185,6 +235,8 @@ export function CandidatesPanel({
   // The noon cut (ADR 0055): the record up to 12:00 New York time of the session.
   const [asOf, setAsOf] = useState<string | null>(null);
   const [flow, setFlow] = useState<ScreeningFlowWatch | null>(null);
+  /** The symbol whose stage 2 basis is open. */
+  const [stage2Open, setStage2Open] = useState<string | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -486,6 +538,9 @@ export function CandidatesPanel({
                 <th>{t("candidates.inList")}</th>
                 <th>{t("candidates.flicker")}</th>
                 <th>{t("candidates.column.momentum")}</th>
+                <th title={t("candidates.stage2.inference")}>
+                  {t("candidates.column.stage2")}
+                </th>
                 <th title={t("candidates.flow.rules")}>
                   {t("candidates.column.flow")}
                 </th>
@@ -502,6 +557,7 @@ export function CandidatesPanel({
                   t,
                   flow?.candidates.find((row) => row.symbol === item.symbol),
                 );
+                const stage2Cell = stage2Text(t, item.stage2);
                 const unknown = LIST_SEEN.includes(item.first_seen_how);
                 const row = (
                   <tr key={item.symbol}>
@@ -577,6 +633,25 @@ export function CandidatesPanel({
                         "—"
                       )}
                     </td>
+                    <td>
+                      {item.stage2 ? (
+                        <button
+                          type="button"
+                          className="secondary"
+                          title={stage2Cell.title}
+                          aria-label={`${item.symbol} ${t("candidates.column.stage2")}: ${stage2Cell.text}`}
+                          onClick={() =>
+                            setStage2Open(
+                              stage2Open === item.symbol ? null : item.symbol,
+                            )
+                          }
+                        >
+                          {stage2Cell.text}
+                        </button>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td
                       title={flowCell.title}
                       aria-label={`${item.symbol} ${t("candidates.column.flow")}`}
@@ -622,7 +697,7 @@ export function CandidatesPanel({
                 return index === firstAfterNoon && asOf === null ? (
                   <Fragment key={item.symbol}>
                     <tr>
-                      <th colSpan={6 + OTHER_KINDS.length}>
+                      <th colSpan={7 + OTHER_KINDS.length}>
                         {t("candidates.afterNoon")}
                       </th>
                     </tr>
@@ -638,6 +713,20 @@ export function CandidatesPanel({
       ) : document ? (
         <p className="workspace-note">{t("candidates.empty")}</p>
       ) : null}
+      {stage2Open
+        ? (() => {
+            const verdict = document?.candidates.find(
+              (item) => item.symbol === stage2Open,
+            )?.stage2;
+            return verdict ? (
+              <Stage2Detail
+                symbol={stage2Open}
+                verdict={verdict}
+                onClose={() => setStage2Open(null)}
+              />
+            ) : null;
+          })()
+        : null}
       {detail && detail.check === "dilution" ? (
         <DilutionDetail
           check={detail}
@@ -679,6 +768,75 @@ export function CandidatesPanel({
       ) : null}
       <p className="workspace-note">{t("candidates.note")}</p>
     </section>
+  );
+}
+
+/** Stage 2's verdict and each article's basis (rules, NIR, rules fallback; inference). */
+function Stage2Detail({
+  symbol,
+  verdict,
+  onClose,
+}: {
+  symbol: string;
+  verdict: ScreeningStage2;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const cell = stage2Text(t, verdict);
+  return (
+    <div
+      className="research-scroll"
+      role="region"
+      aria-label={t("candidates.stage2.detail", { symbol })}
+    >
+      <p className="workspace-note">
+        {symbol} · {cell.text}
+      </p>
+      <p className="workspace-note">{cell.title}</p>
+      {verdict.articles.length > 0 ? (
+        <table className="quote-trades research-table">
+          <thead>
+            <tr>
+              <th>{t("candidates.stage2.article")}</th>
+              <th>{t("candidates.stage2.filter")}</th>
+              <th>{t("candidates.stage2.rationale")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {verdict.articles.map((article, index) => (
+              <tr key={`${article.source_id}:${article.record_id}:${index}`}>
+                <td>
+                  {article.published_at_utc
+                    ? `${newYorkTime(article.published_at_utc)} `
+                    : ""}
+                  {article.headline ?? article.record_id ?? "—"}
+                  {article.categories.length > 0
+                    ? ` (${article.categories.map((item) => categoryText(t, item)).join(", ")})`
+                    : ""}
+                </td>
+                <td>
+                  {article.filter ?? "—"} · {article.filter_basis ?? "—"}
+                  {article.filter_reasons.length > 0
+                    ? ` · ${article.filter_reasons.join(", ")}`
+                    : ""}
+                </td>
+                <td>
+                  {article.rationale ?? "—"} · {article.rationale_basis ?? "—"}
+                  {article.nir_inherited_from
+                    ? ` · ${t("candidates.stage2.inherited")}`
+                    : ""}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+      <div className="trade-fields">
+        <button type="button" className="secondary" onClick={onClose}>
+          {t("candidates.close")}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1057,6 +1215,9 @@ const NEWS_CATEGORIES = [
   "merger_acquisition",
   "reverse_split",
   "listing_notice",
+  "offering_announcement",
+  "offering_completion",
+  "financing_announcement",
 ] as const;
 
 /** Check B's LLM digest, always marked as inference; or a "rules only" note. */
