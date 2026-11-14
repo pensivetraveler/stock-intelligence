@@ -86,6 +86,22 @@ curl --get http://127.0.0.1:8765/v1/market/bars \
   --data-urlencode 'timeframe=15m'
 ```
 
+#### 상시 실행(이 개발 컴퓨터, LaunchAgent)
+
+2026-11-14부터 이 컴퓨터에서는 API를 사용자 LaunchAgent `com.siw.api.serve`가 늘 띄운다(수집기 `com.siw.collector.watch-condition`·`watch-halts`와 같은 방식). 세션이 미리보기 서버로 띄운 API는 세션이 끝나면 꺼졌기 때문이다.
+
+- **코드:** 배포본 `~/.local/share/siw/collector-app`(이 저장소의 git worktree, `origin/main`에 detached)과 그 `.venv`. 원래 체크아웃은 작업 브랜치에 있을 수 있어 쓰지 않는다.
+- **설정:** `--env-file`은 원래 체크아웃의 `.env`. `.env`의 상대 경로 `SIW_DATA_DIR=data`가 배포본 기준으로 풀리지 않도록 plist의 `EnvironmentVariables`에서 `SIW_DATA_DIR`을 원래 체크아웃의 `data` 절대 경로로 준다(uvicorn `--env-file`은 이미 있는 환경 변수를 덮어쓰지 않는다).
+- **로그:** `~/Library/Logs/siw/api.log`, `api.err.log`. `KeepAlive`라 꺼지면 다시 뜬다.
+- **새 판 반영:** main에 병합된 뒤 배포본을 갱신하고 다시 띄운다. 의존성이 바뀌었으면 배포본에서 `uv sync`도 한다. 수집기는 각자 다시 띄워야 새 코드를 쓴다.
+
+```bash
+git -C ~/.local/share/siw/collector-app fetch origin && git -C ~/.local/share/siw/collector-app checkout --detach origin/main
+launchctl kickstart -k gui/$UID/com.siw.api.serve
+```
+
+- 데스크톱 앱(Tauri)은 8765가 응답하면 API를 새로 띄우지 않고 그대로 쓴다. 다른 판으로 확인하려면 아래처럼 대체 포트를 쓴다.
+
 포트 `8765`이 사용 중이면 API와 데스크톱을 같은 대체 포트로 맞춘다.
 
 ```bash
