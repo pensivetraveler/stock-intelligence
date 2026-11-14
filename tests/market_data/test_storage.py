@@ -188,6 +188,55 @@ def test_cache_read_rejects_contract_invalid_part_even_with_matching_hash(
         market_store.read_exact(query(), SOURCE_ID, REVISION)
 
 
+def test_cache_read_checks_the_contract_once_per_source_and_again_when_it_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import services.market_data.storage as storage_module
+
+    calls: list[None] = []
+    real = storage_module.validate_document
+
+    def counting(document: dict[str, Any]) -> None:
+        calls.append(None)
+        real(document)
+
+    monkeypatch.setattr(storage_module, "validate_document", counting)
+    market_store = store(tmp_path)
+    receipt = market_store.write_result(fake_result())
+    calls.clear()
+    first = market_store.read_exact(query(), SOURCE_ID, REVISION)
+    second = market_store.read_exact(query(), SOURCE_ID, REVISION)
+    assert first == second and len(calls) == 1
+
+    # A part swapped in afterwards is a different source: checked again, and refused.
+    original = tmp_path / receipt.parquet_paths[0]
+    bars = cast(list[dict[str, Any]], pq.ParquetFile(original).read().to_pylist())
+    bars[0]["high"] = "1.00"
+    payload_sha256 = hashlib.sha256(
+        json.dumps(tuple(bars), separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
+    forged = original.with_name(f"part-{payload_sha256}.parquet")
+    pq.write_table(pa.Table.from_pylist(bars, schema=PARQUET_SCHEMA), forged)
+    with sqlite3.connect(market_store.database_path) as connection:
+        connection.execute(
+            "UPDATE coverage_manifests SET parquet_paths_json = ?",
+            (json.dumps([forged.relative_to(tmp_path).as_posix()]),),
+        )
+    with pytest.raises(CacheIntegrityError, match="violates the contract"):
+        market_store.read_exact(query(), SOURCE_ID, REVISION)
+    # Content changed under the same name is still caught by the content hash.
+    with sqlite3.connect(market_store.database_path) as connection:
+        connection.execute(
+            "UPDATE coverage_manifests SET parquet_paths_json = ?",
+            (json.dumps(list(receipt.parquet_paths)),),
+        )
+    tampered = cast(list[dict[str, Any]], pq.ParquetFile(original).read().to_pylist())
+    tampered[0]["close"] = "250.30"
+    pq.write_table(pa.Table.from_pylist(tampered, schema=PARQUET_SCHEMA), original)
+    with pytest.raises(CacheIntegrityError, match="checksum mismatch"):
+        market_store.read_exact(query(), SOURCE_ID, REVISION)
+
+
 def test_missing_cache_reports_requested_range_as_gap(tmp_path: Path) -> None:
     gaps = store(tmp_path).detect_gaps(query(), SOURCE_ID, REVISION)
 
