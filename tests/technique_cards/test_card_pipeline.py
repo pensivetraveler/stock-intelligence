@@ -255,14 +255,14 @@ def test_ladder_retries_sonnet_then_luna_and_logs_every_call() -> None:
 
     def caller(route: str, system: str, prompt: str, keys: Keys) -> tuple[dict, dict]:
         routes.append(route)
-        if route == "anthropic":
+        if route == "claude-sonnet-5-5":
             raise AttemptFailed(
                 "length", {"input_tokens": 100, "output_tokens": 16000, "cost_usd": "0.16"}
             )
         return _card(), {"input_tokens": 100, "output_tokens": 3000, "cost_usd": "0.01"}
 
     result = extract_card("demo", "demo", LINES, KEYS, call=caller)
-    assert routes == ["anthropic", "anthropic", "openrouter"]
+    assert routes == ["claude-sonnet-5-5", "claude-sonnet-5-5", "openai/gpt-6-luna"]
     assert [a["ok"] for a in result.attempts] == [False, False, True]
     assert result.usage["cost_usd"] == "0.33"
     assert result.usage["models"] == ["openai/gpt-6-luna"]
@@ -386,7 +386,7 @@ def test_routes_extract_check_resolve_and_recheck(
 ) -> None:
     client, service = _app(tmp_path)
 
-    def fake_extract(source_id, title, lines, keys, call=None, transport=None):  # type: ignore[no-untyped-def]
+    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model=""):  # type: ignore[no-untyped-def]
         return extract.Extraction(
             card=_card(),
             attempts=[
@@ -463,3 +463,58 @@ def test_failed_extraction_is_a_failed_job(tmp_path: Path, monkeypatch: pytest.M
     job = client.get(f"/v1/technique-cards/jobs/{job_id}").json()
     assert job["state"] == "failed" and "no model" in job["error"]
     assert job["attempts"] == [{"model": "m"}]
+
+
+def test_a_chosen_model_runs_twice_then_luna_and_unknown_models_are_refused() -> None:
+    models: list[str] = []
+
+    def caller(model: str, system: str, prompt: str, keys: Keys) -> tuple[dict, dict]:
+        models.append(model)
+        if model == "google/gemini-4-argon":
+            raise AttemptFailed("schema: bad")
+        return _card(), {"input_tokens": 1, "output_tokens": 1, "cost_usd": "0"}
+
+    result = extract_card("demo", "demo", LINES, KEYS, call=caller, model="google/gemini-4-argon")
+    assert models == ["google/gemini-4-argon", "google/gemini-4-argon", "openai/gpt-6-luna"]
+    assert result.usage["models"] == ["openai/gpt-6-luna"]
+    assert extract.ladder("openai/gpt-6-luna") == ("openai/gpt-6-luna", "openai/gpt-6-luna")
+    with pytest.raises(ValueError):
+        extract.ladder("deepseek/anything")
+
+
+def test_openrouter_call_sends_the_chosen_model() -> None:
+    seen: list[dict[str, Any]] = []
+    message = {
+        "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(_card())}}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "cost": 0.001},
+    }
+    call_openrouter(
+        "sys", "p", KEYS, _anthropic_transport(message, seen), model="google/gemini-4-argon"
+    )
+    assert seen[0]["model"] == "google/gemini-4-argon"
+    assert seen[0]["provider"]["data_collection"] == "deny"
+
+
+def test_routes_pass_the_model_and_refuse_others(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _service = _app(tmp_path)
+    used: list[str] = []
+
+    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model=""):  # type: ignore[no-untyped-def]
+        used.append(model)
+        return extract.Extraction(card=_card(), attempts=[{"model": model, "ok": True}])
+
+    monkeypatch.setattr("services.technique_cards.service.extract_card", fake_extract)
+    body = {"item_ref": ITEM, "model": "google/gemini-4-argon"}
+    preview = client.post("/v1/technique-sources/preview", json=body).json()
+    assert preview["model"] == "google/gemini-4-argon"
+    assert preview["fallback"] == "google/gemini-4-argon → openai/gpt-6-luna"
+    job_id = client.post("/v1/technique-cards", json=body).json()["job_id"]
+    card_id = client.get(f"/v1/technique-cards/jobs/{job_id}").json()["card_id"]
+    assert used == ["google/gemini-4-argon"]
+    assert client.get(f"/v1/technique-cards/{card_id}").json()["versions"]["model"] == (
+        "google/gemini-4-argon"
+    )
+    refused = client.post("/v1/technique-cards", json={"item_ref": ITEM, "model": "x/y"})
+    assert refused.status_code == 422

@@ -40,8 +40,12 @@ _CONDITION_VALIDATOR = jsonschema.Draft202012Validator(
 
 
 class ItemRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", protected_namespaces=())
     item_ref: str = Field(pattern=ITEM_REF)
+    # The assigned sonnet unless the user picks another model for this extraction.
+    model: Literal["claude-sonnet-5-5", "google/gemini-4-argon", "openai/gpt-6-luna"] = (
+        "claude-sonnet-5-5"
+    )
 
 
 class ConditionResolution(BaseModel):
@@ -140,7 +144,9 @@ def register_technique_card_routes(
                 return error_response(
                     request, 404, "technique_source_not_found", "No current item with that tag"
                 )
-            return JSONResponse({"kind": "technique_source_preview", **service.preview(source)})
+            return JSONResponse(
+                {"kind": "technique_source_preview", **service.preview(source, body.model)}
+            )
         except SourceWithdrawnError as exc:
             return error_response(request, 409, "technique_source_withdrawn", str(exc))
         except LibraryError as exc:
@@ -171,7 +177,7 @@ def register_technique_card_routes(
         def work() -> None:
             card_id, error, attempts = None, "", []
             try:
-                card_id = service.extract(source, current_keys)
+                card_id = service.extract(source, current_keys, model=body.model)
             except ExtractionError as exc:
                 error, attempts = str(exc), exc.attempts
             except (SourceWithdrawnError, LibraryError) as exc:

@@ -157,12 +157,12 @@ export function TechniqueCardsScreen({
     return () => window.clearInterval(timer);
   }, [api, job, load, openCard, pollMs, t]);
 
-  const showPreview = (source: TechniqueSource) => {
+  const showPreview = (source: TechniqueSource, model?: string) => {
     setPreview(null);
     setCard(null);
     setPreviewing(source.title || source.source_key);
     api
-      .preview(source.item_ref)
+      .preview(source.item_ref, model)
       .then((next) => {
         setPreview(next);
         setError(null);
@@ -174,7 +174,7 @@ export function TechniqueCardsScreen({
   const extract = () => {
     if (!preview) return;
     api
-      .start(preview.item_ref)
+      .start(preview.item_ref, preview.model)
       .then((started) => {
         setJob({ id: started.job_id, item: preview.item_ref });
         setPreview(null);
@@ -355,7 +355,25 @@ export function TechniqueCardsScreen({
                   </dd>
                   <dt>{t("tc.model")}</dt>
                   <dd>
-                    {preview.model} → {preview.fallback}
+                    <select
+                      aria-label={t("tc.chooseModel")}
+                      value={preview.model}
+                      onChange={(event) => {
+                        const source = sources?.find(
+                          (item) => item.item_ref === preview.item_ref,
+                        );
+                        if (source) showPreview(source, event.target.value);
+                      }}
+                    >
+                      {preview.models.map((model) => (
+                        <option key={model} value={model}>
+                          {model === preview.models[0]
+                            ? t("tc.assigned", { model })
+                            : model}
+                        </option>
+                      ))}
+                    </select>{" "}
+                    → {preview.fallback}
                   </dd>
                   <dt>{t("tc.cost")}</dt>
                   <dd>

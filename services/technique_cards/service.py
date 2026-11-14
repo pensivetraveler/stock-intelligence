@@ -19,13 +19,15 @@ from typing import Any
 from services.technique_cards.checks import check_card, timeline
 from services.technique_cards.citations import Line, parse_transcript
 from services.technique_cards.extract import (
+    CHOOSABLE_MODELS,
+    PRICES,
     PRIMARY_MODEL,
-    SONNET_PRICE,
     VERSIONS,
     Caller,
     Extraction,
     Keys,
     extract_card,
+    ladder,
     prompts_for,
 )
 from services.technique_cards.library import USABLE, Fetched, Library, LibraryError, Source
@@ -74,13 +76,14 @@ class TechniqueCards:
     def _lines(fetched: Fetched) -> list[Line]:
         return parse_transcript(fetched.path.read_text(encoding="utf-8", errors="replace"))
 
-    def preview(self, source: Source) -> dict[str, Any]:
+    def preview(self, source: Source, model: str = PRIMARY_MODEL) -> dict[str, Any]:
         fetched, outcome = self._usable(source.item_ref)
         lines = self._lines(fetched)
         prompts = prompts_for(source.source_key or source.item_ref, source.title, lines)
         input_tokens = sum(int(Decimal(len(p)) / CHARS_PER_TOKEN) for p in prompts)
         output_tokens = OUTPUT_TOKENS_PER_PART * len(prompts)
-        cost = (SONNET_PRICE[0] * input_tokens + SONNET_PRICE[1] * output_tokens).scaleb(-6)
+        price_in, price_out = PRICES[model]
+        cost = (price_in * input_tokens + price_out * output_tokens).scaleb(-6)
         return {
             "item_ref": source.item_ref,
             "title": source.title,
@@ -88,8 +91,9 @@ class TechniqueCards:
             "lines": len(lines),
             "parts": len(prompts),
             "characters": sum(len(p) for p in prompts),
-            "model": PRIMARY_MODEL,
-            "fallback": VERSIONS["fallback"],
+            "model": model,
+            "fallback": " → ".join(ladder(model)[1:]),
+            "models": list(CHOOSABLE_MODELS),
             "estimated_cost_usd": format(cost.quantize(Decimal("0.01")), "f"),
             "estimate_note": "추정(글자 수 기준, 실측 아님)",
             "verification_status": fetched.verification_status,
@@ -97,12 +101,18 @@ class TechniqueCards:
             "recheck_outcome": outcome,
         }
 
-    def extract(self, source: Source, keys: Keys, call: Caller | None = None) -> str:
+    def extract(
+        self,
+        source: Source,
+        keys: Keys,
+        call: Caller | None = None,
+        model: str = PRIMARY_MODEL,
+    ) -> str:
         """Extract, check and store; returns the card id. Raises on any failure."""
         fetched, outcome = self._usable(source.item_ref)
         lines = self._lines(fetched)
         extraction: Extraction = extract_card(
-            source.source_key or source.item_ref, source.title, lines, keys, call=call
+            source.source_key or source.item_ref, source.title, lines, keys, call=call, model=model
         )
         checks = check_card(extraction.card, lines)
         usage = extraction.usage | {"parts": extraction.parts, "flags": checks["counts"]}
@@ -115,7 +125,7 @@ class TechniqueCards:
                 "checks": checks,
                 "usage": usage,
                 "attempts": extraction.attempts,
-                "versions": VERSIONS,
+                "versions": VERSIONS | {"model": model, "fallback": ladder(model)[-1]},
                 "context_ref": fetched.context_ref,
                 "revision_ref": fetched.revision_ref,
                 "transcript_sha256": fetched.sha256,
