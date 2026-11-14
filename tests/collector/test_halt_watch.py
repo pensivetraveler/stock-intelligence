@@ -75,6 +75,51 @@ def test_store_keeps_changes_and_counts_repeats(tmp_path: Path) -> None:
     assert document["listens"][0]["end_reason"] == "stopped"
 
 
+def test_cta_luld_pause_repeating_without_reason_is_one_change(tmp_path: Path) -> None:
+    """Measured 2026-11-13 (FHIL, XX): sc 2 with rc M, then sc 2 without rc every 5 s."""
+    store = StatusWatchStore(tmp_path / "s.sqlite3")
+    listen = store.start("sip", at(0))
+    first = {**status("FHIL", "2", at(1)), "rc": "M", "rm": "Volatility Trading Pause"}
+    assert store.record(listen, first, at(1))
+    blank = {**status("FHIL", "2", at(1)), "rc": "", "rm": ""}
+    blank["t"] = text(at(1) + timedelta(microseconds=45))
+    assert not store.record(listen, blank, at(1) + timedelta(seconds=1))
+    for second in (5, 10):
+        repeat = {**blank, "t": text(at(1) + timedelta(seconds=second))}
+        assert not store.record(listen, repeat, at(1) + timedelta(seconds=second))
+    # A different reason for the same code is a change.
+    assert store.record(listen, {**first, "rc": "T1"}, at(2))
+    assert store.record(listen, status("FHIL", "3", at(6)), at(6))
+    changes = store.export(at(-60), at(60))["changes"]
+    store.close()
+    pause, other, resume = changes
+    assert pause["reason_code"] == "M" and pause["repeats"] == 3
+    assert pause["first_repeat_exchange_time"] == text(at(1) + timedelta(microseconds=45))
+    assert pause["last_repeat_exchange_time"] == text(at(1) + timedelta(seconds=10))
+    assert other["reason_code"] == "T1" and other["first_repeat_exchange_time"] is None
+    assert resume["status_code"] == "3"
+
+
+def test_store_written_before_repeat_times_gains_the_columns(tmp_path: Path) -> None:
+    path = tmp_path / "s.sqlite3"
+    old = sqlite3.connect(path)
+    old.executescript(
+        "CREATE TABLE status_changes (change_id INTEGER PRIMARY KEY, listen_id INTEGER NOT NULL,"
+        " symbol TEXT NOT NULL, tape TEXT, status_code TEXT NOT NULL, status_message TEXT,"
+        " reason_code TEXT, reason_message TEXT, exchange_time TEXT NOT NULL,"
+        " received_at_utc TEXT NOT NULL, last_seen_utc TEXT NOT NULL,"
+        " repeats INTEGER NOT NULL DEFAULT 0, raw TEXT);"
+    )
+    old.close()
+    store = StatusWatchStore(path)
+    listen = store.start("sip", at(0))
+    assert store.record(listen, status("VEMB", "2", at(1)), at(1))
+    assert not store.record(listen, status("VEMB", "2", at(1)), at(1) + timedelta(seconds=5))
+    (row,) = store.export(at(-60), at(60))["changes"]
+    store.close()
+    assert row["repeats"] == 1 and row["last_repeat_exchange_time"] is not None
+
+
 def test_unclosed_listen_is_closed_as_interrupted_at_its_last_heartbeat(tmp_path: Path) -> None:
     store = StatusWatchStore(tmp_path / "s.sqlite3")
     listen = store.start("sip", at(0))
