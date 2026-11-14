@@ -233,3 +233,15 @@ def test_structured_eval_set_and_merged_scoring(tmp_path: Any) -> None:
     assert scored["m"]["summary"]["scoring_rules_version"] == 3
     report["results"][1]["answer"] = "not json"
     assert evalset.score(report, answers, rules=3)["m"]["summary"]["schema_failures"] == 1
+
+
+def test_bollinger_middle_line_said_as_midline_is_grounded() -> None:
+    lines = parse_transcript("[00:10] When the daily close finishes below the midline, it is over.")
+    condition = {
+        "field": "exit", "side": "long", "text": "close below the Bollinger middle",
+        "basis": "source", "left": _op("price", "close"), "comparator": "below",
+        "right": _op("indicator", "bollinger_middle"), "timeframe": "",
+        "citations": _cite("00:10", "When the daily close finishes below the midline"),
+        "value_citations": [],
+    }  # fmt: skip
+    assert ground_condition(condition, lines) == ""
