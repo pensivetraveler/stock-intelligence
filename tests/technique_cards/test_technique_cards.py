@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ import pytest
 from services.technique_cards import evalset
 from services.technique_cards.card_schema import CARD_SCHEMA, CONDITION_FIELDS, validate_card
 from services.technique_cards.citations import check_citation, parse_transcript
+from services.technique_cards.grounding import check_statement, numbers
 from services.technique_cards.scoring import THRESHOLDS, matches, score_card, summarise
 from services.technique_cards.synthetic import SyntheticError, build
 
@@ -286,7 +288,98 @@ def test_split_of_a_vague_remark() -> None:
     card["ambiguities"] = [item for item in card["ambiguities"] if "양봉" not in item["text"]]
     result = score_card(card, answer, lines)
     assert result.incomplete and not result.split and not result.made_up
-    # Only remarks marked split may be split: "거래량" alone is made up.
+    # Only remarks marked split may be split: under rules v1 "거래량" alone is made up. Under v2
+    # it is grounded (its citation passes, it states no number or indicator) — v2 judges the
+    # source's backing, not the answer's wording.
     card = _card_from(answer)
     card["entry"].append({**split_statement, "text": "거래량이 전 봉보다 적다"})
-    assert score_card(card, answer, lines).made_up
+    assert score_card(card, answer, lines, rules=1).made_up
+    assert not score_card(card, answer, lines, rules=2).made_up
+
+
+# --- Scoring rules v2 (gateway #SIW-lib-12) -------------------------------------------------
+
+
+def _decimals(*values: str) -> set[Decimal]:
+    return {Decimal(v) for v in values}
+
+
+def test_numbers_in_digits_and_words() -> None:
+    assert _decimals("50") <= numbers("a fifty period moving average")
+    assert _decimals("0.05", "2") <= numbers("zero point zero five percent and two ticks")
+    assert _decimals("200") <= numbers("the two hundred")
+    assert _decimals("1.5") <= numbers("stop one point five N below")
+    assert _decimals("0.5") <= numbers("half a range")
+    assert _decimals("2", "10000") <= numbers("두 배 손절, $10,000")
+    assert _decimals("0.5") <= numbers("어제 폭의 절반")
+    assert Decimal(1) not in numbers("한국 시장")  # 한 only as a counting word
+    assert Decimal(1) not in numbers("분할 익절을 한 뒤에는")  # a verb, not a count
+    assert _decimals("1", "2") <= numbers("한 번에 두 배")
+    assert _decimals("1.5") <= numbers("one and a half N under the last unit")
+
+
+ENGLISH = parse_transcript(
+    "[00:10] A long signal is the fast average crossing above\n"
+    "[00:10] the slow one, while price is above the two hundred.\n"
+    "[00:20] The stop sits two A T R below the entry price.\n"
+    "[00:50] Something else entirely."
+)
+
+
+def _statement(text: str, locator: str, quote: str) -> dict[str, Any]:
+    return {"text": text, "basis": "source", "citations": [{"locator": locator, "quote": quote}]}
+
+
+def test_grounding_catches_code_only_numbers_and_swapped_indicators() -> None:
+    quote = "the fast average crossing above the slow one"
+    assert (
+        check_statement(_statement("Fast average crosses above slow", "00:10", quote), ENGLISH)
+        == ""
+    )
+    assert "number" in check_statement(
+        _statement("EMA 9 crosses above EMA 21", "00:10", quote), ENGLISH
+    )
+    assert "indicator" in check_statement(
+        _statement("RSI crosses above the slow average", "00:10", quote), ENGLISH
+    )
+    assert (
+        check_statement(
+            _statement("Price above the 200", "00:10", "above the two hundred"), ENGLISH
+        )
+        == ""
+    )
+    stop = "The stop sits two A T R below the entry price."
+    assert check_statement(_statement("Stop 2 ATR below entry", "00:20", stop), ENGLISH) == ""
+    assert "number" in check_statement(
+        _statement("Stop 2 ATR(14) below entry", "00:20", stop), ENGLISH
+    )
+    assert check_statement({"text": "Stop 2 ATR", "basis": "source", "citations": []}, ENGLISH)
+    assert check_statement(_statement("Stop 2 ATR", "00:50", stop), ENGLISH)  # quote not near
+
+
+def test_time_window_is_fifteen_seconds() -> None:
+    # 00:20 is within 15 s of 00:05; 00:10 is 20 s from 00:30; v1 counts lines, not seconds.
+    assert check_citation(ENGLISH, "00:05", "two A T R below", 15).ok
+    assert not check_citation(ENGLISH, "00:30", "fast average crossing", 15).ok
+    assert not check_citation(ENGLISH, "00:05", "two A T R below").ok
+
+
+def test_v2_joins_a_fields_statements_and_reads_post_hoc() -> None:
+    transcript, answer = build(SPECS[1])  # pullback: close > SMA(200) and close crosses SMA(20)
+    lines = parse_transcript(transcript)
+    card = _card_from(answer)
+    first = card["entry"][1]
+    # One condition said in two sentences: the field holds it together under v2, not under v1.
+    card["entry"][1:2] = [
+        {**first, "text": "종가가 20일 이동평균선을"},
+        {**first, "text": "상향 돌파하면 매수"},
+    ]
+    assert score_card(card, answer, lines, rules=2).conditions_matched == len(answer["conditions"])
+    assert score_card(card, answer, lines, rules=1).conditions_matched < len(answer["conditions"])
+    extra = dict(
+        answer, conditions=answer["conditions"] + [{**answer["conditions"][0], "post_hoc": True}]
+    )
+    assert score_card(card, extra, lines).conditions == len(answer["conditions"]) + 1
+    assert score_card(card, extra, lines, include_post_hoc=False).conditions == len(
+        answer["conditions"]
+    )

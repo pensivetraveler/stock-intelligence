@@ -17,6 +17,16 @@ Per card:
 - split: the testable part of a vague remark in its field (answer item marked `split`), with the
   vague rest in ambiguities under the same citation — right; without that rest, incomplete;
 - misplaced: a vague remark or rule-free advice put in entry / exit / stop-loss (pass mark 0).
+
+Rules v2 (gateway #SIW-lib-12, 2026-11-14) — v1 could not judge real sources: of 28 "made-up"
+conditions in the real-source run, none was missing from the source (the answer had left the
+rule out, or the model had split one condition into several sentences):
+- made-up = an entry / exit / stop-loss statement that is not grounded (`grounding`): no passing
+  citation, or a number or an indicator name that is not in the text around its citation;
+- field agreement: an answer condition is matched by the statements of its field taken together
+  (each without the condition's opposite-direction words, and each sharing a term with it);
+- citations use a ±15 s window; answer items marked `post_hoc` (filled in after a run, from the
+  source) can be left out to report the answer as first written.
 """
 
 from __future__ import annotations
@@ -26,11 +36,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from services.technique_cards.card_schema import CONDITION_FIELDS, validate_card
-from services.technique_cards.citations import Line, check_card, normalise
+from services.technique_cards.citations import WINDOW_SECONDS, Line, check_card, normalise
+from services.technique_cards.grounding import check_statement
 
 # Frozen before the real-source set (gateway #SIW-lib-7, 2026-11-13): real results are judged
 # only by these rules. Any change raises the version and is agreed with the gateway first.
-SCORING_RULES_VERSION = 1
+# v2 (#SIW-lib-12) replaces v1 after the real-source run; it is confirmed on new sources whose
+# answers are written before any model output. v1 stays available to reproduce earlier results.
+SCORING_RULES_VERSION = 2
 
 # Pass marks proposed by the gateway (#SIW-lib-4) and adopted in ADR 0056 §5.
 THRESHOLDS = {
@@ -97,7 +110,36 @@ def _hits(item: dict[str, Any], text: str, relaxed: bool = False) -> bool:
     return matches(item["terms"], text, item.get("exclude"), relaxed)
 
 
-def score_card(card: object, answer: dict[str, Any], lines: list[Line]) -> CardScore:
+def _without_post_hoc(answer: dict[str, Any]) -> dict[str, Any]:
+    kept = dict(answer)
+    for name in ("conditions", "ambiguities", "inexpressible", "other"):
+        kept[name] = [item for item in answer.get(name, []) if not item.get("post_hoc")]
+    return kept
+
+
+def _field_union_hits(item: dict[str, Any], texts: list[str], relaxed: bool = False) -> bool:
+    """Rules v2: the field's statements together hold the condition (#SIW-lib-12)."""
+    exclude = item.get("exclude") or []
+    candidates = [
+        text
+        for text in texts
+        if not any(normalise(word) in normalise(text) for word in exclude)
+        and any(matches([group], text) for group in item["terms"] if not group[0].startswith("~"))
+    ]
+    return bool(candidates) and matches(item["terms"], " ".join(candidates), None, relaxed)
+
+
+def score_card(
+    card: object,
+    answer: dict[str, Any],
+    lines: list[Line],
+    rules: int = SCORING_RULES_VERSION,
+    include_post_hoc: bool = True,
+) -> CardScore:
+    if rules not in (1, 2):
+        raise ValueError("scoring rules are version 1 or 2")
+    if not include_post_hoc:
+        answer = _without_post_hoc(answer)
     result = CardScore(source_id=str(answer["source_id"]))
     result.schema_errors = validate_card(card)
     result.conditions = len(answer["conditions"])
@@ -120,15 +162,15 @@ def score_card(card: object, answer: dict[str, Any], lines: list[Line]) -> CardS
             for vague in card.get("ambiguities", [])
         )
 
+    def held(item: dict[str, Any], name: str) -> bool:
+        if rules == 1:
+            return any(_hits(item, text) for text in statements(name))
+        return _field_union_hits(item, statements(name))
+
     for item in answer["conditions"]:
-        if any(_hits(item, text) for text in statements(item["field"])):
+        if held(item, item["field"]):
             result.conditions_matched += 1
-        elif any(
-            _hits(item, text)
-            for name in CONDITION_FIELDS
-            if name != item["field"]
-            for text in statements(name)
-        ):
+        elif any(held(item, name) for name in CONDITION_FIELDS if name != item["field"]):
             result.wrong_field.append(f"{item['field']}: {item['text']}")
         else:
             result.missed.append(f"{item['field']}: {item['text']}")
@@ -137,6 +179,11 @@ def score_card(card: object, answer: dict[str, Any], lines: list[Line]) -> CardS
     for name in CONDITION_FIELDS:
         for statement in card.get(name, []):
             text = str(statement.get("text", ""))
+            if rules == 2:
+                reason = check_statement(statement, lines)
+                if reason:
+                    result.made_up.append(f"{name}: {text} ({reason})")
+                    continue
             if any(_hits(item, text) for item in answer["conditions"]):
                 continue
             if any(_hits(item, text, relaxed=True) for item in answer["conditions"]):
@@ -159,7 +206,9 @@ def score_card(card: object, answer: dict[str, Any], lines: list[Line]) -> CardS
                 else:
                     result.incomplete.append(f"{name}: {text}")  # lost what narrowed it
                 continue
-            result.made_up.append(f"{name}: {text}")
+            if rules == 1:
+                result.made_up.append(f"{name}: {text}")
+            # v2: grounded in the source but not in the answer — the answer is the narrower one.
 
     predicted_vague = [
         f"{item.get('text', '')} {item.get('question', '')}" for item in card.get("ambiguities", [])
@@ -173,7 +222,7 @@ def score_card(card: object, answer: dict[str, Any], lines: list[Line]) -> CardS
         else:
             result.missed.append(f"ambiguity: {item['text']}")
 
-    checks = check_card(card, lines)
+    checks = check_card(card, lines, WINDOW_SECONDS if rules == 2 else None)
     result.citations = len(checks)
     result.citations_ok = sum(1 for check in checks if check.ok)
     result.citation_failures = [
@@ -182,7 +231,7 @@ def score_card(card: object, answer: dict[str, Any], lines: list[Line]) -> CardS
     return result
 
 
-def summarise(scores: list[CardScore]) -> dict[str, Any]:
+def summarise(scores: list[CardScore], rules: int = SCORING_RULES_VERSION) -> dict[str, Any]:
     """Totals over cards and whether they meet the pass marks."""
     conditions = sum(s.conditions for s in scores)
     citations = sum(s.citations for s in scores)
@@ -216,6 +265,6 @@ def summarise(scores: list[CardScore]) -> dict[str, Any]:
     return {
         **totals,
         "thresholds": THRESHOLDS,
-        "scoring_rules_version": SCORING_RULES_VERSION,
+        "scoring_rules_version": rules,
         "pass": passed,
     }
