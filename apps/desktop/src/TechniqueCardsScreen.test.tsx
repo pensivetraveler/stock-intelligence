@@ -11,6 +11,7 @@ import type {
   CardCondition,
   TechniqueCard,
   TechniqueCardsApi,
+  TechniqueDraft,
   TechniquePreview,
 } from "./technique-cards-api";
 import { slotsLabel } from "./technique-cards-api";
@@ -129,6 +130,47 @@ function card(overrides: Partial<TechniqueCard> = {}): TechniqueCard {
   };
 }
 
+const draftDone: TechniqueDraft = {
+  kind: "technique_card_draft",
+  draft_id: "d1",
+  card_id: "c1",
+  state: "done",
+  model: "google/gemini-4-argon",
+  error: "",
+  result: {
+    items: ["[entry, long, from the source] buy", "[position] bet small"],
+    conversion: {
+      definition: { type: "rules" },
+      mapping: [
+        {
+          index: 0,
+          condition: "buy",
+          status: "mapped",
+          rule_paths: ["/entry"],
+          reason: "",
+        },
+        {
+          index: 1,
+          condition: "bet small",
+          status: "unconvertible",
+          rule_paths: [],
+          reason: "no size",
+        },
+      ],
+      problems: [],
+      notes: "",
+      complete: false,
+    },
+    unconvertible: 1,
+    blocking: [],
+    cost_usd: "0.01",
+  },
+  strategy_id: null,
+  strategy_version: null,
+  save_blocks: [],
+  needs_accept: true,
+};
+
 function fakeApi(): TechniqueCardsApi {
   return {
     sources: vi.fn().mockResolvedValue([
@@ -157,6 +199,14 @@ function fakeApi(): TechniqueCardsApi {
     card: vi.fn().mockResolvedValue(card()),
     resolve: vi.fn().mockResolvedValue(card()),
     recheck: vi.fn().mockResolvedValue(card()),
+    startDraft: vi.fn().mockResolvedValue({ draft_id: "d1" }),
+    draft: vi.fn().mockResolvedValue(draftDone),
+    drafts: vi.fn().mockResolvedValue([]),
+    saveDraft: vi.fn().mockResolvedValue({
+      ...draftDone,
+      strategy_id: "strategy-abc",
+      strategy_version: 1,
+    }),
   };
 }
 
@@ -257,6 +307,47 @@ describe("technique cards", () => {
     await waitFor(() =>
       expect(api.start).toHaveBeenCalledWith(ITEM, "google/gemini-4-argon"),
     );
+  });
+
+  it("drafts a ready card with argon and saves only after the tick", async () => {
+    const api = fakeApi();
+    vi.mocked(api.cards).mockResolvedValue([card()]);
+    vi.mocked(api.card).mockResolvedValue(card({ ready: true, blocks: [] }));
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Make a draft (costs money)" }),
+    );
+    await waitFor(() =>
+      expect(api.startDraft).toHaveBeenCalledWith(
+        "c1",
+        "google/gemini-4-argon",
+      ),
+    );
+    expect(await screen.findByText("Cannot express")).toBeTruthy();
+    const save = screen.getByRole("button", {
+      name: "Save as a rules strategy",
+    });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(
+      screen.getByLabelText(
+        "Save without the 1 item(s) the rules cannot express",
+      ),
+    );
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(api.saveDraft).toHaveBeenCalledWith("d1", "Demo lesson", true),
+    );
+    expect(
+      await screen.findByText(/Saved as strategy-abc version 1/),
+    ).toBeTruthy();
   });
 
   it("labels slots", () => {
