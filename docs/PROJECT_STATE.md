@@ -2802,6 +2802,16 @@
 - **실제 확인:** 02:10 ET 40초 연결(임시 저장소): 인증·구독·하트비트·정상 종료 기록, 상태 메시지 없음(장 전), 저장소에 키 없음.
 - **미확인:** 장중 실제 halt 기록, UTP halt가 반복되는지, 반복 메시지의 `t`가 처음 halt 시각인지, LaunchAgent 설치(사용자 승인 필요).
 
+## 기법 카드 평가 세트(ADR 0056 §5) — 2026-11-13
+
+- **추가:** `services/technique_cards/` — 카드 strict JSON 스키마(`card_schema.py`, 모든 객체 `required`·`additionalProperties: false`), 인용 대조(`citations.py`, `[mm:ss]` 자막에서 인용 시각 줄 앞 1·뒤 2줄 안에 정규화한 인용문이 있는지, PDF 쪽 인용은 아직 실패 처리), 합성 자막 생성기(`synthetic.py`, 검증된 규칙 빌더 전략 → 같은 뜻 문장 템플릿·고정 모호 표현·규칙 불가 문장·잡담, 시각은 스크립트, LLM 없음), 채점(`scoring.py`, 필드 일치·지어낸 조건·잘못 둔 조건·인용 일치·모호한 점 재현율, 합격 기준 #SIW-lib-4), 추출 프롬프트(`prompt.py` v1), 명령(`python -m services.technique_cards.evalset synthetic|real|score`). 합성 명세 5건(`synthetic_specs.json`).
+- **산출물(로컬, gitignore):** `data/technique_eval/synthetic/{evalset.json,smoke.json,answers.json}` — data public, maxTokens 8000, 1건짜리 `smoke.json`은 strict 스키마 HTTP 400 확인용.
+- **시험:** `tests/technique_cards/test_technique_cards.py` 15개(스키마 strict·누락/추가 필드, 자막 파싱, 인용 창·실패, 합성 정답이 자기 자막과 인용·용어 일치, 같은 필드 조건끼리 섞이지 않음, 방향 반대 문장 불일치, 완벽 카드 합격, 지어낸·잘못 둔 조건·인용 실패, 평가 파일·리포트 채점, 실제 자료 목록). 전체 `pytest` 1328개 통과.
+- **미확인:** 실제 모델 응답(게이트웨이 eval 전), strict 스키마가 공급자에서 400 없이 받아지는지, 실제 자료(영상 등록·정답 카드 작성 전), 용어 일치 방식이 모델의 다양한 표현에서 너무 엄하거나 느슨한지.
+- **합성 평가(#SIW-lib-5, 2026-11-13):** 카드 스키마를 `$defs/$ref`로 바꿈(원래 스키마는 Anthropic이 grammar 크기로 400). 세 모델 모두 합격 기준 통과(지어낸 0·인용 100%·필드 100%, 모호 재현 sonnet 72.7%·haiku 90.9%·luna 100%), 그러나 기준 없는 말을 진입·청산에 넣음(잘못 둔 조건 sonnet 2·haiku 6·luna 9). 프롬프트 v2로 다시 평가 요청. 채점 결과 `data/technique_eval/synthetic/score-refschema.json`(로컬).
+- **v2 합성 평가(#SIW-lib-6, 2026-11-13):** 합격 기준에 잘못 둔 조건 0건 추가, 모호/표현 불가는 정답 항목별 `accept`, 지표 기간만 빠진 조건은 '불완전'(지어낸 조건 아님). 결과: sonnet·luna 합격, haiku 지어낸 1건("진입 봉이 양봉이다", 허용 여부 #SIW-lib-7 질의). 잘못 둔 조건은 세 모델 모두 0(v1 2·9·6). 채점 `data/technique_eval/synthetic-v2/score.json`(로컬).
+- **분할 허용·채점 규칙 고정(#SIW-lib-7, 2026-11-13):** 기준 없는 말에서 원문 낱말로 정의되는 부분만 떼어 낸 조건은, 남은 부분이 같은 인용으로 모호한 점에 있으면 맞음(없으면 불완전). `SCORING_RULES_VERSION = 1`로 고정 — 실제 자료는 이 규칙으로만 판정. v2 재채점: 세 모델 모두 합격(sonnet 불완전 1, haiku 분할 1).
+
 ## 2단계 저영향 재료 목록과 뉴스 두 결론(ADR 0057 보충) — 2026-11-14
 
 - **사용자 결정:** 뉴스 분석은 "걸러야 할 재료인가"와 "급등의 명분을 제공하는가" 두 결론을 낸다. 저영향(그날 제외)은 공모 신청·발표(가격 무관)와 모든 상장 요건 회복·미달 통지(규칙), 소규모 매출 증가(NIR), 임상(시장 규모·시가총액 대비·p값, NIR 우선). 공모 완료와 역분할은 재료 있음. 그 밖의 기사는 NIR이 명분만 판단한다("뉴스 관련 규칙 정하기는 멈춰"). 명분 없음·재료 없음·재료 미확인은 보수적 전략.

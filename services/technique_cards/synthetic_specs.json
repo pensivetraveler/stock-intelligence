@@ -1,0 +1,199 @@
+[
+  {
+    "id": "syn-ema-cross",
+    "title": "합성 1: 지수이동평균 교차",
+    "seed": 101,
+    "timeframe": {
+      "say": "일봉",
+      "text": "일봉",
+      "terms": [["일봉", "daily", "1d", "하루"]]
+    },
+    "universe": {
+      "say": "거래대금 많은 미국 대형주",
+      "text": "거래대금 많은 미국 대형주",
+      "terms": [["대형주", "large"]]
+    },
+    "rules": {
+      "type": "rules",
+      "entry": {
+        "op": "cross_above",
+        "left": { "indicator": "ema", "params": { "length": 9 } },
+        "right": { "indicator": "ema", "params": { "length": 21 } }
+      },
+      "exit": {
+        "op": "cross_below",
+        "left": { "indicator": "ema", "params": { "length": 9 } },
+        "right": { "indicator": "ema", "params": { "length": 21 } }
+      },
+      "stop_loss_pct": "3",
+      "take_profit_pct": "8",
+      "sizing": { "mode": "percent_equity", "value": "10" }
+    },
+    "ambiguities": ["volume_surge", "quick_exit"],
+    "inexpressible": ["market_mood"]
+  },
+  {
+    "id": "syn-sma-pullback",
+    "title": "합성 2: 20일선 눌림목",
+    "seed": 202,
+    "timeframe": {
+      "say": "일봉",
+      "text": "일봉",
+      "terms": [["일봉", "daily", "1d", "하루"]]
+    },
+    "universe": {
+      "say": "200일선 위에 있는 상승 추세 종목",
+      "text": "상승 추세 종목",
+      "terms": [["추세", "trend"]]
+    },
+    "rules": {
+      "type": "rules",
+      "entry": {
+        "all": [
+          {
+            "op": "gt",
+            "left": { "price": "close" },
+            "right": { "indicator": "sma", "params": { "length": 200 } }
+          },
+          {
+            "op": "cross_above",
+            "left": { "price": "close" },
+            "right": { "indicator": "sma", "params": { "length": 20 } }
+          }
+        ]
+      },
+      "exit": {
+        "op": "cross_below",
+        "left": { "price": "close" },
+        "right": { "indicator": "sma", "params": { "length": 20 } }
+      },
+      "stop_loss_atr": { "length": 14, "mult": "2" },
+      "sizing": { "mode": "percent_equity", "value": "5" }
+    },
+    "ambiguities": ["volume_dry", "near_line", "strong_candle"],
+    "inexpressible": ["news_check", "gut_feel"]
+  },
+  {
+    "id": "syn-rsi-reversal",
+    "title": "합성 3: RSI 과매도 반등",
+    "seed": 303,
+    "timeframe": {
+      "say": "1시간봉",
+      "text": "1시간봉",
+      "terms": [["1시간", "60분", "1h", "hour"]]
+    },
+    "universe": {
+      "say": "변동성 큰 기술주",
+      "text": "변동성 큰 기술주",
+      "terms": [["기술주", "tech"]]
+    },
+    "rules": {
+      "type": "rules",
+      "entry": {
+        "op": "cross_above",
+        "left": { "indicator": "rsi", "params": { "length": 14 } },
+        "right": { "value": "30" }
+      },
+      "exit": {
+        "op": "gt",
+        "left": { "indicator": "rsi", "params": { "length": 14 } },
+        "right": { "value": "70" }
+      },
+      "stop_loss_pct": "5",
+      "sizing": { "mode": "percent_equity", "value": "20" }
+    },
+    "ambiguities": ["strong_candle", "quick_exit"],
+    "inexpressible": ["market_mood", "news_check"]
+  },
+  {
+    "id": "syn-bb-breakout",
+    "title": "합성 4: 볼린저 밴드 상단 돌파",
+    "seed": 404,
+    "timeframe": {
+      "say": "일봉",
+      "text": "일봉",
+      "terms": [["일봉", "daily", "1d", "하루"]]
+    },
+    "universe": {
+      "say": "중소형 성장주",
+      "text": "중소형 성장주",
+      "terms": [["성장주", "growth", "중소형"]]
+    },
+    "rules": {
+      "type": "rules",
+      "entry": {
+        "all": [
+          {
+            "op": "cross_above",
+            "left": { "price": "close" },
+            "right": {
+              "indicator": "bb",
+              "params": { "length": 20, "mult": 2 },
+              "output": "upper"
+            }
+          },
+          {
+            "op": "gt",
+            "left": { "price": "volume" },
+            "right": { "value": "500000" }
+          }
+        ]
+      },
+      "exit": {
+        "op": "cross_below",
+        "left": { "price": "close" },
+        "right": {
+          "indicator": "bb",
+          "params": { "length": 20, "mult": 2 },
+          "output": "basis"
+        }
+      },
+      "trailing_stop": { "mode": "pct", "value": "7" },
+      "sizing": { "mode": "percent_equity", "value": "10" }
+    },
+    "ambiguities": ["not_extended", "quick_exit"],
+    "inexpressible": ["market_mood"]
+  },
+  {
+    "id": "syn-prev-high-breakout",
+    "title": "합성 5: 직전 봉 고가 돌파",
+    "seed": 505,
+    "timeframe": {
+      "say": "5분봉",
+      "text": "5분봉",
+      "terms": [["5분", "5m", "5 min"]]
+    },
+    "universe": {
+      "say": "아침에 갭 상승한 종목",
+      "text": "갭 상승 종목",
+      "terms": [["갭", "gap"]]
+    },
+    "rules": {
+      "type": "rules",
+      "entry": {
+        "all": [
+          {
+            "op": "cross_above",
+            "left": { "price": "close" },
+            "right": { "price": "high", "offset": 1 }
+          },
+          {
+            "op": "gt",
+            "left": { "price": "close" },
+            "right": { "indicator": "ema", "params": { "length": 50 } }
+          }
+        ]
+      },
+      "exit": {
+        "op": "lt",
+        "left": { "price": "close" },
+        "right": { "price": "low", "offset": 1 }
+      },
+      "stop_loss_pct": "2",
+      "take_profit_pct": "6",
+      "sizing": { "mode": "percent_equity", "value": "10" }
+    },
+    "ambiguities": ["volume_surge", "strong_candle"],
+    "inexpressible": ["news_check", "gut_feel"]
+  }
+]
