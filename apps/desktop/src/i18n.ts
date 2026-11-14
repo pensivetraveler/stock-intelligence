@@ -892,6 +892,48 @@ const en = {
   "candidates.flow.state.halted": "Halted",
   "candidates.flow.status.unsupported": "Not listed",
   "candidates.flow.status.error": "Error",
+  "candidates.column.stage2": "Material (stage 2)",
+  "candidates.stage2.passed": "Pass",
+  "candidates.stage2.excluded": "Out for today",
+  "candidates.stage2.material.rationale": "rally reason",
+  "candidates.stage2.material.no_rationale": "no rally reason",
+  "candidates.stage2.material.low_impact": "low impact",
+  "candidates.stage2.material.none": "no material",
+  "candidates.stage2.material.unconfirmed": "material unconfirmed",
+  "candidates.stage2.strategy.normal": "normal",
+  "candidates.stage2.strategy.conservative": "conservative",
+  "candidates.stage2.reason.no_material": "No material in the news window.",
+  "candidates.stage2.reason.low_impact_material":
+    "Only low-impact material (offering or financing announcement, listing notice, small revenue gain, early trial): out for today.",
+  "candidates.stage2.reason.rally_rationale":
+    "A material that is not low impact gives the rally a reason.",
+  "candidates.stage2.reason.no_rally_rationale":
+    "The material gives the rally no reason: treated as no material.",
+  "candidates.stage2.reason.rationale_unknown":
+    "Whether the material gives the rally a reason is unknown.",
+  "candidates.stage2.reason.filter_unknown":
+    "Whether the material is low impact is unknown (no LLM answer, rules could not tell).",
+  "candidates.stage2.reason.material_unknown":
+    "The news service could read no source.",
+  "candidates.stage2.reason.no_news_check":
+    "No news check yet: run the news check to judge.",
+  "candidates.stage2.reason.news_pending":
+    "The news check is still waiting (service off or still running).",
+  "candidates.stage2.reason.news_error": "The news check failed.",
+  "candidates.stage2.reason.no_conclusions":
+    "The news result is from an older service version without the two conclusions.",
+  "candidates.stage2.conclusions":
+    "Conclusions: material {material} · filter {filter} · rally reason {rationale}",
+  "candidates.stage2.inference":
+    "Rules and the news service's LLM reading (inference, not verified fact). Unconfirmed passes with a conservative strategy (ADR 0057).",
+  "candidates.stage2.notWatched":
+    "Out for today at stage 2: stage 3 does not watch it.",
+  "candidates.stage2.detail": "{symbol} stage 2 basis",
+  "candidates.stage2.article": "Article",
+  "candidates.stage2.filter": "Filter · basis",
+  "candidates.stage2.rationale": "Rally reason · basis",
+  "candidates.stage2.inherited": "twin article's LLM answer",
+  "candidates.flow.status.stage2_excluded": "Out (stage 2)",
   "candidates.flow.asOf": "Judged at the minute ending {time} (New York)",
   "candidates.flow.rules":
     "Liquidity: 4 of the last 5 1m bars with $5,000 and 1,000 shares or more. Volatility: 3 of the last 20 bars moving 1% and 2 ticks or more. Out blocks new buys only; resting orders stay.",
@@ -971,6 +1013,9 @@ const en = {
   "candidates.news.merger_acquisition": "Merger / acquisition",
   "candidates.news.reverse_split": "Reverse split",
   "candidates.news.listing_notice": "Listing notice",
+  "candidates.news.offering_announcement": "Offering announcement",
+  "candidates.news.offering_completion": "Offering completed",
+  "candidates.news.financing_announcement": "Financing announcement",
   "candidates.nirTitle": "LLM reading of the tagged articles",
   "candidates.nirNotice":
     "Inference by an LLM from the article text, not verified fact; it does not change the status.",
@@ -2834,6 +2879,48 @@ const ko: Record<MessageKey, string> = {
   "candidates.flow.state.halted": "거래 정지",
   "candidates.flow.status.unsupported": "종목 없음",
   "candidates.flow.status.error": "오류",
+  "candidates.column.stage2": "재료(2단계)",
+  "candidates.stage2.passed": "통과",
+  "candidates.stage2.excluded": "그날 제외",
+  "candidates.stage2.material.rationale": "명분 있음",
+  "candidates.stage2.material.no_rationale": "명분 없음",
+  "candidates.stage2.material.low_impact": "저영향",
+  "candidates.stage2.material.none": "재료 없음",
+  "candidates.stage2.material.unconfirmed": "재료 미확인",
+  "candidates.stage2.strategy.normal": "보통",
+  "candidates.stage2.strategy.conservative": "보수적",
+  "candidates.stage2.reason.no_material": "뉴스 창 안에 재료가 없다.",
+  "candidates.stage2.reason.low_impact_material":
+    "저영향 재료(공모·자금 조달 발표, 상장 요건 통지, 소규모 매출 증가, 초기 임상)만 있다: 그날 제외.",
+  "candidates.stage2.reason.rally_rationale":
+    "저영향이 아닌 재료가 급등의 명분을 준다.",
+  "candidates.stage2.reason.no_rally_rationale":
+    "재료가 급등의 명분이 되지 못한다: 재료 없음과 같게 본다.",
+  "candidates.stage2.reason.rationale_unknown":
+    "재료가 급등의 명분이 되는지 모른다.",
+  "candidates.stage2.reason.filter_unknown":
+    "재료가 저영향인지 모른다(LLM 답 없음, 규칙으로 판단 불가).",
+  "candidates.stage2.reason.material_unknown":
+    "뉴스 서비스가 읽을 수 있는 출처가 없었다.",
+  "candidates.stage2.reason.no_news_check":
+    "뉴스 검사를 아직 하지 않았다: 뉴스 검사를 돌리면 판정한다.",
+  "candidates.stage2.reason.news_pending":
+    "뉴스 검사가 기다리는 중이다(서비스 꺼짐 또는 진행 중).",
+  "candidates.stage2.reason.news_error": "뉴스 검사가 실패했다.",
+  "candidates.stage2.reason.no_conclusions":
+    "두 결론이 없는 이전 판 뉴스 결과다.",
+  "candidates.stage2.conclusions":
+    "결론: 재료 {material} · 걸러야 함 {filter} · 급등 명분 {rationale}",
+  "candidates.stage2.inference":
+    "규칙과 뉴스 서비스의 LLM 판단(추론, 확인된 사실 아님). 미확인은 통과시키고 보수적 전략으로 둔다(ADR 0057).",
+  "candidates.stage2.notWatched":
+    "2단계에서 그날 제외: 3단계에서 감시하지 않는다.",
+  "candidates.stage2.detail": "{symbol} 2단계 근거",
+  "candidates.stage2.article": "기사",
+  "candidates.stage2.filter": "걸러야 함 · 근거",
+  "candidates.stage2.rationale": "급등 명분 · 근거",
+  "candidates.stage2.inherited": "쌍둥이 기사의 LLM 답",
+  "candidates.flow.status.stage2_excluded": "제외(2단계)",
   "candidates.flow.asOf": "{time}(뉴욕)에 끝난 1분봉까지로 판정",
   "candidates.flow.rules":
     "유동성: 최근 1분봉 5개 중 4개 이상이 거래대금 $5,000·거래량 1,000주 이상. 변동성: 최근 20개 중 3개 이상이 1%·2호가 이상 움직임. 제외는 새 매수만 막고 걸린 주문은 둔다.",
@@ -2913,6 +3000,9 @@ const ko: Record<MessageKey, string> = {
   "candidates.news.merger_acquisition": "인수합병",
   "candidates.news.reverse_split": "역분할",
   "candidates.news.listing_notice": "상장 유지 통지",
+  "candidates.news.offering_announcement": "공모 발표",
+  "candidates.news.offering_completion": "공모 완료",
+  "candidates.news.financing_announcement": "자금 조달 발표",
   "candidates.nirTitle": "분류된 기사의 LLM 판단",
   "candidates.nirNotice":
     "LLM이 기사 글을 읽고 한 추론이며 확인된 사실이 아닙니다. 상태는 바꾸지 않습니다.",

@@ -7721,7 +7721,3861 @@ export interface ScreeningCandidates {
      * Time in the condition's list within covered stretches before the cutoff.
      */
     seconds_in_list: number | null;
+    stage2?: ScreeningStage2;
   }[];
+}
+/**
+ * Stage 2 material impact (ADR 0057 §2, U-b) from the latest news check's conclusions. Inference (rules plus the news service's LLM reading), not verified fact; not a trade instruction.
+ */
+export interface ScreeningStage2 {
+  label: string;
+  version: string;
+  rules: string;
+  /**
+   * excluded_today: a low-impact material; the day's trading leaves the symbol out (stage 3 does not watch it).
+   */
+  outcome: "passed" | "excluded_today";
+  material:
+    "rationale" | "no_rationale" | "low_impact" | "none" | "unconfirmed";
+  /**
+   * For stages 5-6; null when excluded.
+   */
+  strategy: "normal" | "conservative" | null;
+  reason: string;
+  conclusions: null | {
+    version: string | null;
+    material: string | null;
+    filter: string | null;
+    rationale: string | null;
+  };
+  /**
+   * @maxItems 20
+   */
+  articles:
+    | []
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ]
+    | [
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+        {
+          source_id: string | null;
+          record_id: string | null;
+          headline: string | null;
+          published_at_utc: string | null;
+          categories: string[];
+          filter: string | null;
+          filter_basis: string | null;
+          filter_reasons: string[];
+          rationale: string | null;
+          rationale_basis: string | null;
+          nir_record_id: string | null;
+          nir_state: string | null;
+          nir_inherited_from: null | {
+            source_id: string | null;
+            record_id: string | null;
+          };
+        },
+      ];
+  news_check_id: number | null;
+  news_status: string | null;
+  news_cutoff_utc: string | null;
 }
 /**
  * ADR 0052: one stored check of one candidate. `result` depends on `check`; for `entry` it holds the last closed daily bar, the bars used and every simple condition with the values it compared. Stored results are only added, never changed.
@@ -7805,14 +11659,15 @@ export interface ScreeningFlowWatch {
     symbol: string;
     instrument_id: null | Identifier;
     /**
-     * incomplete: a window holds a minute the account cannot see yet.
+     * incomplete: a window holds a minute the account cannot see yet. stage2_excluded: excluded for the day at stage 2; not watched.
      */
-    status: "ok" | "incomplete" | "unsupported" | "error";
+    status: "ok" | "incomplete" | "unsupported" | "error" | "stage2_excluded";
     result: {
       state?: "eligible" | "excluded" | "warming_up" | "unknown" | "halted";
       stage2?: "passed" | "failed" | "not_judged" | "not_implemented";
       new_buys_allowed?: boolean;
       resting_orders?: "keep";
+      stage2_detail?: null | ScreeningStage2;
       [k: string]: unknown;
     };
     /**

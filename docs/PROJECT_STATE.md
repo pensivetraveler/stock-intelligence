@@ -2832,3 +2832,11 @@
 - **추가:** `services/technique_cards/structured_schema.py`(카드 스키마 v2, 조건 칸·숫자별 `value_citations`), `prompt.py` 프롬프트 v3(`structured_prompt`, 구간 표시), `structured_scoring.py`(채점 규칙 v3, 칸별 대조·숫자 근거), `evalset.py` `real --structured`(30분 넘는 자막은 약 20분 구간·30초 겹침으로 나눔, 출력 16000)와 `score --rules 3`(구간 합치기).
 - **시험:** `tests/technique_cards/test_structured_cards.py` 6개(스키마 strict, 칸 대조·좌우 바꿈·일반 ma·기간 빠짐, 숫자별 인용, 텍스트 대조·잘못 둔 조건, 구간 나누기·합쳐 채점). `tests/technique_cards` 30개 통과.
 - **미확인:** 구조화 스키마가 공급자에서 400 없이 받아지는지(haiku 1건 확인 전), 정답 17건 재작성, 세 모델 평가.
+
+## 2단계 재료 판정(ADR 0057 U-b, SIW 몫) — 2026-11-14
+
+- **추가:** `services/screening/material.py`(뉴스 검사의 `news_check.conclusions` → 통과·그날 제외·재료 미확인, 전략 보통·보수적, 기사별 근거 rules·nir·rules_fallback·상속 NIR), `services/screening/market_cap.py`(요청 `context`의 cutoff 시가총액 = Toss 발행주식수 × cutoff 전 마지막 확정 1분봉 종가, cutoff 뒤 값은 보내지 않음, 끝난 세션은 보내지 않음, 이전 매출은 출처 없어 안 보냄), `ScreeningStore.documents`. 검사 B 판 `screening-news-4`(`result.context_sent`·`context_note`).
+- **3단계 연결:** `GET /v1/screening/flow`에서 그날 제외 종목은 `status: stage2_excluded`(봉 안 읽음), 나머지는 `result.stage2: passed`와 `stage2_detail`. `versions.stage2_rules`.
+- **API·패널:** 후보 목록 `candidates[].stage2`(계약 `$defs/ScreeningStage2`), '오늘의 후보' "재료(2단계)" 열과 근거 표, 수급 열 "제외(2단계)". 뉴스 범주 이름에 공모 발표·공모 완료·자금 조달 발표 추가.
+- **시험:** `tests/screening/test_material.py` 22개, `test_flow_watch.py` 경로 테스트 갱신, 패널 테스트 1개.
+- **미확인:** 실제 서비스·Toss 키로 context를 넣은 검사, Toss 발행주식수의 갱신 시점. 뉴스 검사는 여전히 패널에서 돌린다(자동 실행 없음 — 돌리지 않은 종목은 재료 미확인으로 통과).
