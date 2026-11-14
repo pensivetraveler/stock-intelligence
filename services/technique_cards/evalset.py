@@ -3,6 +3,7 @@
     python -m services.technique_cards.evalset synthetic --out-dir data/technique_eval/synthetic
     python -m services.technique_cards.evalset real --manifest m.json --out-dir <dir>
     python -m services.technique_cards.evalset score --report <report.json> --answers <answers.json>
+        [--rules 1|2] [--without-post-hoc]
 
 `synthetic` writes `evalset.json` (data public), `smoke.json` (one case, for the strict-schema
 HTTP 400 check) and `answers.json`. `real` does the same for source transcripts and hand-checked
@@ -22,7 +23,12 @@ from typing import Any
 from services.technique_cards.card_schema import response_schema
 from services.technique_cards.citations import parse_transcript
 from services.technique_cards.prompt import PROMPT_VERSION, SYSTEM, user_prompt
-from services.technique_cards.scoring import CardScore, score_card, summarise
+from services.technique_cards.scoring import (
+    SCORING_RULES_VERSION,
+    CardScore,
+    score_card,
+    summarise,
+)
 from services.technique_cards.synthetic import build
 
 SPECS = Path(__file__).with_name("synthetic_specs.json")
@@ -116,7 +122,12 @@ def _answer_json(text: str) -> object:
     return json.loads(candidate.strip())
 
 
-def score(report: dict[str, Any], answers: dict[str, Any]) -> dict[str, Any]:
+def score(
+    report: dict[str, Any],
+    answers: dict[str, Any],
+    rules: int = SCORING_RULES_VERSION,
+    include_post_hoc: bool = True,
+) -> dict[str, Any]:
     by_model: dict[str, list[CardScore]] = {}
     costs: dict[str, float] = {}
     for result in report.get("results", []):
@@ -129,14 +140,14 @@ def score(report: dict[str, Any], answers: dict[str, Any]) -> dict[str, Any]:
             card: object = _answer_json(text) if isinstance(text, str) else None
         except json.JSONDecodeError:
             card = None
-        item = score_card(card, case["answer"], lines)
+        item = score_card(card, case["answer"], lines, rules, include_post_hoc)
         if card is None:
             item.schema_errors = ["no JSON answer"]
         by_model.setdefault(result["model"], []).append(item)
         costs[result["model"]] = costs.get(result["model"], 0.0) + float(result.get("costUsd") or 0)
     return {
         model: {
-            "summary": summarise(items),
+            "summary": summarise(items, rules),
             "cost_usd": round(costs[model], 6),
             "cards": [item.as_dict() for item in items],
         }
@@ -155,6 +166,12 @@ def main(argv: list[str] | None = None) -> int:
     sc = sub.add_parser("score")
     sc.add_argument("--report", type=Path, required=True)
     sc.add_argument("--answers", type=Path, nargs="+", required=True)
+    sc.add_argument("--rules", type=int, choices=(1, 2), default=SCORING_RULES_VERSION)
+    sc.add_argument(
+        "--without-post-hoc",
+        action="store_true",
+        help="score against the answer as first written (leave out items marked post_hoc)",
+    )
     args = parser.parse_args(argv)
     if args.command == "synthetic":
         items = synthetic(args.out_dir)
@@ -167,7 +184,12 @@ def main(argv: list[str] | None = None) -> int:
         for path in args.answers:
             answers.update(json.loads(path.read_text()))
         json.dump(
-            score(json.loads(args.report.read_text()), answers),
+            score(
+                json.loads(args.report.read_text()),
+                answers,
+                args.rules,
+                not args.without_post_hoc,
+            ),
             sys.stdout,
             ensure_ascii=False,
             indent=2,
