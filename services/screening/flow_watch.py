@@ -224,10 +224,17 @@ def evaluate(
 
     `minutes` must be one session's grid in time order; nothing after `index` is read.
     """
-    as_of = minutes[index].end_utc
     counted = [m for m in minutes[: index + 1] if not m.left_out]
-    liquidity = tuple(counted[-LIQUIDITY_WINDOW:])
-    volatility = tuple(counted[-VOLATILITY_WINDOW:])
+    return _evaluate_counted(minutes[index].end_utc, counted[-VOLATILITY_WINDOW:], halts)
+
+
+def _evaluate_counted(
+    as_of: datetime, recent: Sequence[Minute], halts: Sequence[HaltSpan]
+) -> Evaluation:
+    """`evaluate` from the newest counted minutes up to `as_of` (at least the volatility
+    window of them, or all there are)."""
+    liquidity = tuple(recent[-LIQUIDITY_WINDOW:])
+    volatility = tuple(recent[-VOLATILITY_WINDOW:])
     halted_now = any(h.open_at(as_of) for h in halts)
     liquid = sum(1 for m in liquidity if m.liquid)
     volatile = sum(1 for m in volatility if m.volatile)
@@ -249,8 +256,21 @@ def evaluate(
 
 
 def timeline(minutes: Sequence[Minute], halts: Sequence[HaltSpan] = ()) -> list[Evaluation]:
-    """The state at the end of every minute of the grid, each from its own past only."""
-    return [evaluate(minutes, index, halts) for index in range(len(minutes))]
+    """The state at the end of every minute of the grid, each from its own past only.
+
+    Same as `evaluate` at every index, but keeps the counted minutes as it goes instead of
+    filtering the whole prefix again for each minute (that was quadratic: about 0.3 s per
+    symbol for a 960-minute session, measured 2026-11-14).
+    """
+    recent: list[Minute] = []
+    states: list[Evaluation] = []
+    for minute in minutes:
+        if not minute.left_out:
+            recent.append(minute)
+            if len(recent) > VOLATILITY_WINDOW:
+                del recent[0]
+        states.append(_evaluate_counted(minute.end_utc, recent, halts))
+    return states
 
 
 def _minute_document(minute: Minute) -> dict[str, Any]:
