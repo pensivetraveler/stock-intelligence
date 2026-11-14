@@ -2826,6 +2826,13 @@
 - **시험:** `tests/technique_cards` 24개(숫자 낱말·한국어 수사 오인 방지, 근거 대조, 15초 창, 문장 합치기, post_hoc).
 - **미확인:** 새 실제 자료 4~6건으로 v2 확인(배정 확정 전), PDF 근거 대조(PDF 글자 추출 전).
 
+## 구조화 기법 카드(ADR 0056 §5, 사용자 결정 (b)) — 2026-11-14
+
+- **배경:** v2 확인용 새 자료 5건에서 세 모델 모두 필드 일치 61~71%로 불합격, 원인은 자유 문장 낱말 대조의 한계. 사용자가 카드 출력 구조화를 골랐다.
+- **추가:** `services/technique_cards/structured_schema.py`(카드 스키마 v2, 조건 칸·숫자별 `value_citations`), `prompt.py` 프롬프트 v3(`structured_prompt`, 구간 표시), `structured_scoring.py`(채점 규칙 v3, 칸별 대조·숫자 근거), `evalset.py` `real --structured`(30분 넘는 자막은 약 20분 구간·30초 겹침으로 나눔, 출력 16000)와 `score --rules 3`(구간 합치기).
+- **시험:** `tests/technique_cards/test_structured_cards.py` 6개(스키마 strict, 칸 대조·좌우 바꿈·일반 ma·기간 빠짐, 숫자별 인용, 텍스트 대조·잘못 둔 조건, 구간 나누기·합쳐 채점). `tests/technique_cards` 30개 통과.
+- **미확인:** 구조화 스키마가 공급자에서 400 없이 받아지는지(haiku 1건 확인 전), 정답 17건 재작성, 세 모델 평가.
+
 ## 2단계 재료 판정(ADR 0057 U-b, SIW 몫) — 2026-11-14
 
 - **추가:** `services/screening/material.py`(뉴스 검사의 `news_check.conclusions` → 통과·그날 제외·재료 미확인, 전략 보통·보수적, 기사별 근거 rules·nir·rules_fallback·상속 NIR), `services/screening/market_cap.py`(요청 `context`의 cutoff 시가총액 = Toss 발행주식수 × cutoff 전 마지막 확정 1분봉 종가, cutoff 뒤 값은 보내지 않음, 끝난 세션은 보내지 않음, 이전 매출은 출처 없어 안 보냄), `ScreeningStore.documents`. 검사 B 판 `screening-news-4`(`result.context_sent`·`context_note`).
