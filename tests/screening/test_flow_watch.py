@@ -378,3 +378,15 @@ def test_flow_route_judges_every_candidate_and_validates(
 
 def test_flow_route_reads_the_recorded_halts(tmp_path: Any) -> None:
     test_flow_route_judges_every_candidate_and_validates(tmp_path, record_halts=True)
+
+
+def test_timeline_is_evaluate_at_every_minute() -> None:
+    # The incremental timeline must give exactly what `evaluate` gives at each index,
+    # including halted empty minutes that leave the windows and the warm-up.
+    minutes = session("ft" + BASE + "eeeee" + "mmtfe" * 6 + BASE + "eee")
+    halts = [HaltSpan(t(22), t(27), "P", "LULD pause"), HaltSpan(t(61, 30), None, "2")]
+    marked = minutes_from_bars(_bars(minutes), _missing(minutes), halts, t(len(minutes)))
+    assert any(m.left_out for m in marked)
+    assert timeline(marked, halts) == [
+        evaluate(marked, index, halts) for index in range(len(marked))
+    ]
