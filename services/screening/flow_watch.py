@@ -276,6 +276,7 @@ def flow_document(
     evaluations: Sequence[Evaluation],
     halt_read: HaltRead,
     stage2: Stage2,
+    stage2_detail: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One symbol's current state, its state changes through the session and the rules."""
     rules = {
@@ -304,6 +305,8 @@ def flow_document(
     current = evaluations[-1] if evaluations else None
     document: dict[str, Any] = {
         "stage2": stage2,
+        # Stage 2's verdict and the strategy (normal/conservative) for the later stages.
+        "stage2_detail": None if stage2_detail is None else dict(stage2_detail),
         "rules": rules,
         "halts": {
             "available": halt_read.available,
@@ -364,14 +367,6 @@ def flow_document(
     return document
 
 
-GetStage2 = Callable[[str], Stage2]
-
-
-def stage2_not_implemented(_symbol: str) -> Stage2:
-    """U-b (stage 2, material impact) does not exist yet: every candidate is watched."""
-    return "not_implemented"
-
-
 #: Seconds after a minute's end before it is read: the provider aggregates a minute's
 #: trades shortly after it closes, and a minute read too early would look empty. How long
 #: Alpaca takes is not measured (unverified); 20 s is a margin, not a measurement.
@@ -392,6 +387,7 @@ def flow_check(
     halt_read: HaltRead,
     stage2: Stage2,
     settle_seconds: float = SETTLE_SECONDS,
+    stage2_detail: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """`status`, `result`, `versions`, `warnings` and `sources` of one symbol's flow watch."""
     end = min(last_closed_minute(now, settle_seconds), window.post_close_utc)
@@ -432,7 +428,7 @@ def flow_check(
     minutes = [
         m for m in minutes_from_bars(bars, missing, halt_read.spans, end) if m.end_utc <= end
     ]
-    document = flow_document(timeline(minutes, halt_read.spans), halt_read, stage2)
+    document = flow_document(timeline(minutes, halt_read.spans), halt_read, stage2, stage2_detail)
     document["label"] = LABEL
     document["evaluated_until_utc"] = _utc(end)
     outcome["result"] = document

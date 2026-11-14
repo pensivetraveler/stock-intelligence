@@ -2817,3 +2817,11 @@
 - **사용자 결정:** 뉴스 분석은 "걸러야 할 재료인가"와 "급등의 명분을 제공하는가" 두 결론을 낸다. 저영향(그날 제외)은 공모 신청·발표(가격 무관)와 모든 상장 요건 회복·미달 통지(규칙), 소규모 매출 증가(NIR), 임상(시장 규모·시가총액 대비·p값, NIR 우선). 공모 완료와 역분할은 재료 있음. 그 밖의 기사는 NIR이 명분만 판단한다("뉴스 관련 규칙 정하기는 멈춰"). 명분 없음·재료 없음·재료 미확인은 보수적 전략.
 - **변경:** 문서만(ADR 0057 2단계, ADR 목록). 코드 변경 없음.
 - **구현 때 메울 차이:** 공모 기사는 news-analysis에서 범위 밖이라 NIR이 없고 신청·완료 구분 규칙이 없음, 실적 보도자료 문구 누락 가능, NIR 입력(시가총액·이전 매출·시장 규모·p값)과 두 결론 출력이 없음.
+
+## 2단계 재료 판정(ADR 0057 U-b, SIW 몫) — 2026-11-14
+
+- **추가:** `services/screening/material.py`(뉴스 검사의 `news_check.conclusions` → 통과·그날 제외·재료 미확인, 전략 보통·보수적, 기사별 근거 rules·nir·rules_fallback·상속 NIR), `services/screening/market_cap.py`(요청 `context`의 cutoff 시가총액 = Toss 발행주식수 × cutoff 전 마지막 확정 1분봉 종가, cutoff 뒤 값은 보내지 않음, 끝난 세션은 보내지 않음, 이전 매출은 출처 없어 안 보냄), `ScreeningStore.documents`. 검사 B 판 `screening-news-4`(`result.context_sent`·`context_note`).
+- **3단계 연결:** `GET /v1/screening/flow`에서 그날 제외 종목은 `status: stage2_excluded`(봉 안 읽음), 나머지는 `result.stage2: passed`와 `stage2_detail`. `versions.stage2_rules`.
+- **API·패널:** 후보 목록 `candidates[].stage2`(계약 `$defs/ScreeningStage2`), '오늘의 후보' "재료(2단계)" 열과 근거 표, 수급 열 "제외(2단계)". 뉴스 범주 이름에 공모 발표·공모 완료·자금 조달 발표 추가.
+- **시험:** `tests/screening/test_material.py` 22개, `test_flow_watch.py` 경로 테스트 갱신, 패널 테스트 1개.
+- **미확인:** 실제 서비스·Toss 키로 context를 넣은 검사, Toss 발행주식수의 갱신 시점. 뉴스 검사는 여전히 패널에서 돌린다(자동 실행 없음 — 돌리지 않은 종목은 재료 미확인으로 통과).

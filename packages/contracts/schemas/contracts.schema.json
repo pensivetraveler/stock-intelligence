@@ -12328,6 +12328,9 @@
                 "type": ["number", "null"],
                 "minimum": 0,
                 "description": "Time in the condition's list within covered stretches before the cutoff."
+              },
+              "stage2": {
+                "$ref": "#/$defs/ScreeningStage2"
               }
             }
           }
@@ -13501,8 +13504,14 @@
                 ]
               },
               "status": {
-                "enum": ["ok", "incomplete", "unsupported", "error"],
-                "description": "incomplete: a window holds a minute the account cannot see yet."
+                "enum": [
+                  "ok",
+                  "incomplete",
+                  "unsupported",
+                  "error",
+                  "stage2_excluded"
+                ],
+                "description": "incomplete: a window holds a minute the account cannot see yet. stage2_excluded: excluded for the day at stage 2; not watched."
               },
               "result": {
                 "type": "object",
@@ -13529,6 +13538,16 @@
                   },
                   "resting_orders": {
                     "const": "keep"
+                  },
+                  "stage2_detail": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/$defs/ScreeningStage2"
+                      }
+                    ]
                   }
                 }
               },
@@ -13545,6 +13564,182 @@
               }
             }
           }
+        }
+      }
+    },
+    "ScreeningStage2": {
+      "type": "object",
+      "description": "Stage 2 material impact (ADR 0057 §2, U-b) from the latest news check's conclusions. Inference (rules plus the news service's LLM reading), not verified fact; not a trade instruction.",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "version",
+        "rules",
+        "outcome",
+        "material",
+        "strategy",
+        "reason",
+        "conclusions",
+        "articles",
+        "news_check_id",
+        "news_status",
+        "news_cutoff_utc"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "rules": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "outcome": {
+          "enum": ["passed", "excluded_today"],
+          "description": "excluded_today: a low-impact material; the day's trading leaves the symbol out (stage 3 does not watch it)."
+        },
+        "material": {
+          "enum": [
+            "rationale",
+            "no_rationale",
+            "low_impact",
+            "none",
+            "unconfirmed"
+          ]
+        },
+        "strategy": {
+          "enum": ["normal", "conservative", null],
+          "description": "For stages 5-6; null when excluded."
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "conclusions": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["version", "material", "filter", "rationale"],
+              "properties": {
+                "version": {
+                  "type": ["string", "null"]
+                },
+                "material": {
+                  "type": ["string", "null"]
+                },
+                "filter": {
+                  "type": ["string", "null"]
+                },
+                "rationale": {
+                  "type": ["string", "null"]
+                }
+              }
+            }
+          ]
+        },
+        "articles": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source_id",
+              "record_id",
+              "headline",
+              "published_at_utc",
+              "categories",
+              "filter",
+              "filter_basis",
+              "filter_reasons",
+              "rationale",
+              "rationale_basis",
+              "nir_record_id",
+              "nir_state",
+              "nir_inherited_from"
+            ],
+            "properties": {
+              "source_id": {
+                "type": ["string", "null"]
+              },
+              "record_id": {
+                "type": ["string", "null"]
+              },
+              "headline": {
+                "type": ["string", "null"]
+              },
+              "published_at_utc": {
+                "type": ["string", "null"]
+              },
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "filter": {
+                "type": ["string", "null"]
+              },
+              "filter_basis": {
+                "type": ["string", "null"]
+              },
+              "filter_reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rationale": {
+                "type": ["string", "null"]
+              },
+              "rationale_basis": {
+                "type": ["string", "null"]
+              },
+              "nir_record_id": {
+                "type": ["string", "null"]
+              },
+              "nir_state": {
+                "type": ["string", "null"]
+              },
+              "nir_inherited_from": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["source_id", "record_id"],
+                    "properties": {
+                      "source_id": {
+                        "type": ["string", "null"]
+                      },
+                      "record_id": {
+                        "type": ["string", "null"]
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "news_check_id": {
+          "type": ["integer", "null"]
+        },
+        "news_status": {
+          "type": ["string", "null"]
+        },
+        "news_cutoff_utc": {
+          "type": ["string", "null"]
         }
       }
     }

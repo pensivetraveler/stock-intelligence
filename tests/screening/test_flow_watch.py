@@ -360,7 +360,11 @@ def test_flow_route_judges_every_candidate_and_validates(
     rows = {row["symbol"]: row for row in document["candidates"]}
     assert "MINE" in rows and rows["OPEN"]["status"] == "unsupported"
     flip = rows["FLIP"]["result"]
-    assert flip["stage2"] == "not_implemented"
+    # No news check stored: stage 2 cannot judge, so it passes as unconfirmed (ADR 0057).
+    assert flip["stage2"] == "passed"
+    assert flip["stage2_detail"]["material"] == "unconfirmed"
+    assert flip["stage2_detail"]["reason"] == "no_news_check"
+    assert flip["stage2_detail"]["strategy"] == "conservative"
     assert flip["evaluated_until_utc"] == "2026-11-09T09:45:00Z"
     if not record_halts:
         assert flip["state"] == "eligible"

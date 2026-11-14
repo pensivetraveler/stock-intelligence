@@ -166,6 +166,7 @@ from services.review.period_ai import ask_period_commentary
 from services.review.store import ReviewStore
 from services.screening.dilution import DilutionService
 from services.screening.dilution import service_url as dilution_url
+from services.screening.market_cap import Shares, shares_from_stock_info
 from services.screening.news_service import NewsService
 from services.screening.news_service import service_url as news_url
 from services.screening.store import ScreeningStore
@@ -1836,6 +1837,14 @@ def create_app(
         error_response=_error_response,
         clock=clock,
     )
+
+    def toss_shares(symbol: str, instrument_id: str) -> Shares | None:
+        """Toss's share count for the news check's cutoff market cap; None without a key."""
+        session = toss()
+        if session is None:
+            return None
+        return shares_from_stock_info(stock_info(session, instrument_id, symbol, clock))
+
     register_screening_news_routes(
         application,
         store=screening.get,
@@ -1843,6 +1852,8 @@ def create_app(
         news_service=lambda: NewsService(news_url()),
         error_response=_error_response,
         clock=clock,
+        read_shares=toss_shares,
+        get_bars=lambda: MarketBarsService(provider.get()).get_bars,
     )
 
     # Provider and cache I/O are blocking; a sync endpoint runs in FastAPI's threadpool
