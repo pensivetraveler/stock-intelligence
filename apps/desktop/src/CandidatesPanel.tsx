@@ -1,5 +1,4 @@
 import type {
-  BacktestStrategy,
   ScreeningCandidates,
   ScreeningCheck,
   ScreeningFlowWatch,
@@ -11,12 +10,8 @@ import type { InstrumentListing } from "./market-api";
 import type { ChartPriceLevel } from "./PriceChart";
 import type { ScreeningApi } from "./screening-api";
 
-const STRATEGY_KEY = "siw.screening.strategy";
-
 interface CandidatesPanelProps {
   api: ScreeningApi;
-  /** Saved strategies; only rules strategies can be checked on daily bars. */
-  strategies: () => Promise<BacktestStrategy[]>;
   onPick: (listing: InstrumentListing) => void;
   /** Draws a check's price levels on charts of that instrument; null clears them. */
   onShowLevels?: (overlay: ScreeningOverlay | null) => void;
@@ -32,7 +27,7 @@ export interface ScreeningOverlay {
   levels: ChartPriceLevel[];
 }
 
-/** Checks other than entry, run one candidate at a time. */
+/** The checks, run one candidate at a time. Entry check A was retired (ADR 0057). */
 type OtherKind =
   "news" | "dilution" | "off_exchange" | "off_exchange_structure" | "momentum";
 
@@ -92,22 +87,6 @@ function flowText(
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function remembered(): string {
-  try {
-    return localStorage.getItem(STRATEGY_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function remember(strategyId: string): void {
-  try {
-    localStorage.setItem(STRATEGY_KEY, strategyId);
-  } catch {
-    // A blocked store only means the choice is not kept.
-  }
 }
 
 const OTHER_KINDS: Exclude<OtherKind, "momentum">[] = [
@@ -184,12 +163,11 @@ function newYorkTime(utc: string): string {
 
 /**
  * Today's screening candidates (ADR 0052 S1): what the realtime condition record listed
- * or added, plus tickers the user adds, with the entry check of a saved rules strategy on
- * the last closed daily bar. Picking a candidate opens its chart; nothing here orders.
+ * or added, plus tickers the user adds, with the stage checks. Picking a candidate opens
+ * its chart; nothing here orders.
  */
 export function CandidatesPanel({
   api,
-  strategies,
   onPick,
   onShowLevels,
   overlay = null,
@@ -198,8 +176,6 @@ export function CandidatesPanel({
   const [document, setDocument] = useState<ScreeningCandidates | null>(null);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [reload, setReload] = useState(0);
-  const [choices, setChoices] = useState<BacktestStrategy[]>([]);
-  const [strategyId, setStrategyId] = useState(remembered);
   const [running, setRunning] = useState<string[]>([]);
   const [runError, setRunError] = useState<string | null>(null);
   const [adding, setAdding] = useState("");
@@ -242,44 +218,6 @@ export function CandidatesPanel({
     };
   }, [api, reload, asOf]);
 
-  useEffect(() => {
-    let current = true;
-    strategies()
-      .then((found) => {
-        if (current)
-          setChoices(found.filter((item) => item.strategy_type === "rules"));
-      })
-      .catch(() => current && setChoices([]));
-    return () => {
-      current = false;
-    };
-  }, [strategies]);
-
-  const chosen = choices.find((item) => item.strategy_id === strategyId);
-  const check = async (candidates: Candidate[]) => {
-    if (!chosen) return;
-    setRunError(null);
-    for (const candidate of candidates) {
-      setRunning((list) => [...list, candidate.symbol]);
-      try {
-        await api.runEntryCheck(
-          candidate.symbol,
-          chosen.strategy_id,
-          document?.session_date,
-        );
-      } catch (reason) {
-        setRunError(
-          t("candidates.checkFailed", {
-            symbol: candidate.symbol,
-            error: errorText(reason),
-          }),
-        );
-      } finally {
-        setRunning((list) => list.filter((item) => item !== candidate.symbol));
-      }
-    }
-    setReload((value) => value + 1);
-  };
   const add = () => {
     const symbol = adding.trim().toUpperCase();
     if (!symbol) return;
@@ -447,23 +385,6 @@ export function CandidatesPanel({
       ) : null}
       <div className="trade-fields">
         <label>
-          {t("candidates.strategy")}
-          <select
-            value={strategyId}
-            onChange={(event) => {
-              setStrategyId(event.target.value);
-              remember(event.target.value);
-            }}
-          >
-            <option value="">{t("candidates.pickStrategy")}</option>
-            {choices.map((item) => (
-              <option key={item.strategy_id} value={item.strategy_id}>
-                {item.name} v{item.version}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
           {t("candidates.offExchangeSessions")}
           <select
             value={offSessions}
@@ -476,13 +397,6 @@ export function CandidatesPanel({
             ))}
           </select>
         </label>
-        <button
-          type="button"
-          disabled={!chosen || running.length > 0 || chartable.length === 0}
-          onClick={() => void check(chartable)}
-        >
-          {t("candidates.checkAll")}
-        </button>
         <button
           type="button"
           className="secondary"
@@ -575,7 +489,6 @@ export function CandidatesPanel({
                 <th title={t("candidates.flow.rules")}>
                   {t("candidates.column.flow")}
                 </th>
-                <th>{t("candidates.entry")}</th>
                 {OTHER_KINDS.map((kind) => (
                   <th key={kind}>{t(`candidates.column.${kind}`)}</th>
                 ))}
@@ -584,7 +497,6 @@ export function CandidatesPanel({
             <tbody>
               {document.candidates.map((item, index) => {
                 const listing = item.listing;
-                const entry = item.checks.entry;
                 const momentum = item.checks.momentum;
                 const flowCell = flowText(
                   t,
@@ -671,29 +583,6 @@ export function CandidatesPanel({
                     >
                       {flowCell.text}
                     </td>
-                    <td>
-                      {running.includes(item.symbol) ? (
-                        t("screener.running")
-                      ) : entry ? (
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => showDetail(entry.check_id)}
-                        >
-                          {statusText(t, entry.status)}
-                        </button>
-                      ) : listing && chosen ? (
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => void check([item])}
-                        >
-                          {t("candidates.check")}
-                        </button>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
                     {OTHER_KINDS.map((kind) => {
                       const found = item.checks[kind];
                       return (
@@ -733,7 +622,7 @@ export function CandidatesPanel({
                 return index === firstAfterNoon && asOf === null ? (
                   <Fragment key={item.symbol}>
                     <tr>
-                      <th colSpan={7 + OTHER_KINDS.length}>
+                      <th colSpan={6 + OTHER_KINDS.length}>
                         {t("candidates.afterNoon")}
                       </th>
                     </tr>
@@ -748,9 +637,6 @@ export function CandidatesPanel({
         </div>
       ) : document ? (
         <p className="workspace-note">{t("candidates.empty")}</p>
-      ) : null}
-      {detail && detail.check === "entry" ? (
-        <EntryDetail check={detail} onClose={() => setDetail(null)} />
       ) : null}
       {detail && detail.check === "dilution" ? (
         <DilutionDetail
@@ -793,80 +679,6 @@ export function CandidatesPanel({
       ) : null}
       <p className="workspace-note">{t("candidates.note")}</p>
     </section>
-  );
-}
-
-interface EntryCondition {
-  path: string;
-  op: string;
-  left_value: string | null;
-  right_value: string | null;
-  holds: boolean;
-}
-
-function EntryDetail({
-  check,
-  onClose,
-}: {
-  check: ScreeningCheck;
-  onClose: () => void;
-}) {
-  const { t } = useI18n();
-  const result = check.result as {
-    reason?: string;
-    bar?: { session_date: string; close: string };
-    conditions?: EntryCondition[];
-  };
-  return (
-    <div
-      className="research-scroll"
-      role="region"
-      aria-label={t("candidates.detail")}
-    >
-      <p className="workspace-note">
-        {t("candidates.detailMeta", {
-          symbol: check.symbol,
-          strategy: check.strategy
-            ? `${check.strategy.name} v${check.strategy.version}`
-            : "—",
-          date: result.bar?.session_date ?? "—",
-          close: result.bar?.close ?? "—",
-        })}
-      </p>
-      {result.reason ? <p className="chart-error">{result.reason}</p> : null}
-      {result.conditions ? (
-        <table className="quote-trades research-table">
-          <thead>
-            <tr>
-              <th>{t("candidates.rule")}</th>
-              <th>{t("candidates.leftValue")}</th>
-              <th>{t("candidates.op")}</th>
-              <th>{t("candidates.rightValue")}</th>
-              <th>{t("candidates.holds")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.conditions.map((item) => (
-              <tr key={item.path}>
-                <td>{item.path}</td>
-                <td>{item.left_value ?? "—"}</td>
-                <td>{item.op}</td>
-                <td>{item.right_value ?? "—"}</td>
-                <td>{item.holds ? "✓" : "✗"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : null}
-      {check.warnings.map((warning) => (
-        <p key={warning} className="workspace-note">
-          {warning}
-        </p>
-      ))}
-      <button type="button" className="secondary" onClick={onClose}>
-        {t("candidates.close")}
-      </button>
-    </div>
   );
 }
 

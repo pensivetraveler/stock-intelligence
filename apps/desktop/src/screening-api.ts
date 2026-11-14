@@ -8,7 +8,7 @@ import { callForKind, type ApiTarget } from "./market-api";
 
 /**
  * Daily candidate screening (ADR 0052): today's candidates from the condition record
- * plus added tickers, and the entry, news, dilution, off-exchange and structure checks. Results are stored on the API; nothing here
+ * plus added tickers, and the news, dilution, off-exchange and structure checks. Results are stored on the API; nothing here
  * places an order or approves a plan.
  */
 export interface ScreeningApi {
@@ -18,11 +18,6 @@ export interface ScreeningApi {
     symbol: string,
     sessionDate?: string,
   ): Promise<ScreeningCandidates>;
-  runEntryCheck(
-    symbol: string,
-    strategyId: string,
-    sessionDate?: string,
-  ): Promise<ScreeningCheck>;
   /** The market before a symbol entered the condition list (ADR 0055). */
   runMomentumCheck(
     symbol: string,
@@ -87,17 +82,6 @@ export function createScreeningApi(
         "/v1/screening/candidates",
         "screening_candidates",
         { method: "POST", body: { symbol, ...dated(sessionDate) } },
-      );
-    },
-    runEntryCheck(symbol, strategyId, sessionDate) {
-      return callForKind<ScreeningCheck>(
-        target,
-        "/v1/screening/checks/entry",
-        "screening_check",
-        {
-          method: "POST",
-          body: { symbol, strategy_id: strategyId, ...dated(sessionDate) },
-        },
       );
     },
     flow(sessionDate) {

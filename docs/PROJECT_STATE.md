@@ -2825,3 +2825,10 @@
 - **결과:** v1은 세 모델 모두 불합격이었으나 지어낸 조건 28건 중 원문에 없는 것 0건 → v2로 바꿈. 같은 리포트 참고 재채점: 지어낸 sonnet 2·luna 2·haiku 0, 필드 일치 (가) 89.3%·87.5%·85.7%, 모호 재현 82.1%·56.4%·82.1% — 확정에 쓰지 않음.
 - **시험:** `tests/technique_cards` 24개(숫자 낱말·한국어 수사 오인 방지, 근거 대조, 15초 창, 문장 합치기, post_hoc).
 - **미확인:** 새 실제 자료 4~6건으로 v2 확인(배정 확정 전), PDF 근거 대조(PDF 글자 추출 전).
+
+## 진입조건 A 제거(ADR 0057 구현 단위 4) — 2026-11-14
+
+- **사용자 결정:** 제거(숨기지 않음).
+- **변경:** `services/screening/entry.py`와 `POST /v1/screening/checks/entry` 삭제, `register_screening_routes`에서 `strategy`·`get_adjusted` 인자와 `saved_strategy` 삭제. '오늘의 후보' 패널에서 전략 선택·"모두 검사"·진입조건 열·A 상세, `ScreeningApi.runEntryCheck`, 쓰지 않는 번역 키 삭제. 계약 `screening_check`의 `check` 값 `entry`와 저장된 A 결과는 남긴다(덧붙이기만 하는 저장소, `GET /v1/screening/checks/{id}`로 읽힘). 패널은 저장된 A 결과를 보여 주지 않는다.
+- **시험:** A 시험 4개를 지우고 "경로가 없다"(`test_entry_check_a_is_retired`)와 "패널에 A가 없다" 시험으로 바꿈.
+- **미확인:** 실제 앱 화면(SIW API·앱 재시작 필요).
