@@ -136,6 +136,12 @@ export const TradeReviewIcon = () => (
     <path d="M1.5 3.5h7M1.5 7h5M1.5 10.5h4M11 12.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM13.2 11.7l2 2" />
   </Icon>
 );
+// A card with a quote mark: a technique written down with its citations.
+export const TechniqueIcon = () => (
+  <Icon>
+    <path d="M2.5 2.5h11v11h-11zM5 6h6M5 9h4M10.5 10.5l1 1.5" />
+  </Icon>
+);
 export const BacktestIcon = () => (
   <Icon>
     <path d="M1.5 14.5h13M2.5 12l3-4 3 2 5-6.5M10.5 3.5h3v3" />

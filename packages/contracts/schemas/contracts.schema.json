@@ -1968,7 +1968,8 @@
             "meritz",
             "finra",
             "ecos",
-            "anthropic"
+            "anthropic",
+            "openrouter"
           ]
         },
         "label": {
@@ -2099,7 +2100,8 @@
                   "meritz",
                   "finra",
                   "ecos",
-                  "anthropic"
+                  "anthropic",
+                  "openrouter"
                 ]
               },
               "display_name": {
