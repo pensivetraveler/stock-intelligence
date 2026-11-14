@@ -45,7 +45,7 @@ from services.api.screening_off_exchange_routes import (
 )
 from services.api.screening_prefetch import CandidatePrefetch, prefetch_enabled
 from services.api.screening_routes import CONDITION_NAME as SCREENING_CONDITION_NAME
-from services.api.screening_routes import register_screening_routes, saved_strategy
+from services.api.screening_routes import register_screening_routes
 from services.api.screening_structure_routes import (
     LazyStructure,
     register_screening_structure_routes,
@@ -1797,10 +1797,8 @@ def create_app(
         application,
         store=screening.get,
         data_dir=screening.data_dir,
-        strategy=saved_strategy(backtests.get),
         listing_for=listing_for,
         get_bars=lambda: MarketBarsService(provider.get()).get_bars,
-        get_adjusted=lambda: getattr(provider.get(), "get_adjusted_daily_bars", None),
         error_response=_error_response,
         clock=clock,
         dilution_service=lambda: DilutionService(dilution_url()),

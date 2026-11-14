@@ -2840,3 +2840,10 @@
 - **API·패널:** 후보 목록 `candidates[].stage2`(계약 `$defs/ScreeningStage2`), '오늘의 후보' "재료(2단계)" 열과 근거 표, 수급 열 "제외(2단계)". 뉴스 범주 이름에 공모 발표·공모 완료·자금 조달 발표 추가.
 - **시험:** `tests/screening/test_material.py` 22개, `test_flow_watch.py` 경로 테스트 갱신, 패널 테스트 1개.
 - **미확인:** 실제 서비스·Toss 키로 context를 넣은 검사, Toss 발행주식수의 갱신 시점. 뉴스 검사는 여전히 패널에서 돌린다(자동 실행 없음 — 돌리지 않은 종목은 재료 미확인으로 통과).
+
+## 진입조건 A 제거(ADR 0057 구현 단위 4) — 2026-11-14
+
+- **사용자 결정:** 제거(숨기지 않음).
+- **변경:** `services/screening/entry.py`와 `POST /v1/screening/checks/entry` 삭제, `register_screening_routes`에서 `strategy`·`get_adjusted` 인자와 `saved_strategy` 삭제. '오늘의 후보' 패널에서 전략 선택·"모두 검사"·진입조건 열·A 상세, `ScreeningApi.runEntryCheck`, 쓰지 않는 번역 키 삭제. 계약 `screening_check`의 `check` 값 `entry`와 저장된 A 결과는 남긴다(덧붙이기만 하는 저장소, `GET /v1/screening/checks/{id}`로 읽힘). 패널은 저장된 A 결과를 보여 주지 않는다.
+- **시험:** A 시험 4개를 지우고 "경로가 없다"(`test_entry_check_a_is_retired`)와 "패널에 A가 없다" 시험으로 바꿈.
+- **미확인:** 실제 앱 화면(SIW API·앱 재시작 필요).

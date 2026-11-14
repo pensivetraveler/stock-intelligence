@@ -129,10 +129,8 @@ def setup(tmp_path: Path) -> Iterator[tuple[TestClient, list[Analyzer]]]:
         app,
         store=lambda: screening,
         data_dir=lambda: tmp_path,
-        strategy=lambda *_: None,
         listing_for=lambda s: instrument_listing(s, "XNAS", "test", "test-r1", "test"),
         get_bars=lambda: lambda query: None,  # type: ignore[arg-type,return-value]
-        get_adjusted=lambda: None,
         error_response=_error_response,
         clock=lambda: NOW,
         dilution_service=lambda: DilutionService(
