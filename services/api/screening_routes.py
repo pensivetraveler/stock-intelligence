@@ -34,6 +34,7 @@ from services.screening.dilution import (
 )
 from services.screening.material import stage2_by_symbol, stage2_verdict
 from services.screening.momentum import momentum_check
+from services.screening.stage4 import stage4_by_symbol
 from services.screening.store import CheckNotFoundError, ScreeningStore
 
 CONDITION_NAME = "SIW_당일급등주"
@@ -41,6 +42,8 @@ SYMBOL = re.compile(r"^[A-Z][A-Z0-9.]{0,9}$")
 MAX_DAYS_BACK = 10
 # A rules-only analysis with SEC files cached takes 4-7 s; longer ones are picked up later.
 DILUTION_WAIT_SECONDS = 15.0
+#: Result keys a refresh keeps from the waiting check (the stage 4 request, ADR 0057 §4).
+CARRIED = ("stage4",)
 
 
 class CandidateRequest(BaseModel):
@@ -58,6 +61,109 @@ class DilutionCheckRequest(BaseModel):
     session_date: date | None = None
     # Rules-only by default; an LLM analysis only for the few candidates the user picks.
     llm: bool = False
+
+
+class DilutionChecks:
+    """Check C runs, shared by the route and the stage 4 runner (ADR 0057 §4).
+
+    `extra` goes into the stored result next to the analyzer's answer: the stage 4 request
+    (`stage4`: who asked and the stage 2 verdict at that time); a refresh carries it over.
+    """
+
+    def __init__(
+        self,
+        *,
+        clock: Callable[[], datetime],
+        dilution_service: Callable[[], DilutionService] | None,
+        wait_seconds: float = DILUTION_WAIT_SECONDS,
+        sleep: Callable[[float], None] | None = None,
+    ) -> None:
+        self._clock = clock
+        self._service = dilution_service
+        self._wait = wait_seconds
+        self._sleep = sleep
+        self._calendar = UsEquityCalendar("XNAS")
+
+    def _document(
+        self,
+        window: Any,
+        symbol: str,
+        instrument_id: str,
+        llm: bool,
+        status: str,
+        result: dict[str, Any],
+        extra: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        now = self._clock()
+        return {
+            "kind": "screening_check",
+            "schema_version": "0.1",
+            "check": "dilution",
+            "session_date": window.session_date.isoformat(),
+            "symbol": symbol,
+            "instrument_id": instrument_id,
+            "cutoff_utc": utc_text(min(now, window.post_close_utc)),
+            "created_at_utc": utc_text(now),
+            "after_the_fact": now > window.post_close_utc,
+            "status": status,
+            "strategy": None,
+            "result": {"llm": llm, **(extra or {}), **result},
+            "versions": {"check": DILUTION_VERSION},
+            # The analyzer's as-of is a date: filings later that day may be included.
+            "warnings": [
+                "the dilution analysis is as of the New York date, not the cutoff time",
+                "made from SIW's local data: for this computer's screen only",
+            ],
+            "sources": {"service": "stock-dilution-analyzer", "contract": "report-v1"},
+        }
+
+    def _ask(
+        self, window: Any, symbol: str, llm: bool, job_id: str | None
+    ) -> tuple[str, dict[str, Any]]:
+        if self._service is None:
+            return "pending", {"reason": "the dilution analyzer is not configured"}
+        try:
+            service = self._service()
+            if job_id is None:
+                job_id = service.submit(symbol, window.session_date, llm)
+            if self._sleep is None:
+                return follow(service, job_id, self._wait)
+            return follow(service, job_id, self._wait, self._sleep)
+        except DilutionServiceDown as exc:
+            # SIW never starts the analyzer; the check waits until the user does.
+            return "pending", {"job_id": job_id, "reason": str(exc)[:300]}
+        except DilutionServiceError as exc:
+            return "error", {"job_id": job_id, "reason": str(exc)[:300]}
+
+    def run(
+        self,
+        screening: ScreeningStore,
+        window: Any,
+        symbol: str,
+        instrument_id: str,
+        llm: bool,
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Asks for a new analysis and stores the check."""
+        status, result = self._ask(window, symbol, llm, None)
+        document = self._document(window, symbol, instrument_id, llm, status, result, extra)
+        validate_document({**document, "check_id": 0})
+        return screening.add_check(document)
+
+    def refresh(self, screening: ScreeningStore, previous: dict[str, Any]) -> dict[str, Any]:
+        """A waiting check looked at again: a new row only when something changed."""
+        window = self._calendar.window_for_date(date.fromisoformat(previous["session_date"]))
+        stored = previous["result"]
+        llm = bool(stored.get("llm"))
+        status, result = self._ask(window, previous["symbol"], llm, stored.get("job_id"))
+        if status == "pending" and result.get("job_id") == stored.get("job_id"):
+            return previous
+        extra = {key: stored[key] for key in CARRIED if key in stored}
+        document = self._document(
+            window, previous["symbol"], previous["instrument_id"], llm, status, result, extra
+        )
+        validate_document({**document, "check_id": 0})
+        return screening.add_check(document)
 
 
 def register_screening_routes(
@@ -149,6 +255,9 @@ def register_screening_routes(
                     "seconds_in_list": None,
                 }
         coverage = watched.coverage
+        # Stage 4 (ADR 0057 §4): the dilution and off-exchange facts gathered so far. Unlike
+        # stage 2, a check made after an `as_of` cut is left out.
+        information = stage4_by_symbol(screening, window.session_date, verdicts, rows, as_of)
         return {
             "kind": "screening_candidates",
             "schema_version": "0.1",
@@ -182,6 +291,7 @@ def register_screening_routes(
                     "listing": listing_for(row["symbol"]),
                     "checks": latest.get(row["symbol"], {}),
                     "stage2": verdicts.get(row["symbol"]) or stage2_verdict(None),
+                    "stage4": information[row["symbol"]],
                 }
                 for row in sorted(rows.values(), key=lambda r: (r["first_seen_utc"], r["symbol"]))
             ],
@@ -281,54 +391,12 @@ def register_screening_routes(
         validate_document({**document, "check_id": 0})
         return respond(screening.add_check(document))
 
-    def dilution_document(
-        window: Any,
-        symbol: str,
-        instrument_id: str,
-        llm: bool,
-        status: str,
-        result: dict[str, Any],
-    ) -> dict[str, Any]:
-        now = clock()
-        return {
-            "kind": "screening_check",
-            "schema_version": "0.1",
-            "check": "dilution",
-            "session_date": window.session_date.isoformat(),
-            "symbol": symbol,
-            "instrument_id": instrument_id,
-            "cutoff_utc": utc_text(min(now, window.post_close_utc)),
-            "created_at_utc": utc_text(now),
-            "after_the_fact": now > window.post_close_utc,
-            "status": status,
-            "strategy": None,
-            "result": {"llm": llm, **result},
-            "versions": {"check": DILUTION_VERSION},
-            # The analyzer's as-of is a date: filings later that day may be included.
-            "warnings": [
-                "the dilution analysis is as of the New York date, not the cutoff time",
-                "made from SIW's local data: for this computer's screen only",
-            ],
-            "sources": {"service": "stock-dilution-analyzer", "contract": "report-v1"},
-        }
-
-    def run_dilution(
-        window: Any, symbol: str, instrument_id: str, llm: bool, job_id: str | None
-    ) -> tuple[str, dict[str, Any]]:
-        if dilution_service is None:
-            return "pending", {"reason": "the dilution analyzer is not configured"}
-        try:
-            service = dilution_service()
-            if job_id is None:
-                job_id = service.submit(symbol, window.session_date, llm)
-            if sleep is None:
-                return follow(service, job_id, dilution_wait_seconds)
-            return follow(service, job_id, dilution_wait_seconds, sleep)
-        except DilutionServiceDown as exc:
-            # SIW never starts the analyzer; the check waits until the user does.
-            return "pending", {"job_id": job_id, "reason": str(exc)[:300]}
-        except DilutionServiceError as exc:
-            return "error", {"job_id": job_id, "reason": str(exc)[:300]}
+    dilution = DilutionChecks(
+        clock=clock,
+        dilution_service=dilution_service,
+        wait_seconds=dilution_wait_seconds,
+        sleep=sleep,
+    )
 
     @application.post("/v1/screening/checks/dilution", response_model=None)
     def run_dilution_check(request: Request, body: DilutionCheckRequest) -> Response:
@@ -348,10 +416,7 @@ def register_screening_routes(
                 request, 422, "unknown_symbol", f"{symbol} is not in the app's symbol list"
             )
         instrument_id = str(listing["instrument"]["instrument_id"])
-        status, result = run_dilution(window, symbol, instrument_id, body.llm, None)
-        document = dilution_document(window, symbol, instrument_id, body.llm, status, result)
-        validate_document({**document, "check_id": 0})
-        return respond(screening.add_check(document))
+        return respond(dilution.run(screening, window, symbol, instrument_id, body.llm))
 
     @application.post("/v1/screening/checks/{check_id}/refresh", response_model=None)
     def refresh_check(request: Request, check_id: int) -> Response:
@@ -365,22 +430,7 @@ def register_screening_routes(
             return error_response(request, 404, "check_not_found", "No such check")
         if previous["check"] != "dilution" or previous["status"] != "pending":
             return respond(previous)
-        window = calendar.window_for_date(date.fromisoformat(previous["session_date"]))
-        llm = bool(previous["result"].get("llm"))
-        status, result = run_dilution(
-            window,
-            previous["symbol"],
-            previous["instrument_id"],
-            llm,
-            previous["result"].get("job_id"),
-        )
-        if status == "pending" and result.get("job_id") == previous["result"].get("job_id"):
-            return respond(previous)
-        document = dilution_document(
-            window, previous["symbol"], previous["instrument_id"], llm, status, result
-        )
-        validate_document({**document, "check_id": 0})
-        return respond(screening.add_check(document))
+        return respond(dilution.refresh(screening, previous))
 
     @application.get("/v1/screening/checks/{check_id}", response_model=None)
     def get_check(request: Request, check_id: int) -> Response:

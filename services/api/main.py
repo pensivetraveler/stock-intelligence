@@ -40,12 +40,15 @@ from services.api.screener_routes import register_screener_routes
 from services.api.screening_flow_routes import register_screening_flow_routes
 from services.api.screening_news_routes import register_screening_news_routes
 from services.api.screening_off_exchange_routes import (
+    OffExchangeChecks,
     finra_review_from,
     register_screening_off_exchange_routes,
 )
 from services.api.screening_prefetch import CandidatePrefetch, prefetch_enabled
 from services.api.screening_routes import CONDITION_NAME as SCREENING_CONDITION_NAME
-from services.api.screening_routes import register_screening_routes
+from services.api.screening_routes import DilutionChecks, register_screening_routes
+from services.api.screening_stage4 import DILUTION_WAIT_SECONDS as STAGE4_DILUTION_WAIT
+from services.api.screening_stage4 import Stage4Runner, stage4_enabled
 from services.api.screening_structure_routes import (
     LazyStructure,
     register_screening_structure_routes,
@@ -848,7 +851,29 @@ def create_app(
             if prefetch_enabled()
             else None
         )
+        # Stage 4 (ADR 0057 §4): dilution (rules only) and check D once stage 2 passed.
+        stage4 = (
+            Stage4Runner(
+                store=screening.get,
+                data_dir=screening.data_dir,
+                listing_for=listing_for,
+                dilution=DilutionChecks(
+                    clock=clock,
+                    dilution_service=lambda: DilutionService(dilution_url()),
+                    wait_seconds=STAGE4_DILUTION_WAIT,
+                ),
+                off_exchange=OffExchangeChecks(finra_review=finra_review, clock=clock),
+                structure=structure.get,
+                trades=boats,
+                clock=clock,
+                condition_name=SCREENING_CONDITION_NAME,
+            ).start()
+            if stage4_enabled()
+            else None
+        )
         yield
+        if stage4 is not None:
+            stage4.set()
         if prefetch is not None:
             prefetch.set()
         if parent_watch is not None:
@@ -1793,6 +1818,9 @@ def create_app(
     )
     screening = _LazyScreening(clock)
     structure = LazyStructure(boats, clock)
+    finra_review = finra_review_from(
+        sources.get, lambda: MarketBarsService(provider.get()).get_bars
+    )
     register_screening_routes(
         application,
         store=screening.get,
@@ -1820,9 +1848,7 @@ def create_app(
         structure=structure.get,
         trades=boats,
         listing_for=listing_for,
-        finra_review=finra_review_from(
-            sources.get, lambda: MarketBarsService(provider.get()).get_bars
-        ),
+        finra_review=finra_review,
         error_response=_error_response,
         clock=clock,
     )

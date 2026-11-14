@@ -12331,6 +12331,9 @@
               },
               "stage2": {
                 "$ref": "#/$defs/ScreeningStage2"
+              },
+              "stage4": {
+                "$ref": "#/$defs/ScreeningStage4"
               }
             }
           }
@@ -12954,6 +12957,9 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 300
+        },
+        "stage4": {
+          "$ref": "#/$defs/ScreeningStage4Request"
         }
       }
     },
@@ -13740,6 +13746,333 @@
         },
         "news_cutoff_utc": {
           "type": ["string", "null"]
+        }
+      }
+    },
+    "ScreeningStage4": {
+      "type": "object",
+      "description": "ADR 0057 §4 (U-c): stage 4 information for one candidate — the dilution analyzer's supply prices (rules only), off-exchange volume peaks and short interest (no source yet). Facts only: nothing is excluded and no price zone is made here (stage 5). Each part keeps its own cutoff; with as_of, checks made after it are left out.",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "version",
+        "rules",
+        "state",
+        "as_of_utc",
+        "stage2_outcome",
+        "dilution",
+        "off_exchange",
+        "short_interest",
+        "notes"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "rules": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "state": {
+          "enum": ["stage2_excluded", "not_started", "waiting", "done"],
+          "description": "stage2_excluded: not run (excluded for today in stage 2). not_started: nothing yet. waiting: a part missing or still pending. done: both parts settled (ok, incomplete, no_data, unsupported or error)."
+        },
+        "as_of_utc": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            }
+          ]
+        },
+        "stage2_outcome": {
+          "enum": ["passed", "excluded_today", null]
+        },
+        "dilution": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "The newest settled rules-only (llm=false) check C of the session. The analysis is as of the New York date, not the cutoff time.",
+              "required": [
+                "check_id",
+                "status",
+                "cutoff_utc",
+                "created_at_utc",
+                "requested_by",
+                "analysis_as_of",
+                "securities",
+                "capacity",
+                "shelves",
+                "incomplete_reasons",
+                "reason"
+              ],
+              "properties": {
+                "check_id": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "status": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "cutoff_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                },
+                "created_at_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                },
+                "requested_by": {
+                  "enum": ["stage4_auto", "user"],
+                  "description": "stage4_auto: started by the stage 4 runner once stage 2 passed; user: run from the panel (its result is reused, not run again)."
+                },
+                "analysis_as_of": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "securities": {
+                  "type": "array",
+                  "maxItems": 200,
+                  "items": {
+                    "type": "object"
+                  },
+                  "description": "Supply prices per security as check C keeps them (price, price_range, floor, conditions, status per value; null = unknown)."
+                },
+                "capacity": {
+                  "type": "array",
+                  "maxItems": 200,
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "shelves": {
+                  "type": "array",
+                  "maxItems": 200,
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "incomplete_reasons": {
+                  "type": "array",
+                  "maxItems": 50,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                },
+                "reason": {
+                  "type": ["string", "null"],
+                  "maxLength": 400
+                }
+              }
+            }
+          ]
+        },
+        "off_exchange": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "The newest settled check D of the session: TRF-reported volume peaks, no buy/sell direction.",
+              "required": [
+                "check_id",
+                "status",
+                "cutoff_utc",
+                "created_at_utc",
+                "requested_by",
+                "data_until_utc",
+                "reference_price",
+                "reference_time_utc",
+                "off_exchange_share_pct",
+                "sessions_used",
+                "levels",
+                "reason"
+              ],
+              "properties": {
+                "check_id": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "status": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "cutoff_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                },
+                "created_at_utc": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                },
+                "requested_by": {
+                  "enum": ["stage4_auto", "user"],
+                  "description": "stage4_auto: started by the stage 4 runner once stage 2 passed; user: run from the panel (its result is reused, not run again)."
+                },
+                "data_until_utc": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/$defs/UtcTimestamp"
+                    }
+                  ]
+                },
+                "reference_price": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/$defs/NonNegativeDecimalString"
+                    }
+                  ]
+                },
+                "reference_time_utc": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/$defs/UtcTimestamp"
+                    }
+                  ]
+                },
+                "off_exchange_share_pct": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/$defs/NonNegativeDecimalString"
+                    }
+                  ]
+                },
+                "sessions_used": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "levels": {
+                  "type": "array",
+                  "maxItems": 50,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "price_low",
+                      "price_high",
+                      "volume",
+                      "share_pct",
+                      "side"
+                    ],
+                    "properties": {
+                      "price_low": {
+                        "$ref": "#/$defs/NonNegativeDecimalString"
+                      },
+                      "price_high": {
+                        "$ref": "#/$defs/NonNegativeDecimalString"
+                      },
+                      "volume": {
+                        "$ref": "#/$defs/NonNegativeDecimalString"
+                      },
+                      "share_pct": {
+                        "$ref": "#/$defs/NonNegativeDecimalString"
+                      },
+                      "side": {
+                        "enum": ["above", "below", "at"],
+                        "description": "Where the bin sits against reference_price. A candidate support/resistance zone, never a forecast."
+                      }
+                    }
+                  }
+                },
+                "reason": {
+                  "type": ["string", "null"],
+                  "maxLength": 400
+                }
+              }
+            }
+          ]
+        },
+        "short_interest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["available", "reason", "note"],
+          "properties": {
+            "available": {
+              "const": false
+            },
+            "reason": {
+              "enum": ["no_source"]
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "description": "Short interest has no source yet (ADR 0057 §4, ADR 0054 §3): stage 4 goes on without it."
+        },
+        "notes": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 300
+          }
+        }
+      }
+    },
+    "ScreeningStage4Request": {
+      "type": "object",
+      "description": "ADR 0057 §4 (U-c): kept in a check's result when the stage 4 runner started it — who asked, when, and the stage 2 verdict at that time.",
+      "additionalProperties": false,
+      "required": [
+        "requested_by",
+        "requested_at_utc",
+        "stage2_outcome",
+        "stage2_reason",
+        "stage2_news_check_id",
+        "stage2_news_cutoff_utc"
+      ],
+      "properties": {
+        "requested_by": {
+          "const": "stage4_auto"
+        },
+        "requested_at_utc": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "stage2_outcome": {
+          "enum": ["passed"]
+        },
+        "stage2_reason": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "stage2_news_check_id": {
+          "type": ["integer", "null"]
+        },
+        "stage2_news_cutoff_utc": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            }
+          ]
         }
       }
     }

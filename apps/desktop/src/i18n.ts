@@ -889,6 +889,24 @@ const en = {
   "candidates.flow.state.halted": "Halted",
   "candidates.flow.status.unsupported": "Not listed",
   "candidates.flow.status.error": "Error",
+  "candidates.column.stage4": "Information (stage 4)",
+  "candidates.stage4.facts":
+    "Stage 4 gathers facts only (ADR 0057): dilution supply prices (rules only) and off-exchange volume peaks; short interest has no source yet. Nothing is excluded and no price zone is set here.",
+  "candidates.stage4.excluded": "Not run (stage 2)",
+  "candidates.stage4.excludedTitle":
+    "Excluded for today in stage 2, so stage 4 does not run.",
+  "candidates.stage4.notStarted": "Not started",
+  "candidates.stage4.notStartedTitle":
+    "Runs by itself during the session once stage 2 passes (one dilution analysis at a time).",
+  "candidates.stage4.dilution": "Dilution",
+  "candidates.stage4.offExchange": "Off-exchange",
+  "candidates.stage4.peaks": "Off-exchange peaks {count}",
+  "candidates.stage4.noShort": "no short data",
+  "candidates.stage4.dilutionTitle":
+    "Dilution (rules only, as of {asOf}, {by}): {prices}",
+  "candidates.stage4.offTitle": "Off-exchange until {until} ({by}): {levels}",
+  "candidates.stage4.by.stage4_auto": "automatic",
+  "candidates.stage4.by.user": "run by you",
   "candidates.column.stage2": "Material (stage 2)",
   "candidates.stage2.passed": "Pass",
   "candidates.stage2.excluded": "Out for today",
@@ -2864,6 +2882,24 @@ const ko: Record<MessageKey, string> = {
   "candidates.flow.state.halted": "거래 정지",
   "candidates.flow.status.unsupported": "종목 없음",
   "candidates.flow.status.error": "오류",
+  "candidates.column.stage4": "정보(4단계)",
+  "candidates.stage4.facts":
+    "4단계는 사실만 모은다(ADR 0057): 희석 공급 가격(규칙만), 장외 체결 봉우리. 공매도는 자료가 없다. 아무것도 거르지 않고 가격대도 정하지 않는다.",
+  "candidates.stage4.excluded": "안 돌림(2단계)",
+  "candidates.stage4.excludedTitle":
+    "2단계에서 그날 제외돼 4단계를 돌리지 않는다.",
+  "candidates.stage4.notStarted": "시작 전",
+  "candidates.stage4.notStartedTitle":
+    "장중에 2단계를 통과하면 스스로 돈다(희석 분석은 한 번에 한 건).",
+  "candidates.stage4.dilution": "희석",
+  "candidates.stage4.offExchange": "장외",
+  "candidates.stage4.peaks": "장외 봉우리 {count}",
+  "candidates.stage4.noShort": "공매도 없음",
+  "candidates.stage4.dilutionTitle":
+    "희석(규칙만, {asOf} 기준, {by}): {prices}",
+  "candidates.stage4.offTitle": "장외 체결 {until}까지({by}): {levels}",
+  "candidates.stage4.by.stage4_auto": "자동",
+  "candidates.stage4.by.user": "직접 실행",
   "candidates.column.stage2": "재료(2단계)",
   "candidates.stage2.passed": "통과",
   "candidates.stage2.excluded": "그날 제외",

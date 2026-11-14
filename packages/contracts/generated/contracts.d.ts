@@ -7722,6 +7722,7 @@ export interface ScreeningCandidates {
      */
     seconds_in_list: number | null;
     stage2?: ScreeningStage2;
+    stage4?: ScreeningStage4;
   }[];
 }
 /**
@@ -11576,6 +11577,119 @@ export interface ScreeningStage2 {
   news_check_id: number | null;
   news_status: string | null;
   news_cutoff_utc: string | null;
+}
+/**
+ * ADR 0057 §4 (U-c): stage 4 information for one candidate — the dilution analyzer's supply prices (rules only), off-exchange volume peaks and short interest (no source yet). Facts only: nothing is excluded and no price zone is made here (stage 5). Each part keeps its own cutoff; with as_of, checks made after it are left out.
+ */
+export interface ScreeningStage4 {
+  label: string;
+  version: string;
+  rules: string;
+  /**
+   * stage2_excluded: not run (excluded for today in stage 2). not_started: nothing yet. waiting: a part missing or still pending. done: both parts settled (ok, incomplete, no_data, unsupported or error).
+   */
+  state: "stage2_excluded" | "not_started" | "waiting" | "done";
+  as_of_utc: null | UtcTimestamp;
+  stage2_outcome: "passed" | "excluded_today" | null;
+  dilution: null | {
+    check_id: number;
+    status: string;
+    cutoff_utc: UtcTimestamp;
+    created_at_utc: UtcTimestamp;
+    /**
+     * stage4_auto: started by the stage 4 runner once stage 2 passed; user: run from the panel (its result is reused, not run again).
+     */
+    requested_by: "stage4_auto" | "user";
+    analysis_as_of: string;
+    /**
+     * Supply prices per security as check C keeps them (price, price_range, floor, conditions, status per value; null = unknown).
+     *
+     * @maxItems 200
+     */
+    securities: {
+      [k: string]: unknown;
+    }[];
+    /**
+     * @maxItems 200
+     */
+    capacity: {
+      [k: string]: unknown;
+    }[];
+    /**
+     * @maxItems 200
+     */
+    shelves: {
+      [k: string]: unknown;
+    }[];
+    /**
+     * @maxItems 50
+     */
+    incomplete_reasons: string[];
+    reason: string | null;
+  };
+  off_exchange: null | {
+    check_id: number;
+    status: string;
+    cutoff_utc: UtcTimestamp;
+    created_at_utc: UtcTimestamp;
+    /**
+     * stage4_auto: started by the stage 4 runner once stage 2 passed; user: run from the panel (its result is reused, not run again).
+     */
+    requested_by: "stage4_auto" | "user";
+    data_until_utc: null | UtcTimestamp;
+    reference_price: null | NonNegativeDecimalString;
+    reference_time_utc: null | UtcTimestamp;
+    off_exchange_share_pct: null | NonNegativeDecimalString;
+    sessions_used: number;
+    /**
+     * @maxItems 50
+     */
+    levels: {
+      price_low: NonNegativeDecimalString;
+      price_high: NonNegativeDecimalString;
+      volume: NonNegativeDecimalString;
+      share_pct: NonNegativeDecimalString;
+      /**
+       * Where the bin sits against reference_price. A candidate support/resistance zone, never a forecast.
+       */
+      side: "above" | "below" | "at";
+    }[];
+    reason: string | null;
+  };
+  /**
+   * Short interest has no source yet (ADR 0057 §4, ADR 0054 §3): stage 4 goes on without it.
+   */
+  short_interest: {
+    available: false;
+    reason: "no_source";
+    note: string;
+  };
+  /**
+   * @maxItems 10
+   */
+  notes:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
 }
 /**
  * ADR 0052: one stored check of one candidate. `result` depends on `check`; for `entry` it holds the last closed daily bar, the bars used and every simple condition with the values it compared. Stored results are only added, never changed.

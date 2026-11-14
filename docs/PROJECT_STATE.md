@@ -2847,3 +2847,11 @@
 - **변경:** `services/screening/entry.py`와 `POST /v1/screening/checks/entry` 삭제, `register_screening_routes`에서 `strategy`·`get_adjusted` 인자와 `saved_strategy` 삭제. '오늘의 후보' 패널에서 전략 선택·"모두 검사"·진입조건 열·A 상세, `ScreeningApi.runEntryCheck`, 쓰지 않는 번역 키 삭제. 계약 `screening_check`의 `check` 값 `entry`와 저장된 A 결과는 남긴다(덧붙이기만 하는 저장소, `GET /v1/screening/checks/{id}`로 읽힘). 패널은 저장된 A 결과를 보여 주지 않는다.
 - **시험:** A 시험 4개를 지우고 "경로가 없다"(`test_entry_check_a_is_retired`)와 "패널에 A가 없다" 시험으로 바꿈.
 - **미확인:** 실제 앱 화면(SIW API·앱 재시작 필요).
+
+## 4단계 자동 실행(ADR 0057 U-c) — 2026-11-14
+
+- **추가:** `services/api/screening_stage4.py`(`Stage4Runner`, 30초마다, 미국 세션 창 안에서만, `SIW_SCREENING_STAGE4=0`이면 끔). 2단계 통과(재료 미확인 포함) 후보에 희석 규칙만(`llm=false`, 이 실행기가 넣은 분석은 한 번에 한 건)·장외 체결(주기마다 최대 2종목)을 돌린다. 그날 제외는 안 돌린다. 이미 결과가 있으면(패널 실행 포함) 다시 돌리지 않는다. 공매도는 자료가 없어 생략하고 표시한다.
+- **변경:** 희석·장외 체결 실행을 라우트 밖 `DilutionChecks`(`screening_routes.py`)·`OffExchangeChecks`(`screening_off_exchange_routes.py`)로 옮겨 라우트와 실행기가 같이 쓴다(응답은 그대로). 실행기가 만든 검사는 `result.stage4`(계약 `$defs/ScreeningStage4Request`)에 요청자·시각·그때의 2단계 판정을 남긴다.
+- **API·패널:** 후보 목록 `candidates[].stage4`(계약 `$defs/ScreeningStage4`: 희석 공급 가격, 장외 체결 봉우리, 공매도 `available: false`, 부분마다 cutoff·생성 시각, `as_of` 뒤 검사는 뺌). '오늘의 후보' "정보(4단계)" 열.
+- **시험:** `tests/screening/test_stage4.py` 11개, 패널 테스트 1개, fixture `screening-candidates-stage4.json`.
+- **미확인:** 실제 분석기·Alpaca 키로 장중 실행(배포·재시작 뒤), 후보가 많은 날의 희석 처리량. 세션 뒤 실행과 오류 자동 재시도는 하지 않는다.

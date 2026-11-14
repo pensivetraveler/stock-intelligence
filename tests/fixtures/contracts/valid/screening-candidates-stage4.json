@@ -1,0 +1,286 @@
+{
+  "kind": "screening_candidates",
+  "schema_version": "0.1",
+  "session_date": "2026-11-06",
+  "cutoff_utc": "2026-11-06T15:30:00.000Z",
+  "selection_noon_utc": "2026-11-06T17:00:00.000Z",
+  "condition_name": "SIW_당일급등주",
+  "recorded": true,
+  "watch_coverage": {
+    "watches": 1,
+    "interrupted": 1,
+    "first_started_utc": "2026-11-06T09:01:00.000Z",
+    "last_heard_utc": "2026-11-06T09:06:00.000Z",
+    "open_now": false,
+    "gaps": [
+      {
+        "from_utc": "2026-11-06T09:00:00.000Z",
+        "to_utc": "2026-11-06T09:01:00.000Z",
+        "reason": "before_first_watch",
+        "previous_end": null
+      },
+      {
+        "from_utc": "2026-11-06T09:06:00.000Z",
+        "to_utc": "2026-11-06T15:30:00.000Z",
+        "reason": "not_recording",
+        "previous_end": "unclosed"
+      }
+    ]
+  },
+  "candidates": [
+    {
+      "symbol": "EXCL",
+      "sources": ["condition"],
+      "first_seen_utc": "2026-11-06T09:01:00.000Z",
+      "in_list": true,
+      "kiwoom_exchange": "ND",
+      "first_seen_how": "first_list",
+      "entered_after_utc": "2026-11-06T09:00:00.000Z",
+      "enter_count": 0,
+      "seconds_in_list": 300.0,
+      "listing": {
+        "instrument": {
+          "kind": "instrument_ref",
+          "schema_version": "0.1",
+          "instrument_id": "us:excl:xnas:2026",
+          "symbol": "EXCL",
+          "venue": "XNAS",
+          "asset_class": "us_equity",
+          "currency": "USD",
+          "identity_as_of": "2026-01-01T00:00:00Z",
+          "identity_source": "test"
+        },
+        "source_id": "test",
+        "dataset_revision": "test-r1",
+        "session_dates": []
+      },
+      "checks": {
+        "news": {
+          "check_id": 1,
+          "status": "material",
+          "created_at_utc": "2026-11-06T14:00:00.000Z"
+        }
+      },
+      "stage2": {
+        "label": "재료 영향력(2단계)",
+        "version": "material-stage2-1",
+        "rules": "adr-0057-stage2-1",
+        "outcome": "excluded_today",
+        "material": "low_impact",
+        "strategy": null,
+        "reason": "low_impact_material",
+        "conclusions": {
+          "version": "material-judgement-2",
+          "material": "present",
+          "filter": "yes",
+          "rationale": null
+        },
+        "articles": [],
+        "news_check_id": 1,
+        "news_status": "material",
+        "news_cutoff_utc": "2026-11-06T14:00:00.000Z"
+      },
+      "stage4": {
+        "label": "정보 만들기(4단계)",
+        "version": "stage4-info-1",
+        "rules": "adr-0057-stage4-1",
+        "state": "stage2_excluded",
+        "as_of_utc": null,
+        "stage2_outcome": "excluded_today",
+        "dilution": null,
+        "off_exchange": null,
+        "short_interest": {
+          "available": false,
+          "reason": "no_source",
+          "note": "공매도 자료 없음: 자료가 생길 때까지 공매도 없이 진행한다(ADR 0057 4단계)."
+        },
+        "notes": [
+          "4단계 결과는 사실이다. 가격대로 바꾸는 것은 5단계 규칙이다(아직 없음)."
+        ]
+      }
+    },
+    {
+      "symbol": "PASS",
+      "sources": ["condition"],
+      "first_seen_utc": "2026-11-06T09:01:00.000Z",
+      "in_list": true,
+      "kiwoom_exchange": "ND",
+      "first_seen_how": "first_list",
+      "entered_after_utc": "2026-11-06T09:00:00.000Z",
+      "enter_count": 0,
+      "seconds_in_list": 300.0,
+      "listing": {
+        "instrument": {
+          "kind": "instrument_ref",
+          "schema_version": "0.1",
+          "instrument_id": "us:pass:xnas:2026",
+          "symbol": "PASS",
+          "venue": "XNAS",
+          "asset_class": "us_equity",
+          "currency": "USD",
+          "identity_as_of": "2026-01-01T00:00:00Z",
+          "identity_source": "test"
+        },
+        "source_id": "test",
+        "dataset_revision": "test-r1",
+        "session_dates": []
+      },
+      "checks": {
+        "dilution": {
+          "check_id": 2,
+          "status": "ok",
+          "created_at_utc": "2026-11-06T15:30:00.000Z"
+        },
+        "off_exchange": {
+          "check_id": 3,
+          "status": "ok",
+          "created_at_utc": "2026-11-06T15:30:00.000Z"
+        }
+      },
+      "stage2": {
+        "label": "재료 영향력(2단계)",
+        "version": "material-stage2-1",
+        "rules": "adr-0057-stage2-1",
+        "outcome": "passed",
+        "material": "unconfirmed",
+        "strategy": "conservative",
+        "reason": "no_news_check",
+        "conclusions": null,
+        "articles": [],
+        "news_check_id": null,
+        "news_status": null,
+        "news_cutoff_utc": null
+      },
+      "stage4": {
+        "label": "정보 만들기(4단계)",
+        "version": "stage4-info-1",
+        "rules": "adr-0057-stage4-1",
+        "state": "done",
+        "as_of_utc": null,
+        "stage2_outcome": "passed",
+        "dilution": {
+          "check_id": 2,
+          "status": "ok",
+          "cutoff_utc": "2026-11-06T15:30:00.000Z",
+          "created_at_utc": "2026-11-06T15:30:00.000Z",
+          "requested_by": "stage4_auto",
+          "analysis_as_of": "2026-11-09",
+          "securities": [
+            {
+              "after_base_point": false,
+              "approval_unknown": true,
+              "conditions": [],
+              "description": "Series A Warrant",
+              "floor": null,
+              "id": "S1",
+              "kind": "warrant",
+              "outstanding": {
+                "amount": "2000000",
+                "fact": true,
+                "status": "computed",
+                "unit": "shares"
+              },
+              "price": {
+                "amount": "1.25",
+                "fact": true,
+                "status": "confirmed",
+                "unit": "usd_per_share"
+              },
+              "price_range": null
+            },
+            {
+              "after_base_point": true,
+              "approval_unknown": false,
+              "conditions": [
+                {
+                  "threshold": {
+                    "amount": "0.50",
+                    "fact": true,
+                    "status": "confirmed",
+                    "unit": "usd_per_share"
+                  },
+                  "type": "issuance_blocked_below"
+                }
+              ],
+              "description": "Series C Preferred (기준 시점 뒤 발행)",
+              "floor": {
+                "amount": "0.30",
+                "fact": true,
+                "status": "inferred",
+                "unit": "usd_per_share"
+              },
+              "id": "S2",
+              "kind": "convertible_preferred",
+              "outstanding": {
+                "amount": null,
+                "fact": false,
+                "status": "unverified",
+                "unit": "shares"
+              },
+              "price": {
+                "amount": null,
+                "fact": false,
+                "status": "unverified",
+                "unit": "usd_per_share"
+              },
+              "price_range": null
+            }
+          ],
+          "capacity": [
+            {
+              "nominal": {
+                "amount": "5000000",
+                "fact": true,
+                "status": "confirmed",
+                "unit": "usd"
+              },
+              "security_id": "S3"
+            }
+          ],
+          "shelves": [],
+          "incomplete_reasons": [],
+          "reason": null
+        },
+        "off_exchange": {
+          "check_id": 3,
+          "status": "ok",
+          "cutoff_utc": "2026-11-06T15:30:00.000Z",
+          "created_at_utc": "2026-11-06T15:30:00.000Z",
+          "requested_by": "stage4_auto",
+          "data_until_utc": "2026-11-06T15:15:00Z",
+          "reference_price": "2.0101",
+          "reference_time_utc": "2026-11-06T14:59:59.123456789Z",
+          "off_exchange_share_pct": "85.45",
+          "sessions_used": 21,
+          "levels": [
+            {
+              "price_high": "1.91",
+              "price_low": "1.9",
+              "share_pct": "54.69",
+              "side": "below",
+              "volume": "700"
+            },
+            {
+              "price_high": "2.01",
+              "price_low": "2",
+              "share_pct": "39.06",
+              "side": "below",
+              "volume": "500"
+            }
+          ],
+          "reason": null
+        },
+        "short_interest": {
+          "available": false,
+          "reason": "no_source",
+          "note": "공매도 자료 없음: 자료가 생길 때까지 공매도 없이 진행한다(ADR 0057 4단계)."
+        },
+        "notes": [
+          "4단계 결과는 사실이다. 가격대로 바꾸는 것은 5단계 규칙이다(아직 없음).",
+          "희석 분석은 뉴욕 날짜 기준이다: 그날 cutoff 뒤에 낸 공시가 들어 있을 수 있다.",
+          "희석 분석 기준일이 세션 날짜보다 늦다: 그 세션 뒤의 공시가 들어 있을 수 있다(미래 자료)."
+        ]
+      }
+    }
+  ]
+}
