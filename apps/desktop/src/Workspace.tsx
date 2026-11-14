@@ -44,6 +44,8 @@ import type { IndicatorAssistantApi } from "./indicator-assistant-api";
 import { pineStrategiesOn } from "./strategy-research";
 import type { StrategyResearchApi } from "./strategy-research-api";
 import { StrategyResearch } from "./StrategyResearch";
+import type { TechniqueCardsApi } from "./technique-cards-api";
+import { TechniqueCardsScreen } from "./TechniqueCardsScreen";
 import {
   cleanParams,
   defaultParams,
@@ -67,6 +69,7 @@ import {
   AgentIcon,
   BacktestIcon,
   JournalIcon,
+  TechniqueIcon,
   TradeReviewIcon,
   KeyIcon,
   QuoteIcon,
@@ -181,6 +184,8 @@ interface WorkspaceProps {
   /** Claude writing Pine indicators (ADR 0042); without one it is not offered. */
   assistantApi?: IndicatorAssistantApi;
   researchApi?: StrategyResearchApi;
+  /** Technique sources and cards (ADR 0056); without one it is not offered. */
+  techniqueApi?: TechniqueCardsApi;
 }
 
 type Panel =
@@ -195,6 +200,7 @@ type Panel =
   | "keys"
   | "backtest"
   | "tradeReview"
+  | "techniques"
   | "review";
 
 /** Per-chart view options that are not part of the saved layout. */
@@ -350,6 +356,7 @@ export function Workspace({
   customApi,
   assistantApi,
   researchApi,
+  techniqueApi,
   openOnToday = false,
 }: WorkspaceProps) {
   const { t } = useI18n();
@@ -1929,6 +1936,13 @@ export function Workspace({
         />
       ) : null}
 
+      {panel === "techniques" && techniqueApi ? (
+        <TechniqueCardsScreen
+          api={techniqueApi}
+          onClose={() => setPanel(null)}
+        />
+      ) : null}
+
       {panel === "keys" && keysPanel ? (
         <div
           className="modal-backdrop"
@@ -2101,6 +2115,7 @@ export function Workspace({
             ["journal", JournalIcon],
             ...(backtestApi ? ([["backtest", BacktestIcon]] as const) : []),
             ...(reviewApi ? ([["tradeReview", TradeReviewIcon]] as const) : []),
+            ...(techniqueApi ? ([["techniques", TechniqueIcon]] as const) : []),
             ...(agentApi ? ([["review", AgentIcon]] as const) : []),
             ...(keysPanel ? ([["keys", KeyIcon]] as const) : []),
           ] as const

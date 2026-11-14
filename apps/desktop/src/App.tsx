@@ -6,6 +6,7 @@ import { createAgentApi } from "./agent-api";
 import { createIndicatorAssistantApi } from "./indicator-assistant-api";
 import { createStrategyResearchApi } from "./strategy-research-api";
 import { createReviewApi } from "./review-api";
+import { createTechniqueCardsApi } from "./technique-cards-api";
 import { createBacktestApi } from "./backtest-api";
 import { createScreeningApi } from "./screening-api";
 import { createCredentialApi } from "./credential-api";
@@ -87,6 +88,10 @@ function AppContent({
     () => createStrategyResearchApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
   );
+  const techniqueApi = useMemo(
+    () => createTechniqueCardsApi(apiBaseUrl, fetcher),
+    [apiBaseUrl, fetcher],
+  );
   const assistantApi = useMemo(
     () => createIndicatorAssistantApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
@@ -161,6 +166,7 @@ function AppContent({
             customApi={customApi}
             assistantApi={assistantApi}
             researchApi={researchApi}
+            techniqueApi={techniqueApi}
             openOnToday
           />
         ) : (

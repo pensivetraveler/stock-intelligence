@@ -3662,3 +3662,166 @@ body {
   padding-left: 18px;
   color: var(--term-down, #e05);
 }
+
+/* Technique cards (ADR 0056 L1·L2) */
+.modal.tc-screen {
+  color-scheme: dark;
+  width: min(1480px, 98vw);
+  height: 94vh;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.tc-body {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+.tc-list,
+.tc-main {
+  min-height: 0;
+  overflow: auto;
+}
+
+.tc-list ul {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.tc-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--term-line);
+}
+
+.tc-source {
+  background: none;
+  border: 0;
+  color: var(--term-text);
+  cursor: pointer;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.tc-source[aria-pressed="true"] {
+  color: var(--term-accent);
+}
+
+.tc-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+}
+
+.tc-facts dt {
+  color: var(--term-muted);
+}
+
+.tc-ready {
+  color: #6fcf97;
+}
+
+.tc-blocked {
+  color: #f2c94c;
+}
+
+.tc-conditions {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+
+.tc-conditions th,
+.tc-conditions td {
+  border-bottom: 1px solid var(--term-line);
+  padding: 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.tc-conditions td:nth-child(2),
+.tc-conditions td:last-child {
+  white-space: nowrap;
+}
+
+.tc-conditions td:last-child .tb-button {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.tc-conditions tr.tc-flagged {
+  background: rgba(242, 201, 76, 0.06);
+}
+
+.tc-conditions code {
+  color: var(--term-muted);
+}
+
+.tc-flag {
+  display: inline-block;
+  white-space: nowrap;
+  margin: 0 4px 4px 0;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--term-line);
+}
+
+.tc-flag-unbacked,
+.tc-flag-no_criterion {
+  border-color: #f2994a;
+  color: #f2994a;
+}
+
+.tc-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.tc-edit label {
+  display: grid;
+  font-size: 11px;
+  color: var(--term-muted);
+}
+
+.tc-edit input {
+  width: 80px;
+}
+
+.tc-answer {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.tc-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 360px;
+  overflow: auto;
+  color: var(--term-muted);
+}
+
+.tc-timeline li.tc-cited {
+  color: var(--term-text);
+}
+
+.tc-time {
+  font-variant-numeric: tabular-nums;
+  margin-right: 6px;
+}
+
+.tc-mark {
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--term-pressed);
+  color: var(--term-accent);
+}
