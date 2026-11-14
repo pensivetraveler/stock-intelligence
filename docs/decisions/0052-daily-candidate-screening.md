@@ -2,6 +2,7 @@
 
 - **Status:** proposed. 2026-11-09 사용자 결정으로 S1부터 착수한다(아래 "진행 방식"). 나머지 "사용자가 정할 것"은 각 단계 착수 전에 정한다.
 - **Changed (2026-11-12, [ADR 0057](0057-selection-flow-seven-stages.md)):** A 진입조건은 폐기했다. 사용자는 종목을 고르지 않는다("사용자가 고른 종목"은 더 이상 맞지 않음). B는 2단계 재료 영향력, C·D는 4단계 정보, 희석 LLM은 주 1회 검수로 옮겼다. 아래 본문은 2026-11-09 기록으로 남긴다.
+- **Changed (2026-11-14, ADR 0057 U-b):** 검사 B 결과의 `conclusions`로 2단계 판정(통과·그날 제외·재료 미확인, 전략 보통·보수적)을 만든다. 검사 B 요청에 cutoff 시가총액 `context`를 넣는다(검사 판 `screening-news-4`). 자세한 것은 ADR 0057 "U-b 구현".
 - **Date:** 2026-11-09
 - **Related:** [ADR 0048](0048-kiwoom-condition-search.md)·[ADR 0051](0051-kiwoom-realtime-condition-watch.md)(조건검색), [ADR 0024](0024-filings-and-dark-pool-agents.md)(공시·다크풀 Agent), [ADR 0046](0046-shared-data-space.md)(희석 분석기와 공동 데이터 공간), [ADR 0050](0050-quote-command-for-local-tools.md)(시세 명령), [ADR 0036](0036-desktop-app-roles.md)(앱 역할), [ADR 0042](0042-claude-assistants.md)(Claude 보조)
 

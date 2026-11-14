@@ -29,7 +29,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-CHECK_VERSION = "screening-news-3"
+CHECK_VERSION = "screening-news-4"
 CONTRACT = "news-contract-v1"
 SERVICE_NAME = "news-analysis"
 DEFAULT_URL = "http://127.0.0.1:8776"
@@ -92,19 +92,25 @@ class NewsService:
         except httpx.TransportError as exc:
             raise NewsServiceDown(f"the news-analysis service did not answer: {exc}") from exc
 
-    def submit(self, ticker: str, cutoff: datetime, lookback_hours: int) -> str:
-        response = self._call(
-            "POST",
-            "/api/v1/news-checks",
-            json={
-                "ticker": ticker,
-                "cutoff_utc": cutoff.astimezone(timezone.utc)
-                .isoformat(timespec="seconds")
-                .replace("+00:00", "Z"),
-                "lookback_hours": lookback_hours,
-                "refresh": "auto",
-            },
-        )
+    def submit(
+        self,
+        ticker: str,
+        cutoff: datetime,
+        lookback_hours: int,
+        context: dict[str, Any] | None = None,
+    ) -> str:
+        body: dict[str, Any] = {
+            "ticker": ticker,
+            "cutoff_utc": cutoff.astimezone(timezone.utc)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z"),
+            "lookback_hours": lookback_hours,
+            "refresh": "auto",
+        }
+        if context:
+            # news_check 1.1: workstation inputs for the LLM step, each known by the cutoff.
+            body["context"] = context
+        response = self._call("POST", "/api/v1/news-checks", json=body)
         if response.status_code != 202:
             raise NewsServiceError(
                 f"the news service refused the request ({response.status_code}): "

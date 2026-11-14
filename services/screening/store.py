@@ -104,6 +104,16 @@ class ScreeningStore:
             raise CheckNotFoundError(str(check_id))
         return dict(json.loads(row["document"]))
 
+    def documents(self, session_date: date, check_kind: str) -> list[dict[str, Any]]:
+        """Every stored check of one kind for a session date, oldest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT document FROM checks WHERE session_date = ? AND check_kind = ? "
+                "ORDER BY check_id",
+                (session_date.isoformat(), check_kind),
+            ).fetchall()
+        return [dict(json.loads(row["document"])) for row in rows]
+
     def latest(self, session_date: date) -> dict[str, dict[str, dict[str, Any]]]:
         """The latest check of each kind, by symbol, for one session date."""
         with self._lock:
