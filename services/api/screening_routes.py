@@ -34,6 +34,7 @@ from services.screening.dilution import (
     follow,
 )
 from services.screening.entry import entry_check
+from services.screening.material import stage2_by_symbol, stage2_verdict
 from services.screening.momentum import momentum_check
 from services.screening.store import CheckNotFoundError, ScreeningStore
 
@@ -117,6 +118,9 @@ def register_screening_routes(
             cutoff = min(cutoff, as_of)
         watched = read_watched(watch_path(root), window, cutoff, CONDITION_NAME)
         latest = screening.latest(window.session_date)
+        # Stage 2 (ADR 0057 §2): each candidate's verdict from its news checks. A news
+        # check made after an `as_of` cut is not hidden here: the verdict says its cutoff.
+        verdicts = stage2_by_symbol(screening, window.session_date)
         for found in latest.values():
             if "momentum" in found:
                 # The table shows the numbers themselves, not only a status.
@@ -188,6 +192,7 @@ def register_screening_routes(
                     **row,
                     "listing": listing_for(row["symbol"]),
                     "checks": latest.get(row["symbol"], {}),
+                    "stage2": verdicts.get(row["symbol"]) or stage2_verdict(None),
                 }
                 for row in sorted(rows.values(), key=lambda r: (r["first_seen_utc"], r["symbol"]))
             ],

@@ -1,6 +1,6 @@
 # ADR 0057 — 종목 선정에서 SIW Agent까지 7단계 흐름
 
-- **Status:** accepted(흐름). 2026-11-12 사용자가 1~7단계 흐름을 확정했다. 각 단계의 구현은 사용자 승인 뒤에 한다. "별도 논의"로 남은 항목은 아래 "사용자가 정할 것"에 있다. 2026-11-14 보충: 2단계 저영향 재료 목록과 뉴스 분석의 두 결론을 정했다.
+- **Status:** accepted(흐름). 2026-11-12 사용자가 1~7단계 흐름을 확정했다. 각 단계의 구현은 사용자 승인 뒤에 한다. "별도 논의"로 남은 항목은 아래 "사용자가 정할 것"에 있다. 2026-11-14 보충: 2단계 저영향 재료 목록과 뉴스 분석의 두 결론을 정했다. 같은 날 U-b(2단계 판정) 구현(아래 "U-b 구현").
 - **Date:** 2026-11-12
 - **Supersedes:** [ADR 0054](0054-selection-to-agent-scenario.md)의 1·2·3단계 구성, §1 움직임 예상 분류, §2 실시간 수급, U1~U6. 0054의 참고 문서, 사용자 결정(11-09·11-10), §3 공매도 자료는 그대로 유효하다.
 - **Related:** [ADR 0052](0052-daily-candidate-screening.md)(당일 후보 스크리닝 A·B·C·D), [ADR 0053](0053-off-exchange-price-structure-model.md)(장외 체결 가격 구조), [ADR 0055](0055-intraday-momentum-candidates.md)(U0 모멘텀 수집), [ADR 0036](0036-desktop-app-roles.md)·[ADR 0037](0037-paper-order-execution.md)(모의투자), [ADR 0047](0047-live-orders-per-order-confirmation.md)(실계좌 주문마다 승인)
@@ -164,7 +164,7 @@
   - 주문 관련은 상태 값만이다: `new_buys_allowed`(대상일 때만 참), `resting_orders: "keep"`. 주문 기능은 없다.
   - 판정 시점: 분이 끝나고 20초 뒤(`SETTLE_SECONDS`). Alpaca가 분 집계를 내놓는 데 걸리는 시간은 재지 않았다(미확인).
 - **halt 기록:** `services/screening/halts.py`가 상태 메시지를 halt 구간으로 바꾼다. 멈춤 코드는 CTA `2`, UTP `H`·`P`, 재개 코드는 CTA `3`, UTP `T`(`Q`는 호가만 재개라 아직 멈춤)다. 2026-11-12 09:14 ET 1분 실측(사용자 키, 읽기 전용, 저장 안 함): 구독이 받아들여졌고 CTA halt(`sc` `2`, tape B)가 5초마다 반복해 왔다. UTP 메시지는 그 1분에 오지 않아 UTP 코드는 문서 기준이다. LULD 메시지도 프리마켓이라 오지 않았다. 기록기는 2026-11-13에 만들었다(아래 "halt 기록기").
-- **대상:** 오늘의 후보 전체(조건 기록 + 사용자가 넣은 종목). 2단계(U-b)가 없으므로 `stage2: "not_implemented"`. 판정이 생기면 `register_screening_flow_routes(stage2=...)`로 넣는다. `failed`면 `new_buys_allowed`가 거짓이 된다.
+- **대상:** 오늘의 후보 전체(조건 기록 + 사용자가 넣은 종목). 2단계(U-b)가 없으므로 `stage2: "not_implemented"`. 판정이 생기면 `register_screening_flow_routes(stage2=...)`로 넣는다. `failed`면 `new_buys_allowed`가 거짓이 된다. (2026-11-14 U-b로 바뀜: 아래 "U-b 구현".)
 - **API:** `GET /v1/screening/flow?session_date=`(계약 `screening_flow_watch`). 저장하지 않고 부를 때마다 봉으로 다시 만든다. 후보 4개씩 동시에 읽는다.
 - **패널:** '오늘의 후보'에 "지금 수급(3단계)" 열(상태 · 유동성 n/5 · 변동성 n/20). 1분마다 다시 읽는다. 정오 자르기 보기에서는 읽지 않는다.
 - **실제 확인(2026-11-12 09:25 ET, 사용자 Alpaca 키, 조건 기록 복사본):** 오늘 후보 29개 중 12개 판정, 모두 `ok`, 대상 9·제외 3. 04:00부터 325분 판정.
@@ -181,6 +181,32 @@
 - **읽기 명령:** `siw-collector export-halts --date YYYY-MM-DD`가 그 뉴욕 날짜의 연결과 상태 변화를 JSON으로 낸다.
 - **실제 확인(2026-11-13 02:10 ET, 사용자 키, 임시 저장소):** 연결, 인증, 전 종목 구독, 하트비트, 정상 종료를 기록했다. 장 전이라 상태 메시지는 없었다. 실제 halt를 받아 적는 것은 장중에 확인한다(미확인).
 - **실행:** 상시 실행은 조건 기록기처럼 사용자 LaunchAgent로 한다. 설치는 사용자 승인 뒤.
+
+## U-b 구현 — 2단계 재료 판정, SIW 몫 (2026-11-14)
+
+news-analysis 몫(규칙 `news-rules-6`, 프롬프트 `nir-judge-2`, 결론 `material-judgement-2`, `news_check` 1.2, 계약 `news-contract-v1` 그대로)은 그 저장소 PR #6~#11로 끝났다. SIW 몫은 다음과 같다.
+
+- **판정:** `services/screening/material.py`(`material-stage2-1`, 규칙 `adr-0057-stage2-1`). 세션의 뉴스 검사(검사 B) 중 마지막으로 끝난 것의 `news_check.conclusions`를 읽는다. `status`는 보지 않는다(범주 없는 기사도 NIR이 명분을 판단하므로 `no_material`이어도 `material: present`일 수 있다). 끝난 검사 뒤에 다시 돌린 검사가 아직 기다리는 중이면 앞의 판정을 그대로 쓴다.
+
+| `material`        | `filter`   | `rationale` | 2단계     | 재료 표시   | 전략   |
+| ----------------- | ---------- | ----------- | --------- | ----------- | ------ |
+| present           | yes        | —           | 그날 제외 | 저영향      | 없음   |
+| present           | no         | yes         | 통과      | 명분 있음   | 보통   |
+| present           | no         | no          | 통과      | 명분 없음   | 보수적 |
+| present           | no         | unknown 등  | 통과      | 재료 미확인 | 보수적 |
+| present           | unknown 등 | (무관)      | 통과      | 재료 미확인 | 보수적 |
+| none              | —          | —           | 통과      | 재료 없음   | 보수적 |
+| unknown·모르는 값 | —          | —           | 통과      | 재료 미확인 | 보수적 |
+
+- 위 표의 "두 결론" 표와 같다. 인계 노트의 제안표에 없던 칸 하나를 해석으로 정했다: `filter: unknown`이면 `rationale: yes`여도 재료 미확인(저영향이 아닌지 모르므로 "판정할 수 없을 때"). LFMD·OWLT 실적 기사(시가총액 없이 `low_impact` UNKNOWN)가 이 칸이었다.
+- 뉴스 검사가 없음(`no_news_check`), 기다리는 중(서비스 꺼짐 포함, `news_pending`), 오류(`news_error`), `conclusions`가 없는 1.0 결과(`no_conclusions`)도 재료 미확인·보수적으로 통과한다.
+- 근거: 기사마다 범주, `filter`·`filter_basis`(`rules`·`nir`·`rules_fallback`)·`filter_reasons`, `rationale`·`rationale_basis`, NIR 기록 ID와 상속한 쌍둥이 기사(`nir_inherited_from`)를 최대 20건 옮긴다. 결론은 추론이다(규칙 + LLM, 확인된 사실 아님).
+- **요청 context(시가총액):** SIW에 시가총액 자료가 없어 Toss 종목 정보의 발행주식수(`stock-info`와 같은 출처) × cutoff 이전 마지막 확정 1분봉 종가(as-of cutoff로 읽음)로 만든다(`services/screening/market_cap.py`, 출처 `siw:toss-shares_x_1m-close:…`). Toss는 지금 값만 주므로 cutoff를 잡기 **전에** 읽고, 끝난 세션의 검사에는 보내지 않는다. 시각은 두 값 중 늦은 쪽이고, 서비스가 받는 초 단위 cutoff보다 늦으면 보내지 않는다. 키가 없거나 봉이 없으면 보내지 않고 이유를 `result.context_note`에 남긴다. 보낸 값은 `result.context_sent`에 두고 서비스가 꺼져 다시 보낼 때 같은 값을 쓴다. 이전 매출(`prior_revenue_*`)은 SIW에 근거 있는 출처가 없어 보내지 않는다. Toss 발행주식수가 언제 갱신된 값인지는 모른다(희석이 잦은 소형주는 실제보다 적을 수 있다).
+- **3단계 연결:** `GET /v1/screening/flow`가 같은 판정을 읽는다. 그날 제외 종목은 봉을 읽지 않고 `status: "stage2_excluded"`(`stage2: "failed"`, `new_buys_allowed: false`)로 낸다. 나머지(재료 미확인 포함)는 지금처럼 감시하고 `result.stage2: "passed"`와 `result.stage2_detail`(판정·전략·근거)을 담는다. 5·6단계는 여기와 후보 목록의 `strategy`(보통·보수적)를 읽는다.
+- **API·패널:** `GET /v1/screening/candidates`의 후보마다 `stage2`(계약 `$defs/ScreeningStage2`). '오늘의 후보'에 "재료(2단계)" 열(예: "통과 · 명분 있음 · 보통", "그날 제외")과 누르면 여는 근거 표. 수급 열은 그날 제외 종목에 "제외(2단계)".
+- **시험:** `tests/screening/test_material.py`(결론 조합 9개, status보다 conclusions, 판정 불가 4가지, 근거·상속 NIR, 기다리는 검사, 시가총액 계산·cutoff 뒤 값 거절·초 단위 경계·미확정 봉, Toss 값 없음, 요청에 context와 다시 보내기·끝난 세션, 공급원 없음, 3단계 제외·후보 목록), 패널 테스트 1개.
+- **하지 않은 것:** 뉴스 검사를 후보마다 자동으로 돌리기(지금은 패널에서 돌린다 — 돌리지 않은 종목은 재료 미확인으로 통과한다), 4단계 자동 실행, 주문.
+- **미확인:** 실제 서비스·Toss 키로 context를 넣은 검사(장중 확인 필요), Toss 발행주식수의 시점과 정확도.
 
 ## 구현 단위 (각 단계는 사용자 승인 뒤)
 

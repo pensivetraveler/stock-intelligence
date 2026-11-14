@@ -2825,3 +2825,11 @@
 - **결과:** v1은 세 모델 모두 불합격이었으나 지어낸 조건 28건 중 원문에 없는 것 0건 → v2로 바꿈. 같은 리포트 참고 재채점: 지어낸 sonnet 2·luna 2·haiku 0, 필드 일치 (가) 89.3%·87.5%·85.7%, 모호 재현 82.1%·56.4%·82.1% — 확정에 쓰지 않음.
 - **시험:** `tests/technique_cards` 24개(숫자 낱말·한국어 수사 오인 방지, 근거 대조, 15초 창, 문장 합치기, post_hoc).
 - **미확인:** 새 실제 자료 4~6건으로 v2 확인(배정 확정 전), PDF 근거 대조(PDF 글자 추출 전).
+
+## 2단계 재료 판정(ADR 0057 U-b, SIW 몫) — 2026-11-14
+
+- **추가:** `services/screening/material.py`(뉴스 검사의 `news_check.conclusions` → 통과·그날 제외·재료 미확인, 전략 보통·보수적, 기사별 근거 rules·nir·rules_fallback·상속 NIR), `services/screening/market_cap.py`(요청 `context`의 cutoff 시가총액 = Toss 발행주식수 × cutoff 전 마지막 확정 1분봉 종가, cutoff 뒤 값은 보내지 않음, 끝난 세션은 보내지 않음, 이전 매출은 출처 없어 안 보냄), `ScreeningStore.documents`. 검사 B 판 `screening-news-4`(`result.context_sent`·`context_note`).
+- **3단계 연결:** `GET /v1/screening/flow`에서 그날 제외 종목은 `status: stage2_excluded`(봉 안 읽음), 나머지는 `result.stage2: passed`와 `stage2_detail`. `versions.stage2_rules`.
+- **API·패널:** 후보 목록 `candidates[].stage2`(계약 `$defs/ScreeningStage2`), '오늘의 후보' "재료(2단계)" 열과 근거 표, 수급 열 "제외(2단계)". 뉴스 범주 이름에 공모 발표·공모 완료·자금 조달 발표 추가.
+- **시험:** `tests/screening/test_material.py` 22개, `test_flow_watch.py` 경로 테스트 갱신, 패널 테스트 1개.
+- **미확인:** 실제 서비스·Toss 키로 context를 넣은 검사, Toss 발행주식수의 갱신 시점. 뉴스 검사는 여전히 패널에서 돌린다(자동 실행 없음 — 돌리지 않은 종목은 재료 미확인으로 통과).

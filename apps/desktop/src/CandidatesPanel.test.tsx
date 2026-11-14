@@ -3,6 +3,7 @@ import type {
   ScreeningCandidates,
   ScreeningCheck,
   ScreeningFlowWatch,
+  ScreeningStage2,
 } from "@siw/contracts/types";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -201,7 +202,7 @@ describe("CandidatesPanel", () => {
           status: "ok",
           result: {
             state: "excluded",
-            stage2: "not_implemented",
+            stage2: "passed",
             new_buys_allowed: false,
             resting_orders: "keep",
             as_of_utc: "2026-11-09T15:30:00Z",
@@ -243,6 +244,109 @@ describe("CandidatesPanel", () => {
     expect(screen.getByLabelText("ZZZQ Flow now (stage 3)").textContent).toBe(
       "Not listed",
     );
+  });
+
+  it("shows stage 2's verdict, its basis, and the stage 2 exclusion in stage 3", async () => {
+    const verdict = (
+      outcome: "passed" | "excluded_today",
+      material: ScreeningStage2["material"],
+      strategy: ScreeningStage2["strategy"],
+      reason: string,
+    ): ScreeningStage2 => ({
+      label: "재료 영향력(2단계)",
+      version: "material-stage2-1",
+      rules: "adr-0057-stage2-1",
+      outcome,
+      material,
+      strategy,
+      reason,
+      conclusions: {
+        version: "material-judgement-2",
+        material: "present",
+        filter: outcome === "excluded_today" ? "yes" : "no",
+        rationale: outcome === "excluded_today" ? null : "yes",
+      },
+      articles: [
+        {
+          source_id: "alpaca-news",
+          record_id: "AAPL:1",
+          headline: "AAPL Wins Purchase Order",
+          published_at_utc: "2026-11-09T12:00:00Z",
+          categories: ["binding_contract"],
+          filter: "no",
+          filter_basis: "rules",
+          filter_reasons: [],
+          rationale: "yes",
+          rationale_basis: "nir",
+          nir_record_id: "NIR-AAPL-1",
+          nir_state: "skipped",
+          nir_inherited_from: { source_id: "alpaca-news", record_id: "AAPL:0" },
+        },
+      ],
+      news_check_id: 4,
+      news_status: "material",
+      news_cutoff_utc: "2026-11-09T15:00:00.000Z",
+    });
+    const document = candidates();
+    document.candidates[0].stage2 = verdict(
+      "passed",
+      "rationale",
+      "normal",
+      "rally_rationale",
+    );
+    document.candidates[1].stage2 = verdict(
+      "excluded_today",
+      "low_impact",
+      null,
+      "low_impact_material",
+    );
+    const flow = {
+      kind: "screening_flow_watch",
+      schema_version: "0.1",
+      session_date: "2026-11-09",
+      created_at_utc: "2026-11-09T15:30:30Z",
+      after_the_fact: false,
+      versions: { check: "flow-watch-1" },
+      candidates: [
+        {
+          symbol: "ZZZQ",
+          instrument_id: null,
+          status: "stage2_excluded",
+          result: { stage2: "failed", new_buys_allowed: false },
+          warnings: [],
+          sources: {},
+        },
+      ],
+    } as unknown as ScreeningFlowWatch;
+    const api = {
+      candidates: vi.fn(() => Promise.resolve(document)),
+      addCandidate: vi.fn(),
+      runEntryCheck: vi.fn(),
+      check: vi.fn(),
+      flow: vi.fn(() => Promise.resolve(flow)),
+      ...unused(),
+    } as ScreeningApi;
+    render(
+      <CandidatesPanel
+        api={api}
+        strategies={() => Promise.resolve([])}
+        onPick={vi.fn()}
+      />,
+    );
+    const passed = await screen.findByLabelText(
+      "AAPL Material (stage 2): Pass · rally reason · normal",
+    );
+    expect(passed.getAttribute("title")).toMatch(/inference/);
+    expect(
+      screen.getByLabelText("ZZZQ Material (stage 2): Out for today"),
+    ).toBeTruthy();
+    const out = screen.getByLabelText("ZZZQ Flow now (stage 3)");
+    await waitFor(() => expect(out.textContent).toBe("Out (stage 2)"));
+    fireEvent.click(passed);
+    const basis = screen.getByRole("region", { name: "AAPL stage 2 basis" });
+    expect(basis.textContent).toMatch(/AAPL Wins Purchase Order/);
+    expect(basis.textContent).toMatch(/no · rules/);
+    expect(basis.textContent).toMatch(/yes · nir · twin article's LLM answer/);
   });
 
   it("says when there is no condition record and adds a ticker", async () => {
