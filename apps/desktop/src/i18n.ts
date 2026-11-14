@@ -1538,7 +1538,7 @@ const en = {
   "keys.off":
     "Key management is off: start the API with SIW_DATA_DIR set. Nothing was saved.",
   "keys.checkFields":
-    "Check the fields: the account suffix is the last 4 digits only.",
+    "The API refused the fields (alias up to 60 characters; an account suffix is its last 4 digits only).",
   "keyState.idle": "Not used yet",
   "keyState.ok": "Working",
   "keyState.cooling": "Rate limited",
@@ -3576,7 +3576,8 @@ const ko: Record<MessageKey, string> = {
   "keys.until": " ({time}까지)",
   "keys.off":
     "키 관리가 꺼져 있습니다: SIW_DATA_DIR을 설정하고 API를 실행하세요. 저장된 것은 없습니다.",
-  "keys.checkFields": "입력값을 확인하세요: 계좌는 끝 4자리만 입력합니다.",
+  "keys.checkFields":
+    "API가 입력값을 받지 않았습니다(별칭은 60자까지, 계좌를 넣을 때는 끝 4자리만).",
   "keyState.idle": "아직 사용 안 함",
   "keyState.ok": "정상",
   "keyState.cooling": "호출 한도 대기",
