@@ -180,6 +180,11 @@ def indicators(text: str) -> set[str]:
     }
 
 
+def grounds(family: str, window: str) -> bool:
+    """Is an indicator family said in this text (its names, or letters read one by one)?"""
+    return _grounds(family, window)
+
+
 def _grounds(family: str, window: str) -> bool:
     raw = window.casefold()
     folded = normalise(window)
