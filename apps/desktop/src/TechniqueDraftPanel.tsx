@@ -4,6 +4,7 @@ import { useI18n } from "./i18n";
 import { MarketApiError } from "./market-api";
 import {
   CHOOSABLE_MODELS,
+  MODEL_NAMES,
   type TechniqueCard,
   type TechniqueCardsApi,
   type TechniqueDraft,
@@ -13,6 +14,8 @@ interface Props {
   api: TechniqueCardsApi;
   card: TechniqueCard;
   pollMs: number;
+  /** The default model setting; the user may pick another for this draft. */
+  defaultModel: string;
 }
 
 function message(error: unknown): string {
@@ -26,9 +29,14 @@ function message(error: unknown): string {
  * the button; every card item is shown with where it went in the rules or why it could not.
  * Saving needs a draft without problems, and the user's tick when items are left out.
  */
-export function TechniqueDraftPanel({ api, card, pollMs }: Props) {
+export function TechniqueDraftPanel({
+  api,
+  card,
+  pollMs,
+  defaultModel,
+}: Props) {
   const { t } = useI18n();
-  const [model, setModel] = useState<string>(CHOOSABLE_MODELS[1]);
+  const [model, setModel] = useState<string>(defaultModel);
   const [drafts, setDrafts] = useState<TechniqueDraft[]>([]);
   const [shown, setShown] = useState<TechniqueDraft | null>(null);
   const [running, setRunning] = useState<string | null>(null);
@@ -123,7 +131,9 @@ export function TechniqueDraftPanel({ api, card, pollMs }: Props) {
           >
             {CHOOSABLE_MODELS.map((choice) => (
               <option key={choice} value={choice}>
-                {choice}
+                {choice === defaultModel
+                  ? t("tc.assigned", { model: MODEL_NAMES[choice] ?? choice })
+                  : (MODEL_NAMES[choice] ?? choice)}
               </option>
             ))}
           </select>

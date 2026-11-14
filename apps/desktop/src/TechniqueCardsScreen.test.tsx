@@ -13,6 +13,7 @@ import type {
   TechniqueCardsApi,
   TechniqueDraft,
   TechniquePreview,
+  TechniqueSettings,
 } from "./technique-cards-api";
 import { slotsLabel } from "./technique-cards-api";
 import { TechniqueCardsScreen } from "./TechniqueCardsScreen";
@@ -48,9 +49,16 @@ const preview: TechniquePreview = {
   lines: 5,
   parts: 1,
   characters: 1200,
-  model: "claude-sonnet-5-5",
+  model: "google/gemini-4-argon",
   fallback: "openai/gpt-6-luna",
-  models: ["claude-sonnet-5-5", "google/gemini-4-argon", "openai/gpt-6-luna"],
+  models: [
+    "anthropic/claude-fable-5.2",
+    "google/gemini-4-argon",
+    "openai/gpt-6-astra",
+    "claude-sonnet-5-5",
+    "openai/gpt-6-luna",
+  ],
+  default_model: "google/gemini-4-argon",
   estimated_cost_usd: "0.06",
   estimate_note: "estimate",
   verification_status: "unverified",
@@ -171,6 +179,17 @@ const draftDone: TechniqueDraft = {
   needs_accept: true,
 };
 
+const settings: TechniqueSettings = {
+  kind: "technique_settings",
+  default_model: "google/gemini-4-argon",
+  default_choices: [
+    "anthropic/claude-fable-5.2",
+    "google/gemini-4-argon",
+    "openai/gpt-6-astra",
+  ],
+  models: [],
+};
+
 function fakeApi(): TechniqueCardsApi {
   return {
     sources: vi.fn().mockResolvedValue([
@@ -199,6 +218,11 @@ function fakeApi(): TechniqueCardsApi {
     card: vi.fn().mockResolvedValue(card()),
     resolve: vi.fn().mockResolvedValue(card()),
     recheck: vi.fn().mockResolvedValue(card()),
+    settings: vi.fn().mockResolvedValue(settings),
+    setDefaultModel: vi.fn().mockImplementation(async (model: string) => ({
+      ...settings,
+      default_model: model,
+    })),
     startDraft: vi.fn().mockResolvedValue({ draft_id: "d1" }),
     draft: vi.fn().mockResolvedValue(draftDone),
     drafts: vi.fn().mockResolvedValue([]),
@@ -225,7 +249,7 @@ describe("technique cards", () => {
       screen.getByRole("button", { name: "Extract card (costs money)" }),
     );
     await waitFor(() => expect(api.card).toHaveBeenCalledWith("c1"));
-    expect(api.start).toHaveBeenCalledWith(ITEM, "claude-sonnet-5-5");
+    expect(api.start).toHaveBeenCalledWith(ITEM, "google/gemini-4-argon");
     expect(
       await screen.findByText(/Not ready: flagged conditions to decide #2/),
     ).toBeTruthy();
@@ -285,28 +309,49 @@ describe("technique cards", () => {
     const api = fakeApi();
     vi.mocked(api.preview).mockImplementation(async (_item, model) => ({
       ...preview,
-      model: model ?? "claude-sonnet-5-5",
+      model: model ?? "google/gemini-4-argon",
     }));
     render(<TechniqueCardsScreen api={api} onClose={() => undefined} />);
     fireEvent.click(await screen.findByRole("button", { name: "Demo lesson" }));
     fireEvent.change(
       await screen.findByLabelText("Model for this extraction"),
       {
-        target: { value: "google/gemini-4-argon" },
+        target: { value: "anthropic/claude-fable-5.2" },
       },
     );
     await waitFor(() =>
       expect(api.preview).toHaveBeenLastCalledWith(
         ITEM,
-        "google/gemini-4-argon",
+        "anthropic/claude-fable-5.2",
       ),
     );
     fireEvent.click(
       await screen.findByRole("button", { name: "Extract card (costs money)" }),
     );
     await waitFor(() =>
-      expect(api.start).toHaveBeenCalledWith(ITEM, "google/gemini-4-argon"),
+      expect(api.start).toHaveBeenCalledWith(
+        ITEM,
+        "anthropic/claude-fable-5.2",
+      ),
     );
+  });
+
+  it("changes the default model to one of Fable, Argon and Astra", async () => {
+    const api = fakeApi();
+    render(<TechniqueCardsScreen api={api} onClose={() => undefined} />);
+    const select = (await screen.findByLabelText(
+      "Default model",
+    )) as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      "Fable 5.2",
+      "Gemini 4 Argon",
+      "GPT-6 Astra",
+    ]);
+    fireEvent.change(select, { target: { value: "openai/gpt-6-astra" } });
+    await waitFor(() =>
+      expect(api.setDefaultModel).toHaveBeenCalledWith("openai/gpt-6-astra"),
+    );
+    await waitFor(() => expect(select.value).toBe("openai/gpt-6-astra"));
   });
 
   it("drafts a ready card with argon and saves only after the tick", async () => {

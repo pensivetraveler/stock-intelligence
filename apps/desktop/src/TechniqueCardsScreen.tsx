@@ -12,10 +12,13 @@ import {
   type TechniqueCard,
   type TechniqueCardsApi,
   type TechniquePreview,
+  type TechniqueSettings,
+  MODEL_NAMES,
   type TechniqueSource,
 } from "./technique-cards-api";
 
 const POLL_MS = 3_000;
+const CHOOSABLE_DEFAULT = "google/gemini-4-argon";
 
 interface Props {
   api: TechniqueCardsApi;
@@ -103,14 +106,16 @@ export function TechniqueCardsScreen({
   const [draft, setDraft] = useState<Record<string, Resolution>>({});
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [onlyUncited, setOnlyUncited] = useState(false);
+  const [settings, setSettings] = useState<TechniqueSettings | null>(null);
 
   const load = useCallback(
     (refresh = false) => {
       setLoading(true);
-      Promise.all([api.sources(refresh), api.cards()])
-        .then(([nextSources, nextCards]) => {
+      Promise.all([api.sources(refresh), api.cards(), api.settings()])
+        .then(([nextSources, nextCards, nextSettings]) => {
           setSources(nextSources);
           setCards(nextCards);
+          setSettings(nextSettings);
           setError(null);
         })
         .catch((reason: unknown) => setError(message(reason)))
@@ -262,6 +267,26 @@ export function TechniqueCardsScreen({
         <header className="modal-head">
           <h2>{t("tc.title")}</h2>
           <span className="workspace-note">{t("tc.subtitle")}</span>
+          {settings ? (
+            <label className="tc-default">
+              {t("tc.defaultModel")}
+              <select
+                value={settings.default_model}
+                onChange={(event) =>
+                  api
+                    .setDefaultModel(event.target.value)
+                    .then(setSettings)
+                    .catch((reason: unknown) => setError(message(reason)))
+                }
+              >
+                {settings.default_choices.map((model) => (
+                  <option key={model} value={model}>
+                    {MODEL_NAMES[model] ?? model}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <button
             type="button"
             className="tb-button"
@@ -368,9 +393,11 @@ export function TechniqueCardsScreen({
                     >
                       {preview.models.map((model) => (
                         <option key={model} value={model}>
-                          {model === preview.models[0]
-                            ? t("tc.assigned", { model })
-                            : model}
+                          {model === preview.default_model
+                            ? t("tc.assigned", {
+                                model: MODEL_NAMES[model] ?? model,
+                              })
+                            : (MODEL_NAMES[model] ?? model)}
                         </option>
                       ))}
                     </select>{" "}
@@ -572,6 +599,7 @@ export function TechniqueCardsScreen({
                     api={api}
                     card={card}
                     pollMs={pollMs}
+                    defaultModel={settings?.default_model ?? CHOOSABLE_DEFAULT}
                   />
                 ) : null}
 

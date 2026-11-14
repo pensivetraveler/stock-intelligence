@@ -3860,3 +3860,10 @@ body {
   border: 1px solid var(--term-line);
   font-size: 12px;
 }
+
+.tc-default {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--term-muted);
+}
