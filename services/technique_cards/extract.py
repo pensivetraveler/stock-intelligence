@@ -41,9 +41,19 @@ ANTHROPIC_VERSION = "2023-06-01"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 PRIMARY_MODEL = "claude-sonnet-5-5"
 FALLBACK_MODEL = "openai/gpt-6-luna"
+# Models the user may pick for one extraction instead of the assigned sonnet (user request
+# 2026-11-15 "openrouter로 gemini argon"). Only sonnet and luna were evaluated (ADR 0056 §5);
+# Gemini 4 Argon was not: its cards carry the same script checks and the model name.
+CHOOSABLE_MODELS = (PRIMARY_MODEL, "google/gemini-4-argon", FALLBACK_MODEL)
 TIMEOUT_SECONDS = 600.0
-# USD per million tokens (input, output), Anthropic first-party list price 2026-11.
+# USD per million tokens (input, output), list prices 2026-11 (Anthropic; OpenRouter models
+# list). Used for sonnet's cost and for every preview estimate; OpenRouter reports real cost.
 SONNET_PRICE = (Decimal("2.00"), Decimal("10.00"))
+PRICES = {
+    "claude-sonnet-5-5": SONNET_PRICE,
+    "google/gemini-4-argon": (Decimal("2.00"), Decimal("10.00")),
+    "openai/gpt-6-luna": (Decimal("0.10"), Decimal("0.50")),
+}
 
 
 class ExtractionError(RuntimeError):
@@ -87,6 +97,7 @@ class Extraction:
         }
 
 
+# (model, system, prompt, keys) -> (card, usage)
 Caller = Callable[[str, str, str, Keys], tuple[dict[str, Any], dict[str, Any]]]
 
 
@@ -159,11 +170,12 @@ def call_openrouter(
     prompt: str,
     keys: Keys,
     transport: httpx.BaseTransport | None = None,
+    model: str = FALLBACK_MODEL,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if not keys.openrouter:
         raise AttemptFailed("no OpenRouter key on the Keys screen")
     body = {
-        "model": FALLBACK_MODEL,
+        "model": model,
         "max_tokens": STRUCTURED_MAX_TOKENS,
         "messages": [
             {"role": "system", "content": system},
@@ -209,21 +221,20 @@ def call_openrouter(
         raise AttemptFailed(exc.reason, usage) from exc
 
 
-# The retry ladder for one slice: sonnet, sonnet again, luna once.
-LADDER: tuple[tuple[str, str], ...] = (
-    (PRIMARY_MODEL, "anthropic"),
-    (PRIMARY_MODEL, "anthropic"),
-    (FALLBACK_MODEL, "openrouter"),
-)
+def ladder(model: str = PRIMARY_MODEL) -> tuple[str, ...]:
+    """The retry ladder for one slice: the chosen model twice, then luna once."""
+    if model not in CHOOSABLE_MODELS:
+        raise ValueError(f"model must be one of {', '.join(CHOOSABLE_MODELS)}")
+    return (model, model) if model == FALLBACK_MODEL else (model, model, FALLBACK_MODEL)
 
 
-def _default_caller(
-    transport: httpx.BaseTransport | None,
-) -> Callable[[str, str, str, Keys], tuple[dict[str, Any], dict[str, Any]]]:
-    def call(route: str, system: str, prompt: str, keys: Keys):  # type: ignore[no-untyped-def]
-        if route == "anthropic":
+def _default_caller(transport: httpx.BaseTransport | None) -> Caller:
+    def call(
+        model: str, system: str, prompt: str, keys: Keys
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        if model == PRIMARY_MODEL:
             return call_anthropic(system, prompt, keys, transport)
-        return call_openrouter(system, prompt, keys, transport)
+        return call_openrouter(system, prompt, keys, transport, model=model)
 
     return call
 
@@ -251,7 +262,9 @@ def extract_card(
     keys: Keys,
     call: Caller | None = None,
     transport: httpx.BaseTransport | None = None,
+    model: str = PRIMARY_MODEL,
 ) -> Extraction:
+    steps = ladder(model)
     if not lines:
         raise ExtractionError("the transcript has no timed lines", [])
     caller = call or _default_caller(transport)
@@ -260,10 +273,10 @@ def extract_card(
     prompts = prompts_for(source_id, title, lines)
     for k, prompt in enumerate(prompts, start=1):
         card = None
-        for model, route in LADDER:
-            record: dict[str, Any] = {"part": k, "model": model, "ok": False}
+        for step in steps:
+            record: dict[str, Any] = {"part": k, "model": step, "ok": False}
             try:
-                card, usage = caller(route, STRUCTURED_SYSTEM, prompt, keys)
+                card, usage = caller(step, STRUCTURED_SYSTEM, prompt, keys)
                 record.update(usage, ok=True)
             except AttemptFailed as exc:
                 record.update(exc.usage, reason=exc.reason)

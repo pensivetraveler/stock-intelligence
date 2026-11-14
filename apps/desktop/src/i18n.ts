@@ -1746,6 +1746,8 @@ const en = {
   "tc.partsValue":
     "{parts} slice(s), {lines} transcript lines, {chars} characters",
   "tc.model": "Model → fallback",
+  "tc.chooseModel": "Model for this extraction",
+  "tc.assigned": "{model} (assigned)",
   "tc.cost": "Cost",
   "tc.source": "Source status",
   "tc.sendNote":
@@ -3779,6 +3781,8 @@ const ko: Record<MessageKey, string> = {
   "tc.parts": "구간",
   "tc.partsValue": "{parts}개 구간, 자막 {lines}줄, {chars}자",
   "tc.model": "모델 → 대체",
+  "tc.chooseModel": "이번 추출에 쓸 모델",
+  "tc.assigned": "{model} (배정 모델)",
   "tc.cost": "비용",
   "tc.source": "자료 상태",
   "tc.sendNote":

@@ -23,6 +23,7 @@ export interface TechniquePreview {
   characters: number;
   model: string;
   fallback: string;
+  models: string[];
   estimated_cost_usd: string;
   estimate_note: string;
   verification_status: string;
@@ -149,8 +150,9 @@ export interface TechniqueCard extends CardSummary {
 
 export interface TechniqueCardsApi {
   sources(refresh?: boolean): Promise<TechniqueSource[]>;
-  preview(itemRef: string): Promise<TechniquePreview>;
-  start(itemRef: string): Promise<TechniqueJob>;
+  /** `model`: the assigned sonnet when left out, or another choosable model. */
+  preview(itemRef: string, model?: string): Promise<TechniquePreview>;
+  start(itemRef: string, model?: string): Promise<TechniqueJob>;
   job(jobId: string): Promise<TechniqueJob>;
   cards(): Promise<CardSummary[]>;
   card(cardId: string): Promise<TechniqueCard>;
@@ -182,20 +184,20 @@ export function createTechniqueCardsApi(
           "technique_sources",
         )
       ).sources,
-    preview: (itemRef) =>
+    preview: (itemRef, model) =>
       callForKind<TechniquePreview>(
         target,
         "/v1/technique-sources/preview",
         "technique_source_preview",
-        { body: { item_ref: itemRef } },
+        { body: { item_ref: itemRef, ...(model ? { model } : {}) } },
       ),
-    start: (itemRef) =>
+    start: (itemRef, model) =>
       callForKind<TechniqueJob>(
         target,
         "/v1/technique-cards",
         "technique_card_job",
         {
-          body: { item_ref: itemRef },
+          body: { item_ref: itemRef, ...(model ? { model } : {}) },
         },
       ),
     job: (jobId) =>

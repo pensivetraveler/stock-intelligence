@@ -49,6 +49,7 @@ const preview: TechniquePreview = {
   characters: 1200,
   model: "claude-sonnet-5-5",
   fallback: "openai/gpt-6-luna",
+  models: ["claude-sonnet-5-5", "google/gemini-4-argon", "openai/gpt-6-luna"],
   estimated_cost_usd: "0.06",
   estimate_note: "estimate",
   verification_status: "unverified",
@@ -174,7 +175,7 @@ describe("technique cards", () => {
       screen.getByRole("button", { name: "Extract card (costs money)" }),
     );
     await waitFor(() => expect(api.card).toHaveBeenCalledWith("c1"));
-    expect(api.start).toHaveBeenCalledWith(ITEM);
+    expect(api.start).toHaveBeenCalledWith(ITEM, "claude-sonnet-5-5");
     expect(
       await screen.findByText(/Not ready: flagged conditions to decide #2/),
     ).toBeTruthy();
@@ -228,6 +229,34 @@ describe("technique cards", () => {
     );
     expect(screen.queryByText("a fifty period moving average")).toBeNull();
     expect(screen.getByText("The stop sits two ATR below")).toBeTruthy();
+  });
+
+  it("asks for a new preview when another model is picked and extracts with it", async () => {
+    const api = fakeApi();
+    vi.mocked(api.preview).mockImplementation(async (_item, model) => ({
+      ...preview,
+      model: model ?? "claude-sonnet-5-5",
+    }));
+    render(<TechniqueCardsScreen api={api} onClose={() => undefined} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Demo lesson" }));
+    fireEvent.change(
+      await screen.findByLabelText("Model for this extraction"),
+      {
+        target: { value: "google/gemini-4-argon" },
+      },
+    );
+    await waitFor(() =>
+      expect(api.preview).toHaveBeenLastCalledWith(
+        ITEM,
+        "google/gemini-4-argon",
+      ),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Extract card (costs money)" }),
+    );
+    await waitFor(() =>
+      expect(api.start).toHaveBeenCalledWith(ITEM, "google/gemini-4-argon"),
+    );
   });
 
   it("labels slots", () => {
