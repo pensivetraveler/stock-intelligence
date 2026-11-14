@@ -30,7 +30,7 @@ from services.technique_cards.extract import (
     CHOOSABLE_MODELS,
     OPENROUTER_URL,
     PRICES,
-    PRIMARY_MODEL,
+    SONNET_MODEL,
     Keys,
 )
 
@@ -130,7 +130,7 @@ def model_call(
     costs: list[dict[str, Any]] = []
 
     def call(system: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        if model == PRIMARY_MODEL:
+        if model == SONNET_MODEL:
             if not keys.anthropic:
                 raise ConversationError("no Claude (Anthropic) key on the Keys screen")
             body = {
@@ -174,7 +174,7 @@ def model_call(
             reply: dict[str, Any] = response.json()
         except ValueError as exc:
             raise ConversationError(f"{model}'s reply could not be read") from exc
-        if model == PRIMARY_MODEL:
+        if model == SONNET_MODEL:
             raw = reply.get("usage") or {}
             tokens = (int(raw.get("input_tokens") or 0), int(raw.get("output_tokens") or 0))
             price_in, price_out = PRICES[model]

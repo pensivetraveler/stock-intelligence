@@ -21,7 +21,6 @@ from services.technique_cards.citations import Line, parse_transcript
 from services.technique_cards.extract import (
     CHOOSABLE_MODELS,
     PRICES,
-    PRIMARY_MODEL,
     VERSIONS,
     Caller,
     Extraction,
@@ -76,7 +75,8 @@ class TechniqueCards:
     def _lines(fetched: Fetched) -> list[Line]:
         return parse_transcript(fetched.path.read_text(encoding="utf-8", errors="replace"))
 
-    def preview(self, source: Source, model: str = PRIMARY_MODEL) -> dict[str, Any]:
+    def preview(self, source: Source, model: str | None = None) -> dict[str, Any]:
+        model = model or self.store.default_model()
         fetched, outcome = self._usable(source.item_ref)
         lines = self._lines(fetched)
         prompts = prompts_for(source.source_key or source.item_ref, source.title, lines)
@@ -94,6 +94,7 @@ class TechniqueCards:
             "model": model,
             "fallback": " → ".join(ladder(model)[1:]),
             "models": list(CHOOSABLE_MODELS),
+            "default_model": self.store.default_model(),
             "estimated_cost_usd": format(cost.quantize(Decimal("0.01")), "f"),
             "estimate_note": "추정(글자 수 기준, 실측 아님)",
             "verification_status": fetched.verification_status,
@@ -106,9 +107,10 @@ class TechniqueCards:
         source: Source,
         keys: Keys,
         call: Caller | None = None,
-        model: str = PRIMARY_MODEL,
+        model: str | None = None,
     ) -> str:
         """Extract, check and store; returns the card id. Raises on any failure."""
+        model = model or self.store.default_model()
         fetched, outcome = self._usable(source.item_ref)
         lines = self._lines(fetched)
         extraction: Extraction = extract_card(

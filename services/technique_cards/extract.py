@@ -1,12 +1,16 @@
-"""Structured technique card extraction (ADR 0056 L2, model assignment confirmed 2026-11-14).
+"""Structured technique card extraction (ADR 0056 L2).
 
-- Model: `claude-sonnet-5-5` with the Keys screen's Anthropic key, strict json_schema,
-  max_tokens 16000. Fallback `openai/gpt-6-luna` through OpenRouter with data collection denied
-  (data grade private). Chinese vendors are not used.
+- Model: the default from the technique settings (Fable, Argon or Astra through OpenRouter,
+  user request 2026-11-15; first default Argon, gateway assignment 2026-11-15
+  `local-ai-gateway 9f2994a`), or the model the user picks for one run. Strict json_schema,
+  max_tokens 16000, OpenRouter with data collection denied (data grade private). Sonnet with
+  the Keys screen's Anthropic key stays choosable. Fallback `openai/gpt-6-luna`. Chinese
+  vendors are not used.
 - A source over 30 minutes is cut into ~20-minute slices with 30 s overlap (the evaluated
   method); each slice is one call, and the cards are merged by script.
 - A slice whose answer is cut off (length), refused, or does not match the schema is retried
-  once on sonnet, then once on luna; after that the extraction fails and the user is told.
+  once on the same model, then once on luna; after that the extraction fails and the user is
+  told.
 - Every call is logged: model, input / output tokens, cost. The transcript itself is never
   logged.
 """
@@ -39,18 +43,23 @@ from services.technique_cards.structured_scoring import merge_parts
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-PRIMARY_MODEL = "claude-sonnet-5-5"
+SONNET_MODEL = "claude-sonnet-5-5"  # the only model called on the Anthropic API directly
+PRIMARY_MODEL = SONNET_MODEL  # kept for older imports; the default is a setting now
 FALLBACK_MODEL = "openai/gpt-6-luna"
-# Models the user may pick for one extraction instead of the assigned sonnet (user request
-# 2026-11-15 "openrouter로 gemini argon"). Only sonnet and luna were evaluated (ADR 0056 §5);
-# Gemini 4 Argon was not: its cards carry the same script checks and the model name.
-CHOOSABLE_MODELS = (PRIMARY_MODEL, "google/gemini-4-argon", FALLBACK_MODEL)
+# Models the default setting may name (user request 2026-11-15 "fable, argon, astra").
+DEFAULT_CHOICES = ("anthropic/claude-fable-5.2", "google/gemini-4-argon", "openai/gpt-6-astra")
+INITIAL_DEFAULT = "google/gemini-4-argon"
+# Models the user may pick for one run. Only sonnet and luna were evaluated (ADR 0056 §5);
+# the others carry the same script checks and record their name on the card.
+CHOOSABLE_MODELS = (*DEFAULT_CHOICES, SONNET_MODEL, FALLBACK_MODEL)
 TIMEOUT_SECONDS = 600.0
 # USD per million tokens (input, output), list prices 2026-11 (Anthropic; OpenRouter models
 # list). Used for sonnet's cost and for every preview estimate; OpenRouter reports real cost.
 SONNET_PRICE = (Decimal("2.00"), Decimal("10.00"))
 PRICES = {
     "claude-sonnet-5-5": SONNET_PRICE,
+    "anthropic/claude-fable-5.2": (Decimal("8.00"), Decimal("40.00")),
+    "openai/gpt-6-astra": (Decimal("10.00"), Decimal("50.00")),
     "google/gemini-4-argon": (Decimal("2.00"), Decimal("10.00")),
     "openai/gpt-6-luna": (Decimal("0.10"), Decimal("0.50")),
 }
@@ -122,7 +131,7 @@ def call_anthropic(
     if not keys.anthropic:
         raise AttemptFailed("no Claude (Anthropic) key on the Keys screen")
     body = {
-        "model": PRIMARY_MODEL,
+        "model": SONNET_MODEL,
         "max_tokens": STRUCTURED_MAX_TOKENS,
         "system": system,
         "messages": [{"role": "user", "content": prompt}],
@@ -221,7 +230,7 @@ def call_openrouter(
         raise AttemptFailed(exc.reason, usage) from exc
 
 
-def ladder(model: str = PRIMARY_MODEL) -> tuple[str, ...]:
+def ladder(model: str = INITIAL_DEFAULT) -> tuple[str, ...]:
     """The retry ladder for one slice: the chosen model twice, then luna once."""
     if model not in CHOOSABLE_MODELS:
         raise ValueError(f"model must be one of {', '.join(CHOOSABLE_MODELS)}")
@@ -232,7 +241,7 @@ def _default_caller(transport: httpx.BaseTransport | None) -> Caller:
     def call(
         model: str, system: str, prompt: str, keys: Keys
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        if model == PRIMARY_MODEL:
+        if model == SONNET_MODEL:
             return call_anthropic(system, prompt, keys, transport)
         return call_openrouter(system, prompt, keys, transport, model=model)
 
@@ -262,7 +271,7 @@ def extract_card(
     keys: Keys,
     call: Caller | None = None,
     transport: httpx.BaseTransport | None = None,
-    model: str = PRIMARY_MODEL,
+    model: str = INITIAL_DEFAULT,
 ) -> Extraction:
     steps = ladder(model)
     if not lines:
@@ -297,6 +306,6 @@ def extract_card(
 VERSIONS = {
     "schema": STRUCTURED_SCHEMA_VERSION,
     "prompt": STRUCTURED_PROMPT_VERSION,
-    "model": PRIMARY_MODEL,
+    "model": INITIAL_DEFAULT,
     "fallback": FALLBACK_MODEL,
 }

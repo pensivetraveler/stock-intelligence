@@ -2888,3 +2888,11 @@
 - **시험:** 백엔드 5개(항목 만들기, 매핑·못 옮김, 지어낸 조건 차단, OpenRouter 응답 모양·비용, 경로: 준비 안 된 카드 거절·체크 전 저장 거절·저장 뒤 링크·카드 변경 뒤 거절), 화면 1개.
 - **아직 없음(L3 나머지):** Pine 템플릿 생성(TradingView 대조용), 전략 목록의 출처·근거 철회 표시(L4), 자료 예시 구간 표시.
 - **미확인:** argon이 규칙 변환 스키마를 받는지·결과 품질(실제 실행 전). 초안 모델 배정은 여전히 임시(§5).
+
+## 기법 카드 기본 모델 설정(Fable·Argon·Astra) — 2026-11-15
+
+- **결정:** 게이트웨이 `[요청 #LAG-SIW-1]`(사용자 결정 "Argon 기본으로", local-ai-gateway 9f2994a) 뒤 사용자 지시 "기본 모델을 fable, argon, astra 선택할 수 있는 설정 기능을 추가해줘".
+- **변경:** 기법 카드 저장소에 설정 `default_model`(`anthropic/claude-fable-5.2`·`google/gemini-4-argon`·`openai/gpt-6-astra`, 처음 값 Argon). `GET|PUT /v1/technique-settings`. 추출·미리보기·전략 초안은 `model`을 주지 않으면 이 설정을 쓴다. 한 번만 다른 모델을 고르는 것은 그대로(세 모델 + Sonnet 5.5 직접 호출 + luna). 세 모델은 OpenRouter(`data_collection: deny`, strict 스키마)로 부른다. 사다리는 고른 모델 두 번 → luna 한 번. 미리보기 추정 가격: Fable $8/$40, Astra $10/$50 per 1M.
+- **화면:** 기법 카드 머리에 "기본 모델" 선택(세 개), 미리보기·초안 모델 목록에 이름(Fable 5.2 · Gemini 4 Argon · GPT-6 Astra · Sonnet 5.5 · GPT-6 Luna)과 "(기본)" 표시.
+- **평가와의 관계:** 평가 세트로 돈 모델은 sonnet·luna뿐. Argon은 한 건 비교, Fable·Astra는 이 프로젝트에서 써 본 적 없음 — 모든 카드가 같은 스크립트 검사를 거치고 카드에 모델 이름이 남는다.
+- **시험:** 백엔드 2개(설정 기본값·세 개 제한·저장 유지·추출에 쓰임, Fable·Astra가 OpenRouter로 감), 화면 1개(기본 모델 바꾸기) 추가, 기존 시험의 기본값을 Argon으로.

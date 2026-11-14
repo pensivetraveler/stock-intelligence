@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from services.technique_cards.extract import DEFAULT_CHOICES, INITIAL_DEFAULT
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS technique_cards (
     card_id TEXT PRIMARY KEY,
@@ -64,6 +66,11 @@ CREATE TABLE IF NOT EXISTS technique_card_drafts (
     strategy_version INTEGER,
     created_at TEXT NOT NULL,
     finished_at TEXT
+);
+CREATE TABLE IF NOT EXISTS technique_settings (
+    name TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS technique_card_jobs (
     job_id TEXT PRIMARY KEY,
@@ -348,3 +355,27 @@ class CardStore:
                 (strategy_id, version, draft_id),
             )
         return self.draft(draft_id)
+
+    # --- settings -------------------------------------------------------------------------
+
+    def default_model(self) -> str:
+        """The model extractions and drafts use unless the user picks another for one run."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT value FROM technique_settings WHERE name = 'default_model'"
+            ).fetchone()
+        value = None if row is None else str(row[0])
+        return value if value in DEFAULT_CHOICES else INITIAL_DEFAULT
+
+    def set_default_model(self, model: str) -> str:
+        if model not in DEFAULT_CHOICES:
+            raise ValueError(f"default model must be one of {', '.join(DEFAULT_CHOICES)}")
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO technique_settings (name, value, updated_at)"
+                " VALUES ('default_model', ?, ?)"
+                " ON CONFLICT(name) DO UPDATE SET value = excluded.value,"
+                " updated_at = excluded.updated_at",
+                (model, _utc(self._clock())),
+            )
+        return self.default_model()

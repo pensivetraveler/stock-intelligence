@@ -261,7 +261,7 @@ def test_ladder_retries_sonnet_then_luna_and_logs_every_call() -> None:
             )
         return _card(), {"input_tokens": 100, "output_tokens": 3000, "cost_usd": "0.01"}
 
-    result = extract_card("demo", "demo", LINES, KEYS, call=caller)
+    result = extract_card("demo", "demo", LINES, KEYS, call=caller, model="claude-sonnet-5-5")
     assert routes == ["claude-sonnet-5-5", "claude-sonnet-5-5", "openai/gpt-6-luna"]
     assert [a["ok"] for a in result.attempts] == [False, False, True]
     assert result.usage["cost_usd"] == "0.33"
@@ -405,7 +405,7 @@ def test_routes_extract_check_resolve_and_recheck(
     listed = client.get("/v1/technique-sources").json()
     assert [s["item_ref"] for s in listed["sources"]] == [ITEM]
     preview = client.post("/v1/technique-sources/preview", json={"item_ref": ITEM}).json()
-    assert preview["parts"] == 1 and preview["model"] == "claude-sonnet-5-5"
+    assert preview["parts"] == 1 and preview["model"] == "google/gemini-4-argon"
     assert "surge" not in json.dumps(preview)  # the preview says sizes, not the text
     assert client.post("/v1/technique-sources/preview", json={"item_ref": OTHER}).status_code == 404
 
@@ -734,3 +734,55 @@ def test_draft_routes_need_a_ready_card_and_the_users_tick(
         json={"name": "Seykota", "accept_unconvertible": True},
     )
     assert stale.status_code == 409 and "changed" in stale.json()["error"]["message"]
+
+
+def test_default_model_setting_is_used_and_limited_to_three(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, service = _app(tmp_path)
+    settings = client.get("/v1/technique-settings").json()
+    assert settings["default_model"] == "google/gemini-4-argon"
+    assert settings["default_choices"] == [
+        "anthropic/claude-fable-5.2", "google/gemini-4-argon", "openai/gpt-6-astra"
+    ]  # fmt: skip
+    assert (
+        client.put(
+            "/v1/technique-settings", json={"default_model": "openai/gpt-6-luna"}
+        ).status_code
+        == 422
+    )
+    changed = client.put("/v1/technique-settings", json={"default_model": "openai/gpt-6-astra"})
+    assert changed.json()["default_model"] == "openai/gpt-6-astra"
+    used: list[str] = []
+
+    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model=""):  # type: ignore[no-untyped-def]
+        used.append(model)
+        return extract.Extraction(card=_card(), attempts=[{"model": model, "ok": True}])
+
+    monkeypatch.setattr("services.technique_cards.service.extract_card", fake_extract)
+    preview = client.post("/v1/technique-sources/preview", json={"item_ref": ITEM}).json()
+    assert preview["model"] == "openai/gpt-6-astra"
+    assert preview["default_model"] == "openai/gpt-6-astra"
+    client.post("/v1/technique-cards", json={"item_ref": ITEM})
+    client.post(
+        "/v1/technique-cards", json={"item_ref": ITEM, "model": "anthropic/claude-fable-5.2"}
+    )
+    assert used == ["openai/gpt-6-astra", "anthropic/claude-fable-5.2"]
+    # The setting survives a new store on the same file.
+    assert CardStore(tmp_path / "cards.sqlite3", datetime.now).default_model() == (
+        "openai/gpt-6-astra"
+    )
+
+
+def test_fable_and_astra_go_through_openrouter() -> None:
+    models: list[str] = []
+    for model in ("anthropic/claude-fable-5.2", "openai/gpt-6-astra"):
+        seen: list[dict[str, Any]] = []
+        message = {
+            "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(_card())}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "cost": 0.001},
+        }
+        extract._default_caller(_anthropic_transport(message, seen))(model, "s", "p", KEYS)
+        models.append(seen[0]["model"])
+        assert seen[0]["provider"]["data_collection"] == "deny"
+    assert models == ["anthropic/claude-fable-5.2", "openai/gpt-6-astra"]

@@ -24,6 +24,7 @@ export interface TechniquePreview {
   model: string;
   fallback: string;
   models: string[];
+  default_model: string;
   estimated_cost_usd: string;
   estimate_note: string;
   verification_status: string;
@@ -148,12 +149,31 @@ export interface TechniqueCard extends CardSummary {
   timeline: TimelineRow[] | null;
 }
 
-/** Models the user may pick for one extraction or draft; the first is the assigned one. */
+/** Models the user may pick for one extraction or draft. */
 export const CHOOSABLE_MODELS = [
-  "claude-sonnet-5-5",
+  "anthropic/claude-fable-5.2",
   "google/gemini-4-argon",
+  "openai/gpt-6-astra",
+  "claude-sonnet-5-5",
   "openai/gpt-6-luna",
 ] as const;
+
+/** Short names for the screen. */
+export const MODEL_NAMES: Record<string, string> = {
+  "anthropic/claude-fable-5.2": "Fable 5.2",
+  "google/gemini-4-argon": "Gemini 4 Argon",
+  "openai/gpt-6-astra": "GPT-6 Astra",
+  "claude-sonnet-5-5": "Sonnet 5.5",
+  "openai/gpt-6-luna": "GPT-6 Luna",
+};
+
+export interface TechniqueSettings {
+  kind: "technique_settings";
+  default_model: string;
+  /** The models the default may be: Fable, Argon, Astra. */
+  default_choices: string[];
+  models: string[];
+}
 
 export interface DraftMapping {
   index: number;
@@ -204,6 +224,8 @@ export interface TechniqueCardsApi {
     ambiguities: Record<string, string>,
   ): Promise<CardSummary>;
   recheck(cardId: string): Promise<CardSummary>;
+  settings(): Promise<TechniqueSettings>;
+  setDefaultModel(model: string): Promise<TechniqueSettings>;
   /** Rules strategy draft from a ready card (ADR 0056 L3). */
   startDraft(cardId: string, model: string): Promise<{ draft_id: string }>;
   draft(draftId: string): Promise<TechniqueDraft>;
@@ -283,6 +305,22 @@ export function createTechniqueCardsApi(
         `/v1/technique-cards/${encodeURIComponent(cardId)}/recheck`,
         "technique_card",
         { method: "POST" },
+      ),
+    settings: () =>
+      callForKind<TechniqueSettings>(
+        target,
+        "/v1/technique-settings",
+        "technique_settings",
+      ),
+    setDefaultModel: (model) =>
+      callForKind<TechniqueSettings>(
+        target,
+        "/v1/technique-settings",
+        "technique_settings",
+        {
+          method: "PUT",
+          body: { default_model: model },
+        },
       ),
     startDraft: (cardId, model) =>
       callForKind<{ kind: "technique_card_draft_job"; draft_id: string }>(

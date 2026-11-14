@@ -12,6 +12,7 @@
 - `GET  /v1/technique-cards/{card_id}/drafts`       that card's drafts
 - `GET  /v1/technique-drafts/{draft_id}`            one draft with what blocks saving it
 - `POST /v1/technique-drafts/{draft_id}/save`       save as a rules strategy (the user's button)
+- `GET|PUT /v1/technique-settings`                  the default model (Fable, Argon or Astra)
 
 The extraction runs in a background thread (a long source takes minutes); one at a time per
 item. Error messages never carry transcript text. These documents are local to the app and
@@ -33,7 +34,12 @@ from starlette.responses import Response
 from services.api.journal_routes import ErrorResponse
 from services.review.conversation import ConversationError
 from services.technique_cards import strategy_draft
-from services.technique_cards.extract import ExtractionError, Keys
+from services.technique_cards.extract import (
+    CHOOSABLE_MODELS,
+    DEFAULT_CHOICES,
+    ExtractionError,
+    Keys,
+)
 from services.technique_cards.library import LibraryError
 from services.technique_cards.service import SourceWithdrawnError, TechniqueCards
 from services.technique_cards.store import CardNotFoundError
@@ -45,21 +51,31 @@ _CONDITION_VALIDATOR = jsonschema.Draft202012Validator(
 )
 
 
+ModelChoice = Literal[
+    "anthropic/claude-fable-5.2",
+    "google/gemini-4-argon",
+    "openai/gpt-6-astra",
+    "claude-sonnet-5-5",
+    "openai/gpt-6-luna",
+]
+DefaultChoice = Literal["anthropic/claude-fable-5.2", "google/gemini-4-argon", "openai/gpt-6-astra"]
+
+
+class SettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    default_model: DefaultChoice
+
+
 class ItemRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
     item_ref: str = Field(pattern=ITEM_REF)
-    # The assigned sonnet unless the user picks another model for this extraction.
-    model: Literal["claude-sonnet-5-5", "google/gemini-4-argon", "openai/gpt-6-luna"] = (
-        "claude-sonnet-5-5"
-    )
-
-
-ModelChoice = Literal["claude-sonnet-5-5", "google/gemini-4-argon", "openai/gpt-6-luna"]
+    # The default model setting unless the user picks another model for this extraction.
+    model: ModelChoice | None = None
 
 
 class DraftRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
-    model: ModelChoice = "claude-sonnet-5-5"
+    model: ModelChoice | None = None
 
 
 class SaveDraftRequest(BaseModel):
@@ -326,13 +342,14 @@ def register_technique_card_routes(
                     status_code=202,
                     content={"kind": "technique_card_draft_job", "draft_id": existing},
                 )
-            draft_id = service.store.new_draft(card_id, body.model)
+            model = body.model or service.store.default_model()
+            draft_id = service.store.new_draft(card_id, model)
         current_keys = keys()
 
         def work() -> None:
             result, error = None, ""
             try:
-                result = strategy_draft.draft(card, body.model, current_keys)
+                result = strategy_draft.draft(card, model, current_keys)
             except ConversationError as exc:
                 error = str(exc)
             except Exception as exc:  # noqa: BLE001 - the draft must end, and say why
@@ -392,3 +409,26 @@ def register_technique_card_routes(
         saved = store.save_strategy(body.name, result["conversion"]["definition"])
         service.store.saved_as(draft_id, str(saved["strategy_id"]), int(saved["version"]))
         return JSONResponse(draft_document(service, draft_id))
+
+    def settings_document(service: TechniqueCards) -> dict[str, Any]:
+        return {
+            "kind": "technique_settings",
+            "default_model": service.store.default_model(),
+            "default_choices": list(DEFAULT_CHOICES),
+            "models": list(CHOOSABLE_MODELS),
+        }
+
+    @application.get("/v1/technique-settings", response_model=None)
+    def get_settings(request: Request) -> Response:
+        service = cards()
+        if service is None:
+            return unavailable(request)
+        return JSONResponse(settings_document(service))
+
+    @application.put("/v1/technique-settings", response_model=None)
+    def put_settings(request: Request, body: SettingsRequest) -> Response:
+        service = cards()
+        if service is None:
+            return unavailable(request)
+        service.store.set_default_model(body.default_model)
+        return JSONResponse(settings_document(service))
