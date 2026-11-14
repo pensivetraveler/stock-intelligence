@@ -275,16 +275,64 @@ def score_structured(
     return result
 
 
+def _first_locator(item: dict[str, Any]) -> str:
+    citations = item.get("citations") or []
+    return str(citations[0].get("locator", "")).strip() if citations else ""
+
+
+def _slot_key(condition: dict[str, Any]) -> tuple[str, ...]:
+    left, right = condition.get("left") or {}, condition.get("right") or {}
+    return (
+        str(condition.get("field")),
+        str(condition.get("side")),
+        str(left.get("name")),
+        str(_direction(str(condition.get("comparator")))),
+        str(right.get("name")),
+        str(right.get("kind")),
+    )
+
+
+def _numbers_of(condition: dict[str, Any]) -> tuple[Decimal | None, ...]:
+    left, right = condition.get("left") or {}, condition.get("right") or {}
+    return tuple(_dec(op.get(slot)) for op in (left, right) for slot in ("period", "value"))
+
+
 def merge_parts(parts: list[object], source_id: str) -> object:
-    """Cards written for the time slices of one long source, merged into one card."""
+    """Cards written for the time slices of one long source, merged into one card (#SIW-lib-16).
+
+    - An item said twice in the 30 s overlap (same field and first citation time) is kept once.
+    - Conditions of different slices with the same slots but different numbers are both kept,
+      and an ambiguity is added: the script does not choose which one the speaker meant.
+    """
     if any(not isinstance(p, dict) for p in parts):
         return None
     merged: dict[str, Any] = {"source_id": source_id, "title": ""}
     for name in ("conditions", "timeframe", "universe", "position", "inexpressible", "ambiguities"):
+        seen: set[tuple[str, str]] = set()
         merged[name] = []
         for part in parts:
             assert isinstance(part, dict)
-            merged[name] += list(part.get(name, []))
+            for item in part.get(name, []):
+                key = (str(item.get("field", name)), _first_locator(item))
+                if key[1] and key in seen:
+                    continue
+                seen.add(key)
+                merged[name].append(item)
+    by_slots: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    for condition in merged["conditions"]:
+        if _direction(str(condition.get("comparator"))) is not None:
+            by_slots.setdefault(_slot_key(condition), []).append(condition)
+    for group in by_slots.values():
+        values = {_numbers_of(c) for c in group}
+        if len(values) > 1:
+            merged["ambiguities"].append(
+                {
+                    "text": "구간마다 다른 값으로 말함: "
+                    + " / ".join(c.get("text", "") for c in group),
+                    "question": "어느 값을 쓸까요?",
+                    "citations": [c["citations"][0] for c in group if c.get("citations")],
+                }
+            )
     first = parts[0]
     assert isinstance(first, dict)
     merged["title"] = str(first.get("title", ""))

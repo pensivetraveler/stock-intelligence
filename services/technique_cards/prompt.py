@@ -86,13 +86,20 @@ Source:
 
 
 def structured_prompt(
-    source_id: str, title: str, source: str, part: tuple[int, int] | None = None
+    source_id: str,
+    title: str,
+    source: str,
+    part: tuple[int, int] | None = None,
+    span: tuple[str, str, str] | None = None,
 ) -> str:
+    """`part` (k, n) and `span` (from, to, whole length) mark a time slice of a long source."""
     note = ""
     if part is not None:
+        where = f" covering {span[0]}-{span[1]} of a {span[2]} source" if span else ""
         note = (
-            f"- This is part {part[0]} of {part[1]} of a long source, a time slice; write the "
-            "rules said in this part only. The parts are merged afterwards.\n"
+            f"- This is part {part[0]} of {part[1]}{where}, a time slice; write the rules said "
+            "in this part only. The parts are merged afterwards. The speaker may revise a rule "
+            "said in another part: write what this part says.\n"
         )
     return STRUCTURED_INSTRUCTIONS.format(
         source_id=source_id, title=title, source=source, part_note=note

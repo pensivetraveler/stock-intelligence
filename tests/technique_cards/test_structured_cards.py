@@ -245,3 +245,27 @@ def test_bollinger_middle_line_said_as_midline_is_grounded() -> None:
         "value_citations": [],
     }  # fmt: skip
     assert ground_condition(condition, lines) == ""
+
+
+def test_short_tail_joins_and_slices_say_where_they_are() -> None:
+    # 2100 s: two slices of 1050 s; 3700 s: four slices of 925 s — never a tail under 5 minutes.
+    for end in (2100, 2460, 3700):
+        parts = evalset.split_parts([Line(s, "x") for s in range(0, end + 1, 10)])
+        assert all(p[-1].seconds - p[0].seconds >= evalset.MIN_TAIL_SECONDS for p in parts)
+    prompt = structured_prompt("x", "t", "[00:01] a", (2, 3), ("13:40", "27:50", "41:00"))
+    assert "part 2 of 3 covering 13:40-27:50 of a 41:00 source" in prompt
+
+
+def test_merge_drops_overlap_repeats_and_flags_conflicts() -> None:
+    from services.technique_cards.structured_scoring import merge_parts
+
+    first, second = _card(), _card()  # the same three conditions, same citation times
+    merged = merge_parts([first, second], "demo")
+    assert isinstance(merged, dict) and len(merged["conditions"]) == 3
+    changed = _card()
+    changed["conditions"] = [copy.deepcopy(changed["conditions"][0])]
+    changed["conditions"][0]["right"]["period"] = 20
+    changed["conditions"][0]["citations"] = _cite("03:10", "The target is three ATR above")
+    merged = merge_parts([first, changed], "demo")
+    assert isinstance(merged, dict) and len(merged["conditions"]) == 4
+    assert any("구간마다" in a["text"] for a in merged["ambiguities"])

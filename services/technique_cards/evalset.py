@@ -22,7 +22,12 @@ from pathlib import Path
 from typing import Any
 
 from services.technique_cards.card_schema import response_schema
-from services.technique_cards.citations import Line, format_transcript, parse_transcript
+from services.technique_cards.citations import (
+    Line,
+    format_time,
+    format_transcript,
+    parse_transcript,
+)
 from services.technique_cards.prompt import (
     PROMPT_VERSION,
     STRUCTURED_PROMPT_VERSION,
@@ -53,6 +58,7 @@ STRUCTURED_MAX_TOKENS = 16000  # gateway #SIW-lib-14: 8000 was cut off; with spl
 SPLIT_OVER_SECONDS = 1800
 SLICE_SECONDS = 1200
 OVERLAP_SECONDS = 30
+MIN_TAIL_SECONDS = 300  # a last slice shorter than 5 minutes joins the one before (#SIW-lib-16)
 PART_MARK = "#p"
 
 
@@ -73,7 +79,11 @@ def split_parts(lines: list[Line]) -> list[list[Line]]:
                 if start - OVERLAP_SECONDS <= line.seconds < stop + OVERLAP_SECONDS
             ]
         )
-    return [part for part in parts if part]
+    parts = [part for part in parts if part]
+    if len(parts) > 1 and parts[-1][-1].seconds - parts[-1][0].seconds < MIN_TAIL_SECONDS:
+        tail = parts.pop()
+        parts[-1] = parts[-1] + [line for line in tail if line.seconds > parts[-1][-1].seconds]
+    return parts
 
 
 def base_id(case_id: str) -> str:
@@ -150,6 +160,11 @@ def _structured_cases(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         item["title"],
                         format_transcript(part),
                         None if len(parts) == 1 else (k, len(parts)),
+                        (
+                            format_time(part[0].seconds),
+                            format_time(part[-1].seconds),
+                            format_time(parts[-1][-1].seconds),
+                        ),
                     ),
                     "checks": [
                         {"type": "json"},
@@ -271,6 +286,7 @@ def _score_structured(
     """Rules v3: a long source's slices are merged into one card before scoring."""
     parts: dict[tuple[str, str], list[tuple[str, object]]] = {}
     costs: dict[str, float] = {}
+    usage: dict[str, list[dict[str, Any]]] = {}  # per model: each case's tokens (#SIW-lib-16)
     for result in report.get("results", []):
         source = base_id(result["caseId"])
         if source not in answers:
@@ -281,6 +297,15 @@ def _score_structured(
         except json.JSONDecodeError:
             card = None
         parts.setdefault((result["model"], source), []).append((result["caseId"], card))
+        usage.setdefault(result["model"], []).append(
+            {
+                "case": result["caseId"],
+                "verdict": result.get("verdict"),
+                "prompt_tokens": result.get("promptTokens"),
+                "completion_tokens": result.get("completionTokens"),
+                "cost_usd": result.get("costUsd"),
+            }
+        )
         costs[result["model"]] = costs.get(result["model"], 0.0) + float(result.get("costUsd") or 0)
     by_model: dict[str, list[CardScore]] = {}
     for (model, source), cards in sorted(parts.items()):
@@ -298,6 +323,7 @@ def _score_structured(
             "summary": summarise(items, SCORING_RULES_VERSION_STRUCTURED),
             "cost_usd": round(costs[model], 6),
             "cards": [item.as_dict() for item in items],
+            "cases": sorted(usage.get(model, []), key=lambda u: str(u["case"])),
         }
         for model, items in by_model.items()
     }
