@@ -162,10 +162,42 @@ def _korean_numbers(text: str) -> set[Decimal]:
     return found
 
 
+# Digits with Korean large units: "300억", "5천만", "1억 5천만", "2.5조" (a PDF's amounts).
+_UNIT_VALUES = {"만": 10**4, "억": 10**8, "조": 10**12}
+_SMALL_VALUES = {"십": 10, "백": 100, "천": 1000}
+_UNIT_PART = r"\d[\d,]*(?:\.\d+)?\s*[십백천]?\s*[만억조]"
+_UNIT_RUN = re.compile(rf"(?<![\d.]){_UNIT_PART}(?:\s*{_UNIT_PART})*")
+_UNIT_ONE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*([십백천]?)\s*([만억조])")
+
+
+def _unit_numbers(text: str) -> set[Decimal]:
+    """Each amount with a 만·억·조 unit, and each part of a run: "1억 5천만" -> {1.5억, 1억,
+    5천만}. A run whose units do not go down ("5만 3억") is read part by part only."""
+    found: set[Decimal] = set()
+    for run in _UNIT_RUN.finditer(text):
+        total, last = Decimal(0), None
+        descending = True
+        for number, small, unit in _UNIT_ONE.findall(run.group(0)):
+            base = _decimal(number)
+            if base is None:
+                descending = False
+                continue
+            value = base * _SMALL_VALUES.get(small, 1) * _UNIT_VALUES[unit]
+            found.add(value.normalize())
+            if last is not None and _UNIT_VALUES[unit] >= last:
+                descending = False
+            last = _UNIT_VALUES[unit]
+            total += value
+        if descending:
+            found.add(total.normalize())
+    return found
+
+
 def numbers(text: str) -> set[Decimal]:
-    """Every number a text states, in digits or in words (English, native Korean)."""
+    """Every number a text states, in digits or in words (English, native Korean), and
+    amounts with Korean large units (300억)."""
     found = {d for d in (_decimal(m) for m in _DIGITS.findall(text)) if d is not None}
-    return found | _english_numbers(text) | _korean_numbers(text)
+    return found | _english_numbers(text) | _korean_numbers(text) | _unit_numbers(text)
 
 
 def _mentions(name: str, text: str) -> bool:
