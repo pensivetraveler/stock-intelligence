@@ -241,7 +241,7 @@ describe("technique cards", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: "Demo lesson" }));
     expect(
-      await screen.findByText(/1 slice\(s\), 5 transcript lines/),
+      await screen.findByText(/1 slice\(s\), 5 source lines/),
     ).toBeTruthy();
     expect(api.start).not.toHaveBeenCalled();
     fireEvent.click(

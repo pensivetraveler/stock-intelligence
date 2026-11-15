@@ -17,8 +17,9 @@ from services.technique_cards.citations import (
     WINDOW_SECONDS,
     Line,
     check_citation,
-    locator_seconds,
+    locator_position,
     normalise,
+    unit_of,
     window_text,
 )
 
@@ -213,7 +214,7 @@ def check_statement(statement: dict[str, object], lines: list[Line]) -> str:
             continue
         locator, quote = str(citation.get("locator", "")), str(citation.get("quote", ""))
         if check_citation(lines, locator, quote, WINDOW_SECONDS).ok:
-            at = locator_seconds(locator)
+            at = locator_position(locator, unit_of(lines))
             if at is not None:
                 windows.append(window_text(lines, at, WINDOW_SECONDS))
     if not windows:

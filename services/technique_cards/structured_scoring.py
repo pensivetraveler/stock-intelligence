@@ -29,7 +29,8 @@ from services.technique_cards.citations import (
     WINDOW_SECONDS,
     Line,
     check_citation,
-    locator_seconds,
+    locator_position,
+    unit_of,
     window_text,
 )
 from services.technique_cards.grounding import grounds, numbers
@@ -149,7 +150,7 @@ def _passing_windows(lines: list[Line], citations: list[dict[str, Any]]) -> list
     for citation in citations:
         locator, quote = str(citation.get("locator", "")), str(citation.get("quote", ""))
         if check_citation(lines, locator, quote, WINDOW_SECONDS).ok:
-            at = locator_seconds(locator)
+            at = locator_position(locator, unit_of(lines))
             if at is not None:
                 windows.append(window_text(lines, at, WINDOW_SECONDS))
     return windows

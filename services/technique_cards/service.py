@@ -17,7 +17,7 @@ from decimal import Decimal
 from typing import Any
 
 from services.technique_cards.checks import check_card, timeline
-from services.technique_cards.citations import Line, parse_transcript
+from services.technique_cards.citations import Line, parse_source, unit_of
 from services.technique_cards.extract import (
     CHOOSABLE_MODELS,
     PRICES,
@@ -74,7 +74,7 @@ class TechniqueCards:
 
     @staticmethod
     def _lines(fetched: Fetched) -> list[Line]:
-        return parse_transcript(fetched.path.read_text(encoding="utf-8", errors="replace"))
+        return parse_source(fetched.path.read_text(encoding="utf-8", errors="replace"))
 
     def preview(self, source: Source, model: str | None = None) -> dict[str, Any]:
         model = model or self.store.default_model()
@@ -90,6 +90,7 @@ class TechniqueCards:
             "title": source.title,
             "url": source.url,
             "lines": len(lines),
+            "source_unit": unit_of(lines),
             "parts": len(prompts),
             "characters": sum(len(p) for p in prompts),
             "model": model,
@@ -137,7 +138,8 @@ class TechniqueCards:
                 "checks": checks,
                 "usage": usage,
                 "attempts": extraction.attempts,
-                "versions": VERSIONS | {"model": model, "fallback": ladder(model)[-1]},
+                "versions": VERSIONS
+                | {"model": model, "fallback": ladder(model)[-1], "source_unit": unit_of(lines)},
                 "context_ref": fetched.context_ref,
                 "revision_ref": fetched.revision_ref,
                 "transcript_sha256": fetched.sha256,

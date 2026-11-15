@@ -1743,8 +1743,7 @@ const en = {
   "tc.preview": "What will be sent",
   "tc.previewing": "Fetching {title} from the library and rechecking it…",
   "tc.parts": "Slices",
-  "tc.partsValue":
-    "{parts} slice(s), {lines} transcript lines, {chars} characters",
+  "tc.partsValue": "{parts} slice(s), {lines} source lines, {chars} characters",
   "tc.model": "Model → fallback",
   "tc.limitFallback": "(at its limit: {chain})",
   "tc.switch": "Slice {part}: {from} {reason}, so {to} was used",
@@ -1796,7 +1795,7 @@ const en = {
   "tc.addedHint": "e.g. the 50-day average is above the 200-day average",
   "tc.addedAdd": "Add condition",
   "tc.addedRemove": "Remove",
-  "tc.timeline": "Transcript and what the card cites",
+  "tc.timeline": "Source text and what the card cites",
   "tc.noTimeline":
     "The cached transcript is gone or changed; recheck or extract again to see it.",
   "tc.onlyUncited": "Only lines no condition cites",
@@ -3831,7 +3830,7 @@ const ko: Record<MessageKey, string> = {
   "tc.preview": "보낼 내용",
   "tc.previewing": "도서관에서 {title} 원문을 받고 재확인하는 중…",
   "tc.parts": "구간",
-  "tc.partsValue": "{parts}개 구간, 자막 {lines}줄, {chars}자",
+  "tc.partsValue": "{parts}개 구간, 원문 {lines}줄, {chars}자",
   "tc.model": "모델 → 대체",
   "tc.limitFallback": "(한도일 때: {chain})",
   "tc.switch": "{part}구간: {from}이(가) {reason} {to}(으)로 대체함",
@@ -3884,7 +3883,7 @@ const ko: Record<MessageKey, string> = {
   "tc.addedHint": "예: 50일 평균이 200일 평균보다 위",
   "tc.addedAdd": "조건 추가",
   "tc.addedRemove": "삭제",
-  "tc.timeline": "자막과 카드가 인용한 곳",
+  "tc.timeline": "원문과 카드가 인용한 곳",
   "tc.noTimeline":
     "캐시된 자막이 없거나 바뀌었습니다. 재확인하거나 다시 추출하면 보입니다.",
   "tc.onlyUncited": "어떤 조건도 인용하지 않은 줄만",
