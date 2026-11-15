@@ -1,11 +1,11 @@
 """Structured technique card extraction (ADR 0056 L2).
 
-- Model: the default from the technique settings (Argon or Astra through OpenRouter, user
-  request 2026-11-15; Fable 5.2 paused, see `PAUSED_MODELS`; first default Argon, gateway
-  assignment 2026-11-15 `local-ai-gateway 9f2994a`), or the model the user picks for one
-  run. Strict json_schema, max_tokens 16000, OpenRouter with data collection denied (data
-  grade private). Sonnet with the Keys screen's Anthropic key stays choosable. Fallback
-  `openai/gpt-6-luna`. Chinese vendors are not used.
+- Model: the default from the technique settings (Fable, Argon or Astra through OpenRouter,
+  user request 2026-11-15; first default Argon, gateway assignment 2026-11-15
+  `local-ai-gateway 9f2994a`), or the model the user picks for one run. Strict json_schema,
+  max_tokens 16000, OpenRouter with data collection denied (data grade private). Sonnet with
+  the Keys screen's Anthropic key stays choosable. Fallback `openai/gpt-6-luna`. Chinese
+  vendors are not used.
 - A source over 30 minutes is cut into ~20-minute slices with 30 s overlap (the evaluated
   method); each slice is one call, and the cards are merged by script.
 - A slice whose answer is cut off (length), refused, or does not match the schema is retried
@@ -46,13 +46,13 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 SONNET_MODEL = "claude-sonnet-5-5"  # the only model called on the Anthropic API directly
 PRIMARY_MODEL = SONNET_MODEL  # kept for older imports; the default is a setting now
 FALLBACK_MODEL = "openai/gpt-6-luna"
-# Models taken out of every list until the user lifts the pause: Fable 5.2 (user's temporary
-# measure 2026-11-15, ai-collab 2b02a4b; gateway request #LAG-SIW-2). To lift it, empty this
-# tuple and put the model back into DEFAULT_CHOICES (and the API's and screen's lists).
-PAUSED_MODELS = ("anthropic/claude-fable-5.2",)
-# Models the default setting may name (user request 2026-11-15 "fable, argon, astra", Fable
-# paused the same day).
-DEFAULT_CHOICES = ("google/gemini-4-argon", "openai/gpt-6-astra")
+# Models taken out of every list while paused. Fable 5.2 was paused on 2026-11-15
+# (#LAG-SIW-2) and back the same day when the user lifted the pause (#LAG-SIW-3, ai-collab
+# f96fe3d). To pause one, add it here and take it out of DEFAULT_CHOICES and the API's and
+# screen's lists.
+PAUSED_MODELS: tuple[str, ...] = ()
+# Models the default setting may name (user request 2026-11-15 "fable, argon, astra").
+DEFAULT_CHOICES = ("anthropic/claude-fable-5.2", "google/gemini-4-argon", "openai/gpt-6-astra")
 INITIAL_DEFAULT = "google/gemini-4-argon"
 # Models the user may pick for one run. Only sonnet and luna were evaluated (ADR 0056 §5);
 # the others carry the same script checks and record their name on the card.
