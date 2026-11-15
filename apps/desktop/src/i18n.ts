@@ -1798,6 +1798,7 @@ const en = {
   "tc.onlyUncited": "Only lines no condition cites",
   "tc.pick": "Pick a source to preview, or a card to review.",
   "tc.failed": "Extraction failed: {reason}",
+  "tc.cardMeta": "{models} · made {date} · version {version}",
   "td.title": "Rules strategy draft (L3)",
   "td.note":
     "Turns this ready card into a rule builder strategy. Each card item is shown with where it went or why the rules cannot express it. Nothing is saved until you press save.",
@@ -3881,6 +3882,7 @@ const ko: Record<MessageKey, string> = {
   "tc.onlyUncited": "어떤 조건도 인용하지 않은 줄만",
   "tc.pick": "자료를 골라 미리 보거나, 카드를 골라 확인하세요.",
   "tc.failed": "추출 실패: {reason}",
+  "tc.cardMeta": "{models} · {date} 만듦 · {version}판",
   "td.title": "규칙 빌더 전략 초안(L3)",
   "td.note":
     "준비된 카드를 규칙 빌더 전략으로 바꿉니다. 카드 항목마다 규칙의 어디로 갔는지, 못 옮긴 이유를 보여 줍니다. 저장을 누르기 전에는 아무것도 저장하지 않습니다.",

@@ -251,6 +251,30 @@ describe("technique cards", () => {
     expect(screen.getByText("Unbacked")).toBeTruthy();
   });
 
+  it("tells cards from one source apart by model, date and version", async () => {
+    const api = fakeApi();
+    vi.mocked(api.cards).mockResolvedValue([
+      card(),
+      card({
+        card_id: "c2",
+        version: 7,
+        created_at: "2026-11-14T15:05:00Z",
+        usage: { ...card().usage, models: ["openai/gpt-6-luna"] },
+      }),
+    ]);
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    expect(
+      await screen.findByText(
+        "Sonnet 5.5 · made 2026-11-14 00:00 UTC · version 1",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("GPT-6 Luna · made 2026-11-14 15:05 UTC · version 7"),
+    ).toBeTruthy();
+  });
+
   it("saves an edited number, a dropped condition and an answer", async () => {
     const api = fakeApi();
     vi.mocked(api.cards).mockResolvedValue([card()]);
