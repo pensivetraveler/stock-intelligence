@@ -198,7 +198,9 @@ export function TechniqueDraftPanel({
                   <tr
                     key={index}
                     className={
-                      entry?.status === "mapped" ? undefined : "tc-flagged"
+                      entry?.status === "mapped" || entry?.status === "absent"
+                        ? undefined
+                        : "tc-flagged"
                     }
                   >
                     <td>{index + 1}</td>
@@ -209,7 +211,11 @@ export function TechniqueDraftPanel({
                     <td>
                       {entry?.status === "mapped"
                         ? entry.rule_paths.join(", ")
-                        : (entry?.reason ?? "")}
+                        : entry?.status === "absent"
+                          ? [entry.rule_paths.join(", "), entry.reason]
+                              .filter(Boolean)
+                              .join(" — ")
+                          : (entry?.reason ?? "")}
                     </td>
                   </tr>
                 );

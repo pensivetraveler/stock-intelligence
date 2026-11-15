@@ -288,6 +288,31 @@ describe("technique cards", () => {
     expect(answers).toEqual({ "0": "2x" });
   });
 
+  it("saves a condition the user adds and drops blank ones", async () => {
+    const api = fakeApi();
+    vi.mocked(api.cards).mockResolvedValue([card()]);
+    render(<TechniqueCardsScreen api={api} onClose={() => undefined} />);
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
+    const add = await screen.findByRole("button", { name: "Add condition" });
+    fireEvent.click(add);
+    fireEvent.click(add);
+    const texts = screen.getAllByLabelText("Condition");
+    fireEvent.change(texts[0], { target: { value: "50-day above 200-day" } });
+    fireEvent.change(screen.getAllByLabelText("Where")[0], {
+      target: { value: "exit" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save decisions" }));
+    await waitFor(() => expect(api.resolve).toHaveBeenCalled());
+    expect(vi.mocked(api.resolve).mock.calls[0][4]).toEqual([
+      { field: "exit", text: "50-day above 200-day" },
+    ]);
+  });
+
   it("filters the timeline to lines the card left out", async () => {
     const api = fakeApi();
     vi.mocked(api.cards).mockResolvedValue([card()]);

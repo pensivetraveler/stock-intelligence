@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from services.api.technique_card_routes import register_technique_card_routes
+from services.assistant import conversion
 from services.technique_cards import extract
 from services.technique_cards.checks import check_card, no_criterion, timeline
 from services.technique_cards.citations import Line, parse_transcript
@@ -438,10 +439,19 @@ def test_routes_extract_check_resolve_and_recheck(
             "version": 1,
             "conditions": {"1": {"action": "edit", "condition": edited}, "3": {"action": "drop"}},
             "ambiguities": {"0": "2배"},
+            "added": [{"field": "entry", "text": " 거래량 증가 "}, {"field": "exit", "text": " "}],
         },
     )
     assert saved.status_code == 200, saved.json()
     assert saved.json()["ready"] is True and saved.json()["corrected"] == 2
+    assert service.store.get(card_id)["resolutions"]["added"] == [
+        {"field": "entry", "text": "거래량 증가"}
+    ]
+    bad_added = client.post(
+        f"/v1/technique-cards/{card_id}/resolutions",
+        json={"version": 2, "added": [{"field": "stop_loss", "text": "x"}]},
+    )
+    assert bad_added.status_code == 422
     stale = client.post(f"/v1/technique-cards/{card_id}/resolutions", json={"version": 1})
     assert stale.status_code == 409
 
@@ -631,6 +641,77 @@ def test_draft_with_an_invented_condition_is_blocked(tmp_path: Path) -> None:
     result = strategy_draft.draft(row, "google/gemini-4-argon", KEYS, call=call)
     assert any("/stop_loss_pct" in p for p in result["blocking"])
     assert strategy_draft.save_blocks(result, row, accept=True)
+
+
+def test_blank_pointers_are_ignored_and_not_used_items_are_absent(tmp_path: Path) -> None:
+    """The Argon run of 2026-11-15: "" padded every list and "no target" named the unset field."""
+    row = _ready_card(_store(tmp_path))
+
+    def call(system: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        assert '"absent"' in system and '"/take_profit_pct"' in system
+        return _reply(
+            DONCHIAN,
+            [
+                {"index": 0, "status": "mapped", "rule_paths": ["/entry", ""], "reason": ""},
+                {"index": 1, "status": "mapped", "rule_paths": ["", "/exit"], "reason": ""},
+                {"index": 2, "status": "absent", "rule_paths": ["/take_profit_pct"],
+                 "reason": "목표가 없음"},
+            ],
+        )  # fmt: skip
+
+    result = strategy_draft.draft(row, "google/gemini-4-argon", KEYS, call=call)
+    assert result["blocking"] == [] and result["unconvertible"] == 0
+    assert result["conversion"]["mapping"][0]["rule_paths"] == ["/entry"]
+    assert strategy_draft.save_blocks(result, row, accept=False) == []
+
+
+def test_absent_is_refused_when_the_rules_set_the_field_or_it_cannot_be_unset(
+    tmp_path: Path,
+) -> None:
+    row = _ready_card(_store(tmp_path))
+
+    def answer(definition: dict[str, Any], pointer: str) -> Any:
+        def call(system: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+            return _reply(
+                definition,
+                [
+                    {"index": 0, "status": "mapped", "rule_paths": ["/entry"], "reason": ""},
+                    {"index": 1, "status": "mapped", "rule_paths": ["/exit"], "reason": ""},
+                    {"index": 2, "status": "absent", "rule_paths": [pointer], "reason": "x"},
+                ],
+            )
+
+        return strategy_draft.draft(row, "google/gemini-4-argon", KEYS, call=call)
+
+    set_field = answer({**DONCHIAN, "stop_loss_pct": "5"}, "/stop_loss_pct")
+    assert any("the rules set it" in p for p in set_field["blocking"])
+    entry = answer(DONCHIAN, "/entry")
+    assert any("can be left out" in p for p in entry["blocking"])
+    blank = answer(DONCHIAN, "")
+    assert any("names no field" in p for p in blank["blocking"])
+
+
+def test_added_conditions_are_sent_as_the_users_own(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    row = _ready_card(store)
+    row = store.resolve(
+        row["card_id"],
+        row["version"],
+        row["resolutions"]["conditions"],
+        {"0": "필수"},
+        [{"field": "entry", "text": "50일 평균이 200일 평균보다 위"}],
+    )
+    items = strategy_draft.card_items(row)
+    assert items[2] == "[entry, long, user-added] 50일 평균이 200일 평균보다 위"
+    assert items[-1] == "[position] Bet small"
+    assert row["ready"]
+
+
+def test_draft_schema_adds_absent_only_for_technique_drafts() -> None:
+    pine = conversion.SCHEMA["properties"]["mapping"]["items"]["properties"]["status"]["enum"]
+    draft_enum = strategy_draft.SCHEMA["properties"]["mapping"]["items"]["properties"]["status"]
+    assert pine == ["mapped", "unconvertible"]
+    assert draft_enum["enum"] == ["mapped", "unconvertible", "absent"]
 
 
 def test_openrouter_draft_call_returns_the_anthropic_shape_with_cost() -> None:

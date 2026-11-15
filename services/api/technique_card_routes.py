@@ -92,11 +92,20 @@ class ConditionResolution(BaseModel):
     note: str = Field(default="", max_length=2_000)
 
 
+class AddedCondition(BaseModel):
+    """A condition the user wrote; it is theirs, not the source's."""
+
+    model_config = ConfigDict(extra="forbid")
+    field: Literal["entry", "exit"]
+    text: str = Field(min_length=1, max_length=500)
+
+
 class ResolutionsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: int = Field(ge=1)
     conditions: dict[str, ConditionResolution] = Field(default_factory=dict)
     ambiguities: dict[str, str] = Field(default_factory=dict)
+    added: list[AddedCondition] = Field(default_factory=list, max_length=20)
 
 
 def _summary(row: dict[str, Any]) -> dict[str, Any]:
@@ -295,7 +304,13 @@ def register_technique_card_routes(
                     request, 422, "invalid_technique_resolution", f"No ambiguity {key}"
                 )
         try:
-            updated = service.store.resolve(card_id, body.version, conditions, body.ambiguities)
+            updated = service.store.resolve(
+                card_id,
+                body.version,
+                conditions,
+                body.ambiguities,
+                [{"field": a.field, "text": a.text.strip()} for a in body.added if a.text.strip()],
+            )
         except ValueError as exc:
             return error_response(request, 409, "technique_card_version_conflict", str(exc))
         return JSONResponse({"kind": "technique_card", **_summary(updated)})
