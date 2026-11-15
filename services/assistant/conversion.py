@@ -398,9 +398,13 @@ def convert(
                 else ""
             ),
             "status": item.get("status"),
-            # A model sometimes pads the list with "": a blank pointer names nothing.
+            # A model sometimes pads the list with "" (a blank pointer names nothing) or
+            # indents a pointer ("    /entry", Gemini 4 Argon 2026-11-16): JSON pointers
+            # never start or end with spaces here, so they are trimmed.
             "rule_paths": [
-                str(pointer) for pointer in item.get("rule_paths") or [] if str(pointer).strip()
+                str(pointer).strip()
+                for pointer in item.get("rule_paths") or []
+                if str(pointer).strip()
             ],
             "reason": str(item.get("reason") or ""),
         }
