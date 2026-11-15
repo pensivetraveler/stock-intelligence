@@ -166,4 +166,12 @@ class TechniqueCards:
             outcome = "unknown"
         if outcome not in USABLE:
             self.library.forget(row["item_ref"])
+            return self.store.rechecked(card_id, outcome)
+        # The same source text: run the script checks again, so a fixed checker reaches cards
+        # made before the fix (Korean units, 2026-11-16). Another text is not checked here.
+        cached = self.library.cached(row["item_ref"])
+        if cached is not None and cached.sha256 == row["transcript_sha256"]:
+            checks = check_card(row["card"], self._lines(cached))
+            if checks != row["checks"]:
+                self.store.update_checks(card_id, checks)
         return self.store.rechecked(card_id, outcome)
