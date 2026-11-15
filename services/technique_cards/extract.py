@@ -33,7 +33,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from services.technique_cards.citations import Line, format_time, format_transcript
+from services.technique_cards.citations import Line, format_locator, format_transcript, unit_of
 from services.technique_cards.evalset import STRUCTURED_MAX_TOKENS, split_parts
 from services.technique_cards.prompt import (
     STRUCTURED_PROMPT_VERSION,
@@ -381,14 +381,16 @@ def _default_caller(transport: httpx.BaseTransport | None) -> Caller:
 def prompts_for(source_id: str, title: str, lines: list[Line]) -> list[str]:
     """The prompt of each time slice, exactly as sent (the screen can show slices and sizes)."""
     parts = split_parts(lines)
-    whole = format_time(parts[-1][-1].seconds) if parts and parts[-1] else "0:00"
+    unit = unit_of(lines)
+    whole = format_locator(unit, parts[-1][-1].seconds) if parts and parts[-1] else "0:00"
     return [
         structured_prompt(
             source_id,
             title,
             format_transcript(part),
             None if len(parts) == 1 else (k, len(parts)),
-            (format_time(part[0].seconds), format_time(part[-1].seconds), whole),
+            (format_locator(unit, part[0].seconds), format_locator(unit, part[-1].seconds), whole),
+            unit,
         )
         for k, part in enumerate(parts, start=1)
     ]
@@ -459,7 +461,7 @@ def extract_card(
 ) -> Extraction:
     order = chain(model, default)
     if not lines:
-        raise ExtractionError("the transcript has no timed lines", [])
+        raise ExtractionError("the source has no text lines", [])
     caller = call or _default_caller(transport)
     attempts: list[dict[str, Any]] = []
     switches: list[dict[str, Any]] = []

@@ -1091,8 +1091,12 @@ describe("chart workspace", () => {
     expect(note).toHaveTextContent("does not say which is wrong");
 
     fireEvent.click(screen.getByRole("button", { name: /Replay/ }));
+    // The chart's candles may still be loading when the note shows (flaky in CI): wait for
+    // the candle button rather than expecting it at once.
     fireEvent.click(
-      screen.getByRole("button", { name: "click first candle of chart-1" }),
+      await screen.findByRole("button", {
+        name: "click first candle of chart-1",
+      }),
     );
     await waitFor(() =>
       expect(screen.queryByText(/Splits read from filings/)).toBeNull(),
