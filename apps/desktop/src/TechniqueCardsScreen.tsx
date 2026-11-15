@@ -375,6 +375,17 @@ export function TechniqueCardsScreen({
                   >
                     {summary.title}
                   </button>
+                  {/* Cards from one source look alike by title (request #종목선정-1). */}
+                  <span className="workspace-note tc-card-meta">
+                    {t("tc.cardMeta", {
+                      models:
+                        summary.usage.models
+                          .map((m) => MODEL_NAMES[m] ?? m)
+                          .join(", ") || "-",
+                      date: `${summary.created_at.slice(0, 16).replace("T", " ")} UTC`,
+                      version: summary.version,
+                    })}
+                  </span>
                   <span className="workspace-note">
                     {summary.withdrawn
                       ? t("tc.withdrawn")
