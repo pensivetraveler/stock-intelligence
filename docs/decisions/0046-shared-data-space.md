@@ -97,7 +97,7 @@ Each step ships and is checked alone, and a backup comes before any move.
 
 ## Risks
 
-- **Data rights:** Alpaca's terms have not been checked for a second program reading SIP data on the same machine. No data leaves the machine, but this is `unverified` and must be read before step 3.
+- **Data rights:** Alpaca's terms were read on 2026-11-16 (Terms and Conditions PDF, support page on redistribution). Use is "personal and non-commercial". The ban on sending content to another computer or server applies when the purpose is publication, distribution or a commercial enterprise. Showing data to others through your own app needs 30 days' written notice. No clause covers one person's own programs sharing data on the same machine. The text does not forbid it, but it does not allow it in so many words either: still `unverified`. Before step 3, ask Alpaca support whether local IPC to the same user's own programs counts as distribution, and whether exchange non-display rules apply.
 - **Moving the market data store:** a mistake here loses cached bars and their Coverage. It can be fetched again, at the cost of new `first_observed` and revision values, so step 3 starts from a backup.
 - **SIW Agent on Linux (ADR 0045):** the folder is per machine. The mini PC does not share it with this Mac, and nothing syncs them.
 - **The analyzer's move to AWS:** this is planned (its S10–S12), not a distant idea. Sharing `dilution/` and `sec/` ends then and only HTTP remains, which is why SIW's splits reader is one function.
