@@ -157,9 +157,9 @@ export interface AddedCondition {
   text: string;
 }
 
-/** Models the user may pick for one extraction or draft. Fable 5.2 is paused (user's
- * temporary measure 2026-11-15); its name stays below for cards made with it. */
+/** Models the user may pick for one extraction or draft. */
 export const CHOOSABLE_MODELS = [
+  "anthropic/claude-fable-5.2",
   "google/gemini-4-argon",
   "openai/gpt-6-astra",
   "claude-sonnet-5-5",
@@ -178,7 +178,7 @@ export const MODEL_NAMES: Record<string, string> = {
 export interface TechniqueSettings {
   kind: "technique_settings";
   default_model: string;
-  /** The models the default may be: Argon, Astra (Fable paused). */
+  /** The models the default may be: Fable, Argon, Astra. */
   default_choices: string[];
   /** Set when a saved default was no longer offered and was put back. */
   default_reset?: { from: string; to: string; at: string } | null;

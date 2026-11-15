@@ -181,7 +181,11 @@ const draftDone: TechniqueDraft = {
 const settings: TechniqueSettings = {
   kind: "technique_settings",
   default_model: "google/gemini-4-argon",
-  default_choices: ["google/gemini-4-argon", "openai/gpt-6-astra"],
+  default_choices: [
+    "anthropic/claude-fable-5.2",
+    "google/gemini-4-argon",
+    "openai/gpt-6-astra",
+  ],
   models: [],
 };
 
@@ -374,7 +378,7 @@ describe("technique cards", () => {
     );
   });
 
-  it("changes the default model to Argon or Astra (Fable paused)", async () => {
+  it("changes the default model among Fable, Argon and Astra", async () => {
     const api = fakeApi();
     vi.mocked(api.settings).mockResolvedValue({
       ...settings,
@@ -389,6 +393,7 @@ describe("technique cards", () => {
       "Default model",
     )) as HTMLSelectElement;
     expect([...select.options].map((o) => o.textContent)).toEqual([
+      "Fable 5.2",
       "Gemini 4 Argon",
       "GPT-6 Astra",
     ]);

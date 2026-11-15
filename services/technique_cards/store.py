@@ -375,7 +375,7 @@ class CardStore:
         value = None if row is None else str(row[0])
         if value is None or value in DEFAULT_CHOICES:
             return value or INITIAL_DEFAULT
-        # A saved default that is no longer offered (Fable paused 2026-11-15): back to the
+        # A saved default that is no longer offered (a paused model): back to the
         # initial default, and the change is recorded so the screen can say so.
         now = _utc(self._clock())
         with self._lock:
