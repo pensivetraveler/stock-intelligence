@@ -193,6 +193,18 @@ export interface DraftMapping {
   reason: string;
 }
 
+/** A reading the script took that the source did not state; saving needs the user's tick. */
+export interface DraftAssumption {
+  index: number;
+  kind: "default_length" | "ma_as_sma" | "long_only";
+  indicator?: string;
+  param?: string;
+  value?: number;
+}
+
+/** Converts by code alone: no model, no cost (script first, 2026-11-15). */
+export const SCRIPT_MODEL = "script";
+
 export interface TechniqueDraft {
   kind: "technique_card_draft";
   draft_id: string;
@@ -209,6 +221,9 @@ export interface TechniqueDraft {
       notes: string;
       complete: boolean;
     };
+    /** Item numbers the script converted; a model may not change them. */
+    scripted?: number[];
+    assumptions?: DraftAssumption[];
     unconvertible: number;
     blocking: string[];
     cost_usd: string;
@@ -217,6 +232,7 @@ export interface TechniqueDraft {
   strategy_version: number | null;
   save_blocks: string[];
   needs_accept: boolean;
+  needs_confirm?: boolean;
 }
 
 export interface TechniqueCardsApi {
@@ -245,6 +261,7 @@ export interface TechniqueCardsApi {
     draftId: string,
     name: string,
     acceptUnconvertible: boolean,
+    confirmAssumptions?: boolean,
   ): Promise<TechniqueDraft>;
 }
 
@@ -357,12 +374,23 @@ export function createTechniqueCardsApi(
           "technique_card_drafts",
         )
       ).drafts,
-    saveDraft: (draftId, name, acceptUnconvertible) =>
+    saveDraft: (
+      draftId,
+      name,
+      acceptUnconvertible,
+      confirmAssumptions = false,
+    ) =>
       callForKind<TechniqueDraft>(
         target,
         `/v1/technique-drafts/${encodeURIComponent(draftId)}/save`,
         "technique_card_draft",
-        { body: { name, accept_unconvertible: acceptUnconvertible } },
+        {
+          body: {
+            name,
+            accept_unconvertible: acceptUnconvertible,
+            confirm_assumptions: confirmAssumptions,
+          },
+        },
       ),
   };
 }

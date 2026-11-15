@@ -5,6 +5,8 @@ import { MarketApiError } from "./market-api";
 import {
   CHOOSABLE_MODELS,
   MODEL_NAMES,
+  SCRIPT_MODEL,
+  type DraftAssumption,
   type TechniqueCard,
   type TechniqueCardsApi,
   type TechniqueDraft,
@@ -24,10 +26,16 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function modelName(model: string, scriptOnly: string): string {
+  return model === SCRIPT_MODEL ? scriptOnly : (MODEL_NAMES[model] ?? model);
+}
+
 /**
- * Rules strategy draft from a ready card (ADR 0056 L3). The user picks the model and presses
- * the button; every card item is shown with where it went in the rules or why it could not.
- * Saving needs a draft without problems, and the user's tick when items are left out.
+ * Rules strategy draft from a ready card (ADR 0056 L3). The script converts the items whose
+ * slots settle a rule; the model the user picks gets the rest ("script" calls none). Every
+ * card item is shown with where it went in the rules or why it could not. Saving needs a
+ * draft without problems, the user's tick when items are left out, and another when a
+ * scripted rule rests on a reading the source did not state.
  */
 export function TechniqueDraftPanel({
   api,
@@ -42,6 +50,7 @@ export function TechniqueDraftPanel({
   const [running, setRunning] = useState<string | null>(null);
   const [name, setName] = useState(card.title.slice(0, 120));
   const [accept, setAccept] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -94,7 +103,7 @@ export function TechniqueDraftPanel({
   const save = () => {
     if (!shown) return;
     api
-      .saveDraft(shown.draft_id, name, accept)
+      .saveDraft(shown.draft_id, name, accept, confirm)
       .then((saved) => {
         setShown(saved);
         setError(null);
@@ -110,8 +119,18 @@ export function TechniqueDraftPanel({
         ...(shown.needs_accept && !accept
           ? [t("td.tickNeeded", { n: result?.unconvertible ?? 0 })]
           : []),
+        ...(shown.needs_confirm && !confirm ? [t("td.confirmNeeded")] : []),
       ]
     : [];
+  const scripted = new Set(result?.scripted ?? []);
+  const assumptions: DraftAssumption[] = result?.assumptions ?? [];
+  const assumption = (a: DraftAssumption) =>
+    t(`td.a.${a.kind}`, {
+      n: a.index + 1,
+      indicator: a.indicator ?? "",
+      param: a.param ?? "",
+      value: a.value ?? "",
+    });
 
   return (
     <section className="td-panel" aria-label={t("td.title")}>
@@ -129,6 +148,7 @@ export function TechniqueDraftPanel({
             value={model}
             onChange={(event) => setModel(event.target.value)}
           >
+            <option value={SCRIPT_MODEL}>{t("td.scriptOnly")}</option>
             {CHOOSABLE_MODELS.map((choice) => (
               <option key={choice} value={choice}>
                 {choice === defaultModel
@@ -144,7 +164,9 @@ export function TechniqueDraftPanel({
           disabled={running !== null}
           onClick={start}
         >
-          {running ? t("td.running") : t("td.start")}
+          {running
+            ? t("td.running")
+            : t(model === SCRIPT_MODEL ? "td.startFree" : "td.start")}
         </button>
         {drafts.length > 1 ? (
           <label>
@@ -159,7 +181,7 @@ export function TechniqueDraftPanel({
             >
               {drafts.map((d) => (
                 <option key={d.draft_id} value={d.draft_id}>
-                  {d.model} · {d.state}
+                  {modelName(d.model, t("td.scriptOnly"))} · {d.state}
                   {d.strategy_id
                     ? ` · ${d.strategy_id} v${d.strategy_version}`
                     : ""}
@@ -174,12 +196,17 @@ export function TechniqueDraftPanel({
         <div className="td-result">
           <p className="workspace-note">
             {t("td.summary", {
-              model: shown.model,
+              model: modelName(shown.model, t("td.scriptOnly")),
               cost: result.cost_usd,
               unconvertible: result.unconvertible,
               problems: result.blocking.length,
             })}
           </p>
+          {scripted.size ? (
+            <p className="workspace-note">
+              {t("td.scriptNote", { n: scripted.size })}
+            </p>
+          ) : null}
           <table className="tc-conditions">
             <thead>
               <tr>
@@ -207,6 +234,7 @@ export function TechniqueDraftPanel({
                     <td>{item}</td>
                     <td>
                       {entry ? t(`td.s.${entry.status}`) : t("td.s.missing")}
+                      {scripted.has(index) ? ` · ${t("td.scripted")}` : ""}
                     </td>
                     <td>
                       {entry?.status === "mapped"
@@ -222,6 +250,16 @@ export function TechniqueDraftPanel({
               })}
             </tbody>
           </table>
+          {assumptions.length ? (
+            <div className="td-assumptions">
+              <h5>{t("td.assumptions")}</h5>
+              <ul>
+                {assumptions.map((a, i) => (
+                  <li key={i}>{assumption(a)}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {result.blocking.length ? (
             <ul className="td-problems">
               {result.blocking.map((problem) => (
@@ -254,6 +292,18 @@ export function TechniqueDraftPanel({
                     onChange={(event) => setAccept(event.target.checked)}
                   />
                   {t("td.accept", { n: result.unconvertible })}
+                </label>
+              ) : null}
+              {shown.needs_confirm ? (
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={confirm}
+                    onChange={(event) => setConfirm(event.target.checked)}
+                  />
+                  {t("td.confirm", {
+                    n: new Set(assumptions.map((a) => a.index)).size,
+                  })}
                 </label>
               ) : null}
               <label>

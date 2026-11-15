@@ -75,7 +75,8 @@ class ItemRequest(BaseModel):
 
 class DraftRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
-    model: ModelChoice | None = None
+    # "script" converts by code alone (no model, no cost); a model gets what the script left.
+    model: ModelChoice | Literal["script"] | None = None
 
 
 class SaveDraftRequest(BaseModel):
@@ -83,6 +84,8 @@ class SaveDraftRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     # Items the rules cannot express are left out only when the user ticks this.
     accept_unconvertible: bool = False
+    # Scripted rules on a reading the source did not state (a default length) need this tick.
+    confirm_assumptions: bool = False
 
 
 class ConditionResolution(BaseModel):
@@ -329,12 +332,17 @@ def register_technique_card_routes(
         found = service.store.draft(draft_id)
         card = service.store.get(found["card_id"])
         result = found["result"]
-        blocks = [] if result is None else strategy_draft.save_blocks(result, card, accept=True)
+        blocks = (
+            []
+            if result is None
+            else strategy_draft.save_blocks(result, card, accept=True, confirm=True)
+        )
         return {
             "kind": "technique_card_draft",
             **found,
             "save_blocks": blocks,
             "needs_accept": bool(result and result["unconvertible"]),
+            "needs_confirm": bool(result and result.get("assumptions")),
         }
 
     @application.post("/v1/technique-cards/{card_id}/drafts", response_model=None)
@@ -418,7 +426,9 @@ def register_technique_card_routes(
         result = found["result"]
         if result is None:
             return error_response(request, 409, "technique_draft_not_done", found["error"] or "")
-        blocks = strategy_draft.save_blocks(result, card, body.accept_unconvertible)
+        blocks = strategy_draft.save_blocks(
+            result, card, body.accept_unconvertible, body.confirm_assumptions
+        )
         if blocks:
             return error_response(request, 409, "technique_draft_blocked", "; ".join(blocks))
         saved = store.save_strategy(body.name, result["conversion"]["definition"])
