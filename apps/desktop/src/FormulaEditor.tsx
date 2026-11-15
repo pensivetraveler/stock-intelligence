@@ -4,6 +4,8 @@ import {
   FORMULA_FIELDS,
   FORMULA_FUNCTIONS,
   FormulaError,
+  formulaPosition,
+  MAX_FORMULA_LENGTH,
   parseFormula,
 } from "./formula";
 import { useI18n } from "./i18n";
@@ -19,6 +21,13 @@ const FORMULA_EXAMPLE: FormulaValue = {
   formula: "(ema(close, 10) - sma(close, 30)) / atr(14)",
   pane: "separate",
 };
+
+const FORMULA_LINES_EXAMPLE = `fast = input(12, "Fast length")
+slow = input(26, "Slow length")
+line = ema(close, fast) - ema(close, slow)
+plot(line, "MACD", line > 0 ? "#26a69a" : "#ef5350", 2)
+plot(ema(line, 9), "Signal", "#ff9800")
+hline(0)`;
 
 /** Name, expression and pane of a formula indicator, checked as it is typed. */
 export function FormulaFields({
@@ -42,7 +51,7 @@ export function FormulaFields({
       error instanceof FormulaError
         ? t("formula.error", {
             message: error.message,
-            column: error.position + 1,
+            ...formulaPosition(value.formula, error.position),
           })
         : String(error);
   }
@@ -64,7 +73,7 @@ export function FormulaFields({
         <textarea
           className="formula-text"
           spellCheck={false}
-          maxLength={500}
+          maxLength={MAX_FORMULA_LENGTH}
           value={value.formula}
           onChange={(event) =>
             setValue({ ...value, formula: event.target.value })
@@ -100,6 +109,8 @@ export function FormulaFields({
             functions: FORMULA_FUNCTIONS.join(", "),
           })}
         </p>
+        <p className="workspace-note">{t("formula.helpLines")}</p>
+        <pre className="formula-example">{FORMULA_LINES_EXAMPLE}</pre>
       </details>
       <p className="bt-actions">
         <button type="button" className="tb-button" onClick={onCancel}>

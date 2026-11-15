@@ -45,6 +45,7 @@ import { useI18n, type Translate } from "./i18n";
 import type { ChartSyncGroup } from "./chart-sync";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { FormulaFields } from "./FormulaEditor";
+import { formulaDefinition } from "./formula";
 import { PineFields } from "./PineEditor";
 import { isPineStrategy } from "./pine-assistant";
 import {
@@ -1815,9 +1816,113 @@ export function ChartPanel({
                             }
                             onClose={() => setEditing(null)}
                             inputs={
-                              item.instance.type === "formula" ? (
-                                <>
-                                  {timeframeField(item.instance)}
+                              <>
+                                {item.definition.inputs.map((field) => {
+                                  const setParam = (value: number) =>
+                                    changeIndicator(item.key, (current) => ({
+                                      ...current,
+                                      params: cleanParams(item.definition, {
+                                        ...current.params,
+                                        [field.key]: value,
+                                      }),
+                                    }));
+                                  return (
+                                    <label key={field.key}>
+                                      {field.label[language]}
+                                      {field.options ? (
+                                        <select
+                                          value={item.params[field.key]}
+                                          onChange={(event) =>
+                                            setParam(Number(event.target.value))
+                                          }
+                                        >
+                                          {field.options.map((option) => (
+                                            <option
+                                              key={option.value}
+                                              value={option.value}
+                                            >
+                                              {option.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : (
+                                        <input
+                                          type="number"
+                                          min={field.min}
+                                          max={field.max}
+                                          step={field.step ?? 1}
+                                          defaultValue={item.params[field.key]}
+                                          onChange={(event) =>
+                                            setParam(Number(event.target.value))
+                                          }
+                                        />
+                                      )}
+                                    </label>
+                                  );
+                                })}
+                                {timeframeField(item.instance)}
+                                {onOpenAssistant &&
+                                (item.instance.type === "pine"
+                                  ? !isPineStrategy(item.instance.pine ?? "")
+                                  : INDICATOR_BY_ID.has(item.instance.type)) ? (
+                                  <p className="bt-actions">
+                                    <button
+                                      type="button"
+                                      className="tb-button"
+                                      onClick={() => {
+                                        setEditing(null);
+                                        onOpenAssistant(item.instance);
+                                      }}
+                                    >
+                                      {t(
+                                        item.instance.type !== "pine"
+                                          ? "ia.vary"
+                                          : item.instance.assistant
+                                            ? "ia.continue"
+                                            : "ia.fix",
+                                      )}
+                                    </button>
+                                  </p>
+                                ) : null}
+                                {onOpenResearch &&
+                                item.instance.type === "pine" &&
+                                isPineStrategy(item.instance.pine ?? "") ? (
+                                  <p className="bt-actions">
+                                    <button
+                                      type="button"
+                                      className="tb-button"
+                                      onClick={() => {
+                                        setEditing(null);
+                                        onOpenResearch(item.instance);
+                                      }}
+                                    >
+                                      {t(
+                                        item.instance.assistant
+                                          ? "sr.continue"
+                                          : "sr.open",
+                                      )}
+                                    </button>
+                                  </p>
+                                ) : null}
+                                {item.instance.type === "pine" ? (
+                                  <PineFields
+                                    initial={item.instance.pine ?? ""}
+                                    submitLabel={t("ind.apply")}
+                                    onCancel={() => setEditing(null)}
+                                    onSubmit={(source) =>
+                                      changeIndicator(item.key, (current) => ({
+                                        ...current,
+                                        pine: source,
+                                        // Inputs that no longer exist drop; new ones take their defaults.
+                                        params: cleanParams(
+                                          pineDefinition(source),
+                                          current.params,
+                                        ),
+                                      }))
+                                    }
+                                  />
+                                ) : null}
+                                {item.instance.type === "formula" ? (
                                   <FormulaFields
                                     initial={{
                                       label: item.instance.label ?? "",
@@ -1830,130 +1935,20 @@ export function ChartPanel({
                                       changeIndicator(item.key, (current) => ({
                                         ...current,
                                         ...value,
+                                        // Settings that no longer exist drop; new ones take their defaults.
+                                        params: cleanParams(
+                                          formulaDefinition(
+                                            value.formula,
+                                            value.label,
+                                            value.pane,
+                                          ),
+                                          current.params,
+                                        ),
                                       }))
                                     }
                                   />
-                                </>
-                              ) : (
-                                <>
-                                  {item.definition.inputs.map((field) => {
-                                    const setParam = (value: number) =>
-                                      changeIndicator(item.key, (current) => ({
-                                        ...current,
-                                        params: cleanParams(item.definition, {
-                                          ...current.params,
-                                          [field.key]: value,
-                                        }),
-                                      }));
-                                    return (
-                                      <label key={field.key}>
-                                        {field.label[language]}
-                                        {field.options ? (
-                                          <select
-                                            value={item.params[field.key]}
-                                            onChange={(event) =>
-                                              setParam(
-                                                Number(event.target.value),
-                                              )
-                                            }
-                                          >
-                                            {field.options.map((option) => (
-                                              <option
-                                                key={option.value}
-                                                value={option.value}
-                                              >
-                                                {option.label}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        ) : (
-                                          <input
-                                            type="number"
-                                            min={field.min}
-                                            max={field.max}
-                                            step={field.step ?? 1}
-                                            defaultValue={
-                                              item.params[field.key]
-                                            }
-                                            onChange={(event) =>
-                                              setParam(
-                                                Number(event.target.value),
-                                              )
-                                            }
-                                          />
-                                        )}
-                                      </label>
-                                    );
-                                  })}
-                                  {timeframeField(item.instance)}
-                                  {onOpenAssistant &&
-                                  (item.instance.type === "pine"
-                                    ? !isPineStrategy(item.instance.pine ?? "")
-                                    : INDICATOR_BY_ID.has(
-                                        item.instance.type,
-                                      )) ? (
-                                    <p className="bt-actions">
-                                      <button
-                                        type="button"
-                                        className="tb-button"
-                                        onClick={() => {
-                                          setEditing(null);
-                                          onOpenAssistant(item.instance);
-                                        }}
-                                      >
-                                        {t(
-                                          item.instance.type !== "pine"
-                                            ? "ia.vary"
-                                            : item.instance.assistant
-                                              ? "ia.continue"
-                                              : "ia.fix",
-                                        )}
-                                      </button>
-                                    </p>
-                                  ) : null}
-                                  {onOpenResearch &&
-                                  item.instance.type === "pine" &&
-                                  isPineStrategy(item.instance.pine ?? "") ? (
-                                    <p className="bt-actions">
-                                      <button
-                                        type="button"
-                                        className="tb-button"
-                                        onClick={() => {
-                                          setEditing(null);
-                                          onOpenResearch(item.instance);
-                                        }}
-                                      >
-                                        {t(
-                                          item.instance.assistant
-                                            ? "sr.continue"
-                                            : "sr.open",
-                                        )}
-                                      </button>
-                                    </p>
-                                  ) : null}
-                                  {item.instance.type === "pine" ? (
-                                    <PineFields
-                                      initial={item.instance.pine ?? ""}
-                                      submitLabel={t("ind.apply")}
-                                      onCancel={() => setEditing(null)}
-                                      onSubmit={(source) =>
-                                        changeIndicator(
-                                          item.key,
-                                          (current) => ({
-                                            ...current,
-                                            pine: source,
-                                            // Inputs that no longer exist drop; new ones take their defaults.
-                                            params: cleanParams(
-                                              pineDefinition(source),
-                                              current.params,
-                                            ),
-                                          }),
-                                        )
-                                      }
-                                    />
-                                  ) : null}
-                                </>
-                              )
+                                ) : null}
+                              </>
                             }
                           />
                         ) : null}

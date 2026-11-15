@@ -25,6 +25,7 @@ import {
 import { mapGraphicsTimes, type PineGraphics } from "./pine-drawings";
 import type { StrategyReport } from "./pine-strategy";
 import {
+  FORMULA_COLORS,
   formulaDefinition,
   formulaLookback,
   MAX_FORMULA_LENGTH,
@@ -1495,7 +1496,10 @@ export function parseIndicators(value: unknown): IndicatorInstance[] {
         {
           key: record.key,
           type: "formula",
-          params: {},
+          params: cleanParams(
+            formulaDefinition(record.formula, "Formula", "separate"),
+            record.params,
+          ),
           formula: record.formula,
           label:
             typeof record.label === "string" && record.label.trim()
@@ -1662,7 +1666,10 @@ export const MAX_WARMUP_BARS = 1_000;
 export function instanceLookback(instance: IndicatorInstance): number {
   if (instance.type === "formula") {
     try {
-      return formulaLookback(parseFormula(instance.formula ?? ""));
+      return formulaLookback(
+        parseFormula(instance.formula ?? ""),
+        instance.params,
+      );
     } catch {
       return 0; // an invalid formula draws nothing and needs no warm-up
     }
@@ -1814,7 +1821,7 @@ export function renderIndicators(
     }
     const pointColors = instance.timeframe
       ? undefined
-      : PINE_COLORS.get(values);
+      : (PINE_COLORS.get(values) ?? FORMULA_COLORS.get(values));
     const lines = definition.outputs.map((output) => {
       const kind = output.kind ?? "line";
       const perBar = pointColors?.[output.key];
