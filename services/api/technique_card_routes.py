@@ -12,7 +12,7 @@
 - `GET  /v1/technique-cards/{card_id}/drafts`       that card's drafts
 - `GET  /v1/technique-drafts/{draft_id}`            one draft with what blocks saving it
 - `POST /v1/technique-drafts/{draft_id}/save`       save as a rules strategy (the user's button)
-- `GET|PUT /v1/technique-settings`                  the default model (Fable, Argon or Astra)
+- `GET|PUT /v1/technique-settings`                  the default model (Argon or Astra; Fable paused)
 
 The extraction runs in a background thread (a long source takes minutes); one at a time per
 item. Error messages never carry transcript text. These documents are local to the app and
@@ -51,14 +51,14 @@ _CONDITION_VALIDATOR = jsonschema.Draft202012Validator(
 )
 
 
+# Fable 5.2 is paused (extract.PAUSED_MODELS).
 ModelChoice = Literal[
-    "anthropic/claude-fable-5.2",
     "google/gemini-4-argon",
     "openai/gpt-6-astra",
     "claude-sonnet-5-5",
     "openai/gpt-6-luna",
 ]
-DefaultChoice = Literal["anthropic/claude-fable-5.2", "google/gemini-4-argon", "openai/gpt-6-astra"]
+DefaultChoice = Literal["google/gemini-4-argon", "openai/gpt-6-astra"]
 
 
 class SettingsRequest(BaseModel):
@@ -429,6 +429,7 @@ def register_technique_card_routes(
         return {
             "kind": "technique_settings",
             "default_model": service.store.default_model(),
+            "default_reset": service.store.default_model_reset(),
             "default_choices": list(DEFAULT_CHOICES),
             "models": list(CHOOSABLE_MODELS),
         }

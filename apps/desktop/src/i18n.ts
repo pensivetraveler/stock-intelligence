@@ -1749,6 +1749,7 @@ const en = {
   "tc.chooseModel": "Model for this extraction",
   "tc.assigned": "{model} (default)",
   "tc.defaultModel": "Default model",
+  "tc.defaultReset": "{from} is paused; the default went back to {to}.",
   "tc.cost": "Cost",
   "tc.source": "Source status",
   "tc.sendNote":
@@ -3817,6 +3818,8 @@ const ko: Record<MessageKey, string> = {
   "tc.chooseModel": "이번 추출에 쓸 모델",
   "tc.assigned": "{model} (기본)",
   "tc.defaultModel": "기본 모델",
+  "tc.defaultReset":
+    "{from}은 사용 중지되어 기본 모델을 {to}(으)로 되돌렸습니다.",
   "tc.cost": "비용",
   "tc.source": "자료 상태",
   "tc.sendNote":
