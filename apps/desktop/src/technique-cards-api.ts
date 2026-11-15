@@ -23,6 +23,8 @@ export interface TechniquePreview {
   characters: number;
   model: string;
   fallback: string;
+  /** Where a slice goes when a model is at its limit (#LAG-SIW-4). */
+  limit_fallback?: string;
   models: string[];
   default_model: string;
   estimated_cost_usd: string;
@@ -107,6 +109,16 @@ export interface CardUsage {
   calls: number;
   parts: number;
   flags: Record<string, number>;
+  /** The model the user asked for, and each move to another one. */
+  requested_model?: string;
+  switches?: ModelSwitch[];
+}
+
+export interface ModelSwitch {
+  part: number;
+  from: string;
+  to: string;
+  reason: "limit" | "failed";
 }
 
 export interface CardSummary {

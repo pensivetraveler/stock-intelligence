@@ -25,6 +25,7 @@ from services.technique_cards.extract import (
     Caller,
     Extraction,
     Keys,
+    chain,
     extract_card,
     ladder,
     prompts_for,
@@ -93,6 +94,8 @@ class TechniqueCards:
             "characters": sum(len(p) for p in prompts),
             "model": model,
             "fallback": " → ".join(ladder(model)[1:]),
+            # Where a slice goes when a model is at its limit (#LAG-SIW-4).
+            "limit_fallback": " → ".join(chain(model, self.store.default_model())[1:]),
             "models": list(CHOOSABLE_MODELS),
             "default_model": self.store.default_model(),
             "estimated_cost_usd": format(cost.quantize(Decimal("0.01")), "f"),
@@ -114,7 +117,14 @@ class TechniqueCards:
         fetched, outcome = self._usable(source.item_ref)
         lines = self._lines(fetched)
         extraction: Extraction = extract_card(
-            source.source_key or source.item_ref, source.title, lines, keys, call=call, model=model
+            source.source_key or source.item_ref,
+            source.title,
+            lines,
+            keys,
+            call=call,
+            model=model,
+            default=self.store.default_model(),
+            limits=self.store,
         )
         checks = check_card(extraction.card, lines)
         usage = extraction.usage | {"parts": extraction.parts, "flags": checks["counts"]}
