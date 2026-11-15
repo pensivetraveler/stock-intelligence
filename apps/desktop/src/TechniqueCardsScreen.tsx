@@ -296,6 +296,18 @@ export function TechniqueCardsScreen({
               </select>
             </label>
           ) : null}
+          {settings?.default_reset ? (
+            <span className="workspace-note" role="status">
+              {t("tc.defaultReset", {
+                from:
+                  MODEL_NAMES[settings.default_reset.from] ??
+                  settings.default_reset.from,
+                to:
+                  MODEL_NAMES[settings.default_reset.to] ??
+                  settings.default_reset.to,
+              })}
+            </span>
+          ) : null}
           <button
             type="button"
             className="tb-button"

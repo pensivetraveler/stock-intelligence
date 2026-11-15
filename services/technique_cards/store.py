@@ -373,7 +373,33 @@ class CardStore:
                 "SELECT value FROM technique_settings WHERE name = 'default_model'"
             ).fetchone()
         value = None if row is None else str(row[0])
-        return value if value in DEFAULT_CHOICES else INITIAL_DEFAULT
+        if value is None or value in DEFAULT_CHOICES:
+            return value or INITIAL_DEFAULT
+        # A saved default that is no longer offered (Fable paused 2026-11-15): back to the
+        # initial default, and the change is recorded so the screen can say so.
+        now = _utc(self._clock())
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO technique_settings (name, value, updated_at)"
+                " VALUES ('default_model_reset', ?, ?)"
+                " ON CONFLICT(name) DO UPDATE SET value = excluded.value,"
+                " updated_at = excluded.updated_at",
+                (json.dumps({"from": value, "to": INITIAL_DEFAULT, "at": now}), now),
+            )
+            self._db.execute(
+                "UPDATE technique_settings SET value = ?, updated_at = ?"
+                " WHERE name = 'default_model'",
+                (INITIAL_DEFAULT, now),
+            )
+        return INITIAL_DEFAULT
+
+    def default_model_reset(self) -> dict[str, str] | None:
+        """The last time a saved default was put back because it is no longer offered."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT value FROM technique_settings WHERE name = 'default_model_reset'"
+            ).fetchone()
+        return None if row is None else dict(json.loads(row[0]))
 
     def set_default_model(self, model: str) -> str:
         if model not in DEFAULT_CHOICES:
