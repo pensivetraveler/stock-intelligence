@@ -78,6 +78,7 @@
 - **확인 결과(2026-11-09, S4 세션):**
   - **Alpaca 권한:** Keys 화면의 첫 Alpaca 키로 읽기 전용 2회 호출(AAPL, 3건), HTTP 200. 한도 헤더 `X-RateLimit-Limit: 10000`(분당). 응답 필드는 `id, headline, summary, author, created_at, updated_at, url, symbols, source, content, images`. `include_content`를 주지 않아도 `content`는 빈 문자열이었다.
   - **Alpaca 약관:** Alpaca Terms and Conditions(`files.alpaca.markets/disclosures/library/TermsAndConditions.pdf`, 2026-11-09 받음)는 뉴스를 포함한 "Content"를 개인·비상업 용도로만 쓰게 하고, 다른 매체로 게시·배포하려고 복사·재게시하는 것을 금한다. 제3자(Benzinga 등) 콘텐츠도 이 Content에 들어간다. 그래서 제목·요약을 **이 컴퓨터의 로컬 캐시에만** 두고 화면에 보이는 것은 개인 연구로 보고 진행한다. 내보내기·공유·커밋은 하지 않는다. 시험 자료는 지어낸 기사만 쓴다.
+  - **Alpaca 실측(2026-11-16, 같은 키, 읽기 전용):** 11-09~11-13 기사 500건 중 `fiscal.ai` 334건·`benzinga` 166건. `updated_at = created_at`이 498건, 나머지 2건은 1~2초 차이(수정 기사로 볼 만한 차이는 없음). 2015-01-01 기사까지 받힌다. 시작·끝을 비우면 몇 분 전 기사(일요일 15:32Z)가 온다. 공식 문서에는 요금제별 뉴스 권한, `created_at`의 기준, 수정 기사 재전송이 여전히 없다. Benzinga 원문 페이지는 자동 접근을 403으로 막아 게시 시각과 대조하지 못했다.
   - **Alpaca 미확인(unverified):** 뉴스가 어느 요금제에 들어가는지(공식 문서에 표 없음, 한도 10000/분은 유료 요금제 값과 같다), 뉴스 전용 과거 기간·한도, `created_at`이 게시 시각인지(문서는 "만든 시각"이라고만 함), 기사 수정 때 `updated_at`이 바뀌는지, Benzinga 쪽 별도 사용 조건. 약관 해석은 법률 검토가 아니다.
   - **MarketNewsAPI(공식 OpenAPI·약관·요금 페이지, 키 없음):**
     - 요청: `tickers`(최대 50), `type=news,press_release`, `include_legal=false`, `from`·`to`(ISO 8601 UTC, 초 단위), `limit` 1~100, `cursor`로 쪽 넘김.
