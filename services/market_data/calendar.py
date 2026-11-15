@@ -68,6 +68,22 @@ PROFILES: dict[str, MarketProfile] = {
     "XKOS": KR_PROFILE,
 }
 LOADED_AS = {"XNAS": "XNAS", "XNYS": "XNYS", "XKRX": "XKRX", "XKOS": "XKRX"}
+# Market closures the installed exchange_calendars release still lists as sessions.
+# Each is checked against the exchange's own record before it is added; remove an
+# entry once the library lists the date as a holiday (the schedule fingerprint does
+# not change then, since the date is excluded either way).
+EXTRA_CLOSURES: dict[str, frozenset[date]] = {
+    "XKRX": frozenset(
+        {
+            # Local election day. Kiwoom daily bars (ka10081, 005930) have no 2026-06-03;
+            # exchange_calendars 4.13.3 added it, 4.13.2 did not.
+            date(2026, 6, 3),
+            # Constitution Day, a public holiday again from 2026. Kiwoom daily bars have
+            # no 2026-07-17; exchange_calendars 4.13.3 still lists it (checked 2026-11-16).
+            date(2026, 7, 17),
+        }
+    ),
+}
 
 
 class CalendarError(ValueError):
@@ -94,11 +110,13 @@ def _load_calendar(calendar_id: str) -> tuple[Any, str]:
         end=CALENDAR_LAST_SESSION.isoformat(),
     )
     schedule = calendar.schedule
+    closed = EXTRA_CLOSURES.get(LOADED_AS[calendar_id], frozenset())
     lines = [
         f"{session.date().isoformat()},{_utc_text(market_open)},{_utc_text(market_close)}"
         for session, market_open, market_close in zip(
             schedule.index, schedule["open"], schedule["close"], strict=True
         )
+        if session.date() not in closed
     ]
     digest = hashlib.sha256("\n".join(lines).encode()).hexdigest()
     version = (
@@ -177,7 +195,9 @@ class ExchangeCalendar:
                 f"{label} is outside the supported exchange calendar range "
                 f"{CALENDAR_FIRST_SESSION.isoformat()}..{CALENDAR_LAST_SESSION.isoformat()}"
             ) from exc
-        if not is_session:
+        if not is_session or session_date in EXTRA_CLOSURES.get(
+            LOADED_AS[self.calendar_id], frozenset()
+        ):
             return None
         regular_open = self._as_datetime(self._calendar.session_open(label))
         regular_close = self._as_datetime(self._calendar.session_close(label))
