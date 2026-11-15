@@ -51,10 +51,12 @@ const en = {
   "formula.expression": "Formula",
   "formula.pane": "Where to draw",
   "formula.ok": "The formula is valid.",
-  "formula.error": "{message} (character {column})",
+  "formula.error": "{message} (line {line}, character {column})",
   "formula.help": "What can I use?",
   "formula.helpText":
-    "Prices: {fields}. Functions: {functions}. Lengths are whole numbers (e.g. sma(close, 20)); shift(x, n) looks n bars back; atr(n), vwap() and obv() take the chart's bars.",
+    "Prices: {fields}. Functions: {functions}. Lengths are whole numbers or number settings (e.g. sma(close, 20)); x[n] or shift(x, n) looks n bars back; atr(n), tr(), vwap() and obv() take the chart's bars. Comparisons (< > <= >= == !=), and/or/not and cond ? a : b give true/false values; comparing with a missing value is false.",
+  "formula.helpLines":
+    'Several lines: name = value, name = input(default, "Title") for a setting (a number, true/false or a price such as close), plot(value, "Title", "#rrggbb", width, "histogram") for each line to draw, and hline(level). One line without plot() draws that value.',
   "formula.cancel": "Cancel",
   "formula.add": "Add to chart",
   "formula.newButton": "+ New formula indicator",
@@ -2167,10 +2169,12 @@ const ko: Record<MessageKey, string> = {
   "formula.expression": "수식",
   "formula.pane": "표시 위치",
   "formula.ok": "올바른 수식입니다.",
-  "formula.error": "{message} ({column}번째 글자)",
+  "formula.error": "{message} ({line}줄 {column}번째 글자)",
   "formula.help": "사용할 수 있는 것",
   "formula.helpText":
-    "가격: {fields}. 함수: {functions}. 길이는 정수입니다(예: sma(close, 20)). shift(x, n)은 n봉 전 값을 씁니다. atr(n)·vwap()·obv()는 차트의 봉으로 계산합니다.",
+    "가격: {fields}. 함수: {functions}. 길이는 정수나 숫자 설정값입니다(예: sma(close, 20)). x[n]이나 shift(x, n)은 n봉 전 값을 씁니다. atr(n)·tr()·vwap()·obv()는 차트의 봉으로 계산합니다. 비교(< > <= >= == !=), and·or·not, 조건 ? a : b는 참/거짓 값을 냅니다. 빈 값과 비교하면 거짓입니다.",
+  "formula.helpLines":
+    '여러 줄로 쓸 수 있습니다: 이름 = 값, 설정값은 이름 = input(기본값, "제목")(숫자, true/false, close 같은 가격), 그릴 선마다 plot(값, "제목", "#rrggbb", 두께, "histogram"), 기준선은 hline(값). plot() 없이 한 줄만 쓰면 그 값을 그립니다.',
   "formula.cancel": "취소",
   "formula.add": "차트에 추가",
   "formula.newButton": "+ 새 수식 지표",

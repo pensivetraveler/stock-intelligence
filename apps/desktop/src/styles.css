@@ -2629,6 +2629,19 @@ body {
   resize: vertical;
 }
 
+.formula-example {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  overflow-x: auto;
+  border: 1px solid var(--term-line);
+  border-radius: 4px;
+  color: var(--term-text);
+  background: var(--term-bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  white-space: pre;
+}
+
 .indicator-settings.formula-settings {
   width: min(420px, 80vw);
 }

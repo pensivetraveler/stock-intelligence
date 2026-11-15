@@ -121,7 +121,8 @@ import { TradeReviewScreen } from "./TradeReviewScreen";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { latestCustom, registerCustom } from "./custom-indicators";
 import { CustomIndicatorEditor } from "./CustomIndicatorEditor";
-import { FormulaDialog } from "./FormulaEditor";
+import { FormulaDialog, type FormulaValue } from "./FormulaEditor";
+import { formulaDefinition, formulaWidths } from "./formula";
 import { PineDialog } from "./PineEditor";
 import { pineDefinition, pineWidths } from "./pine";
 import type { BacktestApi } from "./backtest-api";
@@ -323,6 +324,28 @@ const JOURNAL_BROKER_ROWS = 500;
 
 /** The key of the assistant's preview indicator; never stored in the layout. */
 const PREVIEW_KEY = "assistant-preview";
+
+/** A new formula indicator instance: default settings, the plots' widths as its style. */
+function formulaInstance(key: string, value: FormulaValue): IndicatorInstance {
+  const widths = Object.entries(formulaWidths(value.formula));
+  return {
+    key,
+    type: "formula",
+    params: defaultParams(
+      formulaDefinition(value.formula, value.label, value.pane),
+    ),
+    ...value,
+    ...(widths.length > 0
+      ? {
+          style: {
+            outputs: Object.fromEntries(
+              widths.map(([output, width]) => [output, { width }]),
+            ),
+          },
+        }
+      : {}),
+  };
+}
 
 /** A new Pine indicator instance with the script's plot widths as its style. */
 function pineInstance(key: string, source: string): IndicatorInstance {
@@ -2173,7 +2196,7 @@ export function Workspace({
             updateActive({
               indicators: [
                 ...(activeConfig.indicators ?? []),
-                { key: newId(), type: "formula", params: {}, ...value },
+                formulaInstance(newId(), value),
               ],
             });
           }}
