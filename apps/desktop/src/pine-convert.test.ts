@@ -7,6 +7,7 @@ import {
   convertInstance,
   convertPine,
   CONVERTER_VERSION,
+  pineBlockers,
   pineParamsFor,
   revertInstance,
   sampleBars,
@@ -255,5 +256,34 @@ describe("converted indicators", () => {
       },
     ]);
     expect(saved.converted).toBeUndefined();
+  });
+});
+
+describe("conversion survey blockers (ADR 0058 step 4)", () => {
+  it("lists every part without a formula, not just the first", () => {
+    expect(
+      pineBlockers(`//@version=5
+indicator("X", overlay=true)
+var float hi = na
+if close > open
+    hi := math.max(nz(hi), high)
+low_at = ta.lowestbars(low, 5)
+plot(hi, display=display.none)
+plotshape(low_at == 0, style=shape.triangleup, location=location.belowbar)
+bgcolor(bar_index % 2 == 0 ? color.new(color.gray, 90) : na)`),
+    ).toEqual([
+      "var",
+      "if block",
+      ":=",
+      "ta.lowestbars()",
+      "plot display=display.none",
+      "plotshape()",
+      "bgcolor()",
+      "bar_index",
+    ]);
+    expect(pineBlockers(PINE_EXAMPLE)).toEqual([]);
+    expect(pineBlockers('indicator("X")\nplot(close +')).toEqual([
+      "does not compile",
+    ]);
   });
 });

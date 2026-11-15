@@ -3102,6 +3102,20 @@
   - `TechniqueCards.recheck`: 도서관이 계속 써도 된다고 하고 캐시 원문이 카드를 만들 때와 같으면(sha256), 스크립트 검사를 다시 돌립니다. 결과가 바뀌었으면 `store.update_checks`로 checks와 usage.flags만 고칩니다. 카드 내용·판·사용자 결정은 그대로입니다.
 - **시험:** `test_document_sources.py`에 큰 단위 숫자와 다시 확인 시 검사 재실행 시험을 넣었습니다.
 
+## ADR 0058 4단계: 변환율 조사 — 2026-11-16
+
+- **사용자 결정:** "잔여 작업을 모두 진행해줘. 사용자 선택이 필요한 사안들에 대해서는 권장대로 진행해줘." 같은 결정으로 PR #193(3단계)을 병합했다.
+- **변경:**
+  - `scripts/pine_samples_from_conversations.py`: 로컬 대화 DB에서 Pine 스크립트를 꺼내 `data/` 아래에 파일로 둔다(커밋하지 않음).
+  - `pine-convert.ts`의 `pineBlockers`: 변환을 막는 기능을 모두 나열한다.
+  - `pine-convert.survey.test.ts`: `SIW_PINE_SAMPLES=폴더`일 때만 변환율과 막는 기능 순위를 출력한다.
+- **결과:** 로컬 표본(지표 도우미·전략 연구 대화의 스크립트, 지표 14개)에서 1개가 변환됐다. 막는 기능은 `plotshape`(8) > `if` 블록·`ta.lowestbars`·`bar_index`(각 5) > `var`·`:=`·`bgcolor`(각 3) 순이다. 표와 판단은 ADR 0058 "4단계 결과"에 있다.
+- **판단:** 표본이 사용자의 TradingView 스크립트가 아니라서 "변환율 절반 미만이면 해석기 최적화·Worker 재검토" 조건은 아직 성립했다고 보지 않는다.
+- **검증:** `pine-convert.test.ts` 24개(`pineBlockers` 1개 추가) 통과, 데스크톱 테스트 전체 통과, `tsc --noEmit`, ESLint, prettier, ruff 통과.
+- **남은 일:**
+  - 사용자가 평소 쓰는 TradingView 스크립트를 `data/pine-samples/<이름>/`에 넣으면 같은 명령으로 다시 잰다.
+  - 그 결과에 따라 `plotshape`·`bgcolor` 변환부터 할지, Worker·해석기 최적화를 할지 정한다.
+
 ## 미확인 항목 정리: 실제 API·화면·외부 자료로 확인 — 2026-11-16
 
 - **사용자 지시:** "수행 가능한 작업들 모두 진행해줘"(대시보드의 '확인 못 함' 14건). 시점은 일요일(장 닫힘)이었다.
