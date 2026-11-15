@@ -5,6 +5,7 @@ import { TechniqueDraftPanel } from "./TechniqueDraftPanel";
 import { MarketApiError } from "./market-api";
 import {
   slotsLabel,
+  type AddedCondition,
   type CardCondition,
   type CardSummary,
   type Flag,
@@ -105,6 +106,7 @@ export function TechniqueCardsScreen({
   const [card, setCard] = useState<TechniqueCard | null>(null);
   const [draft, setDraft] = useState<Record<string, Resolution>>({});
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [added, setAdded] = useState<AddedCondition[]>([]);
   const [onlyUncited, setOnlyUncited] = useState(false);
   const [settings, setSettings] = useState<TechniqueSettings | null>(null);
 
@@ -133,6 +135,7 @@ export function TechniqueCardsScreen({
           setCard(next);
           setDraft(next.resolutions.conditions);
           setAnswers(next.resolutions.ambiguities);
+          setAdded(next.resolutions.added ?? []);
           setError(null);
         })
         .catch((reason: unknown) => setError(message(reason)));
@@ -203,7 +206,13 @@ export function TechniqueCardsScreen({
   const save = () => {
     if (!card) return;
     api
-      .resolve(card.card_id, card.version, draft, answers)
+      .resolve(
+        card.card_id,
+        card.version,
+        draft,
+        answers,
+        added.filter((entry) => entry.text.trim()),
+      )
       .then(() => {
         openCard(card.card_id);
         load();
@@ -558,6 +567,69 @@ export function TechniqueCardsScreen({
                     ))}
                   </section>
                 ) : null}
+
+                <section aria-label={t("tc.added")}>
+                  <h4>{t("tc.added")}</h4>
+                  <p className="workspace-note">{t("tc.addedNote")}</p>
+                  {added.map((entry, index) => (
+                    <div key={index} className="tc-added">
+                      <select
+                        aria-label={t("tc.addedField")}
+                        value={entry.field}
+                        onChange={(event) => {
+                          const field = event.target
+                            .value as AddedCondition["field"];
+                          setAdded((previous) =>
+                            previous.map((item, at) =>
+                              at === index ? { ...item, field } : item,
+                            ),
+                          );
+                        }}
+                      >
+                        <option value="entry">{t("tc.f.entry")}</option>
+                        <option value="exit">{t("tc.f.exit")}</option>
+                      </select>
+                      <input
+                        aria-label={t("tc.addedText")}
+                        value={entry.text}
+                        maxLength={500}
+                        placeholder={t("tc.addedHint")}
+                        onChange={(event) => {
+                          const text = event.target.value;
+                          setAdded((previous) =>
+                            previous.map((item, at) =>
+                              at === index ? { ...item, text } : item,
+                            ),
+                          );
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="tb-button"
+                        onClick={() =>
+                          setAdded((previous) =>
+                            previous.filter((_, at) => at !== index),
+                          )
+                        }
+                      >
+                        {t("tc.addedRemove")}
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="tb-button"
+                    disabled={added.length >= 20}
+                    onClick={() =>
+                      setAdded((previous) => [
+                        ...previous,
+                        { field: "entry", text: "" },
+                      ])
+                    }
+                  >
+                    {t("tc.addedAdd")}
+                  </button>
+                </section>
 
                 {(
                   [

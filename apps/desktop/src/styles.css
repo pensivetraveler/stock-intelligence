@@ -3800,6 +3800,14 @@ body {
   margin-bottom: 8px;
 }
 
+.tc-added {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
 .tc-timeline {
   list-style: none;
   margin: 0;

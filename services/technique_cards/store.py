@@ -252,12 +252,20 @@ class CardStore:
         version: int,
         conditions: dict[str, dict[str, Any]],
         ambiguities: dict[str, str],
+        added: builtins.list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
-        """Replace the user's resolutions; refuses a stale `version` (another save won)."""
+        """Replace the user's resolutions; refuses a stale `version` (another save won).
+
+        `added` are conditions the user wrote (for example when an answer to a vague point
+        makes a rule the source left out); they are the user's, never cited to the source."""
         current = self.get(card_id)
         if current["version"] != version:
             raise ValueError(f"card is at version {current['version']}, not {version}")
-        resolutions = {"conditions": conditions, "ambiguities": ambiguities}
+        resolutions = {
+            "conditions": conditions,
+            "ambiguities": ambiguities,
+            "added": list(added or []),
+        }
         now = _utc(self._clock())
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")

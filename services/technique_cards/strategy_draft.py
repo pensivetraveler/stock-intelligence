@@ -15,6 +15,7 @@ assignment for strategy drafts is still provisional (§5), so the model is recor
 
 from __future__ import annotations
 
+import copy
 import json
 from collections.abc import Callable
 from decimal import Decimal
@@ -34,7 +35,7 @@ from services.technique_cards.extract import (
     Keys,
 )
 
-DRAFT_VERSION = 1
+DRAFT_VERSION = 2
 MAX_TOKENS = 16_000
 TIMEOUT_SECONDS = 300.0
 
@@ -56,6 +57,12 @@ strategy from the one the source teaches, so never guess. Answer in the required
 - "unconvertible": the rules cannot do it exactly (a short side, another timeframe, a vague
   position size, a judgement call). Leave it out, give the reason, leave `rule_paths` empty.
   Never substitute something close.
+- "absent": the item says the technique does not use something the format has (no profit
+  target, no stop, no exit rule). Leave that field out of the definition and put its pointer
+  in `rule_paths`, one of: {optional}. Never point a "mapped" item at a field you left out.
+- `rule_paths` never holds an empty string.
+- Items marked "user-added" are the investor's own rules, decided after reading the source;
+  convert them like the others.
 - Use the investor's answers to vague points when they settle a number; say so in `notes`.
 - Add nothing the card does not have. Every condition in the definition must be reached by a
   pointer. Leave `sizing` out unless a numbered item states the size.
@@ -65,8 +72,14 @@ strategy from the one the source teaches, so never guess. Answer in the required
 )
 
 
+# The Pine schema with "absent" added (an item saying a field is not used).
+SCHEMA: dict[str, Any] = copy.deepcopy(conversion.SCHEMA)
+SCHEMA["properties"]["mapping"]["items"]["properties"]["status"]["enum"] = list(conversion.STATUSES)
+
+
 def card_items(row: dict[str, Any]) -> list[str]:
-    """The numbered items sent: kept conditions (edited where the user edited) and positions."""
+    """The numbered items sent: kept conditions (edited where the user edited), the conditions
+    the user added, and positions."""
     resolved = row["resolutions"]["conditions"]
     items = []
     for index, condition in enumerate(row["card"].get("conditions") or []):
@@ -80,6 +93,8 @@ def card_items(row: dict[str, Any]) -> list[str]:
             f"[{used.get('field')}, {used.get('side')}, {origin}] {used.get('text')} "
             f"slots={json.dumps(slots, ensure_ascii=False)}"
         )
+    for added in row["resolutions"].get("added") or []:
+        items.append(f"[{added.get('field')}, long, user-added] {added.get('text')}")
     for statement in row["card"].get("position") or []:
         items.append(f"[position] {statement.get('text')}")
     return items
@@ -138,7 +153,7 @@ def model_call(
                 "max_tokens": MAX_TOKENS,
                 "system": system,
                 "messages": messages,
-                "output_config": {"format": {"type": "json_schema", "schema": conversion.SCHEMA}},
+                "output_config": {"format": {"type": "json_schema", "schema": SCHEMA}},
             }
             headers = {"x-api-key": keys.anthropic, "anthropic-version": ANTHROPIC_VERSION}
             url = ANTHROPIC_URL
@@ -155,7 +170,7 @@ def model_call(
                     "json_schema": {
                         "name": "technique_strategy_draft",
                         "strict": True,
-                        "schema": conversion.SCHEMA,
+                        "schema": SCHEMA,
                     },
                 },
                 "provider": {"data_collection": "deny", "require_parameters": True},
@@ -212,7 +227,11 @@ def draft(row: dict[str, Any], model: str, keys: Keys, call: Call | None = None)
     costs: list[dict[str, Any]] = []
     if call is None:
         call, costs = model_call(model, keys)
-    system = SYSTEM.format(language="Korean", indicators=conversion.indicator_catalogue())
+    system = SYSTEM.format(
+        language="Korean",
+        indicators=conversion.indicator_catalogue(),
+        optional=", ".join(f'"{f}"' for f in conversion.OPTIONAL_FIELDS),
+    )
     converted, _usage = conversion.convert(
         "", items, "ko", call, system=system, request=request_text(row, items)
     )

@@ -144,9 +144,17 @@ export interface TechniqueCard extends CardSummary {
   resolutions: {
     conditions: Record<string, Resolution>;
     ambiguities: Record<string, string>;
+    /** Conditions the user wrote; missing on cards saved before this field. */
+    added?: AddedCondition[];
   };
   verification_status: string;
   timeline: TimelineRow[] | null;
+}
+
+/** A condition the user adds, e.g. when an answer makes a rule the source left out. */
+export interface AddedCondition {
+  field: "entry" | "exit";
+  text: string;
 }
 
 /** Models the user may pick for one extraction or draft. */
@@ -178,7 +186,7 @@ export interface TechniqueSettings {
 export interface DraftMapping {
   index: number;
   condition: string;
-  status: "mapped" | "unconvertible";
+  status: "mapped" | "unconvertible" | "absent";
   rule_paths: string[];
   reason: string;
 }
@@ -222,6 +230,7 @@ export interface TechniqueCardsApi {
     version: number,
     conditions: Record<string, Resolution>,
     ambiguities: Record<string, string>,
+    added?: AddedCondition[],
   ): Promise<CardSummary>;
   recheck(cardId: string): Promise<CardSummary>;
   settings(): Promise<TechniqueSettings>;
@@ -292,12 +301,12 @@ export function createTechniqueCardsApi(
         `/v1/technique-cards/${encodeURIComponent(cardId)}`,
         "technique_card",
       ),
-    resolve: (cardId, version, conditions, ambiguities) =>
+    resolve: (cardId, version, conditions, ambiguities, added = []) =>
       callForKind<CardSummary & { kind: "technique_card" }>(
         target,
         `/v1/technique-cards/${encodeURIComponent(cardId)}/resolutions`,
         "technique_card",
-        { body: { version, conditions, ambiguities } },
+        { body: { version, conditions, ambiguities, added } },
       ),
     recheck: (cardId) =>
       callForKind<CardSummary & { kind: "technique_card" }>(
