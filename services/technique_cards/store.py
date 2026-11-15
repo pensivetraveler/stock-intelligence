@@ -401,6 +401,36 @@ class CardStore:
             ).fetchone()
         return None if row is None else dict(json.loads(row[0]))
 
+    def limited_until(self, model: str) -> datetime | None:
+        """When a model's limit ends, as its last limit answer said (#LAG-SIW-4)."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT value FROM technique_settings WHERE name = ?", (f"limit:{model}",)
+            ).fetchone()
+        if row is None:
+            return None
+        return datetime.fromisoformat(json.loads(row[0])["until"])
+
+    def hold(self, model: str, until: datetime, reason: str) -> None:
+        """Skip `model` until `until`; the next extraction goes straight to the next one."""
+        now = _utc(self._clock())
+        value = json.dumps({"until": until.isoformat(), "reason": reason[:200], "at": now})
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO technique_settings (name, value, updated_at) VALUES (?, ?, ?)"
+                " ON CONFLICT(name) DO UPDATE SET value = excluded.value,"
+                " updated_at = excluded.updated_at",
+                (f"limit:{model}", value, now),
+            )
+
+    def limits(self) -> dict[str, str]:
+        """Each held model and the end of its limit (for the screen)."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT name, value FROM technique_settings WHERE name LIKE 'limit:%'"
+            ).fetchall()
+        return {str(name)[6:]: json.loads(value)["until"] for name, value in rows}
+
     def set_default_model(self, model: str) -> str:
         if model not in DEFAULT_CHOICES:
             raise ValueError(f"default model must be one of {', '.join(DEFAULT_CHOICES)}")

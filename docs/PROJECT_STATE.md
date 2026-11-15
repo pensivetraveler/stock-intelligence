@@ -2975,3 +2975,25 @@
   - 기본값은 Argon 그대로입니다.
   - 목록에 없는 저장 기본값을 Argon으로 되돌리고 기록하는 장치(`default_model_reset`)는 다음 중지 때 쓰도록 남겼습니다.
 - **주의:** 게이트웨이 회신에 따르면 Fable은 지금 API 한도가 다 찼습니다. 골라도 한도 오류가 날 수 있습니다.
+
+## 기법 카드 추출: 한도에 걸린 모델은 다른 회사 모델로 대체 — 2026-11-15
+
+- **요청:** 게이트웨이 세션의 `[요청 #LAG-SIW-4]`입니다. 사용자 지시는 "fable의 한도가 차는 경우에 대비하여 대체 모델을 상정하는 프로세스"였습니다. Fable은 지금 API 한도가 다 찼습니다.
+- **한도 판정(`extract.http_failure`):** 다음 셋 중 하나면 한도로 봅니다.
+  - HTTP 429 또는 402
+  - 오류 본문(`error.message`·`type`·`metadata.raw`)에 rate limit, quota, credit, too many requests, usage limit, insufficient funds/balance 중 하나가 있음. "limit" 한 단어만으로는 판정하지 않습니다. 컨텍스트 길이 오류도 "limit"이라고 쓰기 때문입니다.
+  - OpenRouter가 200 응답 안에 `error`를 담아 보냈고, 그 code가 429·402이거나 같은 단어가 있음
+- **대체 순서(`extract.chain`):** 고른 모델 다음에 다른 회사 모델을 씁니다. 기본 설정 모델이 다른 회사면 그 모델을, 아니면 Argon을 쓰고, 마지막은 luna입니다.
+  - Fable → Argon → luna
+  - Argon → luna
+  - Sonnet → Argon → luna (Fable과 같은 Anthropic이라 한도를 함께 맞을 수 있음)
+  - Astra → 기본 설정 모델 → luna
+- **사다리:** 한도면 같은 모델로 다시 시도하지 않고 바로 다음 모델로 넘어갑니다. 일시 오류(5xx·시간 초과)와 답 오류(길이·거절·스키마)는 이전과 같이 고른 모델 2회 → luna 1회입니다.
+- **기억:** 한도 응답에 다시 시도할 시각이 있으면(`Retry-After` 초·날짜, OpenRouter `X-RateLimit-Reset` ms) `technique_settings`의 `limit:<모델>`에 적어 둡니다. 그 시각 전에는 그 모델을 부르지 않고 바로 대체합니다. 시도 기록에는 `skipped: true`로 남깁니다. 7일보다 먼 시각은 믿지 않습니다.
+- **기록과 화면:**
+  - 카드 `usage`에 `requested_model`과 `switches`(구간, from, to, reason: limit|failed)를 남깁니다.
+  - 카드 화면에 "1구간: Fable 5.2이(가) 한도에 걸려 Gemini 4 Argon(으)로 대체함"을 보입니다.
+  - 미리보기에 "(한도일 때: Gemini 4 Argon → GPT-6 Luna)"를 보입니다.
+- **같은 조건:** 대체 모델도 같은 호출 함수를 씁니다. data_collection deny, strict json_schema(카드 스키마), max_tokens 16000, 같은 스크립트 검사가 그대로 적용됩니다.
+- **범위 밖:** 전략 초안(`strategy_draft.model_call`)에는 아직 대체가 없습니다. 한도면 초안이 실패로 끝납니다.
+- **확인 못 한 것:** 실제 Fable 한도 응답의 모양(상태 코드·헤더)은 보지 못했고, 시험은 가짜 응답으로만 했습니다.

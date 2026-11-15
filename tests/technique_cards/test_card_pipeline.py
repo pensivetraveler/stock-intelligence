@@ -387,7 +387,7 @@ def test_routes_extract_check_resolve_and_recheck(
 ) -> None:
     client, service = _app(tmp_path)
 
-    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model=""):  # type: ignore[no-untyped-def]
+    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model="", **_):  # type: ignore[no-untyped-def]
         return extract.Extraction(
             card=_card(),
             attempts=[
@@ -511,7 +511,7 @@ def test_routes_pass_the_model_and_refuse_others(
     client, _service = _app(tmp_path)
     used: list[str] = []
 
-    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model=""):  # type: ignore[no-untyped-def]
+    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model="", **_):  # type: ignore[no-untyped-def]
         used.append(model)
         return extract.Extraction(card=_card(), attempts=[{"model": model, "ok": True}])
 
@@ -845,7 +845,7 @@ def test_default_model_setting_is_used_and_limited_to_fable_argon_and_astra(
     assert changed.json()["default_model"] == "openai/gpt-6-astra"
     used: list[str] = []
 
-    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model=""):  # type: ignore[no-untyped-def]
+    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model="", **_):  # type: ignore[no-untyped-def]
         used.append(model)
         return extract.Extraction(card=_card(), attempts=[{"model": model, "ok": True}])
 

@@ -279,6 +279,41 @@ describe("technique cards", () => {
     ).toBeTruthy();
   });
 
+  it("says when a model at its limit was replaced", async () => {
+    const api = fakeApi();
+    const switched = card({
+      usage: {
+        ...card().usage,
+        models: ["google/gemini-4-argon"],
+        requested_model: "anthropic/claude-fable-5.2",
+        switches: [
+          {
+            part: 1,
+            from: "anthropic/claude-fable-5.2",
+            to: "google/gemini-4-argon",
+            reason: "limit",
+          },
+        ],
+      },
+    });
+    vi.mocked(api.cards).mockResolvedValue([switched]);
+    vi.mocked(api.card).mockResolvedValue(switched);
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
+    expect(
+      await screen.findByText(
+        "Slice 1: Fable 5.2 was at its limit, so Gemini 4 Argon was used",
+      ),
+    ).toBeTruthy();
+  });
+
   it("saves an edited number, a dropped condition and an answer", async () => {
     const api = fakeApi();
     vi.mocked(api.cards).mockResolvedValue([card()]);
