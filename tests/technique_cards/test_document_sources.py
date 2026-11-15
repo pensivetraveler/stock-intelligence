@@ -171,3 +171,67 @@ def test_an_item_with_only_a_summary_is_refused(tmp_path: Path) -> None:
     with pytest.raises(LibraryError, match="no captions, PDF text or written text"):
         Library(_config(), tmp_path, cli).fetch(ITEM)
     assert not (tmp_path / "hydrated").exists()
+
+
+def test_amounts_with_korean_units_are_read() -> None:
+    """Card 4ad00151 (원펀치매매 1권 p. 93): "거래대금 300억 이상" was flagged unbacked."""
+    from decimal import Decimal
+
+    from services.technique_cards.grounding import numbers
+
+    assert Decimal(30_000_000_000) in numbers("거래대금 300억 이상인 장대양봉")
+    assert Decimal(50_000_000) in numbers("5천만 원")
+    assert {Decimal(150_000_000), Decimal(100_000_000), Decimal(50_000_000)} <= numbers(
+        "1억 5천만원"
+    )
+    assert Decimal(10_000_000) in numbers("1,000만")
+    assert Decimal("2.5E12") in numbers("2.5조")
+    # Units that do not go down are read one by one, never added up.
+    assert Decimal(300_050_000) not in numbers("5만 3억")
+    lines = parse_source(
+        "[p. 93]\n주가 등락률 15%이상 ,거래대금 300억 이상인 장대양봉을 기준봉으로 본다.\n"
+    )
+    condition = _condition(
+        text="기준봉은 거래대금이 300억 이상이어야 한다.",
+        left=_op("price", "volume"),
+        comparator="at_or_above",
+        right=_op("value", "none", value=30_000_000_000),
+        citations=[
+            {"locator": "p. 93", "quote": "거래대금 300억 이상인 장대양봉을 기준봉으로 본다"}
+        ],
+        value_citations=[{"value": 30_000_000_000, "locator": "p. 93", "quote": "300억 이상"}],
+    )
+    card = {"conditions": [condition], "universe": [], "ambiguities": [], "inexpressible": []}
+    assert not any(
+        f["code"] == "unbacked" for f in check_card(card, lines)["conditions"][0]["flags"]
+    )
+
+
+def test_recheck_runs_the_script_checks_again_on_the_same_text(tmp_path: Path) -> None:
+    """A card checked by an older checker gets today's flags when the user presses recheck."""
+    from datetime import datetime, timezone
+
+    from services.technique_cards.service import TechniqueCards
+    from services.technique_cards.store import CardStore
+    from tests.technique_cards.test_card_pipeline import LINES, _card
+
+    store = CardStore(tmp_path / "c.sqlite3", lambda: datetime(2026, 11, 16, tzinfo=timezone.utc))
+    library = Library(_config(), tmp_path / "cache", FakeCli())
+    fetched = library.fetch(ITEM)
+    card = _card()
+    fresh = check_card(card, LINES)
+    stale = json.loads(json.dumps(fresh))
+    stale["conditions"][0]["flags"].append({"code": "unbacked", "reason": "old checker"})
+    stale["counts"]["unbacked"] += 1
+    card_id = store.add(
+        {
+            "item_ref": ITEM, "title": "Demo", "url": "u", "card": card, "checks": stale,
+            "usage": {"flags": stale["counts"]}, "attempts": [], "versions": {},
+            "context_ref": fetched.context_ref, "revision_ref": fetched.revision_ref,
+            "transcript_sha256": fetched.sha256, "verification_status": "unverified",
+            "recheck_outcome": "conditional",
+        }
+    )  # fmt: skip
+    row = TechniqueCards(library, store).recheck(card_id)
+    assert row["checks"] == fresh and row["usage"]["flags"] == fresh["counts"]
+    assert row["version"] == 1  # the card itself did not change
