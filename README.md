@@ -93,6 +93,7 @@ curl --get http://127.0.0.1:8765/v1/market/bars \
 - **코드:** 배포본 `~/.local/share/siw/collector-app`(이 저장소의 git worktree, `origin/main`에 detached)과 그 `.venv`. 원래 체크아웃은 작업 브랜치에 있을 수 있어 쓰지 않는다.
 - **설정:** `--env-file`은 원래 체크아웃의 `.env`. `.env`의 상대 경로 `SIW_DATA_DIR=data`가 배포본 기준으로 풀리지 않도록 plist의 `EnvironmentVariables`에서 `SIW_DATA_DIR`을 원래 체크아웃의 `data` 절대 경로로 준다(uvicorn `--env-file`은 이미 있는 환경 변수를 덮어쓰지 않는다).
 - **로그:** `~/Library/Logs/siw/api.log`, `api.err.log`. `KeepAlive`라 꺼지면 다시 뜬다.
+- **우선순위:** plist의 `ProcessType`은 `Standard`다. `Background`로 두면 macOS가 CPU·디스크를 제한해 시작이 45초~3분으로 늘었다(보통 4~7초, 2026-11-15 측정). 요청 처리도 같은 제한을 받는다.
 - **새 판 반영:** main에 병합된 뒤 배포본을 갱신하고 다시 띄운다. 의존성이 바뀌었으면 배포본에서 `uv sync`도 한다. 수집기는 각자 다시 띄워야 새 코드를 쓴다.
 
 ```bash
