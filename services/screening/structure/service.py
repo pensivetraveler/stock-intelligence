@@ -99,7 +99,10 @@ def daily_bars_from(adapter: Any) -> DailyBars:
             ),
             as_of_utc=as_of,
         )
-        result = adapter.get_bars(query)
+        # The Alpaca adapter's get_bars serves 1m bars only and refuses a "1d" query;
+        # its daily bars come from get_daily_bars (a bars service takes "1d" in get_bars).
+        get_daily = getattr(adapter, "get_daily_bars", None)
+        result = get_daily(query) if callable(get_daily) else adapter.get_bars(query)
         bars = []
         for bar in result.bars:
             if not bar.get("is_final") or not str(bar.get("source_id", "")).startswith("alpaca"):
