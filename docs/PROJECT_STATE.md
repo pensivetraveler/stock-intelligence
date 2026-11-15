@@ -2917,3 +2917,15 @@
   - 백엔드 4개를 추가했다(빈 포인터와 absent 통과, absent 거절 세 경우, 추가 조건이 초안 항목이 됨, 스키마 분리). 경로 시험에는 added 저장·공백 제거·잘못된 field 422를 추가했다.
   - 화면 시험 1개를 추가했다(조건 추가·빈 항목 제외).
 - **남은 위험:** 모델이 `absent`를 실제로 쓰는지는 실호출로 아직 확인하지 않았다. 추가 조건을 규칙으로 옮길 수 있는지는 초안 검사가 판단한다.
+
+## 기법 카드에서 Fable 5.2 사용 중지(임시) — 2026-11-15
+
+- **결정:** 사용자의 임시 조치("비즈니스 서비스 오케스트레이터 문서 검수" 세션을 빼고 Fable 5.2를 쓰지 않음, ai-collab 2b02a4b)에 따라 게이트웨이 세션이 `[요청 #LAG-SIW-2]`로 요청했습니다. 사용자는 "빼기"로 답했습니다.
+- **변경:**
+  - `extract.PAUSED_MODELS = ("anthropic/claude-fable-5.2",)`를 추가했습니다.
+  - 기본 모델 선택지를 Argon(처음 값)과 Astra 둘로 줄였습니다. 실행마다 고르는 목록도 Argon·Astra·Sonnet 5.5·Luna로 줄였습니다.
+  - API Literal(`ModelChoice`, `DefaultChoice`)에서도 뺐기 때문에, Fable을 요청하면 422가 됩니다.
+  - 이미 저장된 기본값이 목록에 없는 모델이면 Argon으로 되돌리고 `technique_settings.default_model_reset`(from/to/at)에 기록합니다. `GET /v1/technique-settings`가 이 기록을 `default_reset`으로 돌려주고, 화면 머리에 "…은 사용 중지되어 기본 모델을 …(으)로 되돌렸습니다"를 표시합니다.
+  - 이전 카드에 남은 모델 이름과 가격(`PRICES`, `MODEL_NAMES`)은 그대로 둡니다.
+- **푸는 법:** `PAUSED_MODELS`를 비우고, Fable을 `DEFAULT_CHOICES`, 라우트 Literal, 화면 `CHOOSABLE_MODELS`에 되돌립니다. 이 변경의 커밋을 되돌려도 됩니다.
+- **시험:** 백엔드에는 Fable 422와 저장된 Fable의 되돌림·기록 유지 시험을 넣었습니다. 화면에는 선택지 두 개와 되돌림 문구 시험을 넣었습니다.

@@ -52,7 +52,6 @@ const preview: TechniquePreview = {
   model: "google/gemini-4-argon",
   fallback: "openai/gpt-6-luna",
   models: [
-    "anthropic/claude-fable-5.2",
     "google/gemini-4-argon",
     "openai/gpt-6-astra",
     "claude-sonnet-5-5",
@@ -182,11 +181,7 @@ const draftDone: TechniqueDraft = {
 const settings: TechniqueSettings = {
   kind: "technique_settings",
   default_model: "google/gemini-4-argon",
-  default_choices: [
-    "anthropic/claude-fable-5.2",
-    "google/gemini-4-argon",
-    "openai/gpt-6-astra",
-  ],
+  default_choices: ["google/gemini-4-argon", "openai/gpt-6-astra"],
   models: [],
 };
 
@@ -341,37 +336,43 @@ describe("technique cards", () => {
     fireEvent.change(
       await screen.findByLabelText("Model for this extraction"),
       {
-        target: { value: "anthropic/claude-fable-5.2" },
+        target: { value: "openai/gpt-6-astra" },
       },
     );
     await waitFor(() =>
-      expect(api.preview).toHaveBeenLastCalledWith(
-        ITEM,
-        "anthropic/claude-fable-5.2",
-      ),
+      expect(api.preview).toHaveBeenLastCalledWith(ITEM, "openai/gpt-6-astra"),
     );
     fireEvent.click(
       await screen.findByRole("button", { name: "Extract card (costs money)" }),
     );
     await waitFor(() =>
-      expect(api.start).toHaveBeenCalledWith(
-        ITEM,
-        "anthropic/claude-fable-5.2",
-      ),
+      expect(api.start).toHaveBeenCalledWith(ITEM, "openai/gpt-6-astra"),
     );
   });
 
-  it("changes the default model to one of Fable, Argon and Astra", async () => {
+  it("changes the default model to Argon or Astra (Fable paused)", async () => {
     const api = fakeApi();
+    vi.mocked(api.settings).mockResolvedValue({
+      ...settings,
+      default_reset: {
+        from: "anthropic/claude-fable-5.2",
+        to: "google/gemini-4-argon",
+        at: "2026-11-15T02:00:00Z",
+      },
+    });
     render(<TechniqueCardsScreen api={api} onClose={() => undefined} />);
     const select = (await screen.findByLabelText(
       "Default model",
     )) as HTMLSelectElement;
     expect([...select.options].map((o) => o.textContent)).toEqual([
-      "Fable 5.2",
       "Gemini 4 Argon",
       "GPT-6 Astra",
     ]);
+    expect(
+      screen.getByText(
+        "Fable 5.2 is paused; the default went back to Gemini 4 Argon.",
+      ),
+    ).toBeTruthy();
     fireEvent.change(select, { target: { value: "openai/gpt-6-astra" } });
     await waitFor(() =>
       expect(api.setDefaultModel).toHaveBeenCalledWith("openai/gpt-6-astra"),
