@@ -1,6 +1,6 @@
 # ADR 0058 — Pine 지표를 가져올 때 자체 지표로 변환
 
-- **Status:** proposed(초안). 2026-11-15 사용자가 방향을 정했다("Pine은 입력 통로"). 단계마다 사용자 승인 뒤에 구현한다.
+- **Status:** accepted. 2026-11-15 사용자가 방향을 정하고("Pine은 입력 통로") 이 ADR을 승인했다("승인"). 같은 승인으로 구현 1단계를 시작한다. 2~4단계는 단계마다 사용자 승인 뒤에 구현한다.
 - **Date:** 2026-11-15
 - **Related:** [ADR 0026](0026-formula-indicators.md)(수식 지표), [ADR 0040](0040-pine-script-indicators.md)(Pine 해석기), [ADR 0042](0042-claude-assistants.md)(Pine 전략 → 규칙 변환, 지표 도우미), [ADR 0023](0023-python-custom-indicators.md)(Python 지표)
 
