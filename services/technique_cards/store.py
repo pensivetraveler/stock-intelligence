@@ -296,6 +296,22 @@ class CardStore:
             )
         return self.get(card_id)
 
+    def update_checks(self, card_id: str, checks: dict[str, Any]) -> dict[str, Any]:
+        """New script check results for the same card text (a fixed checker, 2026-11-16);
+        the card, its version and the user's resolutions stay as they are."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT usage FROM technique_cards WHERE card_id = ?", (card_id,)
+            ).fetchone()
+            if row is None:
+                raise CardNotFoundError(card_id)
+            usage = json.loads(row[0]) | {"flags": checks["counts"]}
+            self._db.execute(
+                "UPDATE technique_cards SET checks = ?, usage = ? WHERE card_id = ?",
+                (json.dumps(checks), json.dumps(usage), card_id),
+            )
+        return self.get(card_id)
+
     # --- strategy drafts (ADR 0056 L3) -----------------------------------------------------
 
     def new_draft(self, card_id: str, model: str) -> str:
