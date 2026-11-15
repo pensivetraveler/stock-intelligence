@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from services.technique_cards.citations import Line, format_time, locator_seconds
+from services.technique_cards.citations import Line, format_locator, locator_position, unit_of
 from services.technique_cards.structured_scoring import ground_condition
 
 CHECKS_VERSION = 1
@@ -71,21 +71,30 @@ def check_card(card: dict[str, Any], lines: list[Line]) -> dict[str, Any]:
     }
 
 
-def _cited_seconds(item: dict[str, Any]) -> list[int]:
+def _cited_positions(item: dict[str, Any], unit: str) -> list[int]:
     found = []
     for citation in list(item.get("citations") or []) + list(item.get("value_citations") or []):
-        at = locator_seconds(str(citation.get("locator", "")))
+        at = locator_position(str(citation.get("locator", "")), unit)
         if at is not None:
             found.append(at)
     return found
 
 
 def timeline(card: dict[str, Any], lines: list[Line]) -> list[dict[str, Any]]:
-    """Each transcript line with what cites it (conditions by index, universe by index)."""
+    """Each source line with what cites it (conditions by index, universe by index). A page or
+    paragraph citation marks every line of that page or paragraph."""
+    unit = unit_of(lines)
     marks: dict[int, dict[str, list[int]]] = {}
     for kind in ("conditions", "universe"):
         for index, item in enumerate(card.get(kind) or []):
-            for at in _cited_seconds(item):
+            for at in _cited_positions(item, unit):
+                if unit != "time":
+                    for i, line in enumerate(lines):
+                        if line.seconds == at:
+                            marks.setdefault(i, {"conditions": [], "universe": []})[kind].append(
+                                index
+                            )
+                    continue
                 nearest = min(
                     range(len(lines)), key=lambda i: abs(lines[i].seconds - at), default=None
                 )
@@ -94,7 +103,7 @@ def timeline(card: dict[str, Any], lines: list[Line]) -> list[dict[str, Any]]:
                 marks.setdefault(nearest, {"conditions": [], "universe": []})[kind].append(index)
     return [
         {
-            "time": format_time(line.seconds),
+            "time": format_locator(line.unit, line.seconds),
             "text": line.text,
             "conditions": sorted(set(marks.get(i, {}).get("conditions", []))),
             "universe": sorted(set(marks.get(i, {}).get("universe", []))),

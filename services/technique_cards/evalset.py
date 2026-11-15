@@ -59,11 +59,39 @@ SPLIT_OVER_SECONDS = 1800
 SLICE_SECONDS = 1200
 OVERLAP_SECONDS = 30
 MIN_TAIL_SECONDS = 300  # a last slice shorter than 5 minutes joins the one before (#SIW-lib-16)
+# A PDF or a written text is cut by characters, at a page or paragraph edge: about the size of
+# a 20-minute caption slice, and the cited page or paragraph is repeated in the next slice.
+SPLIT_OVER_CHARS = 45_000
+SLICE_CHARS = 30_000
 PART_MARK = "#p"
 
 
+def _split_by_size(lines: list[Line]) -> list[list[Line]]:
+    """Slices of a page or paragraph source, cut where the position changes; the last position
+    of a slice opens the next one too."""
+    if sum(len(line.text) for line in lines) <= SPLIT_OVER_CHARS:
+        return [lines]
+    parts: list[list[Line]] = []
+    current: list[Line] = []
+    size = 0
+    for line in lines:
+        if size >= SLICE_CHARS and current and line.seconds != current[-1].seconds:
+            parts.append(current)
+            last = current[-1].seconds
+            current = [x for x in current if x.seconds == last]
+            size = sum(len(x.text) for x in current)
+        current.append(line)
+        size += len(line.text)
+    if current:
+        parts.append(current)
+    return parts
+
+
 def split_parts(lines: list[Line]) -> list[list[Line]]:
-    """The time slices of a transcript; one slice when it is 30 minutes or shorter."""
+    """The time slices of a transcript; one slice when it is 30 minutes or shorter. A PDF or a
+    written text is cut by size instead."""
+    if lines and lines[0].unit != "time":
+        return _split_by_size(lines)
     if not lines or lines[-1].seconds <= SPLIT_OVER_SECONDS:
         return [lines]
     end = lines[-1].seconds
