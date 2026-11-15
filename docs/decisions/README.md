@@ -39,7 +39,7 @@ Revisit when: 어느 조건에서 재검토하나
 - `0023-python-custom-indicators.md`: Python 사용자 지표(Phase 4) — update(ctx)를 봉마다 호출해 구조적으로 미래 차단, 전략 샌드박스 재사용, 버전 고정(py:id@버전), 차트 통합
 - `0024-filings-and-dark-pool-agents.md`: 공시·다크풀 근거 Agent(Phase 6) — SEC EDGAR(Submissions·CompanyFacts, User-Agent 명시, 초당 5회 이하)와 FINRA 주간 ATS/비ATS 집계(지연·방향 없음 표시), 게시 시각과 최초 관측 시각 분리, 시점 이후 차단, 조회 전용
 - `0025-broker-reconciliation.md`: 증권사 API 원장과 수동·거래내역서 체결의 대사(조회 전용 계산 보기, 원장 불변) — 시각 정밀도별 창, bp 가격 허용 오차, 1:1·여러 체결 합산·주문번호 연결, 일치·불일치·한쪽에만 분류와 사유
-- `0026-formula-indicators.md`: 수식 지표(Phase 4) — 허용 목록 함수·사칙연산의 안전한 수식, eval 없는 파서, 상수 길이·과거만 참조, 차트별 저장, 입력 중 검증
+- `0026-formula-indicators.md`: 수식 지표(Phase 4) — 허용 목록 함수·사칙연산의 안전한 수식, eval 없는 파서, 상수 길이·과거만 참조, 차트별 저장, 입력 중 검증 2026-11-15 개정(ADR 0058 §2): 여러 줄 문장, `input` 설정값(숫자·참/거짓·가격), `plot` 여러 개와 색·두께·히스토그램, `hline`, 비교·논리·삼항·`%`·`x[n]`, 함수 추가(crossover·cum·tr·macd·bb·stoch·cci·mfi·nz·na), 4,000자.
 - `0027-higher-timeframe-indicators.md`: 큰 시간대 지표 — 분봉 차트에 일봉·주봉 지표, 확정·공개된 큰 봉만 각 차트 봉 종료 시점 기준으로 반영(미래 차단), 요청별 캐시
 - `0028-electron-desktop-shell.md`: Electron 데스크톱 셸 — siw://app 출처로 화면 제공, 로컬 API는 저장소에서 찾거나 실행(번들 안 함), 서명 없는 x64 .app/.dmg
 - `0035-alpaca-default-us-provider.md`: Alpaca(SIP·BOATS)를 미국 시세·종목 검색·기업 행위의 기본 공급업체로 선정(사용자 결정, 코드 기본값은 합성 데이터 유지), Massive는 미검증 대체 후보

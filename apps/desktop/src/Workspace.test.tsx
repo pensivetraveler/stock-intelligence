@@ -2693,6 +2693,64 @@ describe("indicators", () => {
     );
   });
 
+  it("adds a formula with settings and several lines, and changes a setting", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Formula" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /New formula indicator/ }),
+    );
+    const editor = screen.getByRole("dialog", { name: "Formula indicator" });
+    fireEvent.change(within(editor).getByLabelText("Formula"), {
+      target: {
+        value: `fast = input(3, "Fast length")
+plot(sma(close, fast), "Fast", linewidth = 2)
+plot(foo)`,
+      },
+    });
+    expect(within(editor).getByRole("alert")).toHaveTextContent(
+      'unknown name "foo"',
+    );
+    expect(within(editor).getByRole("alert")).toHaveTextContent("line 3");
+    fireEvent.change(within(editor).getByLabelText("Formula"), {
+      target: {
+        value: `fast = input(3, "Fast length")
+plot(sma(close, fast), "Fast", linewidth = 2)
+plot(sma(close, 5), "Slow")
+hline(100)`,
+      },
+    });
+    fireEvent.change(within(editor).getByLabelText("Name"), {
+      target: { value: "Two" },
+    });
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Add to chart" }),
+    );
+
+    const legend = await screen.findByRole("list", {
+      name: "Indicators on this chart",
+    });
+    expect(legend).toHaveTextContent("Two");
+    expect(savedLayout(storage).charts[0].indicators[0]).toMatchObject({
+      type: "formula",
+      params: { fast: 3 },
+      style: { outputs: { plot0: { width: 2 } } },
+    });
+    fireEvent.click(
+      within(legend).getByRole("button", { name: "Two settings" }),
+    );
+    const settings = screen.getByRole("dialog", { name: "Two settings" });
+    fireEvent.change(within(settings).getByLabelText("Fast length"), {
+      target: { value: "4" },
+    });
+    expect(savedLayout(storage).charts[0].indicators[0].params).toEqual({
+      fast: 4,
+    });
+  });
+
   it("adds a Pine Script indicator, points at errors and edits it from the legend", async () => {
     const storage = memoryStorage();
     render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
