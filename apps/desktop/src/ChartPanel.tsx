@@ -46,6 +46,7 @@ import type { ChartSyncGroup } from "./chart-sync";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { FormulaFields } from "./FormulaEditor";
 import { formulaDefinition } from "./formula";
+import { ConvertedNote, PineConversionNote } from "./PineConversion";
 import { PineFields } from "./PineEditor";
 import { isPineStrategy } from "./pine-assistant";
 import {
@@ -1922,6 +1923,19 @@ export function ChartPanel({
                                     }
                                   />
                                 ) : null}
+                                {item.instance.type === "pine" &&
+                                !isPineStrategy(item.instance.pine ?? "") ? (
+                                  <PineConversionNote
+                                    instance={item.instance}
+                                    bars={ohlcv}
+                                    context={{
+                                      timeZone: zoneOf(instrumentId).timeZone,
+                                    }}
+                                    onConvert={(next) =>
+                                      changeIndicator(item.key, () => next)
+                                    }
+                                  />
+                                ) : null}
                                 {item.instance.type === "formula" ? (
                                   <FormulaFields
                                     initial={{
@@ -1935,6 +1949,16 @@ export function ChartPanel({
                                       changeIndicator(item.key, (current) => ({
                                         ...current,
                                         ...value,
+                                        // A converted formula, once changed, is no longer the script's.
+                                        ...(current.converted &&
+                                        value.formula !== current.formula
+                                          ? {
+                                              converted: {
+                                                ...current.converted,
+                                                edited: true,
+                                              },
+                                            }
+                                          : {}),
                                         // Settings that no longer exist drop; new ones take their defaults.
                                         params: cleanParams(
                                           formulaDefinition(
@@ -1945,6 +1969,15 @@ export function ChartPanel({
                                           current.params,
                                         ),
                                       }))
+                                    }
+                                  />
+                                ) : null}
+                                {item.instance.type === "formula" &&
+                                item.instance.converted ? (
+                                  <ConvertedNote
+                                    instance={item.instance}
+                                    onRevert={(next) =>
+                                      changeIndicator(item.key, () => next)
                                     }
                                   />
                                 ) : null}

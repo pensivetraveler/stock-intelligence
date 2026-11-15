@@ -71,7 +71,7 @@ export function loopBudget(barCount: number): {
 }
 const MAX_CALL_DEPTH = 32;
 
-const SOURCES = [
+export const SOURCES = [
   "close",
   "open",
   "high",
@@ -81,7 +81,7 @@ const SOURCES = [
   "ohlc4",
 ] as const;
 
-const COLORS: Record<string, string> = {
+export const COLORS: Record<string, string> = {
   "color.red": "#f23645",
   "color.green": "#089981",
   "color.blue": "#2962ff",
@@ -101,7 +101,7 @@ const COLORS: Record<string, string> = {
   "color.silver": "#b2b5be",
 };
 
-const DEFAULT_PLOT_COLOR = "#2962ff";
+export const DEFAULT_PLOT_COLOR = "#2962ff";
 const TRANSPARENT = "rgba(0, 0, 0, 0)";
 
 /**
@@ -234,7 +234,7 @@ export const PINE_FUNCTIONS = [
 ] as const;
 
 /** Parameter names of built-ins, so named arguments land in the right place. */
-const SIGNATURES: Record<string, string[]> = {
+export const SIGNATURES: Record<string, string[]> = {
   plot: [
     "series",
     "title",
@@ -483,7 +483,7 @@ const SIGNATURES: Record<string, string[]> = {
   "ta.kc": ["series", "length", "mult", "useTrueRange"],
 };
 /** Fallback order for `ta.*` named arguments not in SIGNATURES. */
-const TA_ORDER: Record<string, number> = {
+export const TA_ORDER: Record<string, number> = {
   source: 0,
   series: 0,
   length: 1,
