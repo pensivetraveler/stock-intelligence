@@ -44,6 +44,18 @@ const en = {
   "ind.cat.volatility": "Volatility",
   "ind.cat.volume": "Volume",
   "ind.cat.formula": "Formula",
+  "pc.notConverted":
+    "Runs as Pine Script, which can be slow on long charts. Not converted to a formula: {reason} (line {line}).",
+  "pc.canConvert":
+    "This script can run as a formula, much faster on long charts. Converting checks that both draw the same on this chart's bars and on sample bars.",
+  "pc.convert": "Convert to a formula",
+  "pc.convertFailed": "Not converted: {reason}",
+  "pc.fromPine":
+    "Converted from Pine Script; the formula and the script drew the same on {bars} bars (converter {converter}). That shows they agree on those bars, not that they are the same program.",
+  "pc.fromPineEdited":
+    "Converted from Pine Script ({converter}) and changed since. Going back to the script drops the changes.",
+  "pc.original": "Original Pine Script",
+  "pc.revert": "Back to the Pine Script",
   "formula.title": "Formula indicator",
   "formula.note":
     "Combine prices and built-in indicators with + - * / \u2014 computed in the app from this chart's bars, using only each bar and earlier ones.",
@@ -2162,6 +2174,18 @@ const ko: Record<MessageKey, string> = {
   "ind.cat.volatility": "변동성",
   "ind.cat.volume": "거래량",
   "ind.cat.formula": "수식",
+  "pc.notConverted":
+    "Pine Script로 실행합니다. 긴 차트에서 느릴 수 있습니다. 수식으로 바꾸지 못한 이유: {reason} ({line}줄)",
+  "pc.canConvert":
+    "이 스크립트는 수식으로 실행할 수 있습니다. 긴 차트에서 훨씬 빠릅니다. 변환할 때 이 차트의 봉과 표본 봉에서 둘이 같은 값을 그리는지 확인합니다.",
+  "pc.convert": "수식으로 변환",
+  "pc.convertFailed": "변환하지 않았습니다: {reason}",
+  "pc.fromPine":
+    "Pine Script에서 변환한 수식입니다. {bars}개 봉에서 수식과 스크립트가 같은 값을 그렸습니다(변환기 {converter}). 그 봉들에서 같았다는 뜻이지, 두 프로그램이 같다는 증명은 아닙니다.",
+  "pc.fromPineEdited":
+    "Pine Script에서 변환한 뒤({converter}) 수식을 고쳤습니다. 스크립트로 되돌리면 고친 내용은 사라집니다.",
+  "pc.original": "원본 Pine Script",
+  "pc.revert": "Pine Script로 되돌리기",
   "formula.title": "수식 지표",
   "formula.note":
     "가격과 내장 지표를 + - * / 로 조합합니다. 이 차트의 봉으로 앱에서 계산하며, 각 값은 그 봉과 이전 봉만 씁니다.",

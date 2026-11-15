@@ -2778,7 +2778,9 @@ hline(100)`,
     expect(
       within(editor).getByRole("button", { name: "Add to chart" }),
     ).toBeDisabled();
-    fireEvent.change(code, { target: { value: example } });
+    // plotshape has no formula yet, so this script stays Pine (ADR 0058).
+    const script = `${example}plotshape(fast > slow)\n`;
+    fireEvent.change(code, { target: { value: script } });
     fireEvent.click(
       within(editor).getByRole("button", { name: "Add to chart" }),
     );
@@ -2792,7 +2794,7 @@ hline(100)`,
         key: expect.any(String),
         type: "pine",
         params: { fast_length: 9, slow_length: 21, source: 0 },
-        pine: example,
+        pine: script,
         style: { outputs: { plot1: { width: 2 } } },
       },
     ]);
@@ -2802,12 +2804,15 @@ hline(100)`,
     const settings = screen.getByRole("dialog", {
       name: "EMA Cross settings",
     });
+    expect(settings).toHaveTextContent(
+      "Not converted to a formula: plotshape() is not converted yet (line 10)",
+    );
     fireEvent.change(within(settings).getByLabelText("Source"), {
       target: { value: "1" },
     });
     expect(legend).toHaveTextContent("EMA Cross 9, 21, open");
     fireEvent.change(within(settings).getByLabelText("Pine Script code"), {
-      target: { value: example.replace("input.int(9", "input.int(5") },
+      target: { value: script.replace("input.int(9", "input.int(5") },
     });
     fireEvent.click(within(settings).getByRole("button", { name: "Apply" }));
     const saved = savedLayout(storage).charts[0].indicators[0];
@@ -2817,6 +2822,66 @@ hline(100)`,
       fast_length: 9,
       slow_length: 21,
       source: 1,
+    });
+  });
+
+  it("runs a Pine indicator that converts as a formula, and goes back and forth", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Pine Script" }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /New Pine Script indicator/ }),
+    );
+    const editor = screen.getByRole("dialog", {
+      name: "Pine Script indicator",
+    });
+    const example = (
+      within(editor).getByLabelText("Pine Script code") as HTMLTextAreaElement
+    ).value;
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Add to chart" }),
+    );
+
+    const legend = await screen.findByRole("list", {
+      name: "Indicators on this chart",
+    });
+    expect(legend).toHaveTextContent("EMA Cross");
+    const saved = savedLayout(storage).charts[0].indicators[0];
+    expect(saved).toMatchObject({
+      type: "formula",
+      label: "EMA Cross",
+      pane: "price",
+      params: { fastlength: 9, slowlength: 21, src: 3 },
+      style: { outputs: { plot1: { width: 2 } } },
+      converted: { pine: example, converter: "pine-formula/1" },
+    });
+    expect(saved.converted.bars).toBeGreaterThanOrEqual(600);
+
+    fireEvent.click(
+      within(legend).getByRole("button", { name: "EMA Cross settings" }),
+    );
+    let settings = screen.getByRole("dialog", { name: "EMA Cross settings" });
+    expect(settings).toHaveTextContent("Converted from Pine Script");
+    fireEvent.click(
+      within(settings).getByRole("button", { name: "Back to the Pine Script" }),
+    );
+    expect(savedLayout(storage).charts[0].indicators[0]).toMatchObject({
+      type: "pine",
+      pine: example,
+      params: { fast_length: 9, slow_length: 21, source: 0 },
+    });
+    settings = screen.getByRole("dialog", { name: "EMA Cross settings" });
+    fireEvent.click(
+      within(settings).getByRole("button", { name: "Convert to a formula" }),
+    );
+    expect(savedLayout(storage).charts[0].indicators[0]).toMatchObject({
+      type: "formula",
+      converted: { pine: example },
     });
   });
 

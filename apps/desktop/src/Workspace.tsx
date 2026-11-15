@@ -39,7 +39,7 @@ import {
 } from "./replay";
 import { type AssistantStart, IndicatorAssistant } from "./IndicatorAssistant";
 import { renderBarsImage } from "./chart-image";
-import { pineScriptsOn } from "./pine-assistant";
+import { isPineStrategy, pineScriptsOn } from "./pine-assistant";
 import type { IndicatorAssistantApi } from "./indicator-assistant-api";
 import { pineStrategiesOn } from "./strategy-research";
 import type { StrategyResearchApi } from "./strategy-research-api";
@@ -123,6 +123,7 @@ import { latestCustom, registerCustom } from "./custom-indicators";
 import { CustomIndicatorEditor } from "./CustomIndicatorEditor";
 import { FormulaDialog, type FormulaValue } from "./FormulaEditor";
 import { formulaDefinition, formulaWidths } from "./formula";
+import { convertInstance } from "./pine-convert";
 import { PineDialog } from "./PineEditor";
 import { pineDefinition, pineWidths } from "./pine";
 import type { BacktestApi } from "./backtest-api";
@@ -2210,10 +2211,19 @@ export function Workspace({
           onAdd={(source) => {
             setPineOpen(false);
             setIndicatorsOpen(false);
+            // A script that converts, and draws the same, runs as a formula (ADR 0058).
+            const pine = pineInstance(newId(), source);
+            const conversion = isPineStrategy(source)
+              ? null
+              : convertInstance(pine, chartBars.current[activeChart] ?? [], {
+                  timeZone: zoneOf(activeConfig.instrumentId).timeZone,
+                });
             updateActive({
               indicators: [
                 ...(activeConfig.indicators ?? []),
-                pineInstance(newId(), source),
+                conversion && "instance" in conversion
+                  ? conversion.instance
+                  : pine,
               ],
             });
           }}
