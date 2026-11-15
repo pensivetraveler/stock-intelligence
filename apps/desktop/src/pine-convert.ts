@@ -142,6 +142,163 @@ const OPERATORS = new Set([
 ]);
 /** Statements with no effect in the app (ADR 0040), left out of the formula. */
 const IGNORED = new Set(["indicator", "study", "alertcondition", "alert"]);
+
+const STYLE_CONSTANT =
+  /^(plot\.style_|plot\.linestyle_|hline\.style_|display\.|shape\.|location\.|size\.|yloc\.|xloc\.|label\.style_|line\.style_|extend\.|text\.align_|position\.|format\.)/;
+
+/**
+ * Every part of a script the converter has no formula for, in the order met (for the
+ * conversion survey, ADR 0058 step 4). The converter itself stops at the first one.
+ */
+export function pineBlockers(source: string): string[] {
+  let program: PineProgram;
+  try {
+    program = compilePine(source);
+  } catch (error) {
+    return [error instanceof PineError ? "does not compile" : String(error)];
+  }
+  const found: string[] = [];
+  const add = (item: string) => {
+    if (!found.includes(item)) found.push(item);
+  };
+  if (program.strategy) add("strategy()");
+  const fields = new Set([
+    ...FORMULA_FIELDS,
+    "hlcc4",
+    "ta.tr",
+    "ta.obv",
+    "ta.vwap",
+    "na",
+  ]);
+  const known = (name: string) =>
+    FUNCTIONS[name] ||
+    TUPLES[name] ||
+    IGNORED.has(name) ||
+    name === "plot" ||
+    name === "hline" ||
+    name.startsWith("log.") ||
+    [
+      "input",
+      "input.int",
+      "input.float",
+      "input.bool",
+      "input.source",
+      "color.new",
+      "color.rgb",
+    ].includes(name);
+  const declared = new Set<string>();
+  const expr = (e: Expr | null | undefined): void => {
+    if (!e) return;
+    switch (e.kind) {
+      case "name":
+        // Style constants (shape.*, location.*, …) belong to the call that takes them.
+        if (e.name === "display.none") add("plot display=display.none");
+        else if (
+          !declared.has(e.name) &&
+          !fields.has(e.name) &&
+          !COLORS[e.name] &&
+          !STYLE_CONSTANT.test(e.name)
+        ) {
+          add(e.name);
+        }
+        return;
+      case "call":
+        if (!known(e.name)) add(`${e.name}()`);
+        if (e.name.startsWith("input.") && !known(e.name)) return;
+        e.args.forEach(expr);
+        Object.values(e.named).forEach(expr);
+        return;
+      case "index":
+        if (e.offset.kind !== "number") add("[n] with a computed n");
+        expr(e.target);
+        expr(e.offset);
+        return;
+      case "unary":
+        expr(e.operand);
+        return;
+      case "binary":
+        if (!OPERATORS.has(e.op)) add(`operator ${e.op}`);
+        expr(e.left);
+        expr(e.right);
+        return;
+      case "ternary":
+        if (stateful(e.then) || stateful(e.otherwise))
+          add("ta.* inside one side of ?:");
+        expr(e.test);
+        expr(e.then);
+        expr(e.otherwise);
+        return;
+      case "tuple":
+        add("tuple value");
+        e.items.forEach(expr);
+        return;
+      case "block":
+        statements([e.statement]);
+        return;
+      case "string":
+        return;
+      default:
+        return;
+    }
+  };
+  const statements = (body: Stmt[]) => {
+    for (const stmt of body) {
+      switch (stmt.kind) {
+        case "declare":
+          if (stmt.persistent) add("var");
+          expr(stmt.value);
+          stmt.names.forEach((name) => declared.add(name));
+          break;
+        case "assign":
+          add(":=");
+          expr(stmt.value);
+          break;
+        case "if":
+          add("if block");
+          expr(stmt.test);
+          statements(stmt.body);
+          statements(stmt.otherwise);
+          break;
+        case "switch":
+          add("switch block");
+          expr(stmt.subject);
+          stmt.cases.forEach((item) => {
+            expr(item.test);
+            statements(item.body);
+          });
+          break;
+        case "for":
+        case "forin":
+        case "while":
+          add("loop");
+          if (stmt.kind === "for") {
+            declared.add(stmt.name);
+            expr(stmt.from);
+            expr(stmt.to);
+          }
+          if (stmt.kind === "forin")
+            stmt.names.forEach((name) => declared.add(name));
+          if (stmt.kind === "while") expr(stmt.test);
+          statements(stmt.body);
+          break;
+        case "function":
+          add("user function");
+          declared.add(stmt.name);
+          stmt.params.forEach((name) => declared.add(name));
+          statements(stmt.body);
+          break;
+        case "expr":
+          expr(stmt.value);
+          break;
+        default:
+          break;
+      }
+    }
+  };
+  statements(program.body as Stmt[]);
+  if (program.requests.length > 0) add("request.security()");
+  return found;
+}
 /** plot() settings the app does not use, so they change nothing. */
 const IGNORED_PLOT_SETTINGS = new Set([
   "editable",
