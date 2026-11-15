@@ -414,11 +414,88 @@ describe("technique cards", () => {
     );
     fireEvent.click(save);
     await waitFor(() =>
-      expect(api.saveDraft).toHaveBeenCalledWith("d1", "Demo lesson", true),
+      expect(api.saveDraft).toHaveBeenCalledWith(
+        "d1",
+        "Demo lesson",
+        true,
+        false,
+      ),
     );
     expect(
       await screen.findByText(/Saved as strategy-abc version 1/),
     ).toBeTruthy();
+  });
+
+  it("drafts by script for free and asks to keep an unstated reading", async () => {
+    const api = fakeApi();
+    const scripted: TechniqueDraft = {
+      ...draftDone,
+      model: "script",
+      needs_accept: false,
+      needs_confirm: true,
+      result: {
+        ...draftDone.result!,
+        items: ["[entry, long, from the source] buy"],
+        conversion: {
+          ...draftDone.result!.conversion,
+          mapping: [draftDone.result!.conversion.mapping[0]!],
+        },
+        scripted: [0],
+        assumptions: [
+          {
+            index: 0,
+            kind: "default_length",
+            indicator: "sma",
+            param: "length",
+            value: 9,
+          },
+        ],
+        unconvertible: 0,
+        cost_usd: "0",
+      },
+    };
+    vi.mocked(api.draft).mockResolvedValue(scripted);
+    vi.mocked(api.cards).mockResolvedValue([card()]);
+    vi.mocked(api.card).mockResolvedValue(card({ ready: true, blocks: [] }));
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
+    const select = (await screen.findByLabelText("Model")) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "script" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make a draft (free)" }),
+    );
+    await waitFor(() =>
+      expect(api.startDraft).toHaveBeenCalledWith("c1", "script"),
+    );
+    expect(
+      await screen.findByText(
+        "Item 1: no length given; the engine default 9 for sma is used",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("In the rules · by script")).toBeTruthy();
+    const save = screen.getByRole("button", {
+      name: "Save as a rules strategy",
+    });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(
+      screen.getByLabelText("I checked the 1 reading(s) above and keep them"),
+    );
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(api.saveDraft).toHaveBeenCalledWith(
+        "d1",
+        "Demo lesson",
+        false,
+        true,
+      ),
+    );
   });
 
   it("labels slots", () => {

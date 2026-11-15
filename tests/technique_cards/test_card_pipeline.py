@@ -553,10 +553,13 @@ def _ready_card(store: CardStore) -> dict[str, Any]:
     card = _card()
     card["position"] = [{"text": "Bet small", "basis": "source", "citations": []}]
     card["conditions"] = [
-        _condition(),
-        _condition(field="exit", text="Sell under the 10-day low", comparator="below"),
+        # Slots the script turns into DONCHIAN's rules (script first, 2026-11-15).
+        _condition(text="Buy above the 20-day high", comparator="above",
+                   right=_op("price", "highest_high", period=20)),
+        _condition(field="exit", text="Sell under the 10-day low", comparator="below",
+                   right=_op("price", "lowest_low", period=10)),
         card["conditions"][3],  # "skip when the tools disagree": the user drops it
-    ]
+    ]  # fmt: skip
     card_id = store.add(
         {
             "item_ref": ITEM, "title": "Demo", "url": "u", "card": card,
