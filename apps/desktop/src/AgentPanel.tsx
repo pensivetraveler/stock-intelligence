@@ -5,6 +5,7 @@ import type { AgentApi, ChartReviewRequest, ExecutionRef } from "./agent-api";
 import { AgentAnalysisView } from "./AgentAnalysisView";
 import type { RealFills } from "./BacktestResultsView";
 import { exchangeTime } from "./chart-data";
+import { PanelTabs } from "./Shell";
 import { accountLabel } from "./account-label";
 import { useI18n } from "./i18n";
 import { MarketApiError } from "./market-api";
@@ -50,6 +51,10 @@ export function AgentPanel({
   const [current, setCurrent] = useState<AgentAnalysis | null>(null);
   const [chosen, setChosen] = useState<string[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
+  // Entry points as tabs (디자인-siw-1 N2): chart now, executions, filings, dark pool.
+  const [entry, setEntry] = useState<
+    "chart" | "trades" | "filings" | "darkPool"
+  >("chart");
   const [busy, setBusy] = useState(false);
   const [withHindsight, setWithHindsight] = useState(false);
   // SEC EDGAR and FINRA cover US listings only.
@@ -130,6 +135,12 @@ export function AgentPanel({
   const key = (row: ExecutionRef) => `${row.ledger}:${row.execution_id}`;
   const zone = zoneOf(instrumentId);
 
+  const tabs = [
+    ["chart", t("agent.tab.chart")],
+    ["trades", t("agent.tab.trades")],
+    ["filings", t("agent.tab.filings")],
+    ["darkPool", t("agent.tab.darkPool")],
+  ] as const;
   return (
     <section className="quote-panel agent-panel" aria-label={t("agent.title")}>
       <h2>{t("agent.title")}</h2>
@@ -140,117 +151,146 @@ export function AgentPanel({
         </p>
       ) : null}
 
-      <h3>
-        {t("agent.chartNow", { symbol: symbolOf(instrumentId), timeframe })}
-      </h3>
-      <button
-        type="button"
-        className="tb-button"
-        disabled={busy}
-        onClick={() =>
-          run(
-            api.reviewChart({
-              instrumentId,
-              timeframe,
-              cutoffUtc: cutoffUtc(),
-            }),
-          )
-        }
-      >
-        {t("agent.reviewChart")}
-      </button>
+      <PanelTabs
+        label={t("agent.title")}
+        value={entry}
+        onChange={setEntry}
+        tabs={tabs}
+      />
 
-      <h3>{t("agent.trades", { symbol: symbolOf(instrumentId) })}</h3>
-      {rows.length === 0 ? (
-        <p className="workspace-note">{t("agent.noExecutions")}</p>
-      ) : (
+      {entry === "chart" ? (
         <>
-          <ul className="agent-executions" aria-label={t("agent.executions")}>
-            {rows.slice(0, 100).map((row) => (
-              <li key={key(row)}>
-                <label className="bt-inline">
-                  <input
-                    type="checkbox"
-                    checked={chosen.includes(key(row))}
-                    onChange={() =>
-                      setChosen((list) =>
-                        list.includes(key(row))
-                          ? list.filter((item) => item !== key(row))
-                          : [...list, key(row)],
-                      )
-                    }
-                  />
-                  {t(`agent.ledger.${row.ledger}`)}
-                  {row.account
-                    ? ` [${accountLabel(row.account, t)}]`
-                    : ""} · {row.side} {row.quantity} @ {row.price} ·{" "}
-                  {row.time ? exchangeTime(row.time, zone) : t("agent.noTime")}
-                </label>
-              </li>
-            ))}
-          </ul>
+          <h3>
+            {t("agent.chartNow", { symbol: symbolOf(instrumentId), timeframe })}
+          </h3>
           <button
             type="button"
             className="tb-button"
-            disabled={busy || chosen.length === 0}
+            disabled={busy}
             onClick={() =>
               run(
-                api.reviewTrades(
+                api.reviewChart({
                   instrumentId,
-                  rows
-                    .filter((row) => chosen.includes(key(row)))
-                    .map(({ ledger, execution_id }) => ({
-                      ledger,
-                      execution_id,
-                    })),
-                ),
+                  timeframe,
+                  cutoffUtc: cutoffUtc(),
+                }),
               )
             }
           >
-            {t("agent.reviewTrades", { n: chosen.length })}
+            {t("agent.reviewChart")}
           </button>
         </>
-      )}
+      ) : null}
 
-      <h3>{t("agent.filings", { symbol: symbolOf(instrumentId) })}</h3>
-      <p className="workspace-note">{t("agent.filingsNote")}</p>
-      <label className="bt-inline">
-        <input
-          type="checkbox"
-          checked={withHindsight}
-          onChange={(event) => setWithHindsight(event.target.checked)}
-        />
-        {t("agent.filingsAfter")}
-      </label>
-      <button
-        type="button"
-        className="tb-button"
-        disabled={busy || !usListing}
-        onClick={() =>
-          run(
-            api.reviewFilings({
-              instrumentId,
-              cutoffUtc: cutoffUtc(),
-              afterDays: withHindsight ? 7 : 0,
-            }),
-          )
-        }
-      >
-        {t("agent.reviewFilings")}
-      </button>
+      {entry === "trades" ? (
+        <>
+          <h3>{t("agent.trades", { symbol: symbolOf(instrumentId) })}</h3>
+          {rows.length === 0 ? (
+            <p className="workspace-note">{t("agent.noExecutions")}</p>
+          ) : (
+            <>
+              <ul
+                className="agent-executions"
+                aria-label={t("agent.executions")}
+              >
+                {rows.slice(0, 100).map((row) => (
+                  <li key={key(row)}>
+                    <label className="bt-inline">
+                      <input
+                        type="checkbox"
+                        checked={chosen.includes(key(row))}
+                        onChange={() =>
+                          setChosen((list) =>
+                            list.includes(key(row))
+                              ? list.filter((item) => item !== key(row))
+                              : [...list, key(row)],
+                          )
+                        }
+                      />
+                      {t(`agent.ledger.${row.ledger}`)}
+                      {row.account
+                        ? ` [${accountLabel(row.account, t)}]`
+                        : ""}{" "}
+                      · {row.side} {row.quantity} @ {row.price} ·{" "}
+                      {row.time
+                        ? exchangeTime(row.time, zone)
+                        : t("agent.noTime")}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                className="tb-button"
+                disabled={busy || chosen.length === 0}
+                onClick={() =>
+                  run(
+                    api.reviewTrades(
+                      instrumentId,
+                      rows
+                        .filter((row) => chosen.includes(key(row)))
+                        .map(({ ledger, execution_id }) => ({
+                          ledger,
+                          execution_id,
+                        })),
+                    ),
+                  )
+                }
+              >
+                {t("agent.reviewTrades", { n: chosen.length })}
+              </button>
+            </>
+          )}
+        </>
+      ) : null}
 
-      <h3>{t("agent.darkPool", { symbol: symbolOf(instrumentId) })}</h3>
-      <p className="workspace-note">{t("agent.darkPoolNote")}</p>
-      <button
-        type="button"
-        className="tb-button"
-        disabled={busy || !usListing}
-        onClick={() =>
-          run(api.reviewDarkPool({ instrumentId, cutoffUtc: cutoffUtc() }))
-        }
-      >
-        {t("agent.reviewDarkPool")}
-      </button>
+      {entry === "filings" ? (
+        <>
+          <h3>{t("agent.filings", { symbol: symbolOf(instrumentId) })}</h3>
+          <p className="workspace-note">{t("agent.filingsNote")}</p>
+          <label className="bt-inline">
+            <input
+              type="checkbox"
+              checked={withHindsight}
+              onChange={(event) => setWithHindsight(event.target.checked)}
+            />
+            {t("agent.filingsAfter")}
+          </label>
+          <button
+            type="button"
+            className="tb-button"
+            disabled={busy || !usListing}
+            onClick={() =>
+              run(
+                api.reviewFilings({
+                  instrumentId,
+                  cutoffUtc: cutoffUtc(),
+                  afterDays: withHindsight ? 7 : 0,
+                }),
+              )
+            }
+          >
+            {t("agent.reviewFilings")}
+          </button>
+        </>
+      ) : null}
+
+      {entry === "darkPool" ? (
+        <>
+          <h3>{t("agent.darkPool", { symbol: symbolOf(instrumentId) })}</h3>
+          <p className="workspace-note">{t("agent.darkPoolNote")}</p>
+          <button
+            type="button"
+            className="tb-button"
+            disabled={busy || !usListing}
+            onClick={() =>
+              run(api.reviewDarkPool({ instrumentId, cutoffUtc: cutoffUtc() }))
+            }
+          >
+            {t("agent.reviewDarkPool")}
+          </button>
+        </>
+      ) : null}
       {usListing ? null : <p className="workspace-note">{t("agent.usOnly")}</p>}
 
       {busy ? <p className="workspace-note">{t("agent.working")}</p> : null}

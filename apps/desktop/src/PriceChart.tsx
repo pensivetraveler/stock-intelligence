@@ -36,6 +36,7 @@ import { thinLabels, type ChartMarker } from "./journal-markers";
 import { hasGraphics } from "./pine-drawings";
 import { PineGraphicsPrimitive } from "./pine-graphics";
 import type { PremarketBar } from "./premarket-high";
+import { CHART_CHROME } from "./theme";
 
 /** A horizontal price line drawn on the candles, e.g. a screening check's level. */
 export interface ChartPriceLevel {
@@ -207,16 +208,16 @@ export function PriceChart({
     const instance = createChart(container.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: "#10131a" },
-        textColor: "#8b95a5",
+        background: { type: ColorType.Solid, color: CHART_CHROME.background },
+        textColor: CHART_CHROME.text,
       },
       grid: {
-        vertLines: { color: "#1a202a" },
-        horzLines: { color: "#1a202a" },
+        vertLines: { color: CHART_CHROME.grid },
+        horzLines: { color: CHART_CHROME.grid },
       },
-      rightPriceScale: { borderColor: "#232a36" },
+      rightPriceScale: { borderColor: CHART_CHROME.border },
       timeScale: {
-        borderColor: "#232a36",
+        borderColor: CHART_CHROME.border,
         timeVisible: true,
         secondsVisible: false,
         // Times are shown in the instrument's exchange zone (ET or KST).

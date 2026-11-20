@@ -66,18 +66,6 @@ import {
   GridLayoutIcon,
   HorizontalLinesIcon,
   IndicatorsIcon,
-  AgentIcon,
-  BacktestIcon,
-  JournalIcon,
-  TechniqueIcon,
-  TradeReviewIcon,
-  KeyIcon,
-  QuoteIcon,
-  InfoIcon,
-  RankingIcon,
-  ResearchIcon,
-  ScreenerIcon,
-  AccountIcon,
   LayoutIcon,
   LogScaleIcon,
   MagnetIcon,
@@ -90,7 +78,6 @@ import {
   TrashIcon,
   TrendLineIcon,
   UndoIcon,
-  WatchlistIcon,
   ZoomIcon,
 } from "./icons";
 import {
@@ -99,6 +86,7 @@ import {
   saveAddedInstruments,
 } from "./added-instruments";
 import { ImportPanel } from "./ImportPanel";
+import { Dialog, PanelTabs, SideNav } from "./Shell";
 import {
   KR_ZONE,
   todayIn,
@@ -190,20 +178,22 @@ interface WorkspaceProps {
   techniqueApi?: TechniqueCardsApi;
 }
 
+/** Sidebar items (디자인-siw-1 정리안 A): side panels, work screens beside the chart, and settings. */
 type Panel =
   | "watchlist"
-  | "quote"
-  | "info"
-  | "rankings"
-  | "research"
-  | "screener"
-  | "account"
-  | "journal"
-  | "keys"
-  | "backtest"
+  | "symbol"
+  | "discover"
+  | "ledger"
+  | "notes"
   | "tradeReview"
-  | "techniques"
-  | "review";
+  | "lab"
+  | "settings";
+type SymbolTab = "quote" | "info";
+type DiscoverTab = "candidates" | "condition" | "research" | "rankings";
+type LabTab = "backtest" | "techniques";
+/** Work screens open beside the chart (the chart narrows) instead of over it. */
+const WORK_PANELS: readonly Panel[] = ["tradeReview", "lab"];
+const NAV_COLLAPSED_KEY = "siw.navCollapsed";
 
 /** Per-chart view options that are not part of the saved layout. */
 interface ChartTools {
@@ -469,6 +459,25 @@ export function Workspace({
   const [panel, setPanel] = useState<Panel | null>(() =>
     loadWatchlistWindow(storage).open ? null : "watchlist",
   );
+  const [symbolTab, setSymbolTab] = useState<SymbolTab>("quote");
+  const [discoverTab, setDiscoverTab] = useState<DiscoverTab>("candidates");
+  const [labTab, setLabTab] = useState<LabTab>("backtest");
+  const [navCollapsed, setNavCollapsed] = useState<boolean>(() => {
+    try {
+      return storage?.getItem(NAV_COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleNav = () =>
+    setNavCollapsed((previous) => {
+      try {
+        storage?.setItem(NAV_COLLAPSED_KEY, previous ? "0" : "1");
+      } catch {
+        // Not saved: the sidebar still toggles until the page reloads.
+      }
+      return !previous;
+    });
   const [tools, setTools] = useState<ChartTools[]>(() =>
     Array.from({ length: CHART_SLOTS }, () => NO_TOOLS),
   );
@@ -734,7 +743,7 @@ export function Workspace({
   );
   const askAgent = useCallback((request: ChartReviewRequest) => {
     setAgentRequest(request);
-    setPanel("review");
+    setPanel("notes");
   }, []);
   const clearAgentRequest = useCallback(() => setAgentRequest(null), []);
   // Broker executions are read per instrument (the whole ledger can hold tens of
@@ -831,6 +840,34 @@ export function Workspace({
       });
     });
   }, [api, openOnToday]);
+
+  // ⌘1–⌘4 open the first item of each sidebar group, ⌘, opens settings, Esc closes a
+  // work screen beside the chart (디자인-siw-1 정리안 A·B).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPanel((current) =>
+          current && WORK_PANELS.includes(current) ? null : current,
+        );
+        return;
+      }
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey)
+        return;
+      const byKey: Record<string, Panel> = {
+        "1": "watchlist",
+        "2": "discover",
+        "3": "ledger",
+        "4": "tradeReview",
+        ",": "settings",
+      };
+      const target = byKey[event.key];
+      if (!target) return;
+      event.preventDefault();
+      setPanel(target);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Typing a letter or digit on the chart opens the symbol search with it, as in
   // TradingView; Ctrl/⌘+K opens it empty. Keys typed into fields are left alone.
@@ -1181,7 +1218,9 @@ export function Workspace({
   const tool = tools[activeChart];
 
   return (
-    <div className={`terminal-shell${panel ? " with-panel" : ""}`}>
+    <div
+      className={`terminal-shell${panel && panel !== "settings" ? " with-panel" : ""}${panel && WORK_PANELS.includes(panel) ? " with-work" : ""}${navCollapsed ? " nav-collapsed" : ""}`}
+    >
       <header className="top-bar" role="toolbar" aria-label={t("tb.label")}>
         <span className="brand" title="SIW Research">
           <AppMark />
@@ -1936,70 +1975,111 @@ export function Workspace({
         ) : null}
       </main>
 
-      {panel === "backtest" && backtestApi ? (
-        <BacktestScreen
-          api={backtestApi}
-          instruments={instruments}
-          activeInstrumentId={activeConfig.instrumentId}
-          real={realFills}
-          onNeedReal={setExtraRealIds}
-          agentApi={agentApi}
-          shownRunId={backtestShown?.runId ?? null}
-          onShowFills={setBacktestShown}
-          onClose={() => setPanel(null)}
-        />
-      ) : null}
+      <SideNav
+        panel={panel}
+        collapsed={navCollapsed}
+        onToggle={toggleNav}
+        watchlistFloating={floating.open}
+        has={{
+          discover: true,
+          tradeReview: Boolean(reviewApi),
+          lab: Boolean(backtestApi || techniqueApi),
+          notes: Boolean(agentApi),
+          settings: Boolean(keysPanel),
+        }}
+        onOpen={(id) => {
+          if (id === "watchlist" && floating.open) {
+            // The watchlist is floating: its sidebar item closes the window.
+            setFloating({ ...floating, open: false });
+            return;
+          }
+          setPanel(panel === id ? null : id);
+        }}
+      />
+
+      <section className="symbol-band" aria-label={t("panel.symbol")}>
+        <strong className="symbol-band-sym">{activeSymbol}</strong>
+        <span className="symbol-band-meta">
+          {instruments.find(
+            (item) =>
+              item.instrument.instrument_id === activeConfig.instrumentId,
+          )?.instrument.venue ?? ""}
+          {" · "}
+          {activeConfig.timeframe}
+          {" · "}
+          {activeConfig.sessionDate}
+        </span>
+      </section>
 
       {panel === "tradeReview" && reviewApi ? (
-        <TradeReviewScreen
-          api={reviewApi}
-          marketApi={api}
-          instruments={instruments}
-          activeInstrumentId={activeConfig.instrumentId}
-          onClose={() => setPanel(null)}
-        />
+        <section className="work-split" aria-label={t("panel.tradeReview")}>
+          <TradeReviewScreen
+            api={reviewApi}
+            marketApi={api}
+            instruments={instruments}
+            activeInstrumentId={activeConfig.instrumentId}
+            onClose={() => setPanel(null)}
+          />
+        </section>
       ) : null}
 
-      {panel === "techniques" && techniqueApi ? (
-        <TechniqueCardsScreen
-          api={techniqueApi}
-          onClose={() => setPanel(null)}
-        />
+      {panel === "lab" && (backtestApi || techniqueApi) ? (
+        <section className="work-split" aria-label={t("panel.lab")}>
+          {backtestApi && techniqueApi ? (
+            <PanelTabs
+              label={t("panel.lab")}
+              value={labTab}
+              onChange={setLabTab}
+              tabs={[
+                ["backtest", t("panel.backtest")],
+                ["techniques", t("panel.techniques")],
+              ]}
+            />
+          ) : null}
+          {backtestApi && (labTab === "backtest" || !techniqueApi) ? (
+            <BacktestScreen
+              api={backtestApi}
+              instruments={instruments}
+              activeInstrumentId={activeConfig.instrumentId}
+              real={realFills}
+              onNeedReal={setExtraRealIds}
+              agentApi={agentApi}
+              shownRunId={backtestShown?.runId ?? null}
+              onShowFills={setBacktestShown}
+              onClose={() => setPanel(null)}
+            />
+          ) : null}
+          {techniqueApi && (labTab === "techniques" || !backtestApi) ? (
+            <TechniqueCardsScreen
+              api={techniqueApi}
+              onClose={() => setPanel(null)}
+            />
+          ) : null}
+        </section>
       ) : null}
 
-      {panel === "keys" && keysPanel ? (
-        <div
-          className="modal-backdrop"
-          onPointerDown={(event) => {
-            if (event.target === event.currentTarget) setPanel(null);
-          }}
+      {panel === "settings" && keysPanel ? (
+        <Dialog
+          label={t("panel.settings")}
+          className="settings-modal"
+          onClose={() => setPanel(null)}
+          closeLabel={t("keys.close")}
         >
-          <section
-            className="modal keys-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("panel.keys")}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setPanel(null);
-            }}
-          >
-            <button
-              type="button"
-              className="tb-button keys-modal-close"
-              aria-label={t("keys.close")}
-              onClick={() => setPanel(null)}
-            >
-              ✕
-            </button>
-            {keysPanel}
-          </section>
-        </div>
+          <div className="settings-body">
+            <nav className="settings-nav" aria-label={t("panel.settings")}>
+              <button type="button" aria-pressed="true">
+                {t("settings.keys")}
+              </button>
+            </nav>
+            <div className="settings-main">
+              {keysPanel}
+              <p className="workspace-note">{t("settings.about")}</p>
+            </div>
+          </div>
+        </Dialog>
       ) : null}
 
-      {panel &&
-      panel !== "backtest" &&
-      panel !== "tradeReview" &&
-      panel !== "keys" ? (
+      {panel && !WORK_PANELS.includes(panel) && panel !== "settings" ? (
         <aside
           className={`side-panel side-panel-${panel}`}
           aria-label={t(`panel.${panel}`)}
@@ -2037,52 +2117,84 @@ export function Workspace({
               }
             />
           ) : null}
-          {panel === "quote" ? (
-            <QuotePanel
-              api={api}
-              instrumentId={activeConfig.instrumentId}
-              symbol={activeSymbol}
-              replayOn={replayOn}
-              live={live[activeSymbol] ?? null}
-              liveConnected={liveConnected}
-              source={liveSource}
-              onSourceChange={setLiveSource}
-            />
-          ) : null}
-          {panel === "info" ? (
-            <StockInfoPanel
-              api={api}
-              instrumentId={activeConfig.instrumentId}
-              symbol={activeSymbol}
-            />
-          ) : null}
-          {panel === "rankings" ? (
-            <RankingsPanel
-              api={api}
-              activeInstrumentId={activeConfig.instrumentId}
-              onPick={(listing) => chooseListing(listing)}
-            />
-          ) : null}
-          {panel === "research" ? <ResearchPanel api={api} /> : null}
-          {panel === "screener" && screeningApi && backtestApi ? (
-            <CandidatesPanel
-              api={screeningApi}
-              onPick={(listing) => chooseListing(listing)}
-              onShowLevels={setScreeningOverlay}
-              overlay={screeningOverlay}
-            />
-          ) : null}
-          {panel === "screener" ? (
-            <ConditionSearchPanel
-              api={api}
-              onPick={(listing) => chooseListing(listing)}
-            />
-          ) : null}
-          {panel === "account" ? (
-            <AccountPanel api={api} onSynced={refreshJournal} />
-          ) : null}
-          {panel === "journal" ? (
+          {panel === "symbol" ? (
             <>
+              <PanelTabs
+                label={t("panel.symbol")}
+                value={symbolTab}
+                onChange={setSymbolTab}
+                tabs={[
+                  ["quote", t("panel.quote")],
+                  ["info", t("panel.info")],
+                ]}
+              />
+              {symbolTab === "quote" ? (
+                <QuotePanel
+                  api={api}
+                  instrumentId={activeConfig.instrumentId}
+                  symbol={activeSymbol}
+                  replayOn={replayOn}
+                  live={live[activeSymbol] ?? null}
+                  liveConnected={liveConnected}
+                  source={liveSource}
+                  onSourceChange={setLiveSource}
+                />
+              ) : (
+                <StockInfoPanel
+                  api={api}
+                  instrumentId={activeConfig.instrumentId}
+                  symbol={activeSymbol}
+                />
+              )}
+            </>
+          ) : null}
+          {panel === "discover" ? (
+            <>
+              <PanelTabs
+                label={t("panel.discover")}
+                value={discoverTab}
+                onChange={setDiscoverTab}
+                tabs={[
+                  ...(screeningApi && backtestApi
+                    ? ([["candidates", t("panel.candidates")]] as const)
+                    : []),
+                  ["condition", t("panel.screener")],
+                  ["research", t("panel.research")],
+                  ["rankings", t("panel.rankings")],
+                ]}
+              />
+              {discoverTab === "candidates" && screeningApi && backtestApi ? (
+                <CandidatesPanel
+                  api={screeningApi}
+                  onPick={(listing) => chooseListing(listing)}
+                  onShowLevels={setScreeningOverlay}
+                  overlay={screeningOverlay}
+                />
+              ) : null}
+              {discoverTab === "condition" ||
+              (discoverTab === "candidates" &&
+                !(screeningApi && backtestApi)) ? (
+                <ConditionSearchPanel
+                  api={api}
+                  onPick={(listing) => chooseListing(listing)}
+                />
+              ) : null}
+              {discoverTab === "research" ? <ResearchPanel api={api} /> : null}
+              {discoverTab === "rankings" ? (
+                <RankingsPanel
+                  api={api}
+                  activeInstrumentId={activeConfig.instrumentId}
+                  onPick={(listing) => chooseListing(listing)}
+                />
+              ) : null}
+            </>
+          ) : null}
+          {panel === "ledger" ? (
+            <>
+              <details className="ledger-fold" open>
+                <summary>{t("panel.account")}</summary>
+                <AccountPanel api={api} onSynced={refreshJournal} />
+              </details>
               <JournalPanel
                 manual={ledgers.manual}
                 imported={ledgers.imported}
@@ -2093,17 +2205,20 @@ export function Workspace({
               />
               {journalError ? null : (
                 <>
-                  <ReconciliationView
-                    api={api}
-                    revision={ledgers}
-                    symbolOf={symbolOf}
-                  />
+                  <details className="ledger-fold" open>
+                    <summary>{t("recon.title")}</summary>
+                    <ReconciliationView
+                      api={api}
+                      revision={ledgers}
+                      symbolOf={symbolOf}
+                    />
+                  </details>
                   <ImportPanel api={api} onImported={refreshJournal} />
                 </>
               )}
             </>
           ) : null}
-          {panel === "review" && agentApi ? (
+          {panel === "notes" && agentApi ? (
             <AgentPanel
               api={agentApi}
               instrumentId={activeConfig.instrumentId}
@@ -2125,44 +2240,6 @@ export function Workspace({
           ) : null}
         </aside>
       ) : null}
-
-      <nav className="right-rail" aria-label={t("panel.rail")}>
-        {(
-          [
-            ["watchlist", WatchlistIcon],
-            ["quote", QuoteIcon],
-            ["info", InfoIcon],
-            ["rankings", RankingIcon],
-            ["research", ResearchIcon],
-            ["screener", ScreenerIcon],
-            ["account", AccountIcon],
-            ["journal", JournalIcon],
-            ...(backtestApi ? ([["backtest", BacktestIcon]] as const) : []),
-            ...(reviewApi ? ([["tradeReview", TradeReviewIcon]] as const) : []),
-            ...(techniqueApi ? ([["techniques", TechniqueIcon]] as const) : []),
-            ...(agentApi ? ([["review", AgentIcon]] as const) : []),
-            ...(keysPanel ? ([["keys", KeyIcon]] as const) : []),
-          ] as const
-        ).map(([id, RailIcon]) => (
-          <button
-            key={id}
-            type="button"
-            aria-label={t(`panel.${id}`)}
-            title={t(`panel.${id}`)}
-            aria-pressed={panel === id || (id === "watchlist" && floating.open)}
-            onClick={() => {
-              if (id === "watchlist" && floating.open) {
-                // The watchlist is floating: the rail button closes the window.
-                setFloating({ ...floating, open: false });
-                return;
-              }
-              setPanel(panel === id ? null : id);
-            }}
-          >
-            <RailIcon />
-          </button>
-        ))}
-      </nav>
 
       {indicatorsOpen ? (
         <IndicatorDialog

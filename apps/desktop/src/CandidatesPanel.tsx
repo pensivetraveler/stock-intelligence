@@ -305,6 +305,8 @@ export function CandidatesPanel({
   const [flow, setFlow] = useState<ScreeningFlowWatch | null>(null);
   /** The symbol whose stage 2 basis is open. */
   const [stage2Open, setStage2Open] = useState<string | null>(null);
+  // The row whose stage progress (1–7) is open under it (디자인-siw-1 D1 + D2 단계 줄).
+  const [openRow, setOpenRow] = useState<string | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -602,10 +604,6 @@ export function CandidatesPanel({
             <thead>
               <tr>
                 <th>{t("screener.symbol")}</th>
-                <th>{t("candidates.firstSeen")}</th>
-                <th>{t("candidates.inList")}</th>
-                <th>{t("candidates.flicker")}</th>
-                <th>{t("candidates.column.momentum")}</th>
                 <th title={t("candidates.stage2.inference")}>
                   {t("candidates.column.stage2")}
                 </th>
@@ -615,9 +613,11 @@ export function CandidatesPanel({
                 <th title={t("candidates.stage4.facts")}>
                   {t("candidates.column.stage4")}
                 </th>
-                {OTHER_KINDS.map((kind) => (
-                  <th key={kind}>{t(`candidates.column.${kind}`)}</th>
-                ))}
+                <th>
+                  <span className="visually-hidden">
+                    {t("candidates.details")}
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -631,153 +631,251 @@ export function CandidatesPanel({
                 const stage2Cell = stage2Text(t, item.stage2);
                 const stage4Cell = stage4Text(t, item.stage4);
                 const unknown = LIST_SEEN.includes(item.first_seen_how);
+                const open = openRow === item.symbol;
+                const stages: [string, string, boolean][] = [
+                  [
+                    t("candidates.stage1"),
+                    item.in_list === null
+                      ? t("candidates.manual")
+                      : item.in_list
+                        ? t("candidates.yes")
+                        : t("candidates.gone"),
+                    item.in_list !== null,
+                  ],
+                  [
+                    t("candidates.stage2Short"),
+                    stage2Cell.text,
+                    item.stage2 !== null,
+                  ],
+                  [
+                    t("candidates.stage3Short"),
+                    flowCell.text,
+                    flowCell.text !== "—",
+                  ],
+                  [
+                    t("candidates.stage4Short"),
+                    stage4Cell.text,
+                    stage4Cell.text !== "—",
+                  ],
+                ];
                 const row = (
-                  <tr key={item.symbol}>
-                    <td>
-                      {listing ? (
+                  <Fragment key={item.symbol}>
+                    <tr className={`cand-main${open ? " open" : ""}`}>
+                      <td>
+                        {listing ? (
+                          <button
+                            type="button"
+                            className="watch-symbol"
+                            aria-label={t("watch.show", {
+                              symbol: item.symbol,
+                            })}
+                            onClick={() => onPick(listing)}
+                          >
+                            {item.symbol}
+                          </button>
+                        ) : (
+                          <span title={t("screener.unknown")}>
+                            {item.symbol}
+                          </span>
+                        )}
+                        <span className="cand-sub">
+                          <span
+                            title={
+                              unknown && item.entered_after_utc
+                                ? t("candidates.entryUnknown", {
+                                    from: newYorkTime(item.entered_after_utc),
+                                    to: newYorkTime(item.first_seen_utc),
+                                  })
+                                : item.first_seen_utc
+                            }
+                          >
+                            {unknown && item.entered_after_utc
+                              ? `${newYorkTime(item.entered_after_utc)}–${newYorkTime(item.first_seen_utc)}?`
+                              : newYorkTime(item.first_seen_utc)}
+                          </span>
+                          {" · "}
+                          <span>
+                            {item.in_list === null
+                              ? t("candidates.manual")
+                              : item.in_list
+                                ? t("candidates.yes")
+                                : t("candidates.gone")}
+                          </span>
+                        </span>
+                      </td>
+                      <td>
+                        {item.stage2 ? (
+                          <button
+                            type="button"
+                            className="secondary"
+                            title={stage2Cell.title}
+                            aria-label={`${item.symbol} ${t("candidates.column.stage2")}: ${stage2Cell.text}`}
+                            onClick={() =>
+                              setStage2Open(
+                                stage2Open === item.symbol ? null : item.symbol,
+                              )
+                            }
+                          >
+                            {stage2Cell.text}
+                          </button>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td
+                        title={flowCell.title}
+                        aria-label={`${item.symbol} ${t("candidates.column.flow")}`}
+                      >
+                        {flowCell.text}
+                      </td>
+                      <td
+                        title={stage4Cell.title}
+                        aria-label={`${item.symbol} ${t("candidates.column.stage4")}`}
+                      >
+                        {stage4Cell.text}
+                      </td>
+                      <td>
                         <button
                           type="button"
-                          className="watch-symbol"
-                          aria-label={t("watch.show", { symbol: item.symbol })}
-                          onClick={() => onPick(listing)}
-                        >
-                          {item.symbol}
-                        </button>
-                      ) : (
-                        <span title={t("screener.unknown")}>{item.symbol}</span>
-                      )}
-                    </td>
-                    <td
-                      title={
-                        unknown && item.entered_after_utc
-                          ? t("candidates.entryUnknown", {
-                              from: newYorkTime(item.entered_after_utc),
-                              to: newYorkTime(item.first_seen_utc),
-                            })
-                          : item.first_seen_utc
-                      }
-                    >
-                      {unknown && item.entered_after_utc
-                        ? `${newYorkTime(item.entered_after_utc)}–${newYorkTime(item.first_seen_utc)}?`
-                        : newYorkTime(item.first_seen_utc)}
-                    </td>
-                    <td>
-                      {item.in_list === null
-                        ? t("candidates.manual")
-                        : item.in_list
-                          ? t("candidates.yes")
-                          : t("candidates.gone")}
-                    </td>
-                    <td>
-                      {item.enter_count === null ||
-                      item.seconds_in_list === null
-                        ? "—"
-                        : t("candidates.flickerValue", {
-                            count: item.enter_count,
-                            minutes: Math.round(item.seconds_in_list / 60),
+                          className="tb-button cand-toggle"
+                          aria-expanded={open}
+                          aria-label={t("candidates.detailsOf", {
+                            symbol: item.symbol,
                           })}
-                    </td>
-                    <td>
-                      {running.includes(`momentum:${item.symbol}`) ? (
-                        t("screener.running")
-                      ) : momentum ? (
-                        <button
-                          type="button"
-                          className="secondary"
-                          aria-label={`${item.symbol} ${t("candidates.column.momentum")}`}
-                          onClick={() => showDetail(momentum.check_id)}
+                          onClick={() => {
+                            setOpenRow(open ? null : item.symbol);
+                            if (!open && item.stage2)
+                              setStage2Open(item.symbol);
+                          }}
                         >
-                          {momentum.summary &&
-                          momentum.summary.change_percent !== null
-                            ? `${percentText(momentum.summary.change_percent)} · ${dollarsText(momentum.summary.dollar_volume_estimate)}`
-                            : statusText(t, momentum.status)}
+                          {open ? "▾" : "▸"}
                         </button>
-                      ) : listing && item.sources.includes("condition") ? (
-                        <button
-                          type="button"
-                          className="secondary"
-                          aria-label={`${item.symbol} ${t("candidates.column.momentum")}: ${t("candidates.check")}`}
-                          onClick={() => void run(["momentum"], [item])}
-                        >
-                          {t("candidates.check")}
-                        </button>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>
-                      {item.stage2 ? (
-                        <button
-                          type="button"
-                          className="secondary"
-                          title={stage2Cell.title}
-                          aria-label={`${item.symbol} ${t("candidates.column.stage2")}: ${stage2Cell.text}`}
-                          onClick={() =>
-                            setStage2Open(
-                              stage2Open === item.symbol ? null : item.symbol,
-                            )
-                          }
-                        >
-                          {stage2Cell.text}
-                        </button>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td
-                      title={flowCell.title}
-                      aria-label={`${item.symbol} ${t("candidates.column.flow")}`}
-                    >
-                      {flowCell.text}
-                    </td>
-                    <td
-                      title={stage4Cell.title}
-                      aria-label={`${item.symbol} ${t("candidates.column.stage4")}`}
-                    >
-                      {stage4Cell.text}
-                    </td>
-                    {OTHER_KINDS.map((kind) => {
-                      const found = item.checks[kind];
-                      return (
-                        <td key={kind}>
-                          {running.includes(`${kind}:${item.symbol}`) ? (
+                      </td>
+                    </tr>
+                    <tr className="cand-actions">
+                      <td colSpan={5}>
+                        <span className="cand-check">
+                          <span className="cand-check-label">
+                            {t("candidates.flicker")}
+                          </span>
+                          <span className="cand-check-value">
+                            {item.enter_count === null ||
+                            item.seconds_in_list === null
+                              ? "—"
+                              : t("candidates.flickerValue", {
+                                  count: item.enter_count,
+                                  minutes: Math.round(
+                                    item.seconds_in_list / 60,
+                                  ),
+                                })}
+                          </span>
+                        </span>
+                        <span className="cand-check">
+                          <span className="cand-check-label">
+                            {t("candidates.column.momentum")}
+                          </span>
+                          {running.includes(`momentum:${item.symbol}`) ? (
                             t("screener.running")
-                          ) : found ? (
+                          ) : momentum ? (
                             <button
                               type="button"
                               className="secondary"
-                              aria-label={`${item.symbol} ${t(`candidates.column.${kind}`)}: ${statusText(t, found.status)}`}
-                              onClick={() =>
-                                found.status === "pending"
-                                  ? lookAgain(found, kind, item.symbol)
-                                  : showDetail(found.check_id)
-                              }
+                              aria-label={`${item.symbol} ${t("candidates.column.momentum")}`}
+                              onClick={() => showDetail(momentum.check_id)}
                             >
-                              {statusText(t, found.status)}
+                              {momentum.summary &&
+                              momentum.summary.change_percent !== null
+                                ? `${percentText(momentum.summary.change_percent)} · ${dollarsText(momentum.summary.dollar_volume_estimate)}`
+                                : statusText(t, momentum.status)}
                             </button>
-                          ) : listing ? (
+                          ) : listing && item.sources.includes("condition") ? (
                             <button
                               type="button"
                               className="secondary"
-                              aria-label={`${item.symbol} ${t(`candidates.column.${kind}`)}: ${t("candidates.check")}`}
-                              onClick={() => void run([kind], [item])}
+                              aria-label={`${item.symbol} ${t("candidates.column.momentum")}: ${t("candidates.check")}`}
+                              onClick={() => void run(["momentum"], [item])}
                             >
                               {t("candidates.check")}
                             </button>
                           ) : (
                             "—"
                           )}
+                        </span>
+                        {OTHER_KINDS.map((kind) => {
+                          const found = item.checks[kind];
+                          return (
+                            <span key={kind} className="cand-check">
+                              <span className="cand-check-label">
+                                {t(`candidates.column.${kind}`)}
+                              </span>
+                              {running.includes(`${kind}:${item.symbol}`) ? (
+                                t("screener.running")
+                              ) : found ? (
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  aria-label={`${item.symbol} ${t(`candidates.column.${kind}`)}: ${statusText(t, found.status)}`}
+                                  onClick={() =>
+                                    found.status === "pending"
+                                      ? lookAgain(found, kind, item.symbol)
+                                      : showDetail(found.check_id)
+                                  }
+                                >
+                                  {statusText(t, found.status)}
+                                </button>
+                              ) : listing ? (
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  aria-label={`${item.symbol} ${t(`candidates.column.${kind}`)}: ${t("candidates.check")}`}
+                                  onClick={() => void run([kind], [item])}
+                                >
+                                  {t("candidates.check")}
+                                </button>
+                              ) : (
+                                "—"
+                              )}
+                            </span>
+                          );
+                        })}
+                      </td>
+                    </tr>
+                    {open ? (
+                      <tr className="cand-detail">
+                        <td colSpan={5}>
+                          <ol
+                            className="cand-stages"
+                            aria-label={t("candidates.detailsOf", {
+                              symbol: item.symbol,
+                            })}
+                          >
+                            {stages.map(([name, value, done], stage) => (
+                              <li key={name} className={done ? "done" : ""}>
+                                <span className="cand-stage-n">
+                                  {t("candidates.stageN", { n: stage + 1 })}
+                                </span>
+                                <b>{name}</b>
+                                <small>{value}</small>
+                              </li>
+                            ))}
+                            {[5, 6, 7].map((n) => (
+                              <li key={n} className="todo">
+                                <span className="cand-stage-n">
+                                  {t("candidates.stageN", { n })}
+                                </span>
+                                <small>{t("candidates.stageTodo")}</small>
+                              </li>
+                            ))}
+                          </ol>
                         </td>
-                      );
-                    })}
-                  </tr>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 );
                 return index === firstAfterNoon && asOf === null ? (
                   <Fragment key={item.symbol}>
                     <tr>
-                      <th colSpan={8 + OTHER_KINDS.length}>
-                        {t("candidates.afterNoon")}
-                      </th>
+                      <th colSpan={5}>{t("candidates.afterNoon")}</th>
                     </tr>
                     {row}
                   </Fragment>

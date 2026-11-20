@@ -7,6 +7,7 @@ import {
 import { useEffect, useRef } from "react";
 
 import { curveTimes } from "./period-review";
+import { CHART_CHROME, DECK } from "./theme";
 
 /** Cumulative net profit over the period: green above zero, red below. */
 export function PeriodCurve({
@@ -25,12 +26,12 @@ export function PeriodCurve({
     const chart = createChart(host.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: "#10131a" },
-        textColor: "#8b95a5",
+        background: { type: ColorType.Solid, color: CHART_CHROME.background },
+        textColor: CHART_CHROME.text,
       },
       grid: {
-        vertLines: { color: "#1a202a" },
-        horzLines: { color: "#1a202a" },
+        vertLines: { color: CHART_CHROME.grid },
+        horzLines: { color: CHART_CHROME.grid },
       },
       timeScale: { timeVisible: true },
       handleScroll: { mouseWheel: false },
@@ -38,8 +39,8 @@ export function PeriodCurve({
     });
     const series = chart.addSeries(BaselineSeries, {
       baseValue: { type: "price", price: 0 },
-      topLineColor: "#3fb68b",
-      bottomLineColor: "#e5566b",
+      topLineColor: DECK.up,
+      bottomLineColor: DECK.down,
     });
     const times = curveTimes(points);
     series.setData(
