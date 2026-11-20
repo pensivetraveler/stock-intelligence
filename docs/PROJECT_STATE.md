@@ -3137,3 +3137,10 @@
 - **변경:** 교차 다음 종가가 새 쪽에 남으면 유지로 센다. 마지막 종가의 교차는 분모에서 뺀다. 피처 버전 2.0.1. ADR 0053에 정의를 적었다(원본 정의는 미확인).
 - **영향:** 점수 계산에는 쓰이지 않는다. 이미 저장된 검사 결과는 옛 값(2.0.0) 그대로다.
 - **시험:** `tests/screening/test_structure_path.py` 4개(고치기 전 2개 실패 확인). `pytest tests/screening tests/contracts`, ruff, mypy 통과.
+
+## SIW Agent 미니PC 설치 런북 — 2026-11-20
+
+- **사용자 결정:** SIW Agent용 미니PC(GMKtec K12, 512GB SSD·16GB RAM)를 구입했다. OS는 아직 설치하지 않았고, iMac과 같은 사설 LAN에 둔다. 2TB SSD와 16GB RAM은 2026-12에 더한다. 설치 순서를 런북으로 남기기로 했다.
+- **변경:** [docs/runbooks/agent-mini-pc.md](runbooks/agent-mini-pc.md)를 추가했다. Ubuntu 24.04 데스크톱 설치, LAN·SSH·방화벽, CI와 같은 도구 구성의 빌드, 첫 실행, ADR 0045 미검증 항목의 실기기 확인표, 12월 증설 절차, 실계좌 전에 남은 일을 담았다. ADR 0045 Consequences에 링크를 걸었다.
+- **미검증:** 런북의 모든 단계(실제 기기에서 아직 실행하지 않음). K12의 출고 램 슬롯 구성.
+- **남은 위험:** ADR 0047로 ADR 0045의 재검토 조건(실계좌 단계)이 충족됐다. 전략 이전 경로와 원격 킬 스위치가 없다.
