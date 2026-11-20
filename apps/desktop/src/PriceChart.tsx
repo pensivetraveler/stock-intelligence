@@ -43,6 +43,8 @@ export interface ChartPriceLevel {
   title: string;
   color: string;
   style?: LineStyleName;
+  /** The date the price describes (YYYY-MM-DD), when splits after it change its scale. */
+  asOf?: string;
 }
 
 interface PriceChartProps {

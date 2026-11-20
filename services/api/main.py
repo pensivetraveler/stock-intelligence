@@ -1024,7 +1024,8 @@ def create_app(
         """Splits of a US listing: Alpaca's, and the dilution analyzer's filing readings
         next to them (ADR 0046).
 
-        Evidence only: no price depends on this, and a difference names neither side wrong.
+        A difference names neither side wrong. Only Alpaca's splits are used for a price:
+        the chart scales a dilution price by those after its filing date, as its candles are.
         """
         parts = instrument_id.split(":")
         ticker = parts[1].upper() if len(parts) == 4 and parts[0] == "us" else None

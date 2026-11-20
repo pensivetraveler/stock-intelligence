@@ -3138,6 +3138,14 @@
 - **영향:** 점수 계산에는 쓰이지 않는다. 이미 저장된 검사 결과는 옛 값(2.0.0) 그대로다.
 - **시험:** `tests/screening/test_structure_path.py` 4개(고치기 전 2개 실패 확인). `pytest tests/screening tests/contracts`, ruff, mypy 통과.
 
+## 희석 가격선: 공시 뒤 Alpaca 분할로 환산 — 2026-11-20
+
+- **사용자 결정:** "분할로 환산"(stock-intelligence-104 확인 중 찾은 결함).
+- **결함:** XXII 워런트 71.40(10-Q 2026-08-14)을 분할 조정 차트에 그대로 그렸다. 그 뒤 2026-11-05 1:58 역분할이 있어 선이 58배 낮은 자리에 있었다.
+- **변경:** 희석 검사 요약 값에 `as_of`(공시일)를 넣었다. 차트(`price-level-splits.ts`)는 분할 조정일 때 그 날짜 뒤 Alpaca 분할의 비율을 곱한다(선 이름에 "×58, 공시 뒤 Alpaca 분할 환산"). Alpaca 분할을 못 읽으면 "공시 뒤 분할 모름". ADR 0052에 규칙을 적었다.
+- **한계:** 공시가 그 전 분할을 이미 반영했다고 가정한다. 11-20 전에 저장된 검사는 `as_of`가 없어 환산되지 않는다.
+- **시험:** Vitest `price-level-splits.test.ts` 5개, 데스크톱 전체 521개 통과. `test_dilution.py` 갱신, `pytest tests/screening tests/contracts tests/api`, ruff, mypy, tsc, eslint 통과.
+
 ## SIW Agent 미니PC 설치 런북 — 2026-11-20
 
 - **사용자 결정:** SIW Agent용 미니PC(GMKtec K12, 512GB SSD·16GB RAM)를 구입했다. OS는 아직 설치하지 않았고, iMac과 같은 사설 LAN에 둔다. 2TB SSD와 16GB RAM은 2026-12에 더한다. 설치 순서를 런북으로 남기기로 했다.
