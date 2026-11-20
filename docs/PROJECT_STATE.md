@@ -3145,3 +3145,8 @@
 - **변경:** 희석 검사 요약 값에 `as_of`(공시일)를 넣었다. 차트(`price-level-splits.ts`)는 분할 조정일 때 그 날짜 뒤 Alpaca 분할의 비율을 곱한다(선 이름에 "×58, 공시 뒤 Alpaca 분할 환산"). Alpaca 분할을 못 읽으면 "공시 뒤 분할 모름". ADR 0052에 규칙을 적었다.
 - **한계:** 공시가 그 전 분할을 이미 반영했다고 가정한다. 11-20 전에 저장된 검사는 `as_of`가 없어 환산되지 않는다.
 - **시험:** Vitest `price-level-splits.test.ts` 5개, 데스크톱 전체 521개 통과. `test_dilution.py` 갱신, `pytest tests/screening tests/contracts tests/api`, ruff, mypy, tsc, eslint 통과.
+
+## Alpaca 약관·뉴스 문의 — 2026-11-20
+
+- **사용자 결정:** 같은 컴퓨터 안 시세 공유(ADR 0046 3단계 전제)와 Alpaca News 미확인 점(ADR 0052 §3)을 Alpaca 지원팀에 각각 문의했다. 답을 기다리는 동안 약관 문제로 기능을 막지 않는다("우선 약관 위배 관계없이 사용해보도록 하자").
+- **남은 일:** 답이 오면 ADR 0046 "Data rights"·ADR 0052 §3에 적는다. 금지하는 답이면 3단계를 되돌리거나 바꾼다.
