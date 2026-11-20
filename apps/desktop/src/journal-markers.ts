@@ -9,6 +9,7 @@ import type {
 
 import { exchangeTime } from "./chart-data";
 import { zoneOf } from "./market-zone";
+import { LEDGER_COLORS } from "./theme";
 
 export interface ChartMarker {
   time: number;
@@ -26,13 +27,7 @@ export interface ChartMarker {
 }
 
 /** Distinct shapes and colours per ledger, so actual and hypothetical never look alike. */
-export const MARKER_COLORS = {
-  manual: "#4c8dff",
-  imported: "#2ec4b6",
-  broker: "#f5a623",
-  hypothetical: "#c08bff",
-  backtest: "#ff6f91",
-};
+export const MARKER_COLORS = LEDGER_COLORS;
 
 function seconds(utc: string): number {
   return Math.floor(Date.parse(utc) / 1000);
