@@ -115,12 +115,13 @@ def ecos_fx(
 
 def default_feed(data_dir: Path, credentials: CredentialStore) -> BarFeed:
     from services.market_data.bars_service import MarketBarsService
+    from services.market_data.locations import market_data_dir
     from services.market_data.selection import provider_from_env
     from services.market_data.storage import CachedMarketDataProvider, LocalMarketDataStore
     from services.paper_trading.feed import ServiceBarFeed
 
     provider = CachedMarketDataProvider(
-        provider_from_env(credentials), LocalMarketDataStore(data_dir)
+        provider_from_env(credentials), LocalMarketDataStore(market_data_dir(data_dir) or data_dir)
     )
     return ServiceBarFeed(MarketBarsService(provider).get_bars)
 
