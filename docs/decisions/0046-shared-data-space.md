@@ -136,3 +136,13 @@ Each step ships and is checked alone, and a backup comes before any move.
 - **Coverage:** Alpaca names no split before about 2020 for the tickers checked (AAPL's 7:1 in 2014 is missing). A chart before that shows no marker, which does not mean there was no split.
 - **Replay:** no markers, as for the note: the list names splits after the replay time.
 - **Prices:** unchanged. The markers are evidence only.
+
+## Step 3 in SIW (2026-11-20)
+
+- **Request:** the user asked to start step 3 ("ADR 0046 3단계 시작해줘"). Its conditions were met: `stock-intelligence-40` was settled by PR #131, and the user decided the pending Alpaca terms answer does not hold it back.
+- **Setting:** `SIW_MARKET_DATA_DIR`, normally `$STOCK_SHARED_DATA/market`. Unset, the store stays in `SIW_DATA_DIR`. It is a setting of its own, not derived from `STOCK_SHARED_DATA`, so the browser preview store (`data/browser-preview`) and tests never open the shared folder.
+- **One function:** `services/market_data/locations.py` decides the folder for every program that opens the store: the API's cached providers (Alpaca and Toss), the tick store, the collector backfill, and the paper and live runners' bar feed. Symbols, journal, credentials, backtests and screening stay in `SIW_DATA_DIR`.
+- **No split store:** with the setting on, a `metadata.sqlite3` still in `SIW_DATA_DIR` while the new folder has none is refused with an error, instead of opening a second, empty store.
+- **Moving:** paths inside `metadata.sqlite3` (Parquet parts, the write journal) are relative to the store folder, so the files move as they are. Every writer stops first, the store is backed up (`sqlite3 .backup` and an archive of `bars/` and `ticks/`), and `owners/` and `maintenance.lock` are recreated when the store opens.
+- **Contract:** `CONTRACT.json` lists `market/` with SIW as its only writer and no reader. A future reader opens `metadata.sqlite3` read-only and never `LocalMarketDataStore`.
+- **Moved (2026-11-20 16:35 KST):** the API was stopped (no other process had the store open), the store was backed up to `data/backups/market-before-move-20261120-1640/` (`metadata.sqlite3` by `.backup`, integrity `ok`; `bars-ticks.tar.gz`, 4,040 files), and `metadata.sqlite3`, `bars/` and `ticks/` were moved to `~/Trading/stock-data/market` on the same disk. `.env` sets `SIW_MARKET_DATA_DIR`. After the restart on 8db663b: every table's row count and the sha256 of all 4,040 files matched, the API's owner lock is in the new folder, AAPL daily bars and an XXII 1-minute range (330 bars, complete) were served from the cache with no new writes, and `CONTRACT.json` lists `market/`.

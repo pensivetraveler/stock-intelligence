@@ -3151,6 +3151,14 @@
 - **사용자 결정:** 같은 컴퓨터 안 시세 공유(ADR 0046 3단계 전제)와 Alpaca News 미확인 점(ADR 0052 §3)을 Alpaca 지원팀에 각각 문의했다. 답을 기다리는 동안 약관 문제로 기능을 막지 않는다("우선 약관 위배 관계없이 사용해보도록 하자").
 - **남은 일:** 답이 오면 ADR 0046 "Data rights"·ADR 0052 §3에 적는다. 금지하는 답이면 3단계를 되돌리거나 바꾼다.
 
+## ADR 0046 3단계: 시세 저장소를 공용 공간으로 — 2026-11-20
+
+- **사용자 지시:** "ADR 0046 3단계 시작해줘", PR #207 뒤 "병합·이동".
+- **코드:** `SIW_MARKET_DATA_DIR`, `services/market_data/locations.py`(저장소를 여는 다섯 곳이 함께 씀), 남은 저장소가 있으면 열지 않음, `CONTRACT.json`에 `market/`(PR #207, 8db663b).
+- **이동:** API를 멈추고 `data/backups/market-before-move-20261120-1640/`에 백업(`metadata.sqlite3` `.backup` 무결성 ok, `bars-ticks.tar.gz` 4,040개) → `metadata.sqlite3`·`bars/`·`ticks/`를 `~/Trading/stock-data/market`으로 옮김 → `.env`에 설정 → 8db663b로 재시작.
+- **확인:** 표별 행 수와 4,040개 파일 sha256이 이동 전과 같다. API의 owner lock이 새 폴더에 생겼다. AAPL 일봉 32개, XXII 1분봉 330개(complete)가 새 쓰기 없이 캐시에서 나왔다. `data/`에는 저장소가 남지 않았다.
+- **남은 것:** 읽는 프로그램은 아직 없다(읽는 쪽 계약은 처음 읽는 프로그램이 정해질 때 쓴다). 백업은 이동이 안정되면 지울지 사용자가 정한다. `data/owners/`·`data/maintenance.lock`(옛 저장소의 빈 잠금 파일)은 남아 있으나 쓰이지 않는다.
+
 ## SIW Agent 미니PC 설치 런북 — 2026-11-20
 
 - **사용자 결정:** SIW Agent용 미니PC(GMKtec K12, 512GB SSD·16GB RAM)를 구입했다. OS는 아직 설치하지 않았고, iMac과 같은 사설 LAN에 둔다. 2TB SSD와 16GB RAM은 2026-12에 더한다. 설치 순서를 런북으로 남기기로 했다.

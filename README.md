@@ -154,14 +154,15 @@ API를 `SIW_DATA_DIR=data`로 실행하면 차트의 캔들을 클릭해 두 종
 cp .env.example .env
 ```
 
-| 변수                          | 의미                                                                                                                         |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `SIW_MARKET_DATA_PROVIDER`    | `alpaca`로 설정하면 사용한다. 기본값은 `fake`                                                                                |
-| `SIW_ALPACA_FEED`             | `sip`(기본, 통합 시세. 무료 요금제는 최근 15분 제외) 또는 `iex`(IEX 단독, 실시간이지만 거래량의 일부)                        |
-| `SIW_ALPACA_SYMBOLS`          | `SYMBOL:MIC` 목록. 기본 `SPY:ARCX,AAPL:XNAS,MSFT:XNAS`                                                                       |
-| `SIW_ALPACA_DELAY_MINUTES`    | bar가 이 계정에 공개되기까지의 지연(분). 기본은 sip 15, iex 0                                                                |
-| `SIW_ALPACA_FINALITY_MINUTES` | bar를 확정으로 볼 때까지의 시간(분). 기본 15                                                                                 |
-| `SIW_DATA_DIR`                | 로컬 cache와 등록한 키의 이름표를 저장할 디렉터리. 키를 쓰는 공급업체는 이 값이 필수다. NAS 공유 폴더는 아직 지원하지 않는다 |
+| 변수                          | 의미                                                                                                                                                                                           |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SIW_MARKET_DATA_PROVIDER`    | `alpaca`로 설정하면 사용한다. 기본값은 `fake`                                                                                                                                                  |
+| `SIW_ALPACA_FEED`             | `sip`(기본, 통합 시세. 무료 요금제는 최근 15분 제외) 또는 `iex`(IEX 단독, 실시간이지만 거래량의 일부)                                                                                          |
+| `SIW_ALPACA_SYMBOLS`          | `SYMBOL:MIC` 목록. 기본 `SPY:ARCX,AAPL:XNAS,MSFT:XNAS`                                                                                                                                         |
+| `SIW_ALPACA_DELAY_MINUTES`    | bar가 이 계정에 공개되기까지의 지연(분). 기본은 sip 15, iex 0                                                                                                                                  |
+| `SIW_ALPACA_FINALITY_MINUTES` | bar를 확정으로 볼 때까지의 시간(분). 기본 15                                                                                                                                                   |
+| `SIW_DATA_DIR`                | 로컬 cache와 등록한 키의 이름표를 저장할 디렉터리. 키를 쓰는 공급업체는 이 값이 필수다. NAS 공유 폴더는 아직 지원하지 않는다                                                                   |
+| `SIW_MARKET_DATA_DIR`         | 시세 저장소(`metadata.sqlite3`·`bars`·`ticks`)만 다른 폴더에 둘 때(ADR 0046 3단계, 보통 `$STOCK_SHARED_DATA/market`). 없으면 `SIW_DATA_DIR`. 저장소가 `SIW_DATA_DIR`에 남아 있으면 열지 않는다 |
 
 3. API를 실행하고 화면의 `Market data keys`에서 Alpaca 키를 등록한다.
 4. 키 확인: 최근 거래일 정규장 첫 30분을 한 번만 요청하고 결과 요약을 출력한다. 키는 출력하지 않는다. `--label`로 특정 키만 쓸 수 있다.

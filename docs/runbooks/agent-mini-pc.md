@@ -118,7 +118,7 @@ CI의 `agent-linux` 작업(`.github/workflows/ci.yml`)과 같은 구성이다. �
 ## 4. 첫 실행 (기기 앞에서)
 
 1. SIW Agent를 열고 API가 자동으로 뜨는지 확인한다.
-2. 키는 Mac에서 옮겨지지 않는다. 키 화면에서 **데모(모의) 키부터** 등록한다.
+2. 키는 Mac에서 옮겨지지 않는다. SIW Agent의 **"키" 탭**에서 **데모(모의) 키부터** 등록한다(PR #209, ADR 0036 2026-11-20 개정). 키 탭이 없는 이전 빌드라면 미니PC에서 저장소의 Research 웹을 임시로 띄워(`cd ~/stock-intelligence/apps/desktop && pnpm exec vite --host 127.0.0.1 --port 5173`) Firefox로 `http://127.0.0.1:5173`의 키 화면을 쓰고, 등록 뒤 끈다.
 3. 실행기 설치 버튼을 눌러 systemd 사용자 서비스로 등록한다. 모의 실행기는 `com.pensivetraveler.siw.agent.runner.service`, 실계좌 실행기는 `com.pensivetraveler.siw.agent.live-runner.service`다. 서비스 파일은 `~/.config/systemd/user/`, 로그는 `$XDG_STATE_HOME/siw-agent`(보통 `~/.local/state/siw-agent`)에 있다.
 4. 키움 모의 호출이 되는지 본다. 같은 공유기 뒤라 공인 IP가 iMac과 같으면 등록한 IP가 그대로 통할 가능성이 크지만 확인 전이다.
 
