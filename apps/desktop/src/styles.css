@@ -3991,3 +3991,252 @@ select,
 textarea {
   border-color: var(--siw-edge);
 }
+
+/* ---------------------------------------------------------------------------
+   틀(디자인-siw-1 r4 2단계, 시안 D): 왼쪽 접이식 사이드바 · 위쪽 종목 띠 · 차트 | 옆 패널,
+   작업 화면(매매 복기·전략 연구)은 차트 옆 분할 — 차트가 좁아지고 오른쪽을 작업 화면이 씀.
+   --------------------------------------------------------------------------- */
+.terminal-shell {
+  grid-template-columns: auto 44px minmax(0, 1fr);
+  grid-template-rows: 40px auto minmax(0, 1fr);
+  grid-template-areas:
+    "top top top"
+    "nav band band"
+    "nav tools chart";
+}
+
+.terminal-shell.with-panel {
+  grid-template-columns: auto 44px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "top top top top"
+    "nav band band band"
+    "nav tools chart panel";
+}
+
+.terminal-shell.with-work {
+  grid-template-columns: auto 44px minmax(320px, 32%) minmax(0, 1fr);
+}
+
+.ws-nav {
+  grid-area: nav;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 188px;
+  min-height: 0;
+  padding: 8px 6px;
+  overflow-y: auto;
+  border-right: 1px solid var(--siw-rule);
+  background: var(--siw-panel);
+}
+
+.ws-nav.collapsed {
+  width: 44px;
+  align-items: center;
+  padding-inline: 4px;
+}
+
+.ws-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--siw-rule);
+}
+
+.ws-nav.collapsed .ws-nav-group {
+  align-items: center;
+}
+
+.ws-nav-head {
+  padding: 0 8px 2px;
+  color: var(--siw-ink-dim);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ws-nav-spacer {
+  flex: 1;
+}
+
+.ws-nav-btn,
+.ws-nav-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-self: auto;
+  min-height: 30px;
+  margin: 0;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--siw-radius-control);
+  color: var(--siw-ink-dim);
+  background: transparent;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ws-nav-toggle {
+  align-self: flex-start;
+}
+
+.ws-nav.collapsed .ws-nav-toggle {
+  align-self: center;
+}
+
+.ws-nav-btn:hover:not(:disabled),
+.ws-nav-toggle:hover:not(:disabled) {
+  color: var(--siw-ink);
+  background: var(--siw-hover);
+}
+
+.ws-nav-btn[aria-pressed="true"] {
+  color: var(--siw-ink);
+  background: var(--siw-selected);
+  box-shadow: inset 0 0 0 1px var(--siw-edge);
+}
+
+.ws-nav-work {
+  margin-left: auto;
+  color: var(--siw-ink-faint);
+  font-size: 11px;
+}
+
+.ws-nav.collapsed .ws-nav-head,
+.ws-nav.collapsed .ws-nav-label,
+.ws-nav.collapsed .ws-nav-work {
+  display: none;
+}
+
+.ws-nav.collapsed .ws-nav-btn {
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+}
+
+.symbol-band {
+  grid-area: band;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  min-width: 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--siw-rule);
+  background: var(--siw-panel);
+}
+
+.symbol-band-sym {
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+}
+
+.symbol-band-meta {
+  overflow: hidden;
+  color: var(--siw-ink-dim);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.work-split {
+  grid-area: panel;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--siw-rule);
+  background: var(--siw-canvas);
+}
+
+/* 작업 화면 부품은 원래 큰 대화상자로 그려지므로, 분할 안에서는 배경막·그림자·크기 제한을 없앤다 */
+.work-split .modal-backdrop {
+  position: static;
+  z-index: auto;
+  display: block;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  background: none;
+}
+
+.work-split .modal {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.panel-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 0 0 10px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--siw-rule);
+}
+
+.work-split .panel-tabs {
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--siw-panel);
+}
+
+.panel-tabs button {
+  justify-self: auto;
+  min-height: 26px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--siw-ink-dim);
+  background: transparent;
+  font-size: 12px;
+}
+
+.panel-tabs button[aria-selected="true"] {
+  color: var(--siw-ink);
+  background: var(--siw-selected);
+  box-shadow: inset 0 0 0 1px var(--siw-edge);
+  font-weight: 600;
+}
+
+.modal.settings-modal {
+  width: min(960px, 94vw);
+  max-height: 86vh;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.settings-body {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 14px;
+  min-height: 0;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav button {
+  justify-self: stretch;
+  margin: 0;
+  border: 0;
+  text-align: left;
+  background: transparent;
+}
+
+.settings-nav button[aria-pressed="true"] {
+  background: var(--siw-selected);
+}
+
+.settings-main {
+  min-width: 0;
+  overflow-y: auto;
+}

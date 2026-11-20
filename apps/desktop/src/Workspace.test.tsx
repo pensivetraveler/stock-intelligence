@@ -795,13 +795,38 @@ function openWorkspaceMenu() {
   fireEvent.click(screen.getByRole("button", { name: /^Workspace: / }));
 }
 
+// Old rail names → sidebar item and the tab inside that panel (디자인-siw-1 r4 정리안 A).
+const PANEL_ROUTE: Record<string, [string, string | null]> = {
+  Watchlist: ["Watchlist", null],
+  "Live quote": ["Symbol", "Live quote"],
+  "Stock info": ["Symbol", "Stock info"],
+  "Condition search": ["Discovery", "Condition search"],
+  Research: ["Discovery", "Research"],
+  Rankings: ["Discovery", "Rankings"],
+  // Account and the journal now share one panel: open it, never toggle it shut.
+  Account: ["Account & ledger", ""],
+  "Trade journal": ["Account & ledger", ""],
+  Backtest: ["Strategy lab", "Backtest"],
+  "Technique cards": ["Strategy lab", "Technique cards"],
+  "Trade review": ["Trade review", null],
+  "Review Agent": ["Chart AI notes", null],
+};
+
 function openPanel(name: string) {
-  fireEvent.click(
-    within(screen.getByRole("navigation", { name: "Panels" })).getByRole(
-      "button",
-      { name },
-    ),
-  );
+  const [item, tab] = PANEL_ROUTE[name] ?? [name, null];
+  const nav = screen.getByRole("navigation", { name: "Panels" });
+  const button = within(nav).getByRole("button", { name: item });
+  if (tab === null) {
+    // A sidebar item without tabs toggles its panel, as the old rail button did.
+    fireEvent.click(button);
+    return;
+  }
+  // Clicking an open item again would close it, so only open it when it is closed.
+  if (button.getAttribute("aria-pressed") !== "true") fireEvent.click(button);
+  if (!tab) return;
+  // A panel with one source shows no tabs (e.g. the strategy lab without technique cards).
+  const tabButton = screen.queryByRole("tab", { name: tab });
+  if (tabButton) fireEvent.click(tabButton);
 }
 
 function pickTimeframe(value: string) {
@@ -1658,7 +1683,7 @@ describe("chart workspace", () => {
       <Workspace api={api} storage={memoryStorage()} />,
     );
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Live quote" }));
+    openPanel("Live quote");
     const panel = await screen.findByRole("region", { name: "Live quote" });
     // The last price and the latest trade.
     expect(await within(panel).findAllByText("252.31")).toHaveLength(2);
@@ -1671,7 +1696,7 @@ describe("chart workspace", () => {
       Promise.reject(new MarketApiError("no key", "quote_source_unavailable"));
     render(<Workspace api={offline} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Live quote" }));
+    openPanel("Live quote");
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "register an enabled real-account Toss key",
     );
@@ -1680,7 +1705,7 @@ describe("chart workspace", () => {
   it("shows stock info, the reference rate and market-hour differences", async () => {
     render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Stock info" }));
+    openPanel("Stock info");
     const panel = await screen.findByRole("region", { name: "Stock info" });
     expect(await within(panel).findByText("신스 (Synth Corp)")).toBeVisible();
     expect(within(panel).getByText("VI_STATIC")).toBeVisible();
@@ -1694,7 +1719,7 @@ describe("chart workspace", () => {
     const api = fakeApi();
     render(<Workspace api={api} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Condition search" }));
+    openPanel("Condition search");
     const panel = await screen.findByRole("region", {
       name: "Kiwoom condition search",
     });
@@ -1733,7 +1758,7 @@ describe("chart workspace", () => {
     const api = fakeApi();
     render(<Workspace api={api} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    openPanel("Research");
     const panel = await screen.findByRole("region", { name: "Research" });
     expect(await within(panel).findByText("SOXL")).toBeVisible();
     expect(api.researchCalls[0]).toEqual({
@@ -1769,7 +1794,7 @@ describe("chart workspace", () => {
     const api = fakeApi();
     render(<Workspace api={api} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Rankings" }));
+    openPanel("Rankings");
     const panel = await screen.findByRole("region", { name: "Rankings" });
     expect(await within(panel).findByText("엔비디아")).toBeVisible();
     expect(api.rankingCalls[0]).toEqual({
@@ -1840,7 +1865,7 @@ describe("chart workspace", () => {
   it("shows the Toss account read-only and syncs fills into the journal", async () => {
     render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Account" }));
+    openPanel("Account");
     const panel = await screen.findByRole("region", {
       name: "Broker accounts",
     });
@@ -1857,7 +1882,7 @@ describe("chart workspace", () => {
     expect(await within(panel).findByRole("status")).toHaveTextContent(
       "1 new, 0 already stored, 1 without fills",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Trade journal" }));
+    openPanel("Trade journal");
     const heading = await screen.findByText(
       "Broker API executions (Toss, Kiwoom, Meritz)",
     );
@@ -1930,7 +1955,7 @@ describe("chart workspace", () => {
     };
     render(<Workspace api={api} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Account" }));
+    openPanel("Account");
     const panel = await screen.findByRole("region", {
       name: "Broker accounts",
     });
@@ -1956,7 +1981,7 @@ describe("chart workspace", () => {
     const storage = memoryStorage();
     render(<Workspace api={api} storage={storage} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Live quote" }));
+    openPanel("Live quote");
     const panel = await screen.findByRole("region", { name: "Live quote" });
     await waitFor(() => expect(api.quoteSources).toContain("toss"));
     expect(api.realtime.sources).toEqual(["toss"]);
@@ -1975,7 +2000,7 @@ describe("chart workspace", () => {
     render(<Workspace api={api} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
     await waitFor(() => expect(api.realtime.symbols.at(-1)).toEqual(["SYNTH"]));
-    fireEvent.click(screen.getByRole("button", { name: "Live quote" }));
+    openPanel("Live quote");
     const panel = await screen.findByRole("region", { name: "Live quote" });
     await within(panel).findAllByText("252.31");
     api.realtime.push({
@@ -3416,11 +3441,11 @@ describe("daily and weekly charts", () => {
     const { unmount } = render(
       <Workspace api={api} storage={memoryStorage()} />,
     );
-    // Without a backtest client the screen is not offered.
+    // Without a backtest client the strategy lab is not offered.
     expect(
       within(screen.getByRole("navigation", { name: "Panels" })).queryByRole(
         "button",
-        { name: "Backtest" },
+        { name: "Strategy lab" },
       ),
     ).toBeNull();
     unmount();
