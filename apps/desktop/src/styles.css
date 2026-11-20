@@ -4626,3 +4626,133 @@ details.ledger-fold[open] > summary {
   align-items: center;
   font-size: 13px;
 }
+
+/* Help → implemented-features guide (docs/FEATURES.md) */
+.modal.bt-screen.help-screen {
+  width: min(1100px, 97vw);
+  height: 90vh;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.help-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+}
+
+.help-toc {
+  overflow-y: auto;
+  border-right: 1px solid var(--term-line);
+  padding-right: 10px;
+  font-size: 12px;
+}
+
+.help-toc strong {
+  color: var(--term-muted);
+  font-weight: 500;
+}
+
+.help-toc ol {
+  margin: 6px 0 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.help-toc-link {
+  width: 100%;
+  border: 0;
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: var(--term-text);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.help-toc-link:hover {
+  background: var(--term-hover);
+}
+
+.help-body {
+  overflow-y: auto;
+  padding-right: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.help-body .help-h {
+  margin: 18px 0 6px;
+  scroll-margin-top: 8px;
+}
+
+.help-body .help-h1 {
+  margin-top: 0;
+  font-size: 20px;
+}
+
+.help-body .help-h2 {
+  border-bottom: 1px solid var(--term-line);
+  padding-bottom: 4px;
+  font-size: 17px;
+}
+
+.help-body .help-h3 {
+  font-size: 14px;
+}
+
+.help-body ul,
+.help-body ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.help-body code {
+  border-radius: 3px;
+  padding: 0 4px;
+  background: var(--term-hover);
+  font-size: 12px;
+}
+
+.help-body hr {
+  border: 0;
+  border-top: 1px solid var(--term-line);
+}
+
+.help-link {
+  color: var(--term-accent);
+}
+
+.help-table-wrap {
+  overflow-x: auto;
+  margin: 6px 0;
+}
+
+.help-table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.help-table th,
+.help-table td {
+  border-bottom: 1px solid var(--term-line);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.help-table th {
+  color: var(--term-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .help-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .help-toc {
+    display: none;
+  }
+}
