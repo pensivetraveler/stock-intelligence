@@ -22,6 +22,7 @@ import {
 import type { Drawing, DrawingTool } from "./drawings";
 import { barEnd, barsAsOf } from "./replay";
 import { splitMarkers } from "./split-markers";
+import { levelsOnChart } from "./price-level-splits";
 import {
   dailyRange,
   DEFAULT_CANDLES,
@@ -983,6 +984,11 @@ export function ChartPanel({
         : markers,
     [bars, filingSplits, markers, instrumentId, t],
   );
+  // Dilution prices are a filing's; the candles are adjusted by Alpaca's splits since.
+  const shownLevels = useMemo(
+    () => levelsOnChart(priceLevels, shownAdjustment, filingSplits, t),
+    [priceLevels, shownAdjustment, filingSplits, t],
+  );
   const selectCandle = useCallback(
     (time: number) => {
       const bar = bars?.find(
@@ -1555,7 +1561,7 @@ export function ChartPanel({
               dayMarket={dayMarketCandles}
               premarketBars={premarketShown}
               premarketLabel={t("chart.premarketLine")}
-              priceLevels={priceLevels}
+              priceLevels={shownLevels}
               sync={sync}
               markers={chartMarkers}
               onCandleClick={selectCandle}
