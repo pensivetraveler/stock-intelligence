@@ -101,6 +101,20 @@ CI의 `agent-linux` 작업(`.github/workflows/ci.yml`)과 같은 구성이다. �
    sudo apt install ./apps/desktop/src-tauri/target/release/bundle/deb/*.deb
    ```
 
+5. `.env`를 만든다. 없으면 API가 `SIW_DATA_DIR` 없이 떠서 모의투자 API가 모두 503(`paper_storage_unconfigured`)을 돌려준다. 키는 `.env`에 넣지 않는다(키 화면 → 키링).
+
+   ```bash
+   cd ~/stock-intelligence && cp .env.example .env && chmod 600 .env
+   ```
+
+6. API가 쓸 Python 환경을 미리 만든다. 앱이 처음 뜰 때 기다리는 시간이 줄어든다.
+
+   ```bash
+   cd ~/stock-intelligence && uv sync
+   ```
+
+2026-11-20 실측: Ubuntu 24.04.5(커널 7.0), Rust 1.100, uv 0.13.9, Node 22.23.2(nvm), pnpm 11.25.0에서 `tauri build --bundles deb` 71초, 결과 `SIW Agent_0.4.0-dev_amd64.deb`(2.93 MiB, 패키지 이름 `siw-agent`, 실행 파일 `/usr/bin/stock-intelligence-workstation`).
+
 ## 4. 첫 실행 (기기 앞에서)
 
 1. SIW Agent를 열고 API가 자동으로 뜨는지 확인한다.
