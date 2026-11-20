@@ -7,6 +7,7 @@ import { useState } from "react";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { useI18n } from "./i18n";
 import type { OhlcvBar } from "./indicators";
+import { ModalFrame } from "./Shell";
 
 /** The bars of the active chart, for a preview before saving. */
 export interface PreviewSource {
@@ -111,128 +112,116 @@ export function CustomIndicatorEditor({
   };
 
   return (
-    <div
-      className="modal-backdrop"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+    <ModalFrame
+      label={t("pyind.title")}
+      className="custom-indicator-editor"
+      onClose={onClose}
     >
-      <section
-        className="modal custom-indicator-editor"
-        role="dialog"
-        aria-label={t("pyind.title")}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
-        }}
-      >
-        <header className="modal-head">
-          <h2>{t("pyind.title")}</h2>
-          <span className="workspace-note">
-            {initial
-              ? t("pyind.revising", {
-                  name: initial.name,
-                  version: initial.version,
-                })
-              : t("pyind.new")}
-          </span>
-          <button
-            type="button"
-            className="tb-button"
-            aria-label={t("pyind.close")}
-            onClick={onClose}
-          >
-            ✕
-          </button>
-        </header>
-        <p className="workspace-note">{t("pyind.note")}</p>
-        <textarea
-          className="bt-code"
-          aria-label={t("pyind.code")}
-          spellCheck={false}
-          value={code}
-          onChange={(event) => setCode(event.target.value)}
-        />
-        {state.error ? (
-          <div className="bt-problem" role="alert">
-            <p>{state.error}</p>
-            {errorLine !== null &&
-            code.split("\n")[errorLine - 1] !== undefined ? (
-              <pre className="pyind-error-line">
-                {t("pyind.line", { n: errorLine })}{" "}
-                {code.split("\n")[errorLine - 1]}
-              </pre>
-            ) : null}
-          </div>
-        ) : null}
-        {preview.state === "done" ? (
-          <div className="pyind-preview" aria-label={t("pyind.preview")}>
-            <p className="workspace-note">
-              {t("pyind.previewOf", {
-                name: preview.result.name,
-                source: preview.source,
-                n: preview.result.times.length,
-              })}
-            </p>
-            <table className="bt-table">
-              <thead>
-                <tr>
-                  <th>{t("pyind.output")}</th>
-                  <th>{t("pyind.values")}</th>
-                  <th>{t("pyind.lastValues")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(preview.result.outputs).map(
-                  ([name, values]) => (
-                    <tr key={name}>
-                      <td>{name}</td>
-                      <td>{values.filter((value) => value !== null).length}</td>
-                      <td>
-                        {values
-                          .slice(-5)
-                          .map((value) =>
-                            value === null ? "—" : Number(value.toFixed(4)),
-                          )
-                          .join(", ")}
-                      </td>
-                    </tr>
-                  ),
-                )}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-        <p className="bt-actions">
-          {previewSource ? (
-            <button
-              type="button"
-              className="tb-button"
-              disabled={state.busy || preview.state === "busy"}
-              onClick={runPreview}
-            >
-              {preview.state === "busy"
-                ? t("pyind.checking")
-                : t("pyind.previewButton")}
-            </button>
+      <header className="modal-head">
+        <h2>{t("pyind.title")}</h2>
+        <span className="workspace-note">
+          {initial
+            ? t("pyind.revising", {
+                name: initial.name,
+                version: initial.version,
+              })
+            : t("pyind.new")}
+        </span>
+        <button
+          type="button"
+          className="tb-button"
+          aria-label={t("pyind.close")}
+          onClick={onClose}
+        >
+          ✕
+        </button>
+      </header>
+      <p className="workspace-note">{t("pyind.note")}</p>
+      <textarea
+        className="bt-code"
+        aria-label={t("pyind.code")}
+        spellCheck={false}
+        value={code}
+        onChange={(event) => setCode(event.target.value)}
+      />
+      {state.error ? (
+        <div className="bt-problem" role="alert">
+          <p>{state.error}</p>
+          {errorLine !== null &&
+          code.split("\n")[errorLine - 1] !== undefined ? (
+            <pre className="pyind-error-line">
+              {t("pyind.line", { n: errorLine })}{" "}
+              {code.split("\n")[errorLine - 1]}
+            </pre>
           ) : null}
+        </div>
+      ) : null}
+      {preview.state === "done" ? (
+        <div className="pyind-preview" aria-label={t("pyind.preview")}>
+          <p className="workspace-note">
+            {t("pyind.previewOf", {
+              name: preview.result.name,
+              source: preview.source,
+              n: preview.result.times.length,
+            })}
+          </p>
+          <table className="bt-table">
+            <thead>
+              <tr>
+                <th>{t("pyind.output")}</th>
+                <th>{t("pyind.values")}</th>
+                <th>{t("pyind.lastValues")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(preview.result.outputs).map(([name, values]) => (
+                <tr key={name}>
+                  <td>{name}</td>
+                  <td>{values.filter((value) => value !== null).length}</td>
+                  <td>
+                    {values
+                      .slice(-5)
+                      .map((value) =>
+                        value === null ? "—" : Number(value.toFixed(4)),
+                      )
+                      .join(", ")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      <p className="bt-actions">
+        {previewSource ? (
           <button
             type="button"
             className="tb-button"
-            disabled={state.busy}
-            onClick={() => save(false)}
+            disabled={state.busy || preview.state === "busy"}
+            onClick={runPreview}
           >
-            {t("pyind.save")}
+            {preview.state === "busy"
+              ? t("pyind.checking")
+              : t("pyind.previewButton")}
           </button>
-          <button
-            type="button"
-            className="tb-button bt-primary"
-            disabled={state.busy}
-            onClick={() => save(true)}
-          >
-            {state.busy ? t("pyind.checking") : t("pyind.saveAndAdd")}
-          </button>
-        </p>
-      </section>
-    </div>
+        ) : null}
+        <button
+          type="button"
+          className="tb-button"
+          disabled={state.busy}
+          onClick={() => save(false)}
+        >
+          {t("pyind.save")}
+        </button>
+        <button
+          type="button"
+          className="tb-button bt-primary"
+          disabled={state.busy}
+          onClick={() => save(true)}
+        >
+          {state.busy ? t("pyind.checking") : t("pyind.saveAndAdd")}
+        </button>
+      </p>
+    </ModalFrame>
   );
 }

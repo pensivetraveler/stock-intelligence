@@ -22,6 +22,7 @@ const { pathToFileURL } = require("node:url");
 
 const { findAgentApp } = require("./agent-app.cjs");
 const { ensureApi, healthy } = require("./api-process.cjs");
+const { settingsMenuItem, showSettingsIn } = require("./settings-menu.cjs");
 const {
   findRepoDir,
   isRepoDir,
@@ -191,13 +192,27 @@ async function openAgentApp() {
   return { opened: true, reason: null };
 }
 
-/** Adds "저장소 폴더 변경…" to the app menu; the new folder is used from the next launch. */
+/**
+ * Adds "설정…"(⌘,, opens the screen's settings dialog) and "저장소 폴더 변경…" to the app
+ * menu; the new folder is used from the next launch.
+ */
 function addRepoMenuItem() {
   const menu = Menu.getApplicationMenu();
   const appMenu = menu?.items.find((item) => item.role === "appmenu")?.submenu;
   if (!menu || !appMenu) return;
   appMenu.insert(
     1,
+    new MenuItem(
+      settingsMenuItem(() =>
+        showSettingsIn([
+          BrowserWindow.getFocusedWindow(),
+          ...BrowserWindow.getAllWindows(),
+        ]),
+      ),
+    ),
+  );
+  appMenu.insert(
+    2,
     new MenuItem({
       label: "저장소 폴더 변경…",
       click: async () => {
