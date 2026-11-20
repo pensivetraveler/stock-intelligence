@@ -2191,7 +2191,10 @@ export function Workspace({
           ) : null}
           {panel === "ledger" ? (
             <>
-              <AccountPanel api={api} onSynced={refreshJournal} />
+              <details className="ledger-fold" open>
+                <summary>{t("panel.account")}</summary>
+                <AccountPanel api={api} onSynced={refreshJournal} />
+              </details>
               <JournalPanel
                 manual={ledgers.manual}
                 imported={ledgers.imported}
@@ -2202,11 +2205,14 @@ export function Workspace({
               />
               {journalError ? null : (
                 <>
-                  <ReconciliationView
-                    api={api}
-                    revision={ledgers}
-                    symbolOf={symbolOf}
-                  />
+                  <details className="ledger-fold" open>
+                    <summary>{t("recon.title")}</summary>
+                    <ReconciliationView
+                      api={api}
+                      revision={ledgers}
+                      symbolOf={symbolOf}
+                    />
+                  </details>
                   <ImportPanel api={api} onImported={refreshJournal} />
                 </>
               )}

@@ -3524,7 +3524,7 @@ describe("daily and weekly charts", () => {
     });
     expect(screen.queryByRole("form", { name: "Trade entry" })).toBeNull();
     expect(
-      await screen.findByRole("region", { name: "Review Agent" }),
+      await screen.findByRole("region", { name: "Chart AI notes" }),
     ).toBeInTheDocument();
   });
 });

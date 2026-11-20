@@ -1,5 +1,5 @@
 import type { AgentAnalysis } from "@siw/contracts/types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { AgentApi } from "./agent-api";
 import { translateDynamic, useI18n } from "./i18n";
@@ -55,6 +55,21 @@ export function AgentAnalysisView({
 }) {
   const { t, language } = useI18n();
   const [payload, setPayload] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    setPayload(null);
+    Promise.resolve()
+      .then(() => api.payload(analysis.analysis_id))
+      .then((value) => {
+        if (live) setPayload(JSON.stringify(value ?? null, null, 2));
+      })
+      .catch(() => {
+        if (live) setPayload(t("common.requestFailed"));
+      });
+    return () => {
+      live = false;
+    };
+  }, [api, analysis.analysis_id, t]);
   const [state, setState] = useState<
     { busy: false; error: string | null } | { busy: true }
   >({ busy: false, error: null });
@@ -171,6 +186,12 @@ export function AgentAnalysisView({
       </details>
 
       <div className="agent-ask">
+        {/* 디자인-siw-1 N2: what will be sent stays open above the ask button. */}
+        <details className="agent-payload" open>
+          <summary>{t("agent.payload")}</summary>
+          <p className="workspace-note">{t("agent.payloadNote")}</p>
+          <pre className="bt-logs">{payload ?? "…"}</pre>
+        </details>
         <button
           type="button"
           className="tb-button bt-primary"
@@ -179,20 +200,6 @@ export function AgentAnalysisView({
         >
           {state.busy ? t("agent.asking") : t("agent.askClaude")}
         </button>
-        <details
-          onToggle={(event) => {
-            if ((event.target as HTMLDetailsElement).open && payload === null) {
-              api
-                .payload(analysis.analysis_id)
-                .then((value) => setPayload(JSON.stringify(value, null, 2)))
-                .catch(() => setPayload(t("common.requestFailed")));
-            }
-          }}
-        >
-          <summary>{t("agent.payload")}</summary>
-          <p className="workspace-note">{t("agent.payloadNote")}</p>
-          <pre className="bt-logs">{payload ?? "…"}</pre>
-        </details>
         {!state.busy && state.error ? (
           <p className="bt-problem" role="alert">
             {state.error}

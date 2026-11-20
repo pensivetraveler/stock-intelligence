@@ -76,14 +76,16 @@ export function JournalPanel({
   }
   return (
     <section className="journal" aria-label={t("journal.label")}>
-      <div className="ledger">
-        <h2>
-          <span
-            className="swatch"
-            style={{ background: MARKER_COLORS.manual }}
-          />{" "}
-          {t("journal.manualTitle")}
-        </h2>
+      <details className="ledger" open>
+        <summary>
+          <h2>
+            <span
+              className="swatch"
+              style={{ background: MARKER_COLORS.manual }}
+            />{" "}
+            {t("journal.manualTitle")}
+          </h2>
+        </summary>
         {manual && manual.positions.length > 0 ? (
           <ul className="ledger-summary">
             {manual.positions.map((position) => (
@@ -139,15 +141,17 @@ export function JournalPanel({
             )}
           </tbody>
         </table>
-      </div>
-      <div className="ledger">
-        <h2>
-          <span
-            className="swatch"
-            style={{ background: MARKER_COLORS.imported }}
-          />{" "}
-          {t("journal.importedTitle")}
-        </h2>
+      </details>
+      <details className="ledger" open>
+        <summary>
+          <h2>
+            <span
+              className="swatch"
+              style={{ background: MARKER_COLORS.imported }}
+            />{" "}
+            {t("journal.importedTitle")}
+          </h2>
+        </summary>
         {imported && imported.positions.length > 0 ? (
           <ul className="ledger-summary">
             {imported.positions.map((position) => (
@@ -202,15 +206,17 @@ export function JournalPanel({
             )}
           </tbody>
         </table>
-      </div>
-      <div className="ledger">
-        <h2>
-          <span
-            className="swatch"
-            style={{ background: MARKER_COLORS.broker }}
-          />{" "}
-          {t("journal.brokerTitle")}
-        </h2>
+      </details>
+      <details className="ledger" open>
+        <summary>
+          <h2>
+            <span
+              className="swatch"
+              style={{ background: MARKER_COLORS.broker }}
+            />{" "}
+            {t("journal.brokerTitle")}
+          </h2>
+        </summary>
         <p className="workspace-note">{t("journal.brokerNote")}</p>
         {broker &&
         broker.execution_count !== undefined &&
@@ -281,15 +287,17 @@ export function JournalPanel({
             )}
           </tbody>
         </table>
-      </div>
-      <div className="ledger">
-        <h2>
-          <span
-            className="swatch"
-            style={{ background: MARKER_COLORS.hypothetical }}
-          />{" "}
-          {t("journal.hypoTitle")}
-        </h2>
+      </details>
+      <details className="ledger" open>
+        <summary>
+          <h2>
+            <span
+              className="swatch"
+              style={{ background: MARKER_COLORS.hypothetical }}
+            />{" "}
+            {t("journal.hypoTitle")}
+          </h2>
+        </summary>
         <table>
           <thead>
             <tr>
@@ -330,7 +338,7 @@ export function JournalPanel({
             )}
           </tbody>
         </table>
-      </div>
+      </details>
     </section>
   );
 }
