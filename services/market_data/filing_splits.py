@@ -41,6 +41,13 @@ CONTRACT: dict[str, Any] = {
             "immutable": "/Archives/ paths: never replaced",
         },
         "sec.lock": {"protocol": "flock, CLOCK_MONOTONIC stamp", "interval_seconds": 0.2},
+        # ADR 0046 step 3. No reader is named yet; a reader opens metadata.sqlite3
+        # read-only and never LocalMarketDataStore, which writes when it opens.
+        "market/": {
+            "writer": "siw",
+            "files": ["metadata.sqlite3", "bars/", "ticks/"],
+            "readers": {},
+        },
     },
 }
 
