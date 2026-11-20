@@ -1129,6 +1129,8 @@ interface SupplyValue {
   unit: string | null;
   status: string | null;
   fact: boolean;
+  /** The filing's date; absent in checks stored before 2026-11-20. */
+  as_of?: string | null;
 }
 
 interface SupplySecurity {
@@ -1162,6 +1164,7 @@ function supplyLevels(securities: SupplySecurity[]): ChartPriceLevel[] {
       color: LEVEL_COLORS.dilution,
       // A value the analyzer did not confirm is drawn dotted.
       style: value.fact ? "dashed" : "dotted",
+      ...(value.as_of ? { asOf: value.as_of.slice(0, 10) } : {}),
     });
   };
   for (const item of securities) {

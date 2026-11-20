@@ -1050,6 +1050,8 @@ const en = {
     "No securities found: that means unknown, not none. Rules alone find only about 17% of the key security fields; analyze with LLM to look properly.",
   "candidates.noSecuritiesFound": "The analyzer found no securities.",
   "candidates.showLevels": "Show {count} lines on the chart",
+  "levels.splitScaled": "(×{factor}, Alpaca splits after the filing)",
+  "levels.splitsUnknown": "(splits after the filing unknown)",
   "candidates.clearLevels": "Clear {symbol} lines from the chart",
   "candidates.newsDetail": "News check",
   "candidates.newsMeta":
@@ -3203,6 +3205,8 @@ const ko: Record<MessageKey, string> = {
     "증권을 찾지 못했습니다. '없음'이 아니라 '모름'입니다. 규칙만으로는 증권 핵심 필드의 약 17%만 찾습니다. 제대로 보려면 LLM으로 분석하세요.",
   "candidates.noSecuritiesFound": "분석기가 찾은 증권이 없습니다.",
   "candidates.showLevels": "차트에 선 {count}개 표시",
+  "levels.splitScaled": "(×{factor}, 공시 뒤 Alpaca 분할 환산)",
+  "levels.splitsUnknown": "(공시 뒤 분할 모름)",
   "candidates.clearLevels": "차트에서 {symbol} 선 지우기",
   "candidates.newsDetail": "뉴스 검사",
   "candidates.newsMeta":
