@@ -5,6 +5,7 @@
 import {
   useEffect,
   useRef,
+  useState,
   type ComponentType,
   type KeyboardEvent,
   type ReactNode,
@@ -236,31 +237,35 @@ export function PanelTabs<T extends string>({
 }
 
 /**
- * One dialog frame: modal, first field focused on open, Tab stays inside, Esc / ✕ /
- * outside click close it, and focus goes back to what opened it.
+ * The shared modal frame: modal, first field focused on open, Tab stays inside, Esc and
+ * outside click close it, and focus goes back to what opened it. Screens keep their own
+ * header inside it (디자인-siw-1 r4 Dialog, 디자인-siw-2 3번).
  */
-export function Dialog({
+export function ModalFrame({
   label,
   className,
   onClose,
-  closeLabel,
   children,
 }: {
   label: string;
   className?: string;
   onClose: () => void;
-  closeLabel: string;
   children: ReactNode;
 }) {
   const box = useRef<HTMLElement>(null);
+  // Read while rendering, before a field inside takes focus with autoFocus.
+  const [opener] = useState(() => document.activeElement as HTMLElement | null);
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    const first = box.current?.querySelector<HTMLElement>(
-      "input, select, textarea, button:not(.dialog-close)",
-    );
-    first?.focus();
+    // A field that asks for focus itself (autoFocus) keeps it.
+    if (!box.current?.contains(document.activeElement)) {
+      // A field first (search, name); otherwise the first button that is not ✕.
+      const first =
+        box.current?.querySelector<HTMLElement>("input, select, textarea") ??
+        box.current?.querySelector<HTMLElement>("button:not(.dialog-close)");
+      first?.focus();
+    }
     return () => opener?.focus?.();
-  }, []);
+  }, [opener]);
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
       event.stopPropagation();
@@ -299,19 +304,40 @@ export function Dialog({
         aria-label={label}
         onKeyDown={onKeyDown}
       >
-        <header className="modal-head">
-          <h2>{label}</h2>
-          <button
-            type="button"
-            className="tb-button dialog-close"
-            aria-label={closeLabel}
-            onClick={onClose}
-          >
-            ✕
-          </button>
-        </header>
         {children}
       </section>
     </div>
+  );
+}
+
+/** A dialog with the standard header: title and ✕. */
+export function Dialog({
+  label,
+  className,
+  onClose,
+  closeLabel,
+  children,
+}: {
+  label: string;
+  className?: string;
+  onClose: () => void;
+  closeLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <ModalFrame label={label} className={className} onClose={onClose}>
+      <header className="modal-head">
+        <h2>{label}</h2>
+        <button
+          type="button"
+          className="tb-button dialog-close"
+          aria-label={closeLabel}
+          onClick={onClose}
+        >
+          ✕
+        </button>
+      </header>
+      {children}
+    </ModalFrame>
   );
 }

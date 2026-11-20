@@ -2,6 +2,8 @@
 interface SiwDesktop {
   /** Opens SIW Agent, the separate app for paper trading (ADR 0036). */
   openAgentApp(): Promise<{ opened: boolean; reason: string | null }>;
+  /** Calls back when the app menu's "설정…" is chosen; returns an unsubscribe. */
+  onShowSettings?(callback: () => void): () => void;
   /** Calls back when the app's Help menu asks for the guide; returns an unsubscribe. */
   onShowHelp?(callback: () => void): () => void;
 }

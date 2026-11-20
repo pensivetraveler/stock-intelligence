@@ -4546,6 +4546,87 @@ details.ledger-fold[open] > summary {
   white-space: nowrap;
 }
 
+/* ---------------------------------------------------------------------------
+   디자인-siw-2: 종목 띠 숫자 · 관심종목 두 줄 보기 추이선 · 설정 구역
+   --------------------------------------------------------------------------- */
+.symbol-band-numbers {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  min-width: 0;
+  margin-left: 8px;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+.symbol-band-price {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.symbol-band-price b {
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.symbol-band-stat {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.symbol-band-stat small,
+.symbol-band-note {
+  color: var(--siw-ink-dim);
+  font-size: 11px;
+}
+
+.symbol-band-stat b {
+  font-weight: 500;
+}
+
+.watch-rows .watch-last {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.watch-trend {
+  width: 80px;
+  height: 20px;
+}
+
+.watch-trend polyline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--siw-rule);
+}
+
+.settings-section h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.settings-field {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+
 /* Help → implemented-features guide (docs/FEATURES.md) */
 .modal.bt-screen.help-screen {
   width: min(1100px, 97vw);

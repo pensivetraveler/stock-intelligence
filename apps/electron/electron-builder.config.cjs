@@ -31,6 +31,7 @@ module.exports = {
     "repo-location.cjs",
     "agent-app.cjs",
     "help-menu.cjs",
+    "settings-menu.cjs",
     "preload.cjs",
     "ui/**/*",
     "siw-config.json",

@@ -86,7 +86,11 @@ import {
   saveAddedInstruments,
 } from "./added-instruments";
 import { ImportPanel } from "./ImportPanel";
+import { desktopBridge } from "./desktop-bridge";
 import { Dialog, PanelTabs, SideNav } from "./Shell";
+import { SymbolBandNumbers } from "./SymbolBand";
+import { ReviewSettingsPanel } from "./ReviewSettingsPanel";
+import { TechniqueDefaultModel } from "./SettingsSections";
 import {
   KR_ZONE,
   todayIn,
@@ -462,6 +466,7 @@ export function Workspace({
   const [symbolTab, setSymbolTab] = useState<SymbolTab>("quote");
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>("candidates");
   const [labTab, setLabTab] = useState<LabTab>("backtest");
+  const [settingsSection, setSettingsSection] = useState<"keys" | "ai">("keys");
   const [navCollapsed, setNavCollapsed] = useState<boolean>(() => {
     try {
       return storage?.getItem(NAV_COLLAPSED_KEY) === "1";
@@ -840,6 +845,12 @@ export function Workspace({
       });
     });
   }, [api, openOnToday]);
+
+  // The Electron app menu's "설정…" (⌘,) opens the settings dialog (디자인-siw-2 4번).
+  useEffect(
+    () => desktopBridge()?.onShowSettings?.(() => setPanel("settings")),
+    [],
+  );
 
   // ⌘1–⌘4 open the first item of each sidebar group, ⌘, opens settings, Esc closes a
   // work screen beside the chart (디자인-siw-1 정리안 A·B).
@@ -2009,6 +2020,18 @@ export function Workspace({
           {" · "}
           {activeConfig.sessionDate}
         </span>
+        <SymbolBandNumbers
+          api={api}
+          instrumentId={activeConfig.instrumentId}
+          sessionDate={activeConfig.sessionDate}
+          hidden={replayOn}
+          ready={visibleCharts.every((index) => chartSettled[index])}
+          shared={
+            watchlistVisible
+              ? (quoteRows[activeConfig.instrumentId] ?? null)
+              : undefined
+          }
+        />
       </section>
 
       {panel === "tradeReview" && reviewApi ? (
@@ -2067,12 +2090,45 @@ export function Workspace({
         >
           <div className="settings-body">
             <nav className="settings-nav" aria-label={t("panel.settings")}>
-              <button type="button" aria-pressed="true">
+              <button
+                type="button"
+                aria-pressed={settingsSection === "keys"}
+                onClick={() => setSettingsSection("keys")}
+              >
                 {t("settings.keys")}
               </button>
+              {reviewApi || techniqueApi ? (
+                <button
+                  type="button"
+                  aria-pressed={settingsSection === "ai"}
+                  onClick={() => setSettingsSection("ai")}
+                >
+                  {t("settings.ai")}
+                </button>
+              ) : null}
             </nav>
             <div className="settings-main">
-              {keysPanel}
+              {settingsSection === "keys" ? keysPanel : null}
+              {settingsSection === "ai" ? (
+                <>
+                  {reviewApi ? (
+                    <section
+                      className="settings-section"
+                      aria-label={t("rv.settings")}
+                    >
+                      <h3>{t("rv.settings")}</h3>
+                      <ReviewSettingsPanel
+                        api={reviewApi}
+                        today={new Date().toISOString().slice(0, 10)}
+                      />
+                    </section>
+                  ) : null}
+                  {techniqueApi ? (
+                    <TechniqueDefaultModel api={techniqueApi} />
+                  ) : null}
+                  <p className="workspace-note">{t("settings.aiNote")}</p>
+                </>
+              ) : null}
               <p className="workspace-note">{t("settings.about")}</p>
             </div>
           </div>

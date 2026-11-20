@@ -33,6 +33,31 @@ function loadView(): WatchView {
   }
 }
 
+/** A small trend line from the session's 60m closes (W2), drawn to its own scale. */
+function Trend({ closes, rising }: { closes: string[]; rising: boolean }) {
+  if (closes.length < 2) return <span className="watch-trend" />;
+  const values = closes.map(Number);
+  const top = Math.max(...values);
+  const bottom = Math.min(...values);
+  const span = top - bottom || 1;
+  const points = values
+    .map(
+      (value, index) =>
+        `${(index / (values.length - 1)) * 80},${20 - ((value - bottom) / span) * 18 - 1}`,
+    )
+    .join(" ");
+  return (
+    <svg
+      className={`watch-trend ${rising ? "legend-up" : "legend-down"}`}
+      viewBox="0 0 80 20"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <polyline points={points} />
+    </svg>
+  );
+}
+
 /** Percent change from the open, or null while unknown. */
 function percentOf(quote: SessionQuote | null): number | null {
   if (!quote) return null;
@@ -170,7 +195,15 @@ export function Watchlist({
                     />
                   </span>
                 ) : (
-                  <span className="watch-last">{lastText(row, quote)}</span>
+                  <span className="watch-last">
+                    {lastText(row, quote)}
+                    {quote?.closes ? (
+                      <Trend
+                        closes={quote.closes}
+                        rising={(percent ?? 0) >= 0}
+                      />
+                    ) : null}
+                  </span>
                 )}
                 <span
                   className={
