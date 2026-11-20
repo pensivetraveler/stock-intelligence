@@ -3146,6 +3146,11 @@
 - **한계:** 공시가 그 전 분할을 이미 반영했다고 가정한다. 11-20 전에 저장된 검사는 `as_of`가 없어 환산되지 않는다.
 - **시험:** Vitest `price-level-splits.test.ts` 5개, 데스크톱 전체 521개 통과. `test_dilution.py` 갱신, `pytest tests/screening tests/contracts tests/api`, ruff, mypy, tsc, eslint 통과.
 
+## Alpaca 약관·뉴스 문의 — 2026-11-20
+
+- **사용자 결정:** 같은 컴퓨터 안 시세 공유(ADR 0046 3단계 전제)와 Alpaca News 미확인 점(ADR 0052 §3)을 Alpaca 지원팀에 각각 문의했다. 답을 기다리는 동안 약관 문제로 기능을 막지 않는다("우선 약관 위배 관계없이 사용해보도록 하자").
+- **남은 일:** 답이 오면 ADR 0046 "Data rights"·ADR 0052 §3에 적는다. 금지하는 답이면 3단계를 되돌리거나 바꾼다.
+
 ## SIW Agent 미니PC 설치 런북 — 2026-11-20
 
 - **사용자 결정:** SIW Agent용 미니PC(GMKtec K12, 512GB SSD·16GB RAM)를 구입했다. OS는 아직 설치하지 않았고, iMac과 같은 사설 LAN에 둔다. 2TB SSD와 16GB RAM은 2026-12에 더한다. 설치 순서를 런북으로 남기기로 했다.
