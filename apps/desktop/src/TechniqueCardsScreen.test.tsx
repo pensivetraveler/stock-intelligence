@@ -181,7 +181,11 @@ const draftDone: TechniqueDraft = {
 const settings: TechniqueSettings = {
   kind: "technique_settings",
   default_model: "google/gemini-4-argon",
-  default_choices: ["google/gemini-4-argon", "openai/gpt-6-astra"],
+  default_choices: [
+    "anthropic/claude-fable-5.2",
+    "google/gemini-4-argon",
+    "openai/gpt-6-astra",
+  ],
   models: [],
 };
 
@@ -237,7 +241,7 @@ describe("technique cards", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: "Demo lesson" }));
     expect(
-      await screen.findByText(/1 slice\(s\), 5 transcript lines/),
+      await screen.findByText(/1 slice\(s\), 5 source lines/),
     ).toBeTruthy();
     expect(api.start).not.toHaveBeenCalled();
     fireEvent.click(
@@ -272,6 +276,41 @@ describe("technique cards", () => {
     ).toBeTruthy();
     expect(
       screen.getByText("GPT-6 Luna · made 2026-11-14 15:05 UTC · version 7"),
+    ).toBeTruthy();
+  });
+
+  it("says when a model at its limit was replaced", async () => {
+    const api = fakeApi();
+    const switched = card({
+      usage: {
+        ...card().usage,
+        models: ["google/gemini-4-argon"],
+        requested_model: "anthropic/claude-fable-5.2",
+        switches: [
+          {
+            part: 1,
+            from: "anthropic/claude-fable-5.2",
+            to: "google/gemini-4-argon",
+            reason: "limit",
+          },
+        ],
+      },
+    });
+    vi.mocked(api.cards).mockResolvedValue([switched]);
+    vi.mocked(api.card).mockResolvedValue(switched);
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
+    expect(
+      await screen.findByText(
+        "Slice 1: Fable 5.2 was at its limit, so Gemini 4 Argon was used",
+      ),
     ).toBeTruthy();
   });
 
@@ -374,7 +413,7 @@ describe("technique cards", () => {
     );
   });
 
-  it("changes the default model to Argon or Astra (Fable paused)", async () => {
+  it("changes the default model among Fable, Argon and Astra", async () => {
     const api = fakeApi();
     vi.mocked(api.settings).mockResolvedValue({
       ...settings,
@@ -389,6 +428,7 @@ describe("technique cards", () => {
       "Default model",
     )) as HTMLSelectElement;
     expect([...select.options].map((o) => o.textContent)).toEqual([
+      "Fable 5.2",
       "Gemini 4 Argon",
       "GPT-6 Astra",
     ]);

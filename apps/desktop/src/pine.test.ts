@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ema, rsi, sma, type OhlcvBar } from "./indicators";
 import {
   compilePine,
+  loopBudget,
   PINE_COLORS,
   PINE_EXAMPLE,
   pineDefinition,
@@ -159,7 +160,7 @@ plot(h, style=plot.style_histogram)`);
         `indicator("L")\nvar x = 0\nwhile true\n    x += 1\nplot(x)`,
         bars(2),
       ),
-    ).toThrow(/loops ran more than/);
+    ).toThrow(/loops ran more than 100,000 times on one bar \(bar 0\)/);
     try {
       compilePine(`indicator("E")\nx = (close +\nplot(x`);
       throw new Error("no error");
@@ -180,4 +181,34 @@ plot(h, style=plot.style_histogram)`);
     );
     expect(cut.plot0).toEqual(full.plot0.slice(0, 20));
   });
+
+  it("lets loop steps grow with the chart and stops a runaway loop on one bar", () => {
+    expect(loopBudget(0)).toEqual({ perBar: 100_000, total: 2_000_000 });
+    expect(loopBudget(13_200)).toEqual({ perBar: 100_000, total: 4_640_000 });
+    // 200 steps a bar over 10,500 bars is 2.1 million steps: over the old whole-run
+    // limit of 2,000,000, within 2,000,000 + 200 per bar.
+    const data = bars(10_500);
+    const values = run(
+      `indicator("L")
+total = 0
+for i = 1 to 200
+    total += 1
+plot(total)`,
+      data,
+    );
+    expect(values.plot0[0]).toBe(200);
+    expect(values.plot0[10_499]).toBe(200);
+    // One bar over its limit fails with that bar, even early in a long run.
+    expect(() =>
+      run(
+        `indicator("B")
+n = bar_index == 3 ? 100001 : 1
+total = 0
+for i = 1 to n
+    total += 1
+plot(total)`,
+        bars(10),
+      ),
+    ).toThrow(/100,000 times on one bar \(bar 3\)/);
+  }, 30_000);
 });

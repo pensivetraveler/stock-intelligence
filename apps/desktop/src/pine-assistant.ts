@@ -101,7 +101,7 @@ export function pineReference(
     `Functions: ${functions.join(", ")}.`,
     "request.security works on the chart, but the assistant's test run has no other symbol or timeframe data; avoid it unless asked.",
     `Not supported: time(...) and time_close(...) called as functions (use the time variable, year, month, dayofweek, hour and timestamp()), ${strategy ? "indicator() in this assistant" : "strategy() and strategy.* in this assistant"}, user-defined types (type), import/export libraries, matrix, map, polyline and anything not listed above. alertcondition, alert and log.* are accepted but do nothing in the app.`,
-    "Limits: 50,000 characters, 2,000,000 loop steps per run, 32 nested calls, 100,000 items per array.",
+    "Limits: 50,000 characters, 100,000 loop steps on one bar and 2,000,000 plus 200 per bar over the whole run, 32 nested calls, 100,000 items per array.",
     "Errors are reported as line and column. No look-ahead: a bar never sees a later bar.",
   ].join("\n");
 }

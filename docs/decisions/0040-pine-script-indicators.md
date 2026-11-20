@@ -27,7 +27,7 @@ Pine scripts are run bar by bar. They keep state across bars (`var`), read earli
   - A bar never sees a later bar. A test checks that cutting the bars does not change earlier values.
 - **Limits:**
   - scripts of at most 20,000 characters;
-  - at most 2,000,000 loop steps per run (over all bars);
+  - at most 2,000,000 loop steps per run (over all bars); changed 2026-11-15 by [ADR 0058](0058-pine-import-to-native-indicators.md) §6 to 100,000 on one bar and 2,000,000 + 200 per bar over the run;
   - at most 32 nested function calls.
   - A script that breaks a limit stops with an error that names the line.
 

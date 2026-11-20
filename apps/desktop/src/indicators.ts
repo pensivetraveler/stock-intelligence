@@ -23,8 +23,10 @@ import {
   type PineRequestData,
 } from "./pine";
 import { mapGraphicsTimes, type PineGraphics } from "./pine-drawings";
+import type { PineOrigin } from "./pine-convert";
 import type { StrategyReport } from "./pine-strategy";
 import {
+  FORMULA_COLORS,
   formulaDefinition,
   formulaLookback,
   MAX_FORMULA_LENGTH,
@@ -1308,6 +1310,8 @@ export interface IndicatorInstance {
   pine?: string;
   /** The Claude conversation that wrote this Pine script (ADR 0042), to continue it. */
   assistant?: string;
+  /** A formula converted from a Pine script (ADR 0058 §5): the script and the check. */
+  converted?: PineOrigin;
   label?: string;
   pane?: "price" | "separate";
 }
@@ -1479,6 +1483,34 @@ function savedLook(
   };
 }
 
+/** A converted formula's saved origin, kept only when every field is sound. */
+function savedOrigin(value: unknown): { converted?: PineOrigin } {
+  if (typeof value !== "object" || value === null) return {};
+  const origin = value as Record<string, unknown>;
+  if (
+    typeof origin.pine !== "string" ||
+    origin.pine.length > MAX_PINE_LENGTH ||
+    typeof origin.sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(origin.sha256) ||
+    typeof origin.converter !== "string" ||
+    origin.converter.length > 40 ||
+    typeof origin.bars !== "number" ||
+    !Number.isInteger(origin.bars) ||
+    origin.bars < 0
+  ) {
+    return {};
+  }
+  return {
+    converted: {
+      pine: origin.pine,
+      sha256: origin.sha256,
+      converter: origin.converter,
+      bars: origin.bars,
+      ...(origin.edited === true ? { edited: true } : {}),
+    },
+  };
+}
+
 export function parseIndicators(value: unknown): IndicatorInstance[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item): IndicatorInstance[] => {
@@ -1495,13 +1527,17 @@ export function parseIndicators(value: unknown): IndicatorInstance[] {
         {
           key: record.key,
           type: "formula",
-          params: {},
+          params: cleanParams(
+            formulaDefinition(record.formula, "Formula", "separate"),
+            record.params,
+          ),
           formula: record.formula,
           label:
             typeof record.label === "string" && record.label.trim()
               ? record.label.trim().slice(0, 40)
               : "Formula",
           pane: record.pane === "price" ? "price" : "separate",
+          ...savedOrigin(record.converted),
           ...(isHigherTimeframe(record.timeframe)
             ? { timeframe: record.timeframe }
             : {}),
@@ -1662,7 +1698,10 @@ export const MAX_WARMUP_BARS = 1_000;
 export function instanceLookback(instance: IndicatorInstance): number {
   if (instance.type === "formula") {
     try {
-      return formulaLookback(parseFormula(instance.formula ?? ""));
+      return formulaLookback(
+        parseFormula(instance.formula ?? ""),
+        instance.params,
+      );
     } catch {
       return 0; // an invalid formula draws nothing and needs no warm-up
     }
@@ -1814,7 +1853,7 @@ export function renderIndicators(
     }
     const pointColors = instance.timeframe
       ? undefined
-      : PINE_COLORS.get(values);
+      : (PINE_COLORS.get(values) ?? FORMULA_COLORS.get(values));
     const lines = definition.outputs.map((output) => {
       const kind = output.kind ?? "line";
       const perBar = pointColors?.[output.key];

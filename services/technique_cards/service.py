@@ -17,7 +17,7 @@ from decimal import Decimal
 from typing import Any
 
 from services.technique_cards.checks import check_card, timeline
-from services.technique_cards.citations import Line, parse_transcript
+from services.technique_cards.citations import Line, parse_source, unit_of
 from services.technique_cards.extract import (
     CHOOSABLE_MODELS,
     PRICES,
@@ -25,6 +25,7 @@ from services.technique_cards.extract import (
     Caller,
     Extraction,
     Keys,
+    chain,
     extract_card,
     ladder,
     prompts_for,
@@ -73,7 +74,7 @@ class TechniqueCards:
 
     @staticmethod
     def _lines(fetched: Fetched) -> list[Line]:
-        return parse_transcript(fetched.path.read_text(encoding="utf-8", errors="replace"))
+        return parse_source(fetched.path.read_text(encoding="utf-8", errors="replace"))
 
     def preview(self, source: Source, model: str | None = None) -> dict[str, Any]:
         model = model or self.store.default_model()
@@ -89,10 +90,13 @@ class TechniqueCards:
             "title": source.title,
             "url": source.url,
             "lines": len(lines),
+            "source_unit": unit_of(lines),
             "parts": len(prompts),
             "characters": sum(len(p) for p in prompts),
             "model": model,
             "fallback": " → ".join(ladder(model)[1:]),
+            # Where a slice goes when a model is at its limit (#LAG-SIW-4).
+            "limit_fallback": " → ".join(chain(model, self.store.default_model())[1:]),
             "models": list(CHOOSABLE_MODELS),
             "default_model": self.store.default_model(),
             "estimated_cost_usd": format(cost.quantize(Decimal("0.01")), "f"),
@@ -114,7 +118,14 @@ class TechniqueCards:
         fetched, outcome = self._usable(source.item_ref)
         lines = self._lines(fetched)
         extraction: Extraction = extract_card(
-            source.source_key or source.item_ref, source.title, lines, keys, call=call, model=model
+            source.source_key or source.item_ref,
+            source.title,
+            lines,
+            keys,
+            call=call,
+            model=model,
+            default=self.store.default_model(),
+            limits=self.store,
         )
         checks = check_card(extraction.card, lines)
         usage = extraction.usage | {"parts": extraction.parts, "flags": checks["counts"]}
@@ -127,7 +138,8 @@ class TechniqueCards:
                 "checks": checks,
                 "usage": usage,
                 "attempts": extraction.attempts,
-                "versions": VERSIONS | {"model": model, "fallback": ladder(model)[-1]},
+                "versions": VERSIONS
+                | {"model": model, "fallback": ladder(model)[-1], "source_unit": unit_of(lines)},
                 "context_ref": fetched.context_ref,
                 "revision_ref": fetched.revision_ref,
                 "transcript_sha256": fetched.sha256,
@@ -154,4 +166,12 @@ class TechniqueCards:
             outcome = "unknown"
         if outcome not in USABLE:
             self.library.forget(row["item_ref"])
+            return self.store.rechecked(card_id, outcome)
+        # The same source text: run the script checks again, so a fixed checker reaches cards
+        # made before the fix (Korean units, 2026-11-16). Another text is not checked here.
+        cached = self.library.cached(row["item_ref"])
+        if cached is not None and cached.sha256 == row["transcript_sha256"]:
+            checks = check_card(row["card"], self._lines(cached))
+            if checks != row["checks"]:
+                self.store.update_checks(card_id, checks)
         return self.store.rechecked(card_id, outcome)

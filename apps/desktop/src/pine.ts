@@ -53,10 +53,25 @@ import {
 
 export { MAX_PINE_LENGTH, PineError } from "./pine-parser";
 
-const MAX_LOOP_STEPS = 2_000_000; // per run, over all bars
+// Loop limits (ADR 0058 §6). One bar stops a runaway loop quickly; the whole run grows with
+// the chart, so a script that loops a fixed number of times per bar runs on any chart length.
+export const MAX_LOOP_STEPS_PER_BAR = 100_000;
+const LOOP_STEPS_BASE = 2_000_000;
+const LOOP_STEPS_PER_BAR_ON_AVERAGE = 200;
+
+/** Loop steps a run may take on this many bars, in one bar and over the whole run. */
+export function loopBudget(barCount: number): {
+  perBar: number;
+  total: number;
+} {
+  return {
+    perBar: MAX_LOOP_STEPS_PER_BAR,
+    total: LOOP_STEPS_BASE + LOOP_STEPS_PER_BAR_ON_AVERAGE * barCount,
+  };
+}
 const MAX_CALL_DEPTH = 32;
 
-const SOURCES = [
+export const SOURCES = [
   "close",
   "open",
   "high",
@@ -66,7 +81,7 @@ const SOURCES = [
   "ohlc4",
 ] as const;
 
-const COLORS: Record<string, string> = {
+export const COLORS: Record<string, string> = {
   "color.red": "#f23645",
   "color.green": "#089981",
   "color.blue": "#2962ff",
@@ -86,7 +101,7 @@ const COLORS: Record<string, string> = {
   "color.silver": "#b2b5be",
 };
 
-const DEFAULT_PLOT_COLOR = "#2962ff";
+export const DEFAULT_PLOT_COLOR = "#2962ff";
 const TRANSPARENT = "rgba(0, 0, 0, 0)";
 
 /**
@@ -219,7 +234,7 @@ export const PINE_FUNCTIONS = [
 ] as const;
 
 /** Parameter names of built-ins, so named arguments land in the right place. */
-const SIGNATURES: Record<string, string[]> = {
+export const SIGNATURES: Record<string, string[]> = {
   plot: [
     "series",
     "title",
@@ -468,7 +483,7 @@ const SIGNATURES: Record<string, string[]> = {
   "ta.kc": ["series", "length", "mult", "useTrueRange"],
 };
 /** Fallback order for `ta.*` named arguments not in SIGNATURES. */
-const TA_ORDER: Record<string, number> = {
+export const TA_ORDER: Record<string, number> = {
   source: 0,
   series: 0,
   length: 1,
@@ -1134,7 +1149,11 @@ const isTransparent = (color: string) => /, 0\)$/.test(color);
 
 // --- run ----------------------------------------------------------------------------
 
-class Stop extends Error {}
+class Stop extends Error {
+  constructor(readonly scope: "bar" | "run") {
+    super(scope);
+  }
+}
 class BreakSignal {}
 class ContinueSignal {}
 
@@ -1348,7 +1367,9 @@ export function runPine(
     { a: Value; b: Value; colors: (string | null)[] }
   >();
   const missing: string[] = [];
+  const budget = loopBudget(bars.length);
   let steps = 0;
+  let barSteps = 0;
   let bar = 0;
   const timeZone = context?.timeZone ?? "America/New_York";
   const dayKey = (time: number) =>
@@ -3145,7 +3166,9 @@ export function runPine(
     depth: number,
   ): { value: Value; stop: boolean } => {
     steps += 1;
-    if (steps > MAX_LOOP_STEPS) throw new Stop();
+    barSteps += 1;
+    if (barSteps > budget.perBar) throw new Stop("bar");
+    if (steps > budget.total) throw new Stop("run");
     try {
       return { value: runBlock(body, scopes, path, depth), stop: false };
     } catch (signal) {
@@ -3383,13 +3406,17 @@ export function runPine(
         }
       }
       broker?.beforeBar(bar, bars[bar]);
+      barSteps = 0;
       runBlock(program.body, [], "", 0);
       broker?.afterBar(bar, bars[bar]);
     }
   } catch (error) {
     if (error instanceof Stop) {
+      const count = (n: number) => n.toLocaleString("en-US");
       throw new PineError(
-        `the script's loops ran more than ${MAX_LOOP_STEPS.toLocaleString("en-US")} times`,
+        error.scope === "bar"
+          ? `the script's loops ran more than ${count(budget.perBar)} times on one bar (bar ${count(bar)})`
+          : `the script's loops ran more than ${count(budget.total)} times over ${count(bars.length)} bars`,
         1,
         1,
       );

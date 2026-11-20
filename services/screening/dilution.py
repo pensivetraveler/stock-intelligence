@@ -98,7 +98,10 @@ class DilutionService:
 
 
 def _value(item: Any) -> dict[str, Any] | None:
-    """A contract value reduced to its amount, unit and status (amount null = unknown)."""
+    """A contract value reduced to its amount, unit, status and date (amount null = unknown).
+
+    `as_of` is the date the value describes (the filing's), so a chart can scale a price by
+    the splits after it."""
     if not isinstance(item, dict):
         return None
     return {
@@ -106,6 +109,7 @@ def _value(item: Any) -> dict[str, Any] | None:
         "unit": item.get("unit"),
         "status": item.get("status"),
         "fact": item.get("status") in FACT_STATUSES and item.get("amount") is not None,
+        "as_of": item.get("as_of"),
     }
 
 

@@ -2,6 +2,7 @@
 
 - **Status:** proposed. 2026-11-09 사용자 결정으로 S1부터 착수한다(아래 "진행 방식"). 나머지 "사용자가 정할 것"은 각 단계 착수 전에 정한다.
 - **Changed (2026-11-12, [ADR 0057](0057-selection-flow-seven-stages.md)):** A 진입조건은 폐기했다(2026-11-14 코드·화면 제거, 저장된 결과와 계약 값 `entry`는 남김). 사용자는 종목을 고르지 않는다("사용자가 고른 종목"은 더 이상 맞지 않음). B는 2단계 재료 영향력, C·D는 4단계 정보, 희석 LLM은 주 1회 검수로 옮겼다. 아래 본문은 2026-11-09 기록으로 남긴다.
+- **Changed (2026-11-20, 사용자 결정 "분할로 환산"):** C 희석 가격선은 값의 공시일(`as_of`) 뒤 Alpaca 분할만큼 환산해 분할 조정 차트에 그린다(1:58 역분할이면 ×58). 차트 봉도 같은 Alpaca 분할로 맞춰져 있다. Alpaca 분할을 못 읽으면 값 그대로 두고 선 이름에 "공시 뒤 분할 모름"을 붙인다. 분석기 자신의 분할 기준(`basis.reflects_splits_through`)은 쓰지 않는다: XXII에서 06-12·11-05 분할을 못 읽어 01-26으로 나왔다(분석기 회신 #SIW-verify-2). 공시가 그 전 분할을 이미 반영했다고 보는 가정이며, 공시일 뒤에 발표만 된 분할은 반영 여부를 모른다. 리플레이(실제 거래 가격 차트)와 날짜 없는 선은 바꾸지 않는다. 11-20 전에 저장된 검사에는 `as_of`가 없어 환산되지 않는다(다시 검사하면 생김).
 - **Changed (2026-11-14, ADR 0057 U-b):** 검사 B 결과의 `conclusions`로 2단계 판정(통과·그날 제외·재료 미확인, 전략 보통·보수적)을 만든다. 검사 B 요청에 cutoff 시가총액 `context`를 넣는다(검사 판 `screening-news-4`). 자세한 것은 ADR 0057 "U-b 구현".
 - **Date:** 2026-11-09
 - **Related:** [ADR 0048](0048-kiwoom-condition-search.md)·[ADR 0051](0051-kiwoom-realtime-condition-watch.md)(조건검색), [ADR 0024](0024-filings-and-dark-pool-agents.md)(공시·다크풀 Agent), [ADR 0046](0046-shared-data-space.md)(희석 분석기와 공동 데이터 공간), [ADR 0050](0050-quote-command-for-local-tools.md)(시세 명령), [ADR 0036](0036-desktop-app-roles.md)(앱 역할), [ADR 0042](0042-claude-assistants.md)(Claude 보조)
@@ -78,6 +79,8 @@
 - **확인 결과(2026-11-09, S4 세션):**
   - **Alpaca 권한:** Keys 화면의 첫 Alpaca 키로 읽기 전용 2회 호출(AAPL, 3건), HTTP 200. 한도 헤더 `X-RateLimit-Limit: 10000`(분당). 응답 필드는 `id, headline, summary, author, created_at, updated_at, url, symbols, source, content, images`. `include_content`를 주지 않아도 `content`는 빈 문자열이었다.
   - **Alpaca 약관:** Alpaca Terms and Conditions(`files.alpaca.markets/disclosures/library/TermsAndConditions.pdf`, 2026-11-09 받음)는 뉴스를 포함한 "Content"를 개인·비상업 용도로만 쓰게 하고, 다른 매체로 게시·배포하려고 복사·재게시하는 것을 금한다. 제3자(Benzinga 등) 콘텐츠도 이 Content에 들어간다. 그래서 제목·요약을 **이 컴퓨터의 로컬 캐시에만** 두고 화면에 보이는 것은 개인 연구로 보고 진행한다. 내보내기·공유·커밋은 하지 않는다. 시험 자료는 지어낸 기사만 쓴다.
+  - **Alpaca 실측(2026-11-16, 같은 키, 읽기 전용):** 11-09~11-13 기사 500건 중 `fiscal.ai` 334건·`benzinga` 166건. `updated_at = created_at`이 498건, 나머지 2건은 1~2초 차이(수정 기사로 볼 만한 차이는 없음). 2015-01-01 기사까지 받힌다. 시작·끝을 비우면 몇 분 전 기사(일요일 15:32Z)가 온다. 공식 문서에는 요금제별 뉴스 권한, `created_at`의 기준, 수정 기사 재전송이 여전히 없다. Benzinga 원문 페이지는 자동 접근을 403으로 막아 게시 시각과 대조하지 못했다.
+  - **사용자 결정(2026-11-20):** 아래 미확인 점을 Alpaca 지원팀에 문의했다. 답을 기다리는 동안에도 Alpaca 뉴스를 그대로 쓴다("우선 약관 위배 관계없이 사용해보도록 하자"). 답이 오면 여기에 적는다.
   - **Alpaca 미확인(unverified):** 뉴스가 어느 요금제에 들어가는지(공식 문서에 표 없음, 한도 10000/분은 유료 요금제 값과 같다), 뉴스 전용 과거 기간·한도, `created_at`이 게시 시각인지(문서는 "만든 시각"이라고만 함), 기사 수정 때 `updated_at`이 바뀌는지, Benzinga 쪽 별도 사용 조건. 약관 해석은 법률 검토가 아니다.
   - **MarketNewsAPI(공식 OpenAPI·약관·요금 페이지, 키 없음):**
     - 요청: `tickers`(최대 50), `type=news,press_release`, `include_legal=false`, `from`·`to`(ISO 8601 UTC, 초 단위), `limit` 1~100, `cursor`로 쪽 넘김.

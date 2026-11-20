@@ -128,6 +128,28 @@ def test_a_model_gets_the_scripted_rules_fixed_and_may_not_change_them(tmp_path:
     assert not any("condition 1 " in p for p in result["blocking"])
 
 
+def test_indented_rule_paths_from_the_model_still_keep_the_scripted_rules(
+    tmp_path: Path,
+) -> None:
+    # Gemini 4 Argon answered "    /entry" (real draft 2026-11-16): the pointer is trimmed.
+    row = _ready_card(_store(tmp_path))
+
+    def call(system: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        return _reply(
+            DONCHIAN,
+            [
+                {"index": 0, "status": "mapped", "rule_paths": ["    /entry"], "reason": ""},
+                {"index": 1, "status": "mapped", "rule_paths": ["/exit  "], "reason": ""},
+                {"index": 2, "status": "unconvertible", "rule_paths": [], "reason": "size"},
+            ],
+        )
+
+    result = strategy_draft.draft(row, "google/gemini-4-argon", KEYS, call=call)
+    mapping = result["conversion"]["mapping"]
+    assert [m["rule_paths"] for m in mapping] == [["/entry"], ["/exit"], []]
+    assert result["blocking"] == []
+
+
 def test_when_the_script_converts_every_item_no_model_is_called(tmp_path: Path) -> None:
     store = _store(tmp_path)
     row = _ready_card(store)

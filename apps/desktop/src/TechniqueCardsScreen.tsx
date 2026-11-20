@@ -434,6 +434,17 @@ export function TechniqueCardsScreen({
                       ))}
                     </select>{" "}
                     → {preview.fallback}
+                    {preview.limit_fallback ? (
+                      <span className="workspace-note">
+                        {" "}
+                        {t("tc.limitFallback", {
+                          chain: preview.limit_fallback
+                            .split(" → ")
+                            .map((m) => MODEL_NAMES[m] ?? m)
+                            .join(" → "),
+                        })}
+                      </span>
+                    ) : null}
                   </dd>
                   <dt>{t("tc.cost")}</dt>
                   <dd>
@@ -480,6 +491,24 @@ export function TechniqueCardsScreen({
                     {t("tc.recheck")}
                   </button>
                 </p>
+                {card.usage.switches?.length ? (
+                  <ul className="tc-switches" role="status">
+                    {card.usage.switches.map((s, i) => (
+                      <li key={i}>
+                        {t("tc.switch", {
+                          part: s.part,
+                          from: MODEL_NAMES[s.from] ?? s.from,
+                          to: MODEL_NAMES[s.to] ?? s.to,
+                          reason: t(
+                            s.reason === "limit"
+                              ? "tc.switchLimit"
+                              : "tc.switchFailed",
+                          ),
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
 
                 <table className="tc-conditions">
                   <thead>

@@ -99,6 +99,7 @@ def _error(code: str, message: str) -> None:
 def _backfill(args: argparse.Namespace) -> int:
     # Imported here so `doctor` and `run` keep their fast, dependency-light startup.
     from services.collector.backfill import BackfillRequest, run_backfill
+    from services.market_data.locations import market_data_dir
     from services.market_data.provider import (
         MarketDataError,
         ProviderAuthError,
@@ -130,7 +131,7 @@ def _backfill(args: argparse.Namespace) -> int:
         max_attempts=args.max_attempts,
     )
     try:
-        with LocalMarketDataStore(data_dir) as store:
+        with LocalMarketDataStore(market_data_dir(data_dir) or data_dir) as store:
             summary = run_backfill(
                 store,
                 provider_from_env(),
