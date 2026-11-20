@@ -106,6 +106,18 @@ describe("help guide", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  it("is a modal dialog that starts on the contents and closes with Escape inside", () => {
+    const onClose = renderHelp();
+    const dialog = screen.getByRole("dialog", {
+      name: "도움말 · 구현 기능 안내",
+    });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    // The first contents link takes focus, not the close button.
+    expect(document.activeElement).toHaveClass("help-toc-link");
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("notes that the guide is in Korean when the screen is in English", () => {
     renderHelp(vi.fn(), "en");
     expect(
