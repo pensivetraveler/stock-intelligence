@@ -9,7 +9,7 @@
 3. [EXECUTION_PROCESS.md](EXECUTION_PROCESS.md): 실제 진행 순서와 승인 범위.
 4. [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md): 전체 제품의 장기 개발 순서와 아직 남은 요구사항.
 
-구현된 기능을 영역별로 한눈에 보려면 [FEATURES.md](FEATURES.md)(2026-11-15, `679b1de` 기준 총정리)를 본다.
+구현된 기능을 영역별로 한눈에 보려면 [FEATURES.md](FEATURES.md)(2026-11-15, `679b1de` 기준 총정리)를, 화면·메뉴 배치는 [UI_INVENTORY.md](UI_INVENTORY.md)를 본다.
 
 ## 요구사항·실행·결정 문서
 
