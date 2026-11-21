@@ -3158,3 +3158,14 @@
 - **이동:** API를 멈추고 `data/backups/market-before-move-20261120-1640/`에 백업(`metadata.sqlite3` `.backup` 무결성 ok, `bars-ticks.tar.gz` 4,040개) → `metadata.sqlite3`·`bars/`·`ticks/`를 `~/Trading/stock-data/market`으로 옮김 → `.env`에 설정 → 8db663b로 재시작.
 - **확인:** 표별 행 수와 4,040개 파일 sha256이 이동 전과 같다. API의 owner lock이 새 폴더에 생겼다. AAPL 일봉 32개, XXII 1분봉 330개(complete)가 새 쓰기 없이 캐시에서 나왔다. `data/`에는 저장소가 남지 않았다.
 - **남은 것:** 읽는 프로그램은 아직 없다(읽는 쪽 계약은 처음 읽는 프로그램이 정해질 때 쓴다). 백업은 이동이 안정되면 지울지 사용자가 정한다. `data/owners/`·`data/maintenance.lock`(옛 저장소의 빈 잠금 파일)은 남아 있으나 쓰이지 않는다.
+
+## SIW Agent 키 탭 — 2026-11-20
+
+- **사용자 결정:** "지금 시작". 미니PC에 첫 키를 넣으려다 SIW Agent에 키 화면이 없다는 것을 알았다(키 화면은 Research에만 있음). 공통 저장소로 키를 공유하는 안 대신 Agent에 키 화면을 넣는다([ADR 0036](decisions/0036-desktop-app-roles.md) 2026-11-20 개정).
+- **변경:**
+  - `agent/AgentApp.tsx`: 모의투자·실계좌 옆에 "키" 탭. Research와 같은 `KeysPanel`을 같은 로컬 API로 쓴다. 탭을 열 때만 목록을 부른다. 안내문: 키는 이 컴퓨터의 키체인에만 있고 다른 컴퓨터와 옮겨지지 않는다.
+  - `i18n.ts`: `liveacct.tab.keys`, `keys.agentTitle`, `keys.agentNote`(영·한).
+  - ADR 0036 개정 절, ADR 0045 키 등록 문장.
+- **시험:** `AgentApp.test.tsx`에 키 탭 시험 1개(탭을 고르기 전에는 목록 호출 없음, 패널·안내문 표시).
+- **바꾸지 않음:** `/v1/credentials` 쓰기의 출처 제한. Research도 같은 엔드포인트를 쓴다.
+- **미검증:** 미니PC의 새 `.deb`에서 키 탭으로 실제 등록(병합 뒤 확인).

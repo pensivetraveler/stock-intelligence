@@ -16,8 +16,10 @@ import {
   type ReactNode,
 } from "react";
 
+import { createCredentialApi, type CredentialApi } from "../credential-api";
 import { useI18n, LANGUAGES, type Language } from "../i18n";
 import { I18nProvider } from "../I18nProvider";
+import { KeysPanel } from "../KeysPanel";
 import "../styles.css";
 import { createLiveApi, type LiveApi } from "./live-api";
 import { createPaperApi, type PaperApi } from "./paper-api";
@@ -45,6 +47,7 @@ interface AgentAppProps {
   runnerControl?: RunnerControl;
   liveApi?: LiveApi;
   liveRunnerControl?: RunnerControl;
+  credentialApi?: CredentialApi;
   pollMs?: number;
   languageStorage?: Storage | null;
   /** The language until the user picks one; SIW Agent opens in Korean. */
@@ -54,8 +57,10 @@ interface AgentAppProps {
 }
 
 /**
- * SIW Agent: paper-trading status, kill switch, approvals and the paper ledger, and a
- * separate live-account tab where every order waits for the user (ADR 0047).
+ * SIW Agent: paper-trading status, kill switch, approvals and the paper ledger, a
+ * separate live-account tab where every order waits for the user (ADR 0047), and a keys
+ * tab, since the Agent machine has no SIW Research to register keys in (ADR 0036
+ * amendment 2026-11-20).
  */
 export function AgentApp({
   languageStorage,
@@ -80,10 +85,10 @@ type ScreenProps = Omit<AgentAppProps, "languageStorage" | "defaultLanguage">;
 
 function AgentScreen(props: ScreenProps) {
   const { t } = useI18n();
-  const [mode, setMode] = useState<"paper" | "live">("paper");
+  const [mode, setMode] = useState<"paper" | "live" | "keys">("paper");
   const tabs = (
     <nav className="agent-tabs" role="tablist" aria-label={t("liveacct.tabs")}>
-      {(["paper", "live"] as const).map((item) => (
+      {(["paper", "live", "keys"] as const).map((item) => (
         <button
           key={item}
           type="button"
@@ -92,15 +97,54 @@ function AgentScreen(props: ScreenProps) {
           className={`agent-tab ${item === "live" ? "agent-tab-live" : ""}`}
           onClick={() => setMode(item)}
         >
-          {t(item === "paper" ? "liveacct.tab.paper" : "liveacct.tab.live")}
+          {t(
+            item === "paper"
+              ? "liveacct.tab.paper"
+              : item === "live"
+                ? "liveacct.tab.live"
+                : "liveacct.tab.keys",
+          )}
         </button>
       ))}
     </nav>
   );
+  if (mode === "keys") return <KeysScreen {...props} tabs={tabs} />;
   return mode === "paper" ? (
     <PaperScreen {...props} tabs={tabs} />
   ) : (
     <LiveScreen {...props} tabs={tabs} />
+  );
+}
+
+/**
+ * Register, replace and delete keys on this machine. The same panel as SIW Research, on
+ * the same local API: secrets go to this machine's keychain and are never read back.
+ */
+function KeysScreen({
+  apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8765",
+  credentialApi,
+  tabs,
+}: ScreenProps & { tabs: ReactNode }) {
+  const { t } = useI18n();
+  useEffect(() => {
+    document.title = t("keys.agentTitle");
+  }, [t]);
+  const api = useMemo(
+    () => credentialApi ?? createCredentialApi(apiBaseUrl),
+    [credentialApi, apiBaseUrl],
+  );
+  return (
+    <main className="app agent-app">
+      {tabs}
+      <div className="agent-banner" role="note">
+        {t("keys.agentNote")}
+      </div>
+      <header className="agent-header">
+        <h1>{t("keys.agentTitle")}</h1>
+        <LanguagePicker />
+      </header>
+      <KeysPanel api={api} />
+    </main>
   );
 }
 
