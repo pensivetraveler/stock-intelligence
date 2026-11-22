@@ -15,6 +15,9 @@ answer is one JSON envelope; exit code 0 is not "allowed", the envelope is judge
   is used, `conditional` is used and shown as conditional, `stop_using` / `unknown` deletes the
   cache and the caller marks the card's evidence withdrawn.
 - Third-party text never goes into the repository, logs or error messages.
+- A series (volumes 1 and 2 of one book, `item.series = {"name", "index"}`, #SIW-lib-23) is one
+  source: the list shows it once (`kl-series:<name>`), and its text is the volumes in order with
+  pages (or paragraphs, or times) numbered on from the volume before (user request 2026-11-22).
 """
 
 from __future__ import annotations
@@ -43,6 +46,7 @@ DERIVED_KINDS = ("summary", "interpretation")
 TIMEOUT_SECONDS = 120
 # Each library call is its own process (~1-2 s); item lookups for the list run side by side.
 LIST_WORKERS = 6
+SERIES_PREFIX = "kl-series:"
 
 Runner = Callable[[list[str], dict[str, Any]], dict[str, Any]]
 
@@ -135,9 +139,17 @@ class Source:
     tags: list[str]
     delivered_at: str
     eligibility: list[str]
+    series: str = ""
+    series_index: int = 0
+    # A series source: its volumes, in order (each a single-item source).
+    members: tuple[Source, ...] = ()
+
+    @property
+    def is_series(self) -> bool:
+        return bool(self.members)
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "item_ref": self.item_ref,
             "title": self.title,
             "url": self.url,
@@ -146,6 +158,53 @@ class Source:
             "delivered_at": self.delivered_at,
             "eligibility": self.eligibility,
         }
+        if self.members:
+            out["series"] = {
+                "name": self.series,
+                "volumes": [
+                    {"item_ref": m.item_ref, "title": m.title, "index": m.series_index}
+                    for m in self.members
+                ],
+            }
+        return out
+
+
+def series_ref(name: str) -> str:
+    return SERIES_PREFIX + name
+
+
+def group_series(sources: list[Source]) -> list[Source]:
+    """Volumes of one series become one source; a series with one volume here stays as it is."""
+    by_name: dict[str, list[Source]] = {}
+    for source in sources:
+        if source.series:
+            by_name.setdefault(source.series.casefold(), []).append(source)
+    out: list[Source] = []
+    placed: set[str] = set()
+    for source in sources:
+        key = source.series.casefold()
+        volumes = by_name.get(key, []) if source.series else []
+        if len(volumes) < 2:
+            out.append(source)
+            continue
+        if key in placed:
+            continue
+        placed.add(key)
+        volumes = sorted(volumes, key=lambda v: (v.series_index, v.title))
+        out.append(
+            Source(
+                item_ref=series_ref(volumes[0].series),
+                title=volumes[0].series,
+                url="",
+                source_key=series_ref(volumes[0].series)[:100],
+                tags=sorted({t for v in volumes for t in v.tags}),
+                delivered_at=max(v.delivered_at for v in volumes),
+                eligibility=[e for v in volumes for e in v.eligibility],
+                series=volumes[0].series,
+                members=tuple(volumes),
+            )
+        )
+    return out
 
 
 @dataclass(frozen=True)
@@ -159,6 +218,9 @@ class Fetched:
     sha256: str
     verification_status: str
     data_grade: str
+    # A series: every volume's {item_ref, context_ref, revision_ref}; context_ref and
+    # revision_ref above are the first volume's.
+    members: tuple[dict[str, str], ...] = ()
 
 
 class Library:
@@ -211,7 +273,7 @@ class Library:
             )
             found = [source for source in looked_up if source is not None]
         found.sort(key=lambda s: s.delivered_at, reverse=True)
-        return found
+        return group_series(found)
 
     def source(self, item_ref: str, delivered_at: str = "") -> Source | None:
         """One current item carrying the technique tag, or None."""
@@ -220,6 +282,13 @@ class Library:
         tags = sorted({str(t.get("name")) for t in item.get("tags") or [] if isinstance(t, dict)})
         if item.get("state") not in (None, "current") or TAG not in tags:
             return None
+        raw_series = item.get("series")
+        series: dict[str, Any] = raw_series if isinstance(raw_series, dict) else {}
+        name = str(series.get("name") or "").strip()[:120]
+        try:
+            index = int(series.get("index") or 0)
+        except (TypeError, ValueError):
+            index = 0
         return Source(
             item_ref=item_ref,
             title=str(item.get("title") or "")[:500],
@@ -228,6 +297,8 @@ class Library:
             tags=tags,
             delivered_at=delivered_at,
             eligibility=[str(m.get("eligibility_outcome")) for m in data.get("members") or []],
+            series=name,
+            series_index=index if name else 0,
         )
 
     def _item_dir(self, item_ref: str) -> Path:
@@ -360,7 +431,66 @@ class Library:
             sha256=digest,
             verification_status=str(record.get("verification_status") or "unverified"),
             data_grade=str(record.get("data_grade") or "private"),
+            members=tuple(record.get("members") or ()),
         )
+
+    def keep_series(self, series_item_ref: str, text: str, volumes: list[Fetched]) -> Fetched:
+        """Cache a series' joined text like an item's, recording every volume to recheck."""
+        with self.lock(series_item_ref):
+            target = self._item_dir(series_item_ref)
+            self.cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.chmod(self.cache_dir, 0o700)
+            staging = Path(tempfile.mkdtemp(prefix=".fetch-", dir=self.cache_dir))
+            members = tuple(
+                {
+                    "item_ref": v.item_ref,
+                    "context_ref": v.context_ref,
+                    "revision_ref": v.revision_ref,
+                }
+                for v in volumes
+            )
+            grades = {v.data_grade for v in volumes}
+            statuses = {v.verification_status for v in volumes}
+            first = volumes[0]
+            try:
+                transcript = staging / "transcript.txt"
+                transcript.write_text(text, encoding="utf-8")
+                os.chmod(transcript, 0o600)
+                fetched = Fetched(
+                    item_ref=series_item_ref,
+                    context_ref=first.context_ref,
+                    revision_ref=first.revision_ref,
+                    path=target / "transcript.txt",
+                    sha256=hashlib.sha256(transcript.read_bytes()).hexdigest(),
+                    # Volumes that differ: the series is unverified and private.
+                    verification_status=first.verification_status
+                    if len(statuses) == 1
+                    else "unverified",
+                    data_grade=first.data_grade if len(grades) == 1 else "private",
+                    members=members,
+                )
+                record = staging / "fetched.json"
+                record.write_text(
+                    json.dumps(
+                        {
+                            "item_ref": series_item_ref,
+                            "context_ref": fetched.context_ref,
+                            "revision_ref": fetched.revision_ref,
+                            "sha256": fetched.sha256,
+                            "verification_status": fetched.verification_status,
+                            "data_grade": fetched.data_grade,
+                            "members": list(members),
+                        }
+                    )
+                )
+                os.chmod(record, 0o600)
+                if target.exists():
+                    shutil.rmtree(target)
+                os.rename(staging, target)
+            except BaseException:
+                shutil.rmtree(staging, ignore_errors=True)
+                raise
+            return fetched
 
     def recheck(self, context_ref: str, revision_ref: str) -> str:
         """`still_usable` | `conditional` | `stop_using` | `unknown` (refused = unknown)."""

@@ -189,7 +189,7 @@ def register_technique_card_routes(
         if service is None:
             return unavailable(request)
         try:
-            source = service.library.source(body.item_ref)
+            source = service.source(body.item_ref)
             if source is None:
                 return error_response(
                     request, 404, "technique_source_not_found", "No current item with that tag"
@@ -214,7 +214,7 @@ def register_technique_card_routes(
                     status_code=202, content={"kind": "technique_card_job", "job_id": existing}
                 )
             try:
-                source = service.library.source(body.item_ref)
+                source = service.source(body.item_ref)
             except LibraryError as exc:
                 return library_error(request, exc)
             if source is None:
