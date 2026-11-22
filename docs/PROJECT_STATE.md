@@ -3225,3 +3225,10 @@
 - **확인:** 새 `.deb`(키 탭) 설치 뒤 재부팅 → 로컬 세션 없이 3389로 GDM 로그인 → 원격 Wayland 세션, 키링 `Locked=false` → 창을 닫아도 세션 유지 → 재접속 때 같은 세션.
 - **문서:** [런북](runbooks/agent-mini-pc.md) 2a절·확인표, [ADR 0045](decisions/0045-agent-on-linux.md) 2026-11-23 개정.
 - **미검증:** 실행기 설치 뒤 재부팅 → 원격 로그인으로 실행기 재기동. 키 탭으로 실제 키 등록, 키움 모의 호출.
+
+## 운영 결정: 장중 수집기 미니PC 이전·Agent 키 탭 — 2026-11-23
+
+- **배경:** 미국 장 시간에 이 Mac이 꺼져 있었다(11-18·11-19 장 기록 없음, 11-17은 00:57 KST에 끊김). `pmset`: `autorestart 0`, `sleep 1`. 수집기 두 개(`watch-condition`·`watch-halts`)는 macOS LaunchAgent뿐이다.
+- **사용자 결정(261):** "지금 미니PC로 이전 착수". [ADR 0059](decisions/0059-market-hours-collectors-on-mini-pc.md)에 방향과 3단계(Linux 수집기 서비스 → Mac으로 사본 가져오기 → 흐름·Agent 실행)를 적었다. 구현은 단계마다 승인을 받는다.
+- **사용자 결정(269):** SIW Agent 키 탭 PR #209를 병합했다(bec1bca). 미니PC 키 등록은 키 탭으로 하고, 임시 Research vite는 쓰지 않는다.
+- **미검증:** 미니PC에서 키움 호출(IP), 미니PC 수집기 실행. 이전을 마칠 때까지 Mac이 꺼진 장은 계속 비어 있다.
