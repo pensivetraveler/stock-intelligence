@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from packages.contracts.validator import validate_document
 from services.api.journal_routes import ErrorResponse
 from services.backtest.jobs import BacktestRunner, RunConfigError
+from services.backtest.pine_template import TEMPLATE_VERSION, to_pine
 from services.backtest.store import BacktestNotFoundError
 from services.backtest.strategy import StrategyError
 
@@ -73,6 +74,31 @@ def register_backtest_routes(
             return respond(jobs.store.strategy(strategy_id, version))
         except BacktestNotFoundError:
             return not_found(request, "strategy")
+
+    @application.get("/v1/backtests/strategies/{strategy_id}/pine", response_model=None)
+    def strategy_pine(
+        request: Request, strategy_id: str, version: int | None = Query(default=None, ge=1)
+    ) -> Response:
+        """The strategy as a Pine v6 template, to compare on TradingView (ADR 0056 ⑤)."""
+        jobs = runner()
+        if jobs is None:
+            return unavailable(request)
+        try:
+            found = jobs.store.strategy(strategy_id, version)
+        except BacktestNotFoundError:
+            return not_found(request, "strategy")
+        written = to_pine(found["definition"], str(found.get("name") or strategy_id))
+        return respond(
+            {
+                "kind": "backtest_strategy_pine",
+                "schema_version": "0.1",
+                "strategy_id": strategy_id,
+                "version": int(found["version"]),
+                "source": written["source"],
+                "unsupported": written["unsupported"],
+                "template_version": TEMPLATE_VERSION,
+            }
+        )
 
     @application.post("/v1/backtests/strategies", response_model=None)
     def save_strategy(request: Request, body: StrategyRequest) -> Response:

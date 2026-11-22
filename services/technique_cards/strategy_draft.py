@@ -42,7 +42,7 @@ from services.technique_cards.extract import (
     Keys,
 )
 
-DRAFT_VERSION = 3
+DRAFT_VERSION = 4
 MAX_TOKENS = 16_000
 TIMEOUT_SECONDS = 300.0
 
@@ -76,7 +76,9 @@ strategy from the one the source teaches, so never guess. Answer in the required
 - Items with `fixed_rule` were converted by code from their slots: put that condition into
   `entry` (an entry item) or `exit` (an exit or stop item) exactly as written and point the
   item at it. `fixed_field` sets that top-level field to the value given; `fixed_absent` is an
-  "absent" item for that field. Never change them; build the other items around them.
+  "absent" item for that field. Never change them; build the other items around them. When
+  the item's text says more than its fixed rule (a second condition the slots left out), mark
+  the item "unconvertible" with the reason instead of using the fixed rule.
 - "the highest high of the previous N bars" is the Donchian upper band (`dc`, length N) one
   bar back (`"offset": 1`); likewise the lowest low and the lower band.
 - When no entry can be expressed, set `definition_json` to an empty string."""
@@ -320,7 +322,10 @@ def draft(row: dict[str, Any], model: str, keys: Keys, call: Call | None = None)
                 entry["condition"] = items[entry["index"]]
         by_index = {m["index"]: m for m in converted["mapping"]}
         for index, place in sorted(places.items()):
-            if not script_rules.kept(converted["definition"], place, by_index.get(index)):
+            entry = by_index.get(index)
+            if entry and entry["status"] == "unconvertible" and entry["reason"].strip():
+                continue  # the model says the slots miss part of the text: left out, shown
+            if not script_rules.kept(converted["definition"], place, entry):
                 converted["problems"].append(
                     f"condition {index} was converted by the script, but the model's rules "
                     f"do not use it unchanged: {items[index]}"[:1000]
@@ -328,9 +333,13 @@ def draft(row: dict[str, Any], model: str, keys: Keys, call: Call | None = None)
         converted["complete"] = not converted["problems"]
     unconvertible = [m for m in converted["mapping"] if m["status"] == "unconvertible"]
     blocking = [p for p in converted["problems"] if "cannot be converted" not in p]
+    left_out = {
+        m["index"] for m in converted["mapping"] if m["status"] == "unconvertible"
+    }  # a scripted item the model left out uses no reading of the script's
     assumptions = [
         {"index": index, **assumption}
         for index in sorted(places)
+        if index not in left_out
         for assumption in script[index]["assumptions"]
     ]
     return {

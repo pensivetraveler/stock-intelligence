@@ -202,3 +202,46 @@ def test_routes_take_script_and_need_the_confirm_tick(tmp_path: Path) -> None:
     )
     assert saved.status_code == 200
     assert strategies.saved[0][1]["exit"]["any"][0]["right"]["indicator"] == "sma"
+
+
+def test_a_slot_named_other_is_left_to_the_text() -> None:
+    """원펀치매매 2권 (draft 7701a747): "피보나치 0.5 구간" came out as low >= 0.5."""
+    result = _convert(
+        left=_op("price", "low"), comparator="at_or_above", right=_op("value", "other", value=0.5)
+    )
+    assert result["place"] is None and "other" in result["reason"]
+
+
+def test_a_model_may_leave_out_a_fixed_item_whose_text_says_more(tmp_path: Path) -> None:
+    """The slots kept "close >= previous close" but the text also asks for more volume."""
+    row = _ready_card(_store(tmp_path))
+
+    def call(system: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        assert "says more than its fixed rule" in system
+        return _reply(
+            {"type": "rules", "entry": DONCHIAN["entry"]},
+            [
+                {"index": 0, "status": "mapped", "rule_paths": ["/entry"], "reason": ""},
+                {"index": 1, "status": "unconvertible", "rule_paths": [],
+                 "reason": "본문에 거래량 조건이 더 있음"},
+                {"index": 2, "status": "unconvertible", "rule_paths": [], "reason": "size"},
+            ],
+        )  # fmt: skip
+
+    result = strategy_draft.draft(row, "google/gemini-4-argon", KEYS, call=call)
+    assert result["blocking"] == []
+    assert result["unconvertible"] == 2
+
+    # Leaving it out without a reason is still a problem.
+    def silent(system: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        return _reply(
+            {"type": "rules", "entry": DONCHIAN["entry"]},
+            [
+                {"index": 0, "status": "mapped", "rule_paths": ["/entry"], "reason": ""},
+                {"index": 1, "status": "unconvertible", "rule_paths": [], "reason": " "},
+                {"index": 2, "status": "unconvertible", "rule_paths": [], "reason": "size"},
+            ],
+        )
+
+    blocked = strategy_draft.draft(row, "google/gemini-4-argon", KEYS, call=silent)
+    assert any("condition 1" in p for p in blocked["blocking"])
