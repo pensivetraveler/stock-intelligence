@@ -67,9 +67,11 @@ def last_close(
     instrument_id: str, cutoff: datetime, get_bars: Callable[[BarsQuery], Any]
 ) -> tuple[Decimal, datetime, str] | None:
     """(close, bar end, source) of the last final 1m bar ending at or before the cutoff."""
-    result = get_bars(
-        BarsQuery(instrument_id, "1m", cutoff - PRICE_LOOKBACK, cutoff, as_of_utc=cutoff)
-    )
+    # 1m sources take whole-minute ranges; a 1m bar ending at or before the cutoff ends at
+    # or before the cutoff's minute, so the range stops there and the bars are still read
+    # as known at the cutoff itself.
+    end = cutoff.replace(second=0, microsecond=0)
+    result = get_bars(BarsQuery(instrument_id, "1m", end - PRICE_LOOKBACK, end, as_of_utc=cutoff))
     best: tuple[Decimal, datetime, str] | None = None
     for bar in result.bars:
         if not bar.get("is_final", True) or bar.get("volume_unit", "shares") != "shares":

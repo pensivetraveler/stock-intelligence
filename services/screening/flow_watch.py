@@ -388,8 +388,9 @@ def flow_document(
 
 
 #: Seconds after a minute's end before it is read: the provider aggregates a minute's
-#: trades shortly after it closes, and a minute read too early would look empty. How long
-#: Alpaca takes is not measured (unverified); 20 s is a margin, not a measurement.
+#: trades shortly after it closes, and a minute read too early would look empty. Measured
+#: 2026-11-20 (ADR 0057 U-a): SIP 1m bars were visible within 0.2 s of the minute's end;
+#: 3.5% of them gained a little volume about 28 s after it.
 SETTLE_SECONDS = 20.0
 
 

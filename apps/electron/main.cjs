@@ -4,7 +4,8 @@
 // The screen is the SIW Research build (apps/desktop/dist-research), served from a
 // custom "siw://app" origin, which the local API allows. Read-only like the web app:
 // the shell adds no trading, keys or file access. Its one bridge (preload.cjs) opens
-// SIW Agent, the separate app where paper orders are made.
+// SIW Agent, the separate app where paper orders are made; it also tells the screen
+// when the Help menu asks for the implemented-features guide (help-menu.cjs).
 const {
   app,
   BrowserWindow,
@@ -22,6 +23,8 @@ const { pathToFileURL } = require("node:url");
 
 const { findAgentApp } = require("./agent-app.cjs");
 const { ensureApi, healthy } = require("./api-process.cjs");
+const { helpSubmenu, showHelpIn } = require("./help-menu.cjs");
+const { settingsMenuItem, showSettingsIn } = require("./settings-menu.cjs");
 const {
   findRepoDir,
   isRepoDir,
@@ -191,13 +194,27 @@ async function openAgentApp() {
   return { opened: true, reason: null };
 }
 
-/** Adds "저장소 폴더 변경…" to the app menu; the new folder is used from the next launch. */
+/**
+ * Adds "설정…"(⌘,, opens the screen's settings dialog) and "저장소 폴더 변경…" to the app
+ * menu; the new folder is used from the next launch.
+ */
 function addRepoMenuItem() {
   const menu = Menu.getApplicationMenu();
   const appMenu = menu?.items.find((item) => item.role === "appmenu")?.submenu;
   if (!menu || !appMenu) return;
   appMenu.insert(
     1,
+    new MenuItem(
+      settingsMenuItem(() =>
+        showSettingsIn([
+          BrowserWindow.getFocusedWindow(),
+          ...BrowserWindow.getAllWindows(),
+        ]),
+      ),
+    ),
+  );
+  appMenu.insert(
+    2,
     new MenuItem({
       label: "저장소 폴더 변경…",
       click: async () => {
@@ -216,10 +233,34 @@ function addRepoMenuItem() {
   Menu.setApplicationMenu(menu);
 }
 
+/** Replaces Electron's default Help menu (links to electronjs.org) with the guide. */
+function setHelpMenu() {
+  const current = Menu.getApplicationMenu();
+  if (!current) return;
+  const menu = new Menu();
+  for (const item of current.items) {
+    if (item.role !== "help") menu.append(item);
+  }
+  menu.append(
+    new MenuItem({
+      role: "help",
+      label: "도움말",
+      submenu: helpSubmenu(() =>
+        showHelpIn([
+          BrowserWindow.getFocusedWindow(),
+          ...BrowserWindow.getAllWindows(),
+        ]),
+      ),
+    }),
+  );
+  Menu.setApplicationMenu(menu);
+}
+
 app.whenReady().then(async () => {
   serveUi();
   ipcMain.handle("siw:open-agent-app", () => openAgentApp());
   addRepoMenuItem();
+  setHelpMenu();
   await startApi();
   createWindow();
   app.on("activate", () => {

@@ -63,7 +63,7 @@
 
 ## Consequences
 
-- **기기 준비:** Tauri 필수 패키지(`libwebkit2gtk-4.1-dev`, `build-essential`, `curl`, `wget`, `file`, `libxdo-dev`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`), Rust, uv, Node, 저장소 복제. 앱은 실행 시 저장소가 필요하므로 그 기기에서 빌드한다.
+- **기기 준비:** 실제 설치 순서와 실기기 확인표는 [런북](../runbooks/agent-mini-pc.md)에 있다. Tauri 필수 패키지(`libwebkit2gtk-4.1-dev`, `build-essential`, `curl`, `wget`, `file`, `libxdo-dev`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`), Rust, uv, Node, 저장소 복제. 앱은 실행 시 저장소가 필요하므로 그 기기에서 빌드한다.
 - **한글 글꼴:** 글꼴이 없으면 화면의 한글이 네모로 나온다(컨테이너에서 확인). `.deb`의 의존성에 `fonts-noto-cjk`를 넣었다.
 - **데이터와 키는 옮겨지지 않는다.** 미니PC에서 SIW Agent의 "키" 탭으로 다시 등록한다(2026-11-20 ADR 0036 개정. 그 전에는 Agent에 키 화면이 없어 Research 웹을 임시로 띄워야 했다).
 - **아직 없는 것:**

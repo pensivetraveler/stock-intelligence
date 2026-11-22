@@ -182,7 +182,9 @@ def test_a_newer_waiting_check_does_not_undo_a_finished_one(tmp_path: Path) -> N
 # --- cutoff market cap -------------------------------------------------------------------
 def bars_until(last_end: datetime, close: str = "2.50", final: bool = True) -> Any:
     def get_bars(query: BarsQuery) -> BarsResult:
-        assert query.as_of_utc == query.end_utc  # read as known at the cutoff
+        # Whole-minute range, as 1m sources require, read as known at the cutoff.
+        assert query.start_utc.second == 0 and query.end_utc.second == 0
+        assert query.as_of_utc is not None and query.as_of_utc >= query.end_utc
         made = []
         for minutes in (3, 2, 1, 0, -1):  # the last one ends after the cutoff
             end = last_end - timedelta(minutes=minutes)
@@ -215,6 +217,16 @@ def test_market_cap_is_shares_times_the_last_close_before_the_cutoff() -> None:
     assert context["market_cap_as_of_utc"] == "2026-11-09T15:00:00.000Z"
     assert context["market_cap_source"].startswith("siw:toss-shares_x_1m-close:toss-us")
     assert set(context) == {"market_cap_usd", "market_cap_as_of_utc", "market_cap_source"}
+
+
+def test_a_cutoff_between_minutes_still_reads_the_last_close() -> None:
+    # A live check's cutoff is "now" (2026-11-20 live: 14:47:22.285Z gave no market cap).
+    cut = CUTOFF + timedelta(seconds=22, milliseconds=285)
+    shares = Shares(Decimal("19300000"), CUTOFF, "toss-us")
+    context, note = market_cap_context("us.x", cut, shares, bars_until(CUTOFF))
+    assert note is None and context is not None
+    assert context["market_cap_usd"] == 48250000
+    assert context["market_cap_as_of_utc"] == "2026-11-09T15:00:00.000Z"
 
 
 def test_nothing_later_than_the_cutoff_is_sent() -> None:

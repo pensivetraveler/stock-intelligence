@@ -12,6 +12,7 @@ import { toSeries } from "./chart-data";
 import type { OhlcvBar } from "./indicators";
 import type { ReportImage, ToolImage } from "./review-api";
 import { TRADE_COLORS } from "./trade-review";
+import { CHART_CHROME, DECK } from "./theme";
 
 const WIDTH = 960;
 const HEIGHT = 540;
@@ -82,22 +83,22 @@ async function drawCandles(
     width: WIDTH,
     height: HEIGHT,
     layout: {
-      background: { type: ColorType.Solid, color: "#10131a" },
-      textColor: "#c9d1dc",
+      background: { type: ColorType.Solid, color: CHART_CHROME.background },
+      textColor: DECK.ink,
     },
     grid: {
-      vertLines: { color: "#1a202a" },
-      horzLines: { color: "#1a202a" },
+      vertLines: { color: CHART_CHROME.grid },
+      horzLines: { color: CHART_CHROME.grid },
     },
     timeScale: { timeVisible: timeframe.endsWith("m") },
   });
   try {
     const candles = chart.addSeries(CandlestickSeries, {
-      upColor: "#3fb68b",
-      downColor: "#e5566b",
+      upColor: DECK.up,
+      downColor: DECK.down,
       borderVisible: false,
-      wickUpColor: "#3fb68b",
-      wickDownColor: "#e5566b",
+      wickUpColor: DECK.up,
+      wickDownColor: DECK.down,
     });
     candles.setData(points);
     createSeriesMarkers(candles, markers);
