@@ -4,6 +4,7 @@
 - **Date:** 2026-10-23
 - **Amended:** 2026-10-23 — 첫 주문 증권사를 키움 모의투자로 바꾸고 한국투자(KIS)를 두 번째로 둔다(아래 개정 절, 설계는 [ADR 0037](0037-paper-order-execution.md)).
 - **Amended:** 2026-11-04 — 사용자 결정으로 단계 2(실계좌, 주문마다 사용자 승인)를 연다. 설계는 [ADR 0047](0047-live-orders-per-order-confirmation.md).
+- **Amended:** 2026-11-20 — SIW Agent에 키 탭을 둔다(아래 개정 절).
 - **Amended:** 2026-10-25 — 사용자 결정으로 프로그램 이름을 **SIW Research**(Electron)와 **SIW Agent**(Tauri) 두 개로 확정한다. "Stock Intelligence Workstation"은 프로젝트·저장소 이름으로만 쓰고 앱 이름이나 화면 제목으로 쓰지 않는다.
 - **Supersedes in part:** SYSTEM_SPEC의 "No autonomous order execution is in scope"와 PROJECT_INSTRUCTIONS의 "do not implement autonomous execution unless explicitly re-scoped by the user" — 이 ADR이 그 사용자 재범위 지정이다. 범위는 아래 Gate로 제한한다.
 - **Related:** [ADR 0028](0028-electron-desktop-shell.md)(Electron 셸), [ADR 0021](0021-backtest-engine.md)(백테스트), [ADR 0018](0018-broker-api-execution-ledger.md)(증권사 API 원장)
@@ -102,3 +103,19 @@
   3. 저장소의 `tauri build` 결과(`bundle/macos/SIW Agent.app`, 그다음 바이너리)
   - 없으면 빌드 방법을 안내한다.
 - **웹:** 브라우저에서 연 화면에는 버튼이 없다.
+
+## Amendment 2026-11-20 — SIW Agent에 키 탭
+
+- **계기:** SIW Agent 전용 미니PC(ADR 0045)에 첫 키를 등록하려 하니 넣을 화면이 없었다. 키 화면은 SIW Research에만 있었고, 미니PC에는 Research가 없다. 임시로 저장소의 Research 웹(Vite, `127.0.0.1:5173`)을 띄워 등록해야 했다.
+- **사용자 결정:** "지금 시작". Agent에 키 화면을 넣는다. 다른 안이었던 공통 저장소를 통한 키 공유는 택하지 않았다.
+- **결정:**
+  - SIW Agent에 모의투자·실계좌와 나란한 "키" 탭을 둔다. Research와 같은 `KeysPanel`을 쓰고, 같은 로컬 API(`/v1/credentials`)를 부른다.
+  - 비밀 값은 그 기기의 OS 키체인(Linux는 Secret Service)에만 저장하고 다시 읽어 보여 주지 않는다(ADR 0014). 기기 사이에 키를 옮기거나 동기화하지 않는다. 화면 안내문이 이를 알린다.
+  - 탭을 열 때만 키 목록을 부른다.
+- **공유하지 않는 이유:**
+  - 비밀이 Mac 키체인·미니PC 키링·공유 저장소 세 곳으로 늘어난다.
+  - 공유 파일·NAS에 비밀을 두면 "비밀은 OS 키체인에만" 규칙을 어긴다. 네트워크 파일시스템의 SQLite도 지원하지 않는다(ADR 0045).
+  - 실계좌 키(ADR 0047)가 연구용 Mac에도 생긴다. 앱을 나눈 이유(권한·키 범위 분리)에 어긋난다.
+  - 증권사 키는 자주 바뀌지 않는다. 미니PC에는 원격 데스크톱으로 넣을 수 있다.
+- **바꾸지 않은 것:** `/v1/credentials` 쓰기는 출처를 가리지 않는다. SIW Research(Electron·웹)도 같은 엔드포인트로 키를 등록하므로 `tauri://localhost`로만 막을 수 없다. API는 `127.0.0.1`에만 열려 있다.
+- **재검토:** 공유가 필요한 것은 비밀이 아닌 "Research에서 승인한 전략 버전"이다(ADR 0045 남은 일). 그 경로는 별도 결정으로 다룬다.

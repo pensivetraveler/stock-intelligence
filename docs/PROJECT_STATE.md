@@ -3207,9 +3207,20 @@
   - Pine 템플릿은 TradingView에서 실행해 보지 않았습니다. 문법과 엔진 일치는 코드 검토와 시험 문자열로만 확인했습니다.
   - 체결 봉의 보호 청산과 한 봉 안의 손절·목표 순서는 엔진과 다를 수 있습니다(문서와 화면에 적음).
 
+## SIW Agent 키 탭 — 2026-11-20
+
+- **사용자 결정:** "지금 시작". 미니PC에 첫 키를 넣으려다 SIW Agent에 키 화면이 없다는 것을 알았다(키 화면은 Research에만 있음). 공통 저장소로 키를 공유하는 안 대신 Agent에 키 화면을 넣는다([ADR 0036](decisions/0036-desktop-app-roles.md) 2026-11-20 개정).
+- **변경:**
+  - `agent/AgentApp.tsx`: 모의투자·실계좌 옆에 "키" 탭. Research와 같은 `KeysPanel`을 같은 로컬 API로 쓴다. 탭을 열 때만 목록을 부른다. 안내문: 키는 이 컴퓨터의 키체인에만 있고 다른 컴퓨터와 옮겨지지 않는다.
+  - `i18n.ts`: `liveacct.tab.keys`, `keys.agentTitle`, `keys.agentNote`(영·한).
+  - ADR 0036 개정 절, ADR 0045 키 등록 문장.
+- **시험:** `AgentApp.test.tsx`에 키 탭 시험 1개(탭을 고르기 전에는 목록 호출 없음, 패널·안내문 표시).
+- **바꾸지 않음:** `/v1/credentials` 쓰기의 출처 제한. Research도 같은 엔드포인트를 쓴다.
+- **미검증:** 미니PC의 새 `.deb`에서 키 탭으로 실제 등록(병합 뒤 확인).
+
 ## 운영 결정: 장중 수집기 미니PC 이전·Agent 키 탭 — 2026-11-23
 
 - **배경:** 미국 장 시간에 이 Mac이 꺼져 있었다(11-18·11-19 장 기록 없음, 11-17은 00:57 KST에 끊김). `pmset`: `autorestart 0`, `sleep 1`. 수집기 두 개(`watch-condition`·`watch-halts`)는 macOS LaunchAgent뿐이다.
 - **사용자 결정(261):** "지금 미니PC로 이전 착수". [ADR 0059](decisions/0059-market-hours-collectors-on-mini-pc.md)에 방향과 3단계(Linux 수집기 서비스 → Mac으로 사본 가져오기 → 흐름·Agent 실행)를 적었다. 구현은 단계마다 승인을 받는다.
-- **사용자 결정(269):** SIW Agent 키 탭 PR #209를 병합한다. 미니PC 키 등록은 키 탭으로 하고, 임시 Research vite는 쓰지 않는다.
+- **사용자 결정(269):** SIW Agent 키 탭 PR #209를 병합했다(bec1bca). 미니PC 키 등록은 키 탭으로 하고, 임시 Research vite는 쓰지 않는다.
 - **미검증:** 미니PC에서 키움 호출(IP), 미니PC 수집기 실행. 이전을 마칠 때까지 Mac이 꺼진 장은 계속 비어 있다.
