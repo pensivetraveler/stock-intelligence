@@ -159,3 +159,15 @@ def test_korean_sessions_add_nxt_hours_around_the_krx_regular_session() -> None:
         )
         == "pre"
     )
+
+
+def test_krx_2026_closures_missing_from_the_library_are_not_sessions() -> None:
+    from services.market_data.calendar import ExchangeCalendar
+
+    calendar = ExchangeCalendar("XKRX")
+    # Local election day and Constitution Day: Kiwoom daily bars have neither date.
+    assert calendar.window_for_date(date(2026, 6, 3)) is None
+    assert calendar.window_for_date(date(2026, 7, 17)) is None
+    assert calendar.window_for_date(date(2026, 6, 4)) is not None
+    assert calendar.window_for_date(date(2026, 7, 16)) is not None
+    assert ExchangeCalendar("XKOS").window_for_date(date(2026, 7, 17)) is None

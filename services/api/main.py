@@ -54,6 +54,7 @@ from services.api.screening_structure_routes import (
     register_screening_structure_routes,
 )
 from services.api.strategy_research_routes import register_strategy_research_routes
+from services.api.technique_card_routes import register_technique_card_routes
 from services.assistant.conversion import call_convert_claude
 from services.assistant.indicator import call_indicator_claude
 from services.backtest.jobs import BacktestRunner
@@ -95,6 +96,7 @@ from services.market_data.kiwoom_account import sync_executions as kiwoom_sync
 from services.market_data.kiwoom_account import sync_fees as kiwoom_sync_fees
 from services.market_data.kiwoom_conditions import ConditionNotFoundError
 from services.market_data.kiwoom_conditions import Connect as KiwoomConditionConnect
+from services.market_data.locations import market_data_dir_from_env
 from services.market_data.market_router import MarketRouter
 from services.market_data.meritz import market_quote as meritz_quote
 from services.market_data.meritz_account import SEOUL
@@ -173,6 +175,10 @@ from services.screening.market_cap import Shares, shares_from_stock_info
 from services.screening.news_service import NewsService
 from services.screening.news_service import service_url as news_url
 from services.screening.store import ScreeningStore
+from services.technique_cards.extract import Keys as TechniqueKeys
+from services.technique_cards.library import Library, LibraryConfig
+from services.technique_cards.service import TechniqueCards
+from services.technique_cards.store import CardStore
 
 LOG = logging.getLogger("siw.api")
 FILING_COMPARE_SECONDS = 6 * 3600
@@ -238,10 +244,10 @@ def _error_response(request: Request, status_code: int, code: str, message: str)
 
 def _default_market_data_provider(credentials: CredentialStore | None) -> MarketDataProvider:
     upstream = provider_from_env(credentials)
-    configured_data_dir = os.getenv("SIW_DATA_DIR", "").strip()
-    if not configured_data_dir:
+    market_dir = market_data_dir_from_env()
+    if market_dir is None:
         return upstream
-    return CachedMarketDataProvider(upstream, LocalMarketDataStore(Path(configured_data_dir)))
+    return CachedMarketDataProvider(upstream, LocalMarketDataStore(market_dir))
 
 
 class _LazyCredentials:
@@ -453,10 +459,10 @@ class _LazyKoreanProvider:
                         market="KR",
                     )
                 )
-                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                market_dir = market_data_dir_from_env()
                 self._provider = (
-                    CachedMarketDataProvider(adapter, LocalMarketDataStore(Path(configured)))
-                    if configured
+                    CachedMarketDataProvider(adapter, LocalMarketDataStore(market_dir))
+                    if market_dir is not None
                     else adapter
                 )
                 self._key = key
@@ -628,6 +634,44 @@ def _finra_credential(credentials: CredentialStore | None) -> FinraCredential | 
     return None
 
 
+def _openrouter_key(credentials: CredentialStore | None) -> str | None:
+    """The first enabled OpenRouter key on the Keys screen (technique card fallback)."""
+    if credentials is None:
+        return None
+    for record in credentials.list("openrouter"):
+        if record.enabled:
+            return credentials.secrets(record)["api_key"]
+    return None
+
+
+class _LazyTechniqueCards:
+    """Technique sources and cards (ADR 0056 L1·L2): needs SIW_DATA_DIR and the SIW_KL_* setup."""
+
+    def __init__(self, clock: Callable[[], datetime]) -> None:
+        self._clock = clock
+        self._service: TechniqueCards | None = None
+        self._lock = threading.Lock()
+
+    def get(self) -> TechniqueCards | None:
+        with self._lock:
+            if self._service is None:
+                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                config = LibraryConfig.from_env()
+                if not configured or config is None:
+                    return None
+                root = Path(configured)
+                store = CardStore(root / "technique_cards.sqlite3", self._clock)
+                store.fail_running_jobs()
+                # Third-party text stays outside the checkout (ADR 0056 §2), not under data/.
+                cache = os.getenv("SIW_KL_CACHE_DIR", "").strip()
+                library = Library(
+                    config,
+                    Path(cache) if cache else Path.home() / "Library/Caches/siw/technique_sources",
+                )
+                self._service = TechniqueCards(library, store)
+            return self._service
+
+
 def _claude_key(credentials: CredentialStore | None) -> str | None:
     """The first enabled Claude (Anthropic) key on the Keys screen."""
     if credentials is None:
@@ -685,9 +729,9 @@ def create_app(
 
     def ticks() -> TickStore | None:
         if ticks_holder[0] is None:
-            configured = os.getenv("SIW_DATA_DIR", "").strip()
-            if configured:
-                ticks_holder[0] = TickStore(Path(configured))
+            market_dir = market_data_dir_from_env()
+            if market_dir is not None:
+                ticks_holder[0] = TickStore(market_dir)
         return ticks_holder[0]
 
     # Ticker changes and delistings (ADR 0033), from the Alpaca key when there is one.
@@ -981,7 +1025,8 @@ def create_app(
         """Splits of a US listing: Alpaca's, and the dilution analyzer's filing readings
         next to them (ADR 0046).
 
-        Evidence only: no price depends on this, and a difference names neither side wrong.
+        A difference names neither side wrong. Only Alpaca's splits are used for a price:
+        the chart scales a dilution price by those after its filing date, as its candles are.
         """
         parts = instrument_id.split(":")
         ticker = parts[1].upper() if len(parts) == 4 and parts[0] == "us" else None
@@ -1869,6 +1914,16 @@ def create_app(
             return None
         return shares_from_stock_info(stock_info(session, instrument_id, symbol, clock))
 
+    register_technique_card_routes(
+        application,
+        cards=_LazyTechniqueCards(clock).get,
+        keys=lambda: TechniqueKeys(
+            anthropic=_claude_key(credentials.get()),
+            openrouter=_openrouter_key(credentials.get()),
+        ),
+        error_response=_error_response,
+        strategies=lambda: runner.store if (runner := backtests.get()) else None,
+    )
     register_screening_news_routes(
         application,
         store=screening.get,

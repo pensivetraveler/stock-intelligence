@@ -136,6 +136,12 @@ export const TradeReviewIcon = () => (
     <path d="M1.5 3.5h7M1.5 7h5M1.5 10.5h4M11 12.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM13.2 11.7l2 2" />
   </Icon>
 );
+// A card with a quote mark: a technique written down with its citations.
+export const TechniqueIcon = () => (
+  <Icon>
+    <path d="M2.5 2.5h11v11h-11zM5 6h6M5 9h4M10.5 10.5l1 1.5" />
+  </Icon>
+);
 export const BacktestIcon = () => (
   <Icon>
     <path d="M1.5 14.5h13M2.5 12l3-4 3 2 5-6.5M10.5 3.5h3v3" />
@@ -221,4 +227,16 @@ export const AppMark = () => (
     <rect x="5.5" y="7" width="3" height="5" />
     <rect x="11.5" y="6" width="3" height="4" />
   </svg>
+);
+export const SettingsIcon = () => (
+  <Icon>
+    <circle cx="8" cy="8" r="2.3" />
+    <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" />
+  </Icon>
+);
+export const SidebarIcon = () => (
+  <Icon>
+    <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+    <path d="M5.5 2.5v11" />
+  </Icon>
 );

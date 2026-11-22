@@ -10,6 +10,7 @@ import { useEffect, useRef } from "react";
 
 import { toSeries } from "./chart-data";
 import type { TradeMarker } from "./trade-review";
+import { CHART_CHROME, DECK } from "./theme";
 
 /** Candles of one trade's instrument with its entries and exits marked. */
 export function TradeChart({
@@ -26,22 +27,22 @@ export function TradeChart({
     const chart = createChart(host.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: "#10131a" },
-        textColor: "#8b95a5",
+        background: { type: ColorType.Solid, color: CHART_CHROME.background },
+        textColor: CHART_CHROME.text,
       },
       grid: {
-        vertLines: { color: "#1a202a" },
-        horzLines: { color: "#1a202a" },
+        vertLines: { color: CHART_CHROME.grid },
+        horzLines: { color: CHART_CHROME.grid },
       },
-      rightPriceScale: { borderColor: "#232a36" },
-      timeScale: { borderColor: "#232a36", timeVisible: true },
+      rightPriceScale: { borderColor: CHART_CHROME.border },
+      timeScale: { borderColor: CHART_CHROME.border, timeVisible: true },
     });
     const candles = chart.addSeries(CandlestickSeries, {
-      upColor: "#3fb68b",
-      downColor: "#e5566b",
+      upColor: DECK.up,
+      downColor: DECK.down,
       borderVisible: false,
-      wickUpColor: "#3fb68b",
-      wickDownColor: "#e5566b",
+      wickUpColor: DECK.up,
+      wickDownColor: DECK.down,
     });
     candles.setData(
       toSeries(bars).candles.map((point) => ({

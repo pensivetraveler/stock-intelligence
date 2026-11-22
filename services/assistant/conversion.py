@@ -108,6 +108,10 @@ SCHEMA: dict[str, Any] = {
 }
 
 
+# "absent" is only in the technique draft schema (`services.technique_cards.strategy_draft`).
+STATUSES = ("mapped", "unconvertible", "absent")
+
+
 def code_hash(code: str) -> str:
     return hashlib.sha256(code.encode()).hexdigest()
 
@@ -253,6 +257,17 @@ def rule_parts(definition: dict[str, Any]) -> list[str]:
     return parts
 
 
+# Fields a definition may leave unset; an "absent" mapping names one of them.
+OPTIONAL_FIELDS = (
+    "/take_profit_pct",
+    "/stop_loss_pct",
+    "/stop_loss_atr",
+    "/trailing_stop",
+    "/exit",
+    "/sizing",
+)
+
+
 def _covers(pointer: str, part: str) -> bool:
     return pointer == part or part.startswith(f"{pointer}/") or pointer.startswith(f"{part}/")
 
@@ -283,6 +298,21 @@ def check_mapping(
             problems.append(f"condition {index} cannot be converted: {text}")
             if not str(entry.get("reason") or "").strip():
                 problems.append(f"condition {index} gives no reason")
+        elif entry["status"] == "absent":
+            # The item says the technique does not use something (no target, no stop): it is
+            # kept when every named field really is unset. Only technique drafts offer it.
+            if not entry.get("rule_paths"):
+                problems.append(f"condition {index} is marked not used but names no field: {text}")
+            for pointer in entry.get("rule_paths") or []:
+                if pointer not in OPTIONAL_FIELDS:
+                    problems.append(
+                        f"condition {index} says {pointer} is not used, but only "
+                        f"{', '.join(OPTIONAL_FIELDS)} can be left out"
+                    )
+                elif definition is not None and _resolves(definition, pointer):
+                    problems.append(
+                        f"condition {index} says {pointer} is not used, but the rules set it"
+                    )
         elif not entry.get("rule_paths"):
             problems.append(f"condition {index} is marked mapped but points nowhere: {text}")
         elif definition is not None:
@@ -308,12 +338,21 @@ Call = Callable[[str, list[dict[str, Any]]], dict[str, Any]]
 
 
 def convert(
-    code: str, conditions: list[str], language: str, call: Call
+    code: str,
+    conditions: list[str],
+    language: str,
+    call: Call,
+    system: str | None = None,
+    request: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """(the conversion as stored, each reply's usage). A definition that fails validation goes
-    back to Claude with the error; a mapping problem does not, it is shown to the investor."""
-    system = system_prompt(language)
-    messages: list[dict[str, Any]] = [{"role": "user", "content": request_text(code, conditions)}]
+    back to Claude with the error; a mapping problem does not, it is shown to the investor.
+
+    `system` and `request` replace the Pine prompt and first message for another source of
+    conditions (technique cards, ADR 0056); the checks are the same."""
+    system = system if system is not None else system_prompt(language)
+    first = request if request is not None else request_text(code, conditions)
+    messages: list[dict[str, Any]] = [{"role": "user", "content": first}]
     usage: list[dict[str, Any]] = []
     answer: dict[str, Any] = {}
     definition: dict[str, Any] | None = None
@@ -359,11 +398,18 @@ def convert(
                 else ""
             ),
             "status": item.get("status"),
-            "rule_paths": [str(pointer) for pointer in item.get("rule_paths") or []],
+            # A model sometimes pads the list with "" (a blank pointer names nothing) or
+            # indents a pointer ("    /entry", Gemini 4 Argon 2026-11-16): JSON pointers
+            # never start or end with spaces here, so they are trimmed.
+            "rule_paths": [
+                str(pointer).strip()
+                for pointer in item.get("rule_paths") or []
+                if str(pointer).strip()
+            ],
             "reason": str(item.get("reason") or ""),
         }
         for item in answer.get("mapping") or []
-        if item.get("status") in ("mapped", "unconvertible")
+        if item.get("status") in STATUSES
     ]
     problems = check_mapping(definition, conditions, mapping)
     if error is not None:

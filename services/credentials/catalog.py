@@ -108,6 +108,14 @@ CATALOG: dict[str, ProviderKeySpec] = {
             (SecretField("api_key", "API key", "ANTHROPIC_API_KEY"),),
             per_account=False,
         ),
+        # Not a market-data source: the fallback model for technique cards (ADR 0056 L2,
+        # openai/gpt-6-luna, sent with data collection denied).
+        ProviderKeySpec(
+            "openrouter",
+            "OpenRouter",
+            (SecretField("api_key", "API key", "OPENROUTER_API_KEY"),),
+            per_account=False,
+        ),
     )
 }
 

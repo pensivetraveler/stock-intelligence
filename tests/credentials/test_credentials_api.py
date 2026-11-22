@@ -67,6 +67,7 @@ def test_register_list_and_never_echo_secrets(client: TestClient) -> None:
         "finra",  # the dark pool Agent's FINRA API credential
         "ecos",  # the Bank of Korea USD/KRW rate for paper-order limits
         "anthropic",  # the review Agent's commentary key, not a market-data source
+        "openrouter",  # the technique card fallback model (ADR 0056)
     ]
     for response in (created, listing):
         assert SECRET not in response.text
@@ -200,3 +201,24 @@ def test_active_provider_keys_show_runtime_status(
     assert item["active"] is True
     assert item["status"]["state"] == "cooling"
     assert item["status"]["last_error"] == "KIS rate limit reached; retry later"
+
+
+def test_every_catalog_provider_can_be_saved(client: TestClient) -> None:
+    """The request type lists the same providers as the key catalog (openrouter was missed)."""
+    from typing import get_args
+
+    from services.api.credential_routes import Provider
+    from services.credentials.catalog import CATALOG
+
+    assert set(get_args(Provider)) == set(CATALOG)
+    created = client.post(
+        "/v1/credentials",
+        json={
+            "provider": "openrouter",
+            "label": "OPENROUTER_KEY_RUNTIME",
+            "secrets": {"api_key": "test-openrouter-not-real"},
+        },
+    )
+    assert created.status_code == 201, created.json()
+    validate_document(created.json())
+    assert "test-openrouter-not-real" not in created.text

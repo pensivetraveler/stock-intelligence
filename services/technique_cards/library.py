@@ -1,0 +1,358 @@
+"""Technique sources from the knowledge library (ADR 0056 L1).
+
+The library is reached only through its CLI (`python -I -m kl.cli`, #SIW-lib-1): the SIW API
+process runs under the same OS account, so the library binds it as the user's session. Every
+answer is one JSON envelope; exit code 0 is not "allowed", the envelope is judged here.
+
+- The list is the tag subscription's deliveries (topic `매매기법`, paged to the end).
+- A source's text is fetched with `context assemble` + `context hydrate` into a cache outside
+  the repository (directories 0700, files 0600). The layer kept is, in this order: the hydrated
+  file with the most `[mm:ss]` lines (captions); else the one with the most `[p. N]` lines (a
+  PDF's text, knowledge-library pdftext); else the longest text the library records as observed
+  and not a summary or interpretation (`archive get`: a note the investor wrote, a web page's
+  body), never JSON metadata or the PDF's own bytes (user request 2026-11-15).
+- Before each reuse the cached text is rechecked (`context hydration-check`): `still_usable`
+  is used, `conditional` is used and shown as conditional, `stop_using` / `unknown` deletes the
+  cache and the caller marks the card's evidence withdrawn.
+- Third-party text never goes into the repository, logs or error messages.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+TAG = "매매기법"
+USABLE = ("still_usable", "conditional")
+WITHDRAWN = ("stop_using", "unknown")
+TIMED_LINE = re.compile(r"^\[\d+:\d{2}(?::\d{2})?\]", re.MULTILINE)
+PAGE_LINE = re.compile(r"^\[p\.\s?\d+\]\s*$", re.MULTILINE)
+# Layers a summary or a model's reading, never the source itself.
+DERIVED_KINDS = ("summary", "interpretation")
+TIMEOUT_SECONDS = 120
+
+Runner = Callable[[list[str], dict[str, Any]], dict[str, Any]]
+
+
+def _is_json(text: str) -> bool:
+    try:
+        json.loads(text)
+    except ValueError:
+        return False
+    return True
+
+
+class LibraryError(RuntimeError):
+    """The library refused or could not answer; the message never carries source text."""
+
+    def __init__(self, message: str, reason_code: str = "") -> None:
+        super().__init__(message)
+        self.reason_code = reason_code
+
+
+@dataclass(frozen=True)
+class LibraryConfig:
+    root: Path
+    task_ref: str
+    tagsubscription_ref: str
+    env: dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def from_env(cls, environ: dict[str, str] | None = None) -> LibraryConfig | None:
+        """None unless SIW_KL_ROOT, SIW_KL_TASK and SIW_KL_TAGSUBSCRIPTION are all set."""
+        source = os.environ if environ is None else environ
+        root = source.get("SIW_KL_ROOT", "").strip()
+        task = source.get("SIW_KL_TASK", "").strip()
+        subscription = source.get("SIW_KL_TAGSUBSCRIPTION", "").strip()
+        if not (root and task and subscription):
+            return None
+        instance = source.get("SIW_KL_INSTANCE", "kl-lib").strip() or "kl-lib"
+        share = Path(source.get("HOME", str(Path.home()))) / ".local/share/knowledge-library"
+        env = {
+            "KL_INSTANCE": instance,
+            "KL_PG_DB": source.get("KL_PG_DB", instance.replace("-", "_")),
+            "KL_BLOB_DIR": source.get("KL_BLOB_DIR", str(share / instance / "blobs")),
+            "KL_FINGERPRINT_KEYS": source.get(
+                "KL_FINGERPRINT_KEYS", str(share / instance / "fingerprint-keys.json")
+            ),
+        }
+        return cls(Path(root).expanduser(), task, subscription, env)
+
+
+def cli_runner(config: LibraryConfig) -> Runner:
+    """Runs `kl.cli <args> --input -` with the request on stdin and returns the envelope."""
+
+    def run(args: list[str], request: dict[str, Any]) -> dict[str, Any]:
+        python = config.root / ".venv/bin/python"
+        env = {
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "HOME": os.environ.get("HOME", ""),
+            **config.env,
+        }
+        try:
+            proc = subprocess.run(
+                [str(python), "-I", "-m", "kl.cli", *args, "--input", "-"],
+                input=json.dumps(request, ensure_ascii=False),
+                capture_output=True,
+                text=True,
+                env=env,
+                cwd=config.root,
+                timeout=TIMEOUT_SECONDS,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise LibraryError(f"could not run the library CLI: {type(exc).__name__}") from exc
+        try:
+            envelope = json.loads(proc.stdout)
+        except ValueError as exc:
+            raise LibraryError(f"library CLI exit {proc.returncode}, no envelope") from exc
+        if not isinstance(envelope, dict):
+            raise LibraryError("library CLI answered with something other than an envelope")
+        return envelope
+
+    return run
+
+
+@dataclass(frozen=True)
+class Source:
+    item_ref: str
+    title: str
+    url: str
+    source_key: str
+    tags: list[str]
+    delivered_at: str
+    eligibility: list[str]
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "item_ref": self.item_ref,
+            "title": self.title,
+            "url": self.url,
+            "source_key": self.source_key,
+            "tags": self.tags,
+            "delivered_at": self.delivered_at,
+            "eligibility": self.eligibility,
+        }
+
+
+@dataclass(frozen=True)
+class Fetched:
+    """A cached transcript: where it is and what to recheck before using it again."""
+
+    item_ref: str
+    context_ref: str
+    revision_ref: str
+    path: Path
+    sha256: str
+    verification_status: str
+    data_grade: str
+
+
+class Library:
+    def __init__(self, config: LibraryConfig, cache_dir: Path, run: Runner | None = None) -> None:
+        self.config = config
+        self.cache_dir = cache_dir
+        self._run = run or cli_runner(config)
+
+    def _call(self, args: list[str], request: dict[str, Any]) -> dict[str, Any]:
+        envelope = self._run(args, request)
+        status = envelope.get("status")
+        if status not in ("success", "partial_success"):
+            code = str(envelope.get("reason_code") or "")
+            raise LibraryError(f"library refused {' '.join(args[:2])}: {code}", code)
+        data = envelope.get("data")
+        if not isinstance(data, dict):
+            raise LibraryError(f"library answered {' '.join(args[:2])} without data")
+        return data
+
+    def sources(self) -> list[Source]:
+        """Every item the tag subscription delivered, newest first, paged to the end."""
+        deliveries: list[dict[str, Any]] = []
+        cursor: str | None = None
+        for _ in range(100):  # a runaway cursor stops; 100 pages is far beyond today's 18 items
+            args = ["delivery", "list"] + (["--cursor", cursor] if cursor else [])
+            data = self._call(args, {"tagsubscription_ref": self.config.tagsubscription_ref})
+            deliveries.extend(d for d in data.get("deliveries") or [] if isinstance(d, dict))
+            cursor = data.get("next_cursor")
+            if not cursor:
+                break
+        else:
+            raise LibraryError("delivery list did not end")
+        latest: dict[str, dict[str, Any]] = {}
+        for delivery in deliveries:
+            ref = str(delivery.get("item_ref") or "")
+            newer = str(delivery.get("sent_at", "")) >= str(latest.get(ref, {}).get("sent_at", ""))
+            if ref and delivery.get("state") == "sent" and newer:
+                latest[ref] = delivery
+        found = []
+        for ref, delivery in latest.items():
+            source = self.source(ref, str(delivery.get("sent_at") or ""))
+            if source is not None:
+                found.append(source)
+        found.sort(key=lambda s: s.delivered_at, reverse=True)
+        return found
+
+    def source(self, item_ref: str, delivered_at: str = "") -> Source | None:
+        """One current item carrying the technique tag, or None."""
+        data = self._call(["item", "get"], {"item_ref": item_ref})
+        item = data.get("item") or {}
+        tags = sorted({str(t.get("name")) for t in item.get("tags") or [] if isinstance(t, dict)})
+        if item.get("state") not in (None, "current") or TAG not in tags:
+            return None
+        return Source(
+            item_ref=item_ref,
+            title=str(item.get("title") or "")[:500],
+            url=str(item.get("url") or "")[:500],
+            source_key=str(item.get("source_key") or "")[:100],
+            tags=tags,
+            delivered_at=delivered_at,
+            eligibility=[str(m.get("eligibility_outcome")) for m in data.get("members") or []],
+        )
+
+    def _item_dir(self, item_ref: str) -> Path:
+        return self.cache_dir / hashlib.sha256(item_ref.encode()).hexdigest()[:32]
+
+    def fetch(self, item_ref: str) -> Fetched:
+        """Hydrate the item's layers into a fresh cache folder and keep the transcript layer."""
+        data = self._call(["item", "get"], {"item_ref": item_ref})
+        refs = [str(m["artifact_ref"]) for m in data.get("members") or [] if m.get("artifact_ref")]
+        if not refs:
+            raise LibraryError("the item has no layers")
+        context = self._call(
+            ["context", "assemble"],
+            {"task_ref": self.config.task_ref, "candidate_artifact_refs": refs},
+        )
+        selected = [
+            {"revision_ref": i["revision_ref"], "anchor_refs": []}
+            for i in context.get("selected_items") or []
+            if i.get("revision_ref")
+        ]
+        if not selected:
+            raise LibraryError("the library selected no layer of this item")
+        target = self._item_dir(item_ref)
+        if target.exists():
+            shutil.rmtree(target)
+        hydrated = target / "hydrated"
+        hydrated.mkdir(parents=True, mode=0o700)
+        os.chmod(self.cache_dir, 0o700)
+        os.chmod(target, 0o700)
+        self._call(
+            ["context", "hydrate", "--out-dir", str(hydrated)],
+            {"context_ref": context["context_ref"], "items": selected},
+        )
+        try:
+            path, meta = self._source_layer(hydrated)
+        except LibraryError:
+            shutil.rmtree(target)
+            raise
+        transcript = target / "transcript.txt"
+        shutil.copyfile(path, transcript)
+        os.chmod(transcript, 0o600)
+        shutil.rmtree(hydrated)
+        fetched = Fetched(
+            item_ref=item_ref,
+            context_ref=str(context["context_ref"]),
+            revision_ref=str(meta["revision_ref"]),
+            path=transcript,
+            sha256=hashlib.sha256(transcript.read_bytes()).hexdigest(),
+            verification_status=str(meta.get("verification_status") or "unverified"),
+            data_grade=str(meta.get("data_grade") or "private"),
+        )
+        record = target / "fetched.json"
+        record.write_text(
+            json.dumps(
+                {
+                    "item_ref": item_ref,
+                    "context_ref": fetched.context_ref,
+                    "revision_ref": fetched.revision_ref,
+                    "sha256": fetched.sha256,
+                    "verification_status": fetched.verification_status,
+                    "data_grade": fetched.data_grade,
+                }
+            )
+        )
+        os.chmod(record, 0o600)
+        return fetched
+
+    def _source_layer(self, hydrated: Path) -> tuple[Path, dict[str, Any]]:
+        """The hydrated file to use as the source, and its meta (see the module note)."""
+        files: list[tuple[Path, str, dict[str, Any]]] = []
+        for path in sorted(hydrated.iterdir()):
+            if path.name.endswith(".meta.json"):
+                continue
+            meta_path = path.with_name(path.name + ".meta.json")
+            meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+            if not meta.get("revision_ref"):
+                continue
+            data = path.read_bytes()
+            if b"\x00" in data or data.startswith(b"%PDF"):
+                continue  # binary: the PDF itself
+            files.append((path, data.decode("utf-8", errors="replace"), meta))
+        for pattern in (TIMED_LINE, PAGE_LINE):
+            counted = [(len(pattern.findall(text)), path, meta) for path, text, meta in files]
+            counted = [c for c in counted if c[0]]
+            if counted:
+                _count, path, meta = max(counted, key=lambda c: c[0])
+                return path, meta
+        written: list[tuple[int, Path, dict[str, Any]]] = []
+        for path, text, meta in files:
+            if not text.strip() or _is_json(text):
+                continue
+            layer = self._call(
+                ["archive", "get"], {"target": {"revision_ref": meta["revision_ref"]}}
+            )
+            if layer.get("origin_type") == "observed" and layer.get("kind") not in DERIVED_KINDS:
+                written.append((len(text.strip()), path, meta))
+        if written:
+            _size, path, meta = max(written, key=lambda w: w[0])
+            return path, meta
+        raise LibraryError("no captions, PDF text or written text in this item")
+
+    def cached(self, item_ref: str) -> Fetched | None:
+        """The cached transcript of an item, if it is there and unchanged."""
+        target = self._item_dir(item_ref)
+        try:
+            record = json.loads((target / "fetched.json").read_text())
+            transcript = target / "transcript.txt"
+            digest = hashlib.sha256(transcript.read_bytes()).hexdigest()
+        except (OSError, ValueError):
+            return None
+        if record.get("item_ref") != item_ref or record.get("sha256") != digest:
+            return None
+        return Fetched(
+            item_ref=item_ref,
+            context_ref=str(record["context_ref"]),
+            revision_ref=str(record["revision_ref"]),
+            path=transcript,
+            sha256=digest,
+            verification_status=str(record.get("verification_status") or "unverified"),
+            data_grade=str(record.get("data_grade") or "private"),
+        )
+
+    def recheck(self, context_ref: str, revision_ref: str) -> str:
+        """`still_usable` | `conditional` | `stop_using` | `unknown` (refused = unknown)."""
+        try:
+            data = self._call(
+                ["context", "hydration-check"],
+                {"context_ref": context_ref, "revision_ref": revision_ref, "anchor_refs": []},
+            )
+        except LibraryError as exc:
+            if exc.reason_code in ("NOT_AVAILABLE", "NOT_FOUND", "NOT_ELIGIBLE"):
+                return "unknown"
+            raise
+        outcome = str(data.get("outcome") or "unknown")
+        return outcome if outcome in USABLE + WITHDRAWN else "unknown"
+
+    def forget(self, item_ref: str) -> None:
+        """Delete the cached text of an item (evidence withdrawn)."""
+        target = self._item_dir(item_ref)
+        if target.exists():
+            shutil.rmtree(target)

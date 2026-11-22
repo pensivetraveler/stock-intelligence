@@ -2,6 +2,7 @@
 
 - **Status:** accepted. 2026-11-09 사용자 결정(아래 "사용자 결정"). 희석 쪽 스트레스 모델은 사용자가 설계안을 따로 줄 예정이라 이 ADR에 아직 없다.
 - **Date:** 2026-11-09
+- **Changed (2026-11-20):** 종가 경로의 `close_hold_rate`를 고쳤다. 교차할 때마다 "유지"도 함께 세어 값이 늘 1이었다. 이제 교차(직전 종가와 구간의 반대쪽에서 마감) 다음 종가가 같은 쪽에 남았는지로 세고, 마지막 종가의 교차는 아직 판정할 수 없어 뺀다. 원본 모델의 정의는 이식할 때 받지 못해 SIW 해석이다(미확인). 이 값은 점수(`_score`)에 쓰이지 않고 표시만 된다. 피처 버전 `darkpool-stress-siw-features/2.0.1`.
 - **Related:** [ADR 0052](0052-daily-candidate-screening.md)(당일 후보 스크리닝, C 희석 공급 가격대·D 장외 체결 가격대), [ADR 0035](0035-alpaca-default-us-provider.md)(Alpaca 기본 공급업체), [ADR 0024](0024-filings-and-dark-pool-agents.md)(다크풀 Agent)
 
 ## Context

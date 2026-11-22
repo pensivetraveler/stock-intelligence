@@ -3,6 +3,7 @@ import type { PriceBar } from "@siw/contracts/types";
 import type { BarsRequest } from "./market-api";
 import { zoneFormat, zoneOf } from "./market-zone";
 import type { ReviewTrade } from "./review-api";
+import { DECK } from "./theme";
 
 const DAY_MS = 86_400_000;
 /** Daily bars shown before a trade's first fill and after its last one. */
@@ -78,7 +79,7 @@ export interface TradeMarker {
   text: string;
 }
 
-export const TRADE_COLORS = { buy: "#3fb68b", sell: "#e5566b" };
+export const TRADE_COLORS = { buy: DECK.up, sell: DECK.down };
 
 /** A daily bar's session date at its exchange. */
 function barDay(bar: PriceBar, instrumentId: string): string {

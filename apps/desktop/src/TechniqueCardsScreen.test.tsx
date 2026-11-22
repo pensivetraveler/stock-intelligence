@@ -1,0 +1,569 @@
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import type {
+  CardCondition,
+  TechniqueCard,
+  TechniqueCardsApi,
+  TechniqueDraft,
+  TechniquePreview,
+  TechniqueSettings,
+} from "./technique-cards-api";
+import { slotsLabel } from "./technique-cards-api";
+import { TechniqueCardsScreen } from "./TechniqueCardsScreen";
+
+const ITEM = "kl://kl-lib/item/01M7CJ84TD615YWVWKWHDTKGH7";
+
+const entry: CardCondition = {
+  field: "entry",
+  side: "long",
+  text: "Buy when the close crosses above the 50 EMA.",
+  basis: "source",
+  left: { kind: "price", name: "close", period: null, value: null },
+  comparator: "cross_above",
+  right: { kind: "indicator", name: "ema", period: 50, value: null },
+  timeframe: "",
+  citations: [{ locator: "00:50", quote: "When the price closes back above" }],
+  value_citations: [{ value: 50, locator: "00:10", quote: "a fifty period" }],
+};
+const rsi: CardCondition = {
+  ...entry,
+  text: "RSI(14) above 50",
+  left: { kind: "indicator", name: "rsi", period: 14, value: null },
+  comparator: "above",
+  right: { kind: "value", name: "none", period: null, value: 50 },
+  value_citations: [],
+};
+
+const preview: TechniquePreview = {
+  kind: "technique_source_preview",
+  item_ref: ITEM,
+  title: "Demo lesson",
+  url: "https://example.test/v",
+  lines: 5,
+  parts: 1,
+  characters: 1200,
+  model: "google/gemini-4-argon",
+  fallback: "openai/gpt-6-luna",
+  models: [
+    "google/gemini-4-argon",
+    "openai/gpt-6-astra",
+    "claude-sonnet-5-5",
+    "openai/gpt-6-luna",
+  ],
+  default_model: "google/gemini-4-argon",
+  estimated_cost_usd: "0.06",
+  estimate_note: "estimate",
+  verification_status: "unverified",
+  data_grade: "private",
+  recheck_outcome: "conditional",
+};
+
+function card(overrides: Partial<TechniqueCard> = {}): TechniqueCard {
+  return {
+    kind: "technique_card",
+    card_id: "c1",
+    item_ref: ITEM,
+    title: "Demo lesson",
+    url: "https://example.test/v",
+    version: 1,
+    usage: {
+      input_tokens: 9,
+      output_tokens: 9,
+      cost_usd: "0.2",
+      models: ["claude-sonnet-5-5"],
+      calls: 1,
+      parts: 1,
+      flags: {},
+    },
+    recheck_outcome: "conditional",
+    rechecked_at: "2026-11-14T00:00:00Z",
+    withdrawn: false,
+    ready: false,
+    blocks: ["condition 1 not resolved"],
+    corrected: 0,
+    created_at: "2026-11-14T00:00:00Z",
+    updated_at: "2026-11-14T00:00:00Z",
+    card: {
+      source_id: "demo",
+      title: "Demo lesson",
+      conditions: [entry, rsi],
+      timeframe: [],
+      universe: [],
+      position: [],
+      inexpressible: [],
+      ambiguities: [
+        {
+          text: "How much is a surge?",
+          question: "What volume ratio?",
+          citations: [],
+        },
+      ],
+    },
+    checks: {
+      conditions: [
+        { index: 0, field: "entry", flags: [] },
+        {
+          index: 1,
+          field: "entry",
+          flags: [{ code: "unbacked", reason: "no value citation saying 14" }],
+        },
+      ],
+      counts: { unbacked: 1, no_criterion: 0 },
+    },
+    resolutions: { conditions: {}, ambiguities: {} },
+    verification_status: "unverified",
+    timeline: [
+      {
+        time: "00:10",
+        text: "a fifty period moving average",
+        conditions: [0],
+        universe: [],
+      },
+      {
+        time: "01:10",
+        text: "The stop sits two ATR below",
+        conditions: [],
+        universe: [],
+      },
+    ],
+    ...overrides,
+  };
+}
+
+const draftDone: TechniqueDraft = {
+  kind: "technique_card_draft",
+  draft_id: "d1",
+  card_id: "c1",
+  state: "done",
+  model: "google/gemini-4-argon",
+  error: "",
+  result: {
+    items: ["[entry, long, from the source] buy", "[position] bet small"],
+    conversion: {
+      definition: { type: "rules" },
+      mapping: [
+        {
+          index: 0,
+          condition: "buy",
+          status: "mapped",
+          rule_paths: ["/entry"],
+          reason: "",
+        },
+        {
+          index: 1,
+          condition: "bet small",
+          status: "unconvertible",
+          rule_paths: [],
+          reason: "no size",
+        },
+      ],
+      problems: [],
+      notes: "",
+      complete: false,
+    },
+    unconvertible: 1,
+    blocking: [],
+    cost_usd: "0.01",
+  },
+  strategy_id: null,
+  strategy_version: null,
+  save_blocks: [],
+  needs_accept: true,
+};
+
+const settings: TechniqueSettings = {
+  kind: "technique_settings",
+  default_model: "google/gemini-4-argon",
+  default_choices: [
+    "anthropic/claude-fable-5.2",
+    "google/gemini-4-argon",
+    "openai/gpt-6-astra",
+  ],
+  models: [],
+};
+
+function fakeApi(): TechniqueCardsApi {
+  return {
+    sources: vi.fn().mockResolvedValue([
+      {
+        item_ref: ITEM,
+        title: "Demo lesson",
+        url: "https://example.test/v",
+        source_key: "demo",
+        tags: ["매매기법"],
+        delivered_at: "2026-11-14T00:00:00Z",
+        eligibility: ["conditional"],
+        card_ids: [],
+      },
+    ]),
+    preview: vi.fn().mockResolvedValue(preview),
+    start: vi
+      .fn()
+      .mockResolvedValue({ kind: "technique_card_job", job_id: "j1" }),
+    job: vi.fn().mockResolvedValue({
+      kind: "technique_card_job",
+      job_id: "j1",
+      state: "done",
+      card_id: "c1",
+    }),
+    cards: vi.fn().mockResolvedValue([]),
+    card: vi.fn().mockResolvedValue(card()),
+    resolve: vi.fn().mockResolvedValue(card()),
+    recheck: vi.fn().mockResolvedValue(card()),
+    settings: vi.fn().mockResolvedValue(settings),
+    setDefaultModel: vi.fn().mockImplementation(async (model: string) => ({
+      ...settings,
+      default_model: model,
+    })),
+    startDraft: vi.fn().mockResolvedValue({ draft_id: "d1" }),
+    draft: vi.fn().mockResolvedValue(draftDone),
+    drafts: vi.fn().mockResolvedValue([]),
+    saveDraft: vi.fn().mockResolvedValue({
+      ...draftDone,
+      strategy_id: "strategy-abc",
+      strategy_version: 1,
+    }),
+  };
+}
+
+describe("technique cards", () => {
+  it("previews before sending, extracts on the button and opens the card", async () => {
+    const api = fakeApi();
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Demo lesson" }));
+    expect(
+      await screen.findByText(/1 slice\(s\), 5 source lines/),
+    ).toBeTruthy();
+    expect(api.start).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Extract card (costs money)" }),
+    );
+    await waitFor(() => expect(api.card).toHaveBeenCalledWith("c1"));
+    expect(api.start).toHaveBeenCalledWith(ITEM, "google/gemini-4-argon");
+    expect(
+      await screen.findByText(/Not ready: flagged conditions to decide #2/),
+    ).toBeTruthy();
+    expect(screen.getByText("Unbacked")).toBeTruthy();
+  });
+
+  it("tells cards from one source apart by model, date and version", async () => {
+    const api = fakeApi();
+    vi.mocked(api.cards).mockResolvedValue([
+      card(),
+      card({
+        card_id: "c2",
+        version: 7,
+        created_at: "2026-11-14T15:05:00Z",
+        usage: { ...card().usage, models: ["openai/gpt-6-luna"] },
+      }),
+    ]);
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    expect(
+      await screen.findByText(
+        "Sonnet 5.5 · made 2026-11-14 00:00 UTC · version 1",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("GPT-6 Luna · made 2026-11-14 15:05 UTC · version 7"),
+    ).toBeTruthy();
+  });
+
+  it("says when a model at its limit was replaced", async () => {
+    const api = fakeApi();
+    const switched = card({
+      usage: {
+        ...card().usage,
+        models: ["google/gemini-4-argon"],
+        requested_model: "anthropic/claude-fable-5.2",
+        switches: [
+          {
+            part: 1,
+            from: "anthropic/claude-fable-5.2",
+            to: "google/gemini-4-argon",
+            reason: "limit",
+          },
+        ],
+      },
+    });
+    vi.mocked(api.cards).mockResolvedValue([switched]);
+    vi.mocked(api.card).mockResolvedValue(switched);
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
+    expect(
+      await screen.findByText(
+        "Slice 1: Fable 5.2 was at its limit, so Gemini 4 Argon was used",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("saves an edited number, a dropped condition and an answer", async () => {
+    const api = fakeApi();
+    vi.mocked(api.cards).mockResolvedValue([card()]);
+    render(<TechniqueCardsScreen api={api} onClose={() => undefined} />);
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    const cards = screen.getAllByRole("button", { name: "Demo lesson" });
+    fireEvent.click(cards[1]);
+    const rows = await screen.findAllByRole("row");
+    const flagged = rows[2];
+    fireEvent.click(
+      within(flagged).getByRole("button", { name: "Edit numbers" }),
+    );
+    fireEvent.change(within(flagged).getByLabelText("left.period"), {
+      target: { value: "2" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/Your answer/), {
+      target: { value: "2x" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save decisions" }));
+    await waitFor(() => expect(api.resolve).toHaveBeenCalled());
+    const [cardId, version, conditions, answers] = vi.mocked(api.resolve).mock
+      .calls[0];
+    expect([cardId, version]).toEqual(["c1", 1]);
+    expect(conditions["1"].action).toBe("edit");
+    expect(conditions["1"].condition?.left.period).toBe(2);
+    expect(answers).toEqual({ "0": "2x" });
+  });
+
+  it("saves a condition the user adds and drops blank ones", async () => {
+    const api = fakeApi();
+    vi.mocked(api.cards).mockResolvedValue([card()]);
+    render(<TechniqueCardsScreen api={api} onClose={() => undefined} />);
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
+    const add = await screen.findByRole("button", { name: "Add condition" });
+    fireEvent.click(add);
+    fireEvent.click(add);
+    const texts = screen.getAllByLabelText("Condition");
+    fireEvent.change(texts[0], { target: { value: "50-day above 200-day" } });
+    fireEvent.change(screen.getAllByLabelText("Where")[0], {
+      target: { value: "exit" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save decisions" }));
+    await waitFor(() => expect(api.resolve).toHaveBeenCalled());
+    expect(vi.mocked(api.resolve).mock.calls[0][4]).toEqual([
+      { field: "exit", text: "50-day above 200-day" },
+    ]);
+  });
+
+  it("filters the timeline to lines the card left out", async () => {
+    const api = fakeApi();
+    vi.mocked(api.cards).mockResolvedValue([card()]);
+    render(<TechniqueCardsScreen api={api} onClose={() => undefined} />);
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
+    fireEvent.click(
+      await screen.findByLabelText("Only lines no condition cites"),
+    );
+    expect(screen.queryByText("a fifty period moving average")).toBeNull();
+    expect(screen.getByText("The stop sits two ATR below")).toBeTruthy();
+  });
+
+  it("asks for a new preview when another model is picked and extracts with it", async () => {
+    const api = fakeApi();
+    vi.mocked(api.preview).mockImplementation(async (_item, model) => ({
+      ...preview,
+      model: model ?? "google/gemini-4-argon",
+    }));
+    render(<TechniqueCardsScreen api={api} onClose={() => undefined} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Demo lesson" }));
+    fireEvent.change(
+      await screen.findByLabelText("Model for this extraction"),
+      {
+        target: { value: "openai/gpt-6-astra" },
+      },
+    );
+    await waitFor(() =>
+      expect(api.preview).toHaveBeenLastCalledWith(ITEM, "openai/gpt-6-astra"),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Extract card (costs money)" }),
+    );
+    await waitFor(() =>
+      expect(api.start).toHaveBeenCalledWith(ITEM, "openai/gpt-6-astra"),
+    );
+  });
+
+  it("changes the default model among Fable, Argon and Astra", async () => {
+    const api = fakeApi();
+    vi.mocked(api.settings).mockResolvedValue({
+      ...settings,
+      default_reset: {
+        from: "anthropic/claude-fable-5.2",
+        to: "google/gemini-4-argon",
+        at: "2026-11-15T02:00:00Z",
+      },
+    });
+    render(<TechniqueCardsScreen api={api} onClose={() => undefined} />);
+    const select = (await screen.findByLabelText(
+      "Default model",
+    )) as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      "Fable 5.2",
+      "Gemini 4 Argon",
+      "GPT-6 Astra",
+    ]);
+    expect(
+      screen.getByText(
+        "Fable 5.2 is paused; the default went back to Gemini 4 Argon.",
+      ),
+    ).toBeTruthy();
+    fireEvent.change(select, { target: { value: "openai/gpt-6-astra" } });
+    await waitFor(() =>
+      expect(api.setDefaultModel).toHaveBeenCalledWith("openai/gpt-6-astra"),
+    );
+    await waitFor(() => expect(select.value).toBe("openai/gpt-6-astra"));
+  });
+
+  it("drafts a ready card with argon and saves only after the tick", async () => {
+    const api = fakeApi();
+    vi.mocked(api.cards).mockResolvedValue([card()]);
+    vi.mocked(api.card).mockResolvedValue(card({ ready: true, blocks: [] }));
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Make a draft (costs money)" }),
+    );
+    await waitFor(() =>
+      expect(api.startDraft).toHaveBeenCalledWith(
+        "c1",
+        "google/gemini-4-argon",
+      ),
+    );
+    expect(await screen.findByText("Cannot express")).toBeTruthy();
+    const save = screen.getByRole("button", {
+      name: "Save as a rules strategy",
+    });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(
+      screen.getByLabelText(
+        "Save without the 1 item(s) the rules cannot express",
+      ),
+    );
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(api.saveDraft).toHaveBeenCalledWith(
+        "d1",
+        "Demo lesson",
+        true,
+        false,
+      ),
+    );
+    expect(
+      await screen.findByText(/Saved as strategy-abc version 1/),
+    ).toBeTruthy();
+  });
+
+  it("drafts by script for free and asks to keep an unstated reading", async () => {
+    const api = fakeApi();
+    const scripted: TechniqueDraft = {
+      ...draftDone,
+      model: "script",
+      needs_accept: false,
+      needs_confirm: true,
+      result: {
+        ...draftDone.result!,
+        items: ["[entry, long, from the source] buy"],
+        conversion: {
+          ...draftDone.result!.conversion,
+          mapping: [draftDone.result!.conversion.mapping[0]!],
+        },
+        scripted: [0],
+        assumptions: [
+          {
+            index: 0,
+            kind: "default_length",
+            indicator: "sma",
+            param: "length",
+            value: 9,
+          },
+        ],
+        unconvertible: 0,
+        cost_usd: "0",
+      },
+    };
+    vi.mocked(api.draft).mockResolvedValue(scripted);
+    vi.mocked(api.cards).mockResolvedValue([card()]);
+    vi.mocked(api.card).mockResolvedValue(card({ ready: true, blocks: [] }));
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
+    const select = (await screen.findByLabelText("Model")) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "script" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make a draft (free)" }),
+    );
+    await waitFor(() =>
+      expect(api.startDraft).toHaveBeenCalledWith("c1", "script"),
+    );
+    expect(
+      await screen.findByText(
+        "Item 1: no length given; the engine default 9 for sma is used",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("In the rules · by script")).toBeTruthy();
+    const save = screen.getByRole("button", {
+      name: "Save as a rules strategy",
+    });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(
+      screen.getByLabelText("I checked the 1 reading(s) above and keep them"),
+    );
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(api.saveDraft).toHaveBeenCalledWith(
+        "d1",
+        "Demo lesson",
+        false,
+        true,
+      ),
+    );
+  });
+
+  it("labels slots", () => {
+    expect(slotsLabel(entry)).toBe("close ↗ crosses above ema(50)");
+    expect(slotsLabel(rsi)).toBe("rsi(14) > 50 value");
+  });
+});

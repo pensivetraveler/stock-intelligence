@@ -6,11 +6,13 @@ import { createAgentApi } from "./agent-api";
 import { createIndicatorAssistantApi } from "./indicator-assistant-api";
 import { createStrategyResearchApi } from "./strategy-research-api";
 import { createReviewApi } from "./review-api";
+import { createTechniqueCardsApi } from "./technique-cards-api";
 import { createBacktestApi } from "./backtest-api";
 import { createScreeningApi } from "./screening-api";
 import { createCredentialApi } from "./credential-api";
 import { createCustomIndicatorApi } from "./custom-indicator-api";
 import { desktopBridge } from "./desktop-bridge";
+import { HelpScreen } from "./HelpScreen";
 import { AppMark } from "./icons";
 import { LANGUAGES, useI18n, type Language, type MessageKey } from "./i18n";
 import { I18nProvider } from "./I18nProvider";
@@ -59,6 +61,10 @@ function AppContent({
   // Only inside the Electron shell (SIW Research): a button that opens SIW Agent.
   const desktop = useMemo(() => desktopBridge(), []);
   const [agentProblem, setAgentProblem] = useState<string | null>(null);
+  // Help → implemented-features guide; opened from the status bar or, in Electron,
+  // from the app's Help menu.
+  const [helpOpen, setHelpOpen] = useState(false);
+  useEffect(() => desktop?.onShowHelp?.(() => setHelpOpen(true)), [desktop]);
   const api = useMemo(
     () => createMarketApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
@@ -85,6 +91,10 @@ function AppContent({
   );
   const researchApi = useMemo(
     () => createStrategyResearchApi(apiBaseUrl, fetcher),
+    [apiBaseUrl, fetcher],
+  );
+  const techniqueApi = useMemo(
+    () => createTechniqueCardsApi(apiBaseUrl, fetcher),
     [apiBaseUrl, fetcher],
   );
   const assistantApi = useMemo(
@@ -161,6 +171,7 @@ function AppContent({
             customApi={customApi}
             assistantApi={assistantApi}
             researchApi={researchApi}
+            techniqueApi={techniqueApi}
             openOnToday
           />
         ) : (
@@ -199,6 +210,15 @@ function AppContent({
           {t("app.retry")}
         </button>
         <span className="tb-spacer" />
+        <button
+          type="button"
+          className="tb-button"
+          title={t("help.openHint")}
+          aria-pressed={helpOpen}
+          onClick={() => setHelpOpen(true)}
+        >
+          {t("help.open")}
+        </button>
         {desktop ? (
           <button
             type="button"
@@ -245,6 +265,7 @@ function AppContent({
           </select>
         </label>
       </footer>
+      {helpOpen ? <HelpScreen onClose={() => setHelpOpen(false)} /> : null}
     </div>
   );
 }

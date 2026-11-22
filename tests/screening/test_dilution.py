@@ -25,8 +25,10 @@ JOB = "a" * 32
 RESULT = "b" * 32
 
 
-def value(amount: str | None, status: str, unit: str = "usd_per_share") -> dict[str, Any]:
-    return {"amount": amount, "unit": unit, "status": status}
+def value(
+    amount: str | None, status: str, unit: str = "usd_per_share", as_of: str = "2026-08-14"
+) -> dict[str, Any]:
+    return {"amount": amount, "unit": unit, "status": status, "as_of": as_of}
 
 
 CONTRACT: dict[str, Any] = {
@@ -74,6 +76,8 @@ def test_supply_levels_keep_unknowns_unknown() -> None:
         "unit": "usd_per_share",
         "status": "confirmed",
         "fact": True,
+        # The filing's date, so the chart can scale the price by later splits.
+        "as_of": "2026-08-14",
     }
     assert first["approval_unknown"] and not first["after_base_point"]
     # An unknown price stays null and is not shown as a fact.

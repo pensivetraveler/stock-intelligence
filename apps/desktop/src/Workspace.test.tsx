@@ -795,13 +795,38 @@ function openWorkspaceMenu() {
   fireEvent.click(screen.getByRole("button", { name: /^Workspace: / }));
 }
 
+// Old rail names → sidebar item and the tab inside that panel (디자인-siw-1 r4 정리안 A).
+const PANEL_ROUTE: Record<string, [string, string | null]> = {
+  Watchlist: ["Watchlist", null],
+  "Live quote": ["Symbol", "Live quote"],
+  "Stock info": ["Symbol", "Stock info"],
+  "Condition search": ["Discovery", "Condition search"],
+  Research: ["Discovery", "Research"],
+  Rankings: ["Discovery", "Rankings"],
+  // Account and the journal now share one panel: open it, never toggle it shut.
+  Account: ["Account & ledger", ""],
+  "Trade journal": ["Account & ledger", ""],
+  Backtest: ["Strategy lab", "Backtest"],
+  "Technique cards": ["Strategy lab", "Technique cards"],
+  "Trade review": ["Trade review", null],
+  "Review Agent": ["Chart AI notes", null],
+};
+
 function openPanel(name: string) {
-  fireEvent.click(
-    within(screen.getByRole("navigation", { name: "Panels" })).getByRole(
-      "button",
-      { name },
-    ),
-  );
+  const [item, tab] = PANEL_ROUTE[name] ?? [name, null];
+  const nav = screen.getByRole("navigation", { name: "Panels" });
+  const button = within(nav).getByRole("button", { name: item });
+  if (tab === null) {
+    // A sidebar item without tabs toggles its panel, as the old rail button did.
+    fireEvent.click(button);
+    return;
+  }
+  // Clicking an open item again would close it, so only open it when it is closed.
+  if (button.getAttribute("aria-pressed") !== "true") fireEvent.click(button);
+  if (!tab) return;
+  // A panel with one source shows no tabs (e.g. the strategy lab without technique cards).
+  const tabButton = screen.queryByRole("tab", { name: tab });
+  if (tabButton) fireEvent.click(tabButton);
 }
 
 function pickTimeframe(value: string) {
@@ -1091,8 +1116,12 @@ describe("chart workspace", () => {
     expect(note).toHaveTextContent("does not say which is wrong");
 
     fireEvent.click(screen.getByRole("button", { name: /Replay/ }));
+    // The chart's candles may still be loading when the note shows (flaky in CI): wait for
+    // the candle button rather than expecting it at once.
     fireEvent.click(
-      screen.getByRole("button", { name: "click first candle of chart-1" }),
+      await screen.findByRole("button", {
+        name: "click first candle of chart-1",
+      }),
     );
     await waitFor(() =>
       expect(screen.queryByText(/Splits read from filings/)).toBeNull(),
@@ -1654,7 +1683,7 @@ describe("chart workspace", () => {
       <Workspace api={api} storage={memoryStorage()} />,
     );
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Live quote" }));
+    openPanel("Live quote");
     const panel = await screen.findByRole("region", { name: "Live quote" });
     // The last price and the latest trade.
     expect(await within(panel).findAllByText("252.31")).toHaveLength(2);
@@ -1667,7 +1696,7 @@ describe("chart workspace", () => {
       Promise.reject(new MarketApiError("no key", "quote_source_unavailable"));
     render(<Workspace api={offline} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Live quote" }));
+    openPanel("Live quote");
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "register an enabled real-account Toss key",
     );
@@ -1676,7 +1705,7 @@ describe("chart workspace", () => {
   it("shows stock info, the reference rate and market-hour differences", async () => {
     render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Stock info" }));
+    openPanel("Stock info");
     const panel = await screen.findByRole("region", { name: "Stock info" });
     expect(await within(panel).findByText("신스 (Synth Corp)")).toBeVisible();
     expect(within(panel).getByText("VI_STATIC")).toBeVisible();
@@ -1690,7 +1719,7 @@ describe("chart workspace", () => {
     const api = fakeApi();
     render(<Workspace api={api} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Condition search" }));
+    openPanel("Condition search");
     const panel = await screen.findByRole("region", {
       name: "Kiwoom condition search",
     });
@@ -1729,7 +1758,7 @@ describe("chart workspace", () => {
     const api = fakeApi();
     render(<Workspace api={api} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Research" }));
+    openPanel("Research");
     const panel = await screen.findByRole("region", { name: "Research" });
     expect(await within(panel).findByText("SOXL")).toBeVisible();
     expect(api.researchCalls[0]).toEqual({
@@ -1765,7 +1794,7 @@ describe("chart workspace", () => {
     const api = fakeApi();
     render(<Workspace api={api} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Rankings" }));
+    openPanel("Rankings");
     const panel = await screen.findByRole("region", { name: "Rankings" });
     expect(await within(panel).findByText("엔비디아")).toBeVisible();
     expect(api.rankingCalls[0]).toEqual({
@@ -1836,7 +1865,7 @@ describe("chart workspace", () => {
   it("shows the Toss account read-only and syncs fills into the journal", async () => {
     render(<Workspace api={fakeApi()} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Account" }));
+    openPanel("Account");
     const panel = await screen.findByRole("region", {
       name: "Broker accounts",
     });
@@ -1853,7 +1882,7 @@ describe("chart workspace", () => {
     expect(await within(panel).findByRole("status")).toHaveTextContent(
       "1 new, 0 already stored, 1 without fills",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Trade journal" }));
+    openPanel("Trade journal");
     const heading = await screen.findByText(
       "Broker API executions (Toss, Kiwoom, Meritz)",
     );
@@ -1926,7 +1955,7 @@ describe("chart workspace", () => {
     };
     render(<Workspace api={api} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Account" }));
+    openPanel("Account");
     const panel = await screen.findByRole("region", {
       name: "Broker accounts",
     });
@@ -1952,7 +1981,7 @@ describe("chart workspace", () => {
     const storage = memoryStorage();
     render(<Workspace api={api} storage={storage} />);
     await screen.findByTestId("chart-chart-1");
-    fireEvent.click(screen.getByRole("button", { name: "Live quote" }));
+    openPanel("Live quote");
     const panel = await screen.findByRole("region", { name: "Live quote" });
     await waitFor(() => expect(api.quoteSources).toContain("toss"));
     expect(api.realtime.sources).toEqual(["toss"]);
@@ -1971,7 +2000,7 @@ describe("chart workspace", () => {
     render(<Workspace api={api} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
     await waitFor(() => expect(api.realtime.symbols.at(-1)).toEqual(["SYNTH"]));
-    fireEvent.click(screen.getByRole("button", { name: "Live quote" }));
+    openPanel("Live quote");
     const panel = await screen.findByRole("region", { name: "Live quote" });
     await within(panel).findAllByText("252.31");
     api.realtime.push({
@@ -2689,6 +2718,64 @@ describe("indicators", () => {
     );
   });
 
+  it("adds a formula with settings and several lines, and changes a setting", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Formula" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /New formula indicator/ }),
+    );
+    const editor = screen.getByRole("dialog", { name: "Formula indicator" });
+    fireEvent.change(within(editor).getByLabelText("Formula"), {
+      target: {
+        value: `fast = input(3, "Fast length")
+plot(sma(close, fast), "Fast", linewidth = 2)
+plot(foo)`,
+      },
+    });
+    expect(within(editor).getByRole("alert")).toHaveTextContent(
+      'unknown name "foo"',
+    );
+    expect(within(editor).getByRole("alert")).toHaveTextContent("line 3");
+    fireEvent.change(within(editor).getByLabelText("Formula"), {
+      target: {
+        value: `fast = input(3, "Fast length")
+plot(sma(close, fast), "Fast", linewidth = 2)
+plot(sma(close, 5), "Slow")
+hline(100)`,
+      },
+    });
+    fireEvent.change(within(editor).getByLabelText("Name"), {
+      target: { value: "Two" },
+    });
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Add to chart" }),
+    );
+
+    const legend = await screen.findByRole("list", {
+      name: "Indicators on this chart",
+    });
+    expect(legend).toHaveTextContent("Two");
+    expect(savedLayout(storage).charts[0].indicators[0]).toMatchObject({
+      type: "formula",
+      params: { fast: 3 },
+      style: { outputs: { plot0: { width: 2 } } },
+    });
+    fireEvent.click(
+      within(legend).getByRole("button", { name: "Two settings" }),
+    );
+    const settings = screen.getByRole("dialog", { name: "Two settings" });
+    fireEvent.change(within(settings).getByLabelText("Fast length"), {
+      target: { value: "4" },
+    });
+    expect(savedLayout(storage).charts[0].indicators[0].params).toEqual({
+      fast: 4,
+    });
+  });
+
   it("adds a Pine Script indicator, points at errors and edits it from the legend", async () => {
     const storage = memoryStorage();
     render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
@@ -2716,7 +2803,9 @@ describe("indicators", () => {
     expect(
       within(editor).getByRole("button", { name: "Add to chart" }),
     ).toBeDisabled();
-    fireEvent.change(code, { target: { value: example } });
+    // plotshape has no formula yet, so this script stays Pine (ADR 0058).
+    const script = `${example}plotshape(fast > slow)\n`;
+    fireEvent.change(code, { target: { value: script } });
     fireEvent.click(
       within(editor).getByRole("button", { name: "Add to chart" }),
     );
@@ -2730,7 +2819,7 @@ describe("indicators", () => {
         key: expect.any(String),
         type: "pine",
         params: { fast_length: 9, slow_length: 21, source: 0 },
-        pine: example,
+        pine: script,
         style: { outputs: { plot1: { width: 2 } } },
       },
     ]);
@@ -2740,12 +2829,15 @@ describe("indicators", () => {
     const settings = screen.getByRole("dialog", {
       name: "EMA Cross settings",
     });
+    expect(settings).toHaveTextContent(
+      "Not converted to a formula: plotshape() is not converted yet (line 10)",
+    );
     fireEvent.change(within(settings).getByLabelText("Source"), {
       target: { value: "1" },
     });
     expect(legend).toHaveTextContent("EMA Cross 9, 21, open");
     fireEvent.change(within(settings).getByLabelText("Pine Script code"), {
-      target: { value: example.replace("input.int(9", "input.int(5") },
+      target: { value: script.replace("input.int(9", "input.int(5") },
     });
     fireEvent.click(within(settings).getByRole("button", { name: "Apply" }));
     const saved = savedLayout(storage).charts[0].indicators[0];
@@ -2755,6 +2847,66 @@ describe("indicators", () => {
       fast_length: 9,
       slow_length: 21,
       source: 1,
+    });
+  });
+
+  it("runs a Pine indicator that converts as a formula, and goes back and forth", async () => {
+    const storage = memoryStorage();
+    render(<Workspace api={fakeApi()} storage={storage} newId={sequence()} />);
+    await screen.findByTestId("chart-chart-1");
+    fireEvent.click(screen.getByRole("button", { name: /Indicators/ }));
+    const dialog = screen.getByRole("dialog", { name: "Indicators" });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Pine Script" }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /New Pine Script indicator/ }),
+    );
+    const editor = screen.getByRole("dialog", {
+      name: "Pine Script indicator",
+    });
+    const example = (
+      within(editor).getByLabelText("Pine Script code") as HTMLTextAreaElement
+    ).value;
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Add to chart" }),
+    );
+
+    const legend = await screen.findByRole("list", {
+      name: "Indicators on this chart",
+    });
+    expect(legend).toHaveTextContent("EMA Cross");
+    const saved = savedLayout(storage).charts[0].indicators[0];
+    expect(saved).toMatchObject({
+      type: "formula",
+      label: "EMA Cross",
+      pane: "price",
+      params: { fastlength: 9, slowlength: 21, src: 3 },
+      style: { outputs: { plot1: { width: 2 } } },
+      converted: { pine: example, converter: "pine-formula/1" },
+    });
+    expect(saved.converted.bars).toBeGreaterThanOrEqual(600);
+
+    fireEvent.click(
+      within(legend).getByRole("button", { name: "EMA Cross settings" }),
+    );
+    let settings = screen.getByRole("dialog", { name: "EMA Cross settings" });
+    expect(settings).toHaveTextContent("Converted from Pine Script");
+    fireEvent.click(
+      within(settings).getByRole("button", { name: "Back to the Pine Script" }),
+    );
+    expect(savedLayout(storage).charts[0].indicators[0]).toMatchObject({
+      type: "pine",
+      pine: example,
+      params: { fast_length: 9, slow_length: 21, source: 0 },
+    });
+    settings = screen.getByRole("dialog", { name: "EMA Cross settings" });
+    fireEvent.click(
+      within(settings).getByRole("button", { name: "Convert to a formula" }),
+    );
+    expect(savedLayout(storage).charts[0].indicators[0]).toMatchObject({
+      type: "formula",
+      converted: { pine: example },
     });
   });
 
@@ -3289,11 +3441,11 @@ describe("daily and weekly charts", () => {
     const { unmount } = render(
       <Workspace api={api} storage={memoryStorage()} />,
     );
-    // Without a backtest client the screen is not offered.
+    // Without a backtest client the strategy lab is not offered.
     expect(
       within(screen.getByRole("navigation", { name: "Panels" })).queryByRole(
         "button",
-        { name: "Backtest" },
+        { name: "Strategy lab" },
       ),
     ).toBeNull();
     unmount();
@@ -3372,7 +3524,7 @@ describe("daily and weekly charts", () => {
     });
     expect(screen.queryByRole("form", { name: "Trade entry" })).toBeNull();
     expect(
-      await screen.findByRole("region", { name: "Review Agent" }),
+      await screen.findByRole("region", { name: "Chart AI notes" }),
     ).toBeInTheDocument();
   });
 });

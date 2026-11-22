@@ -22,6 +22,7 @@ import {
 import type { Drawing, DrawingTool } from "./drawings";
 import { barEnd, barsAsOf } from "./replay";
 import { splitMarkers } from "./split-markers";
+import { levelsOnChart } from "./price-level-splits";
 import {
   dailyRange,
   DEFAULT_CANDLES,
@@ -45,6 +46,8 @@ import { useI18n, type Translate } from "./i18n";
 import type { ChartSyncGroup } from "./chart-sync";
 import type { CustomIndicatorApi } from "./custom-indicator-api";
 import { FormulaFields } from "./FormulaEditor";
+import { formulaDefinition } from "./formula";
+import { ConvertedNote, PineConversionNote } from "./PineConversion";
 import { PineFields } from "./PineEditor";
 import { isPineStrategy } from "./pine-assistant";
 import {
@@ -981,6 +984,11 @@ export function ChartPanel({
         : markers,
     [bars, filingSplits, markers, instrumentId, t],
   );
+  // Dilution prices are a filing's; the candles are adjusted by Alpaca's splits since.
+  const shownLevels = useMemo(
+    () => levelsOnChart(priceLevels, shownAdjustment, filingSplits, t),
+    [priceLevels, shownAdjustment, filingSplits, t],
+  );
   const selectCandle = useCallback(
     (time: number) => {
       const bar = bars?.find(
@@ -1553,7 +1561,7 @@ export function ChartPanel({
               dayMarket={dayMarketCandles}
               premarketBars={premarketShown}
               premarketLabel={t("chart.premarketLine")}
-              priceLevels={priceLevels}
+              priceLevels={shownLevels}
               sync={sync}
               markers={chartMarkers}
               onCandleClick={selectCandle}
@@ -1815,9 +1823,126 @@ export function ChartPanel({
                             }
                             onClose={() => setEditing(null)}
                             inputs={
-                              item.instance.type === "formula" ? (
-                                <>
-                                  {timeframeField(item.instance)}
+                              <>
+                                {item.definition.inputs.map((field) => {
+                                  const setParam = (value: number) =>
+                                    changeIndicator(item.key, (current) => ({
+                                      ...current,
+                                      params: cleanParams(item.definition, {
+                                        ...current.params,
+                                        [field.key]: value,
+                                      }),
+                                    }));
+                                  return (
+                                    <label key={field.key}>
+                                      {field.label[language]}
+                                      {field.options ? (
+                                        <select
+                                          value={item.params[field.key]}
+                                          onChange={(event) =>
+                                            setParam(Number(event.target.value))
+                                          }
+                                        >
+                                          {field.options.map((option) => (
+                                            <option
+                                              key={option.value}
+                                              value={option.value}
+                                            >
+                                              {option.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : (
+                                        <input
+                                          type="number"
+                                          min={field.min}
+                                          max={field.max}
+                                          step={field.step ?? 1}
+                                          defaultValue={item.params[field.key]}
+                                          onChange={(event) =>
+                                            setParam(Number(event.target.value))
+                                          }
+                                        />
+                                      )}
+                                    </label>
+                                  );
+                                })}
+                                {timeframeField(item.instance)}
+                                {onOpenAssistant &&
+                                (item.instance.type === "pine"
+                                  ? !isPineStrategy(item.instance.pine ?? "")
+                                  : INDICATOR_BY_ID.has(item.instance.type)) ? (
+                                  <p className="bt-actions">
+                                    <button
+                                      type="button"
+                                      className="tb-button"
+                                      onClick={() => {
+                                        setEditing(null);
+                                        onOpenAssistant(item.instance);
+                                      }}
+                                    >
+                                      {t(
+                                        item.instance.type !== "pine"
+                                          ? "ia.vary"
+                                          : item.instance.assistant
+                                            ? "ia.continue"
+                                            : "ia.fix",
+                                      )}
+                                    </button>
+                                  </p>
+                                ) : null}
+                                {onOpenResearch &&
+                                item.instance.type === "pine" &&
+                                isPineStrategy(item.instance.pine ?? "") ? (
+                                  <p className="bt-actions">
+                                    <button
+                                      type="button"
+                                      className="tb-button"
+                                      onClick={() => {
+                                        setEditing(null);
+                                        onOpenResearch(item.instance);
+                                      }}
+                                    >
+                                      {t(
+                                        item.instance.assistant
+                                          ? "sr.continue"
+                                          : "sr.open",
+                                      )}
+                                    </button>
+                                  </p>
+                                ) : null}
+                                {item.instance.type === "pine" ? (
+                                  <PineFields
+                                    initial={item.instance.pine ?? ""}
+                                    submitLabel={t("ind.apply")}
+                                    onCancel={() => setEditing(null)}
+                                    onSubmit={(source) =>
+                                      changeIndicator(item.key, (current) => ({
+                                        ...current,
+                                        pine: source,
+                                        // Inputs that no longer exist drop; new ones take their defaults.
+                                        params: cleanParams(
+                                          pineDefinition(source),
+                                          current.params,
+                                        ),
+                                      }))
+                                    }
+                                  />
+                                ) : null}
+                                {item.instance.type === "pine" &&
+                                !isPineStrategy(item.instance.pine ?? "") ? (
+                                  <PineConversionNote
+                                    instance={item.instance}
+                                    bars={ohlcv}
+                                    context={{
+                                      timeZone: zoneOf(instrumentId).timeZone,
+                                    }}
+                                    onConvert={(next) =>
+                                      changeIndicator(item.key, () => next)
+                                    }
+                                  />
+                                ) : null}
+                                {item.instance.type === "formula" ? (
                                   <FormulaFields
                                     initial={{
                                       label: item.instance.label ?? "",
@@ -1830,130 +1955,39 @@ export function ChartPanel({
                                       changeIndicator(item.key, (current) => ({
                                         ...current,
                                         ...value,
+                                        // A converted formula, once changed, is no longer the script's.
+                                        ...(current.converted &&
+                                        value.formula !== current.formula
+                                          ? {
+                                              converted: {
+                                                ...current.converted,
+                                                edited: true,
+                                              },
+                                            }
+                                          : {}),
+                                        // Settings that no longer exist drop; new ones take their defaults.
+                                        params: cleanParams(
+                                          formulaDefinition(
+                                            value.formula,
+                                            value.label,
+                                            value.pane,
+                                          ),
+                                          current.params,
+                                        ),
                                       }))
                                     }
                                   />
-                                </>
-                              ) : (
-                                <>
-                                  {item.definition.inputs.map((field) => {
-                                    const setParam = (value: number) =>
-                                      changeIndicator(item.key, (current) => ({
-                                        ...current,
-                                        params: cleanParams(item.definition, {
-                                          ...current.params,
-                                          [field.key]: value,
-                                        }),
-                                      }));
-                                    return (
-                                      <label key={field.key}>
-                                        {field.label[language]}
-                                        {field.options ? (
-                                          <select
-                                            value={item.params[field.key]}
-                                            onChange={(event) =>
-                                              setParam(
-                                                Number(event.target.value),
-                                              )
-                                            }
-                                          >
-                                            {field.options.map((option) => (
-                                              <option
-                                                key={option.value}
-                                                value={option.value}
-                                              >
-                                                {option.label}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        ) : (
-                                          <input
-                                            type="number"
-                                            min={field.min}
-                                            max={field.max}
-                                            step={field.step ?? 1}
-                                            defaultValue={
-                                              item.params[field.key]
-                                            }
-                                            onChange={(event) =>
-                                              setParam(
-                                                Number(event.target.value),
-                                              )
-                                            }
-                                          />
-                                        )}
-                                      </label>
-                                    );
-                                  })}
-                                  {timeframeField(item.instance)}
-                                  {onOpenAssistant &&
-                                  (item.instance.type === "pine"
-                                    ? !isPineStrategy(item.instance.pine ?? "")
-                                    : INDICATOR_BY_ID.has(
-                                        item.instance.type,
-                                      )) ? (
-                                    <p className="bt-actions">
-                                      <button
-                                        type="button"
-                                        className="tb-button"
-                                        onClick={() => {
-                                          setEditing(null);
-                                          onOpenAssistant(item.instance);
-                                        }}
-                                      >
-                                        {t(
-                                          item.instance.type !== "pine"
-                                            ? "ia.vary"
-                                            : item.instance.assistant
-                                              ? "ia.continue"
-                                              : "ia.fix",
-                                        )}
-                                      </button>
-                                    </p>
-                                  ) : null}
-                                  {onOpenResearch &&
-                                  item.instance.type === "pine" &&
-                                  isPineStrategy(item.instance.pine ?? "") ? (
-                                    <p className="bt-actions">
-                                      <button
-                                        type="button"
-                                        className="tb-button"
-                                        onClick={() => {
-                                          setEditing(null);
-                                          onOpenResearch(item.instance);
-                                        }}
-                                      >
-                                        {t(
-                                          item.instance.assistant
-                                            ? "sr.continue"
-                                            : "sr.open",
-                                        )}
-                                      </button>
-                                    </p>
-                                  ) : null}
-                                  {item.instance.type === "pine" ? (
-                                    <PineFields
-                                      initial={item.instance.pine ?? ""}
-                                      submitLabel={t("ind.apply")}
-                                      onCancel={() => setEditing(null)}
-                                      onSubmit={(source) =>
-                                        changeIndicator(
-                                          item.key,
-                                          (current) => ({
-                                            ...current,
-                                            pine: source,
-                                            // Inputs that no longer exist drop; new ones take their defaults.
-                                            params: cleanParams(
-                                              pineDefinition(source),
-                                              current.params,
-                                            ),
-                                          }),
-                                        )
-                                      }
-                                    />
-                                  ) : null}
-                                </>
-                              )
+                                ) : null}
+                                {item.instance.type === "formula" &&
+                                item.instance.converted ? (
+                                  <ConvertedNote
+                                    instance={item.instance}
+                                    onRevert={(next) =>
+                                      changeIndicator(item.key, () => next)
+                                    }
+                                  />
+                                ) : null}
+                              </>
                             }
                           />
                         ) : null}
