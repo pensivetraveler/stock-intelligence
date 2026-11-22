@@ -24,7 +24,12 @@ from services.api.technique_card_routes import register_technique_card_routes
 from services.assistant import conversion
 from services.technique_cards import extract
 from services.technique_cards.checks import check_card, no_criterion, timeline
-from services.technique_cards.citations import Line, parse_transcript
+from services.technique_cards.citations import (
+    Line,
+    join_volumes,
+    parse_source,
+    parse_transcript,
+)
 from services.technique_cards.extract import (
     AttemptFailed,
     ExtractionError,
@@ -295,6 +300,155 @@ def test_a_failed_fetch_keeps_the_previous_cache(tmp_path: Path) -> None:
         library.fetch(ITEM)
     assert library.cached(ITEM) == before
     assert [p.name for p in (tmp_path / "cache").iterdir() if p.name.startswith(".")] == []
+
+
+# --- series (#SIW-lib-23, user 2026-11-22) -------------------------------------------------
+
+V1 = "kl://kl-lib/item/V1"
+V2 = "kl://kl-lib/item/V2"
+SOLO = "kl://kl-lib/item/SOLO"
+VOLUME_TEXT = {
+    V1: "[p. 1]\nBuy the first pullback.\n[p. 2]\nStop below the low.\n",
+    V2: "[p. 1]\nSell into strength.\n",
+}
+
+
+class SeriesCli:
+    """Two volumes of one series (given out of order) and one book alone."""
+
+    def __init__(self, outcomes: dict[str, str] | None = None) -> None:
+        self.outcomes = outcomes or {}
+        self.calls: list[list[str]] = []
+
+    def __call__(self, args: list[str], request: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append(args)
+        ok = {"status": "success", "reason_code": "OK"}
+        if args[:2] == ["delivery", "list"]:
+            deliveries = [
+                {"item_ref": ref, "state": "sent", "sent_at": f"2026-11-15T15:3{n}:00Z"}
+                for n, ref in enumerate((V2, SOLO, V1))
+            ]
+            return ok | {"data": {"deliveries": deliveries, "next_cursor": None}}
+        if args[:2] == ["item", "get"]:
+            ref = request["item_ref"]
+            series = {V1: {"name": "원펀치", "index": 1}, V2: {"name": "원펀치", "index": 2}}
+            item = {
+                "title": ref.rsplit("/", 1)[1],
+                "url": "",
+                "source_key": ref,
+                "state": "current",
+                "tags": [{"name": "매매기법"}],
+                "series": series.get(ref),
+            }
+            members = [{"artifact_ref": f"{ref}#a", "eligibility_outcome": "conditional"}]
+            return ok | {"data": {"item": item, "members": members}}
+        if args[:2] == ["context", "assemble"]:
+            ref = request["candidate_artifact_refs"][0].split("#")[0]
+            return ok | {
+                "data": {
+                    "context_ref": f"ctx:{ref}",
+                    "selected_items": [{"revision_ref": f"rev:{ref}"}],
+                }
+            }
+        if args[:2] == ["context", "hydrate"]:
+            ref = request["context_ref"].removeprefix("ctx:")
+            out = Path(args[args.index("--out-dir") + 1])
+            (out / "T").write_text(VOLUME_TEXT.get(ref, "[p. 1]\nAlone.\n"))
+            (out / "T.meta.json").write_text(json.dumps({"revision_ref": f"rev:{ref}"}))
+            return ok | {"data": {}}
+        if args[:2] == ["context", "hydration-check"]:
+            ref = request["revision_ref"].removeprefix("rev:")
+            return ok | {"data": {"outcome": self.outcomes.get(ref, "still_usable")}}
+        return {"status": "error", "reason_code": "INVALID_REQUEST", "data": None}
+
+
+def _series_service(tmp_path: Path, cli: SeriesCli) -> TechniqueCards:
+    store = CardStore(
+        tmp_path / "cards.sqlite3", lambda: datetime(2026, 11, 22, tzinfo=timezone.utc)
+    )
+    return TechniqueCards(Library(_config(), tmp_path / "cache", cli), store)
+
+
+def test_join_volumes_numbers_pages_and_paragraphs_on() -> None:
+    text, ranges = join_volumes(["[p. 1]\na\n[p. 2]\nb\n", "[p. 1]\nc\n[p. 3]\nd\n"])
+    assert [(line.seconds, line.text) for line in parse_source(text)] == [
+        (1, "a"),
+        (2, "b"),
+        (3, "c"),
+        (5, "d"),
+    ]
+    assert ranges == [(1, 2), (3, 5)]
+    text, ranges = join_volumes(["one\n\ntwo", "# three\nfour"])
+    assert [line.text for line in parse_source(text)] == ["one", "two", "# three", "four"]
+    assert ranges == [(1, 2), (3, 4)]
+    text, ranges = join_volumes(["[00:00] a\n[00:10] b", "[00:00] c"])
+    assert [line.seconds for line in parse_source(text)] == [0, 10, 11]
+    with pytest.raises(ValueError):
+        join_volumes(["[p. 1]\na", "plain text"])
+
+
+def test_the_list_shows_a_series_once_with_its_volumes_in_order(tmp_path: Path) -> None:
+    sources = Library(_config(), tmp_path, SeriesCli()).sources()
+    assert [s.item_ref for s in sources] == ["kl-series:원펀치", SOLO]
+    series = sources[0]
+    assert [v.item_ref for v in series.members] == [V1, V2]
+    assert series.to_json()["series"]["volumes"][1] == {"item_ref": V2, "title": "V2", "index": 2}
+    assert "series" not in sources[1].to_json()
+
+
+def test_a_series_previews_and_cards_as_one_source(tmp_path: Path) -> None:
+    service = _series_service(tmp_path, SeriesCli({V2: "conditional"}))
+    source = service.source("kl-series:원펀치")
+    assert source is not None and source.is_series
+    preview = service.preview(source)
+    assert preview["lines"] == 3
+    assert preview["source_unit"] == "page"
+    assert preview["recheck_outcome"] == "conditional"
+    assert [(v["index"], v["from"], v["to"]) for v in preview["volumes"]] == [
+        (1, "p. 1", "p. 2"),
+        (2, "p. 3", "p. 3"),
+    ]
+    assert TechniqueCards._prompt_title(source, preview["volumes"]) == (
+        "원펀치 (시리즈 2권: 1권 p. 1–p. 2, 2권 p. 3–p. 3)"
+    )
+    cached = service.library.cached("kl-series:원펀치")
+    assert cached is not None
+    assert [m["item_ref"] for m in cached.members] == [V1, V2]
+    assert [line.seconds for line in parse_source(cached.path.read_text())] == [1, 2, 3]
+
+
+def test_a_series_card_is_withdrawn_when_any_volume_is(tmp_path: Path) -> None:
+    cli = SeriesCli()
+    service = _series_service(tmp_path, cli)
+    source = service.source("kl-series:원펀치")
+    assert source is not None
+    fetched, outcome, volumes = service._usable_source(source)
+    card_id = service.store.add(
+        {
+            "item_ref": source.item_ref,
+            "title": source.title,
+            "url": "",
+            "card": {},
+            "checks": {"conditions": [], "counts": {}},
+            "usage": {},
+            "attempts": [],
+            "versions": {},
+            "context_ref": fetched.context_ref,
+            "revision_ref": fetched.revision_ref,
+            "transcript_sha256": fetched.sha256,
+            "verification_status": fetched.verification_status,
+            "recheck_outcome": outcome,
+            "members": [
+                m | {"index": v["index"]} for m, v in zip(fetched.members, volumes, strict=True)
+            ],
+        }
+    )
+    assert [m["item_ref"] for m in service.store.get(card_id)["members"]] == [V1, V2]
+    assert service.recheck(card_id)["recheck_outcome"] == "still_usable"
+    cli.outcomes[V2] = "stop_using"
+    assert service.recheck(card_id)["recheck_outcome"] == "stop_using"
+    assert service.library.cached("kl-series:원펀치") is None
+    assert service.library.cached(V2) is None
 
 
 # --- L2: extraction -----------------------------------------------------------------------
