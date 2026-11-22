@@ -3232,3 +3232,17 @@
 - **사용자 결정(261):** "지금 미니PC로 이전 착수". [ADR 0059](decisions/0059-market-hours-collectors-on-mini-pc.md)에 방향과 3단계(Linux 수집기 서비스 → Mac으로 사본 가져오기 → 흐름·Agent 실행)를 적었다. 구현은 단계마다 승인을 받는다.
 - **사용자 결정(269):** SIW Agent 키 탭 PR #209를 병합했다(bec1bca). 미니PC 키 등록은 키 탭으로 하고, 임시 Research vite는 쓰지 않는다.
 - **미검증:** 미니PC에서 키움 호출(IP), 미니PC 수집기 실행. 이전을 마칠 때까지 Mac이 꺼진 장은 계속 비어 있다.
+
+## ADR 0059 1단계: 장중 수집기 systemd 사용자 서비스 — 2026-11-23
+
+- **사용자 승인:** "ADR 0059 1단계 착수해줘".
+- **변경:**
+  - `services/collector/systemd.py`: `python -m services.collector.systemd install|start|stop|uninstall|status|print [--only condition|halts]`. `watch-condition`·`watch-halts`의 systemd 사용자 유닛을 쓴다.
+    - 유닛에는 uv, 저장소, `--data-dir`만 들어가고 키는 없다. 데이터 폴더는 `--data-dir`, 없으면 `.env`의 `SIW_DATA_DIR`이다.
+    - `Restart=always`(60초). linger는 쓰지 않는다. 로그는 `~/.local/state/siw-collector/`다.
+    - `install`은 Linux에서만 돈다. `print`는 어디서나 유닛을 보여 준다.
+  - 런북 4a절에 순서(키 등록 → Mac 수집기 정지 → 설치 → 첫 장 확인 → Mac plist 삭제)와 되돌리기를 적었다. 확인표에 두 줄을 더했다.
+  - ADR 0059 1단계에 구현 내용을 적었다.
+- **시험:** `tests/collector/test_systemd_units.py` 8개(데이터 폴더 결정, 유닛에 키 없음, `%`·`$` 이스케이프와 줄바꿈 거절, 설치·시작 순서, 실패 보고, 제거, Linux 밖 설치 거절). `tests/collector` 41개 통과.
+- **미검증:** 미니PC에서 실제 설치와 systemd 동작, 미니PC 공인 IP에서 키움 실계좌 조건검색, 첫 장 세션 기록. 키움 실계좌 키는 사용자가 키 탭에서 등록해야 한다.
+- **남은 위험:** 실계좌 실행기(ADR 0047)와 조건검색 수집기가 같은 키움 키를 함께 쓸 때 서로 연결을 끊는지는 확인하지 않았다.

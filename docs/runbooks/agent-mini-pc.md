@@ -158,6 +158,50 @@ CI의 `agent-linux` 작업(`.github/workflows/ci.yml`)과 같은 구성이다. �
 3. 실행기 설치 버튼을 눌러 systemd 사용자 서비스로 등록한다. 모의 실행기는 `com.pensivetraveler.siw.agent.runner.service`, 실계좌 실행기는 `com.pensivetraveler.siw.agent.live-runner.service`다. 서비스 파일은 `~/.config/systemd/user/`, 로그는 `$XDG_STATE_HOME/siw-agent`(보통 `~/.local/state/siw-agent`)에 있다.
 4. 키움 모의 호출이 되는지 본다. 같은 공유기 뒤라 공인 IP가 iMac과 같으면 등록한 IP가 그대로 통할 가능성이 크지만 확인 전이다.
 
+## 4a. 장중 수집기 (ADR 0059 1단계)
+
+`watch-condition`(키움 실시간 조건검색)과 `watch-halts`(Alpaca SIP 거래정지)를 이 기기의 systemd 사용자 서비스로 돌린다. 규칙은 실행기와 같다. 로그인해야 키링이 열리고, linger는 쓰지 않으며, 유닛 파일에는 키가 없다.
+
+**같은 계좌로 두 기기에서 동시에 돌리지 않는다.** 키움과 Alpaca는 실시간 연결을 하나만 받아, 두 번째 연결이 열리면 먼저 열린 쪽이 끊긴다(ADR 0051).
+
+1. **키 (기기 앞이나 원격 화면에서):** SIW Agent "키" 탭에서 다음을 등록한다.
+   - **키움 실계좌 키**: `watch-condition`은 실계좌 키로 조건검색을 구독한다(조회만 하고 주문은 없다). 키움에 등록한 IP에서만 통한다.
+   - **Alpaca 키**: `watch-halts`가 쓴다.
+2. **Mac의 수집기를 멈춘다 (iMac 터미널):** plist는 남겨 둔다. 되돌릴 때 다시 올린다.
+
+   ```bash
+   launchctl bootout gui/$(id -u)/com.siw.collector.watch-condition; launchctl bootout gui/$(id -u)/com.siw.collector.watch-halts
+   ```
+
+3. **미니PC에 설치한다 (SSH 가능):** 데이터 폴더는 `.env`의 `SIW_DATA_DIR`이다. 키 탭이 쓰는 API와 같은 곳이어야 키 목록을 읽는다. 먼저 `print`로 유닛을 확인하고 설치한다.
+
+   ```bash
+   cd ~/stock-intelligence && git pull && uv sync && uv run python -m services.collector.systemd print
+   ```
+
+   ```bash
+   cd ~/stock-intelligence && uv run python -m services.collector.systemd install
+   ```
+
+   - 유닛: `~/.config/systemd/user/com.pensivetraveler.siw.collector.watch-condition.service`, `…watch-halts.service`
+   - 로그: `~/.local/state/siw-collector/watch-condition.log`, `watch-halts.log`
+   - 상태는 `uv run python -m services.collector.systemd status`로 본다. 장 밖에서는 로그에 `"status":"waiting"`이 찍힌다.
+   - 키가 없거나 키링이 잠겨 있으면 수집기가 종료되고, 60초 뒤 다시 시작한다(`Restart=always`).
+
+4. **첫 장 세션 확인:** 다음 날 프리마켓부터 기록이 쌓였는지 미니PC에서 본다. 날짜는 뉴욕 기준이다.
+
+   ```bash
+   cd ~/stock-intelligence && uv run python -m services.collector export-condition --date <YYYY-MM-DD> --data-dir data | head -40
+   ```
+
+5. 정상이면 Mac의 LaunchAgent plist를 지운다(`~/Library/LaunchAgents/com.siw.collector.watch-*.plist`). Mac Research로 기록을 가져오는 경로는 ADR 0059 2단계다. 그때까지 Mac 화면에는 미니PC 기록이 보이지 않는다.
+
+**되돌리기:** 미니PC에서 `uv run python -m services.collector.systemd uninstall`을 실행하고, Mac에서 다시 올린다.
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.siw.collector.watch-condition.plist; launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.siw.collector.watch-halts.plist
+```
+
 ## 5. 실기기 확인표 (ADR 0045 미검증 항목)
 
 | 항목                                                                              | 결과                                                                               | 날짜       |
@@ -170,6 +214,8 @@ CI의 `agent-linux` 작업(`.github/workflows/ci.yml`)과 같은 구성이다. �
 | 앱 종료 때 앱이 띄운 API 정지                                                     | 통과(종료 뒤 uv·uvicorn 프로세스 사라짐, 재실행 때 새로 뜸)                        | 2026-11-20 |
 | Linux에서 키움 모의 서버 호출(IP 등록 포함)                                       | 미실행                                                                             |            |
 | 킬 스위치: 화면 버튼, SSH의 `systemctl --user stop`                               | 미실행                                                                             |            |
+| 장중 수집기 설치, 미니PC 공인 IP에서 키움 실계좌 조건검색 구독                    | 미실행                                                                             |            |
+| 미니PC 수집기로 첫 장 세션 기록(프리마켓~애프터마켓)                              | 미실행                                                                             |            |
 
 ## 6. 2026-12 하드웨어 증설 (사용자)
 
