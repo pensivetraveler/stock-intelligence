@@ -146,3 +146,24 @@ def test_the_store_keeps_a_limit_end(tmp_path: Path) -> None:
     reopened = CardStore(tmp_path / "cards.sqlite3", datetime.now)
     assert reopened.limited_until(FABLE) == until
     assert reopened.limits() == {FABLE: until.isoformat()}
+
+
+def test_a_refused_key_is_not_retried() -> None:
+    """The Claude key answered 401 twice on 2026-11-15 before luna was tried."""
+    routes: list[str] = []
+
+    def caller(model: str, system: str, prompt: str, keys: Any) -> tuple[dict, dict]:
+        routes.append(model)
+        if model == "claude-sonnet-5-5":
+            raise http_failure("Claude", _response(401, {}))
+        return _card(), OK
+
+    result = extract_card(
+        "d", "d", LINES, KEYS, call=caller, model="claude-sonnet-5-5", default=ARGON
+    )
+    assert routes == ["claude-sonnet-5-5", ARGON]
+    assert result.usage["switches"][0]["reason"] == "key"
+    assert http_failure("OpenRouter", _response(403, {})).key
+    with pytest.raises(AttemptFailed) as caught:
+        extract.call_openrouter("s", "p", extract.Keys(anthropic=None, openrouter=None))
+    assert caught.value.key

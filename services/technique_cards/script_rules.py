@@ -65,6 +65,10 @@ class NotScriptable(Exception):
 
 def _operand(slot: dict[str, Any], assumptions: list[dict[str, Any]]) -> dict[str, Any]:
     kind, name, period = slot.get("kind"), slot.get("name"), slot.get("period")
+    if name == "other":
+        # The extractor found no slot for it (a Fibonacci ratio landed in a value slot as
+        # "low >= 0.5", 원펀치매매 2권 2026-11-16): only the text says what it is.
+        raise NotScriptable("a slot named 'other' needs its text read")
     if kind == "price":
         if name in PRICES:
             return {"price": name}

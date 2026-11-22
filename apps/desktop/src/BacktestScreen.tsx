@@ -111,6 +111,7 @@ export function BacktestScreen({
   onShowFills,
   onClose,
   onNeedReal,
+  pollMs = POLL_MS,
 }: {
   api: BacktestApi;
   /** When given, a finished run can be critiqued by the review Agent. */
@@ -123,6 +124,8 @@ export function BacktestScreen({
   onClose: () => void;
   /** Asks the workspace to read real fills for a result's instruments. */
   onNeedReal?: (instrumentIds: string[]) => void;
+  /** How often a queued or running run is polled (tests use a short one). */
+  pollMs?: number;
 }) {
   const { t } = useI18n();
   const [strategies, setStrategies] = useState<BacktestStrategy[]>([]);
@@ -191,9 +194,9 @@ export function BacktestScreen({
   const anyActive = runs.some((run) => ACTIVE.has(run.status));
   useEffect(() => {
     if (!anyActive) return;
-    const timer = window.setInterval(loadRuns, POLL_MS);
+    const timer = window.setInterval(loadRuns, pollMs);
     return () => window.clearInterval(timer);
-  }, [anyActive, loadRuns]);
+  }, [anyActive, loadRuns, pollMs]);
 
   const selectedRun = runs.find((run) => run.run_id === selectedRunId) ?? null;
   useEffect(() => {

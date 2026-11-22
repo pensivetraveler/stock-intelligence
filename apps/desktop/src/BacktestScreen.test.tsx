@@ -90,6 +90,7 @@ function renderScreen(
       real={{ manual: [], imported: [], broker: [] }}
       shownRunId={null}
       onShowFills={onShowFills}
+      pollMs={20}
       onClose={onClose}
     />,
   );
