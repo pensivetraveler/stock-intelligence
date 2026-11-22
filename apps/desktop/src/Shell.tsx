@@ -244,11 +244,14 @@ export function PanelTabs<T extends string>({
 export function ModalFrame({
   label,
   className,
+  backdropClassName,
   onClose,
   children,
 }: {
   label: string;
   className?: string;
+  /** Extra class on the backdrop (e.g. bt-backdrop for screen-sized dialogs). */
+  backdropClassName?: string;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -291,7 +294,7 @@ export function ModalFrame({
   };
   return (
     <div
-      className="modal-backdrop"
+      className={`modal-backdrop${backdropClassName ? ` ${backdropClassName}` : ""}`}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
