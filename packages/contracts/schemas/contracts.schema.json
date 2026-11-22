@@ -127,6 +127,9 @@
       "$ref": "#/$defs/BacktestStrategyListResponse"
     },
     {
+      "$ref": "#/$defs/BacktestStrategyPine"
+    },
+    {
       "$ref": "#/$defs/BacktestRun"
     },
     {
@@ -4912,6 +4915,48 @@
           "items": {
             "$ref": "#/$defs/BacktestStrategy"
           }
+        }
+      }
+    },
+    "BacktestStrategyPine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_version",
+        "strategy_id",
+        "version",
+        "source",
+        "unsupported",
+        "template_version"
+      ],
+      "properties": {
+        "kind": {
+          "const": "backtest_strategy_pine"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "strategy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source": {
+          "type": "string"
+        },
+        "unsupported": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "template_version": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     },

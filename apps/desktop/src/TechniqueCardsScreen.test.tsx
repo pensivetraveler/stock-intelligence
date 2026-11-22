@@ -225,6 +225,14 @@ function fakeApi(): TechniqueCardsApi {
     startDraft: vi.fn().mockResolvedValue({ draft_id: "d1" }),
     draft: vi.fn().mockResolvedValue(draftDone),
     drafts: vi.fn().mockResolvedValue([]),
+    pine: vi.fn().mockResolvedValue({
+      kind: "backtest_strategy_pine",
+      strategy_id: "strategy-abc",
+      version: 1,
+      source: '//@version=6\nstrategy("Demo")\n',
+      unsupported: ["/exit/left: indicator supertrend has no Pine form here"],
+      template_version: 1,
+    }),
     saveDraft: vi.fn().mockResolvedValue({
       ...draftDone,
       strategy_id: "strategy-abc",
@@ -488,6 +496,16 @@ describe("technique cards", () => {
     expect(
       await screen.findByText(/Saved as strategy-abc version 1/),
     ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Pine template" }));
+    await waitFor(() =>
+      expect(api.pine).toHaveBeenCalledWith("strategy-abc", 1),
+    );
+    expect(
+      await screen.findByText(/indicator supertrend has no Pine form here/),
+    ).toBeTruthy();
+    expect(screen.getByLabelText("Pine template")).toHaveTextContent(
+      "//@version=6",
+    );
   });
 
   it("drafts by script for free and asks to keep an unstated reading", async () => {
