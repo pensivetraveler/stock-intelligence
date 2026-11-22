@@ -3218,6 +3218,14 @@
 - **바꾸지 않음:** `/v1/credentials` 쓰기의 출처 제한. Research도 같은 엔드포인트를 쓴다.
 - **미검증:** 미니PC의 새 `.deb`에서 키 탭으로 실제 등록(병합 뒤 확인).
 
+## SIW Agent 미니PC 원격 로그인 — 2026-11-23
+
+- **사용자 결정:** "원격 로그인을 할게"(2026-11-22). 재부팅 뒤 기기 앞에 가지 않고 로그인하기 위해서다.
+- **기기 설정:** GNOME 원격 로그인 3389, 데스크톱 공유 3390, ufw는 두 포트 모두 LAN에만. iMac에는 MacPorts로 FreeRDP 3.33.1을 설치했다(Mac용 Windows App은 연결 넘김 뒤 NTLM MIC 실패로 쓸 수 없음, Homebrew는 Intel Mac 완성본 없음).
+- **확인:** 새 `.deb`(키 탭) 설치 뒤 재부팅 → 로컬 세션 없이 3389로 GDM 로그인 → 원격 Wayland 세션, 키링 `Locked=false` → 창을 닫아도 세션 유지 → 재접속 때 같은 세션.
+- **문서:** [런북](runbooks/agent-mini-pc.md) 2a절·확인표, [ADR 0045](decisions/0045-agent-on-linux.md) 2026-11-23 개정.
+- **미검증:** 실행기 설치 뒤 재부팅 → 원격 로그인으로 실행기 재기동. 키 탭으로 실제 키 등록, 키움 모의 호출.
+
 ## 운영 결정: 장중 수집기 미니PC 이전·Agent 키 탭 — 2026-11-23
 
 - **배경:** 미국 장 시간에 이 Mac이 꺼져 있었다(11-18·11-19 장 기록 없음, 11-17은 00:57 KST에 끊김). `pmset`: `autorestart 0`, `sleep 1`. 수집기 두 개(`watch-condition`·`watch-halts`)는 macOS LaunchAgent뿐이다.
