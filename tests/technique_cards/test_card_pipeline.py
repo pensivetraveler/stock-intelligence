@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import copy
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -246,6 +248,53 @@ def test_service_deletes_the_cache_when_the_library_says_stop(tmp_path: Path) ->
     with pytest.raises(RuntimeError, match="stop_using"):
         service.preview(source)
     assert service.library.cached(ITEM) is None
+
+
+def test_two_previews_of_one_item_at_once_fetch_it_once(tmp_path: Path) -> None:
+    """2026-11-22: concurrent previews deleted each other's folder; one cached a metadata note."""
+
+    class SlowCli(FakeCli):
+        def __call__(self, args: list[str], request: dict[str, Any]) -> dict[str, Any]:
+            if args[:2] == ["context", "hydrate"]:
+                out = Path(args[args.index("--out-dir") + 1])
+                (out / "P1").write_text("A summary without times.")
+                (out / "P1.meta.json").write_text(
+                    json.dumps({"revision_ref": "kl://kl-lib/revision/S"})
+                )
+                time.sleep(0.2)  # the second request arrives while the first is hydrating
+            return super().__call__(args, request)
+
+    cli = SlowCli()
+    store = CardStore(
+        tmp_path / "cards.sqlite3", lambda: datetime(2026, 11, 22, tzinfo=timezone.utc)
+    )
+    service = TechniqueCards(Library(_config(), tmp_path / "cache", cli), store)
+    source = service.library.source(ITEM)
+    assert source is not None
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        previews = list(pool.map(lambda _: service.preview(source), range(2)))
+    assert [p["lines"] for p in previews] == [previews[0]["lines"]] * 2
+    assert sum(args[:2] == ["context", "hydrate"] for args, _ in cli.calls) == 1
+    cached = service.library.cached(ITEM)
+    assert cached is not None and cached.path.read_text() == TRANSCRIPT_TEXT
+    assert [p.name for p in (tmp_path / "cache").iterdir() if p.name.startswith(".")] == []
+
+
+def test_a_failed_fetch_keeps_the_previous_cache(tmp_path: Path) -> None:
+    cli = FakeCli()
+    library = Library(_config(), tmp_path / "cache", cli)
+    before = library.fetch(ITEM)
+
+    def broken(args: list[str], request: dict[str, Any]) -> dict[str, Any]:
+        if args[:2] == ["context", "hydrate"]:
+            return {"status": "error", "reason_code": "NOT_AVAILABLE"}
+        return cli(args, request)
+
+    library._run = broken
+    with pytest.raises(LibraryError):
+        library.fetch(ITEM)
+    assert library.cached(ITEM) == before
+    assert [p.name for p in (tmp_path / "cache").iterdir() if p.name.startswith(".")] == []
 
 
 # --- L2: extraction -----------------------------------------------------------------------

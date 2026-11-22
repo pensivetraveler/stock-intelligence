@@ -25,7 +25,10 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
+import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -38,6 +41,8 @@ PAGE_LINE = re.compile(r"^\[p\.\s?\d+\]\s*$", re.MULTILINE)
 # Layers a summary or a model's reading, never the source itself.
 DERIVED_KINDS = ("summary", "interpretation")
 TIMEOUT_SECONDS = 120
+# Each library call is its own process (~1-2 s); item lookups for the list run side by side.
+LIST_WORKERS = 6
 
 Runner = Callable[[list[str], dict[str, Any]], dict[str, Any]]
 
@@ -161,6 +166,13 @@ class Library:
         self.config = config
         self.cache_dir = cache_dir
         self._run = run or cli_runner(config)
+        self._locks: dict[str, threading.RLock] = {}
+        self._locks_guard = threading.Lock()
+
+    def lock(self, item_ref: str) -> threading.RLock:
+        """One lock per item: two requests never fetch or replace the same cache folder at once."""
+        with self._locks_guard:
+            return self._locks.setdefault(item_ref, threading.RLock())
 
     def _call(self, args: list[str], request: dict[str, Any]) -> dict[str, Any]:
         envelope = self._run(args, request)
@@ -192,11 +204,12 @@ class Library:
             newer = str(delivery.get("sent_at", "")) >= str(latest.get(ref, {}).get("sent_at", ""))
             if ref and delivery.get("state") == "sent" and newer:
                 latest[ref] = delivery
-        found = []
-        for ref, delivery in latest.items():
-            source = self.source(ref, str(delivery.get("sent_at") or ""))
-            if source is not None:
-                found.append(source)
+        with ThreadPoolExecutor(max_workers=LIST_WORKERS) as pool:
+            looked_up = pool.map(
+                lambda pair: self.source(pair[0], str(pair[1].get("sent_at") or "")),
+                list(latest.items()),
+            )
+            found = [source for source in looked_up if source is not None]
         found.sort(key=lambda s: s.delivered_at, reverse=True)
         return found
 
@@ -221,7 +234,17 @@ class Library:
         return self.cache_dir / hashlib.sha256(item_ref.encode()).hexdigest()[:32]
 
     def fetch(self, item_ref: str) -> Fetched:
-        """Hydrate the item's layers into a fresh cache folder and keep the transcript layer."""
+        """Hydrate the item's layers into a fresh cache folder and keep the transcript layer.
+
+        The layers are hydrated into a private staging folder and moved into place only when
+        complete, under the item's lock: a second request for the same item waits instead of
+        deleting the folder the first one is still writing (2026-11-22, a book cached its
+        metadata note instead of its PDF text).
+        """
+        with self.lock(item_ref):
+            return self._fetch(item_ref)
+
+    def _fetch(self, item_ref: str) -> Fetched:
         data = self._call(["item", "get"], {"item_ref": item_ref})
         refs = [str(m["artifact_ref"]) for m in data.get("members") or [] if m.get("artifact_ref")]
         if not refs:
@@ -238,25 +261,27 @@ class Library:
         if not selected:
             raise LibraryError("the library selected no layer of this item")
         target = self._item_dir(item_ref)
-        if target.exists():
-            shutil.rmtree(target)
-        hydrated = target / "hydrated"
-        hydrated.mkdir(parents=True, mode=0o700)
+        self.cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(self.cache_dir, 0o700)
-        os.chmod(target, 0o700)
-        self._call(
-            ["context", "hydrate", "--out-dir", str(hydrated)],
-            {"context_ref": context["context_ref"], "items": selected},
-        )
+        staging = Path(tempfile.mkdtemp(prefix=".fetch-", dir=self.cache_dir))  # 0700
         try:
+            hydrated = staging / "hydrated"
+            hydrated.mkdir(mode=0o700)
+            self._call(
+                ["context", "hydrate", "--out-dir", str(hydrated)],
+                {"context_ref": context["context_ref"], "items": selected},
+            )
             path, meta = self._source_layer(hydrated)
-        except LibraryError:
-            shutil.rmtree(target)
+            shutil.copyfile(path, staging / "transcript.txt")
+            os.chmod(staging / "transcript.txt", 0o600)
+            shutil.rmtree(hydrated)
+            if target.exists():
+                shutil.rmtree(target)
+            os.rename(staging, target)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
             raise
         transcript = target / "transcript.txt"
-        shutil.copyfile(path, transcript)
-        os.chmod(transcript, 0o600)
-        shutil.rmtree(hydrated)
         fetched = Fetched(
             item_ref=item_ref,
             context_ref=str(context["context_ref"]),
@@ -353,6 +378,7 @@ class Library:
 
     def forget(self, item_ref: str) -> None:
         """Delete the cached text of an item (evidence withdrawn)."""
-        target = self._item_dir(item_ref)
-        if target.exists():
-            shutil.rmtree(target)
+        with self.lock(item_ref):
+            target = self._item_dir(item_ref)
+            if target.exists():
+                shutil.rmtree(target)
