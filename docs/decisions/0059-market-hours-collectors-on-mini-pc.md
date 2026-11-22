@@ -45,6 +45,12 @@
 ### 3. 구현 단계 (단계마다 사용자 승인)
 
 1. **Linux 수집기 서비스:** systemd 사용자 유닛 설치·정지 명령, 미니PC 배포본 위치, `SIW_DATA_DIR`. 미니PC에 키움·Alpaca 키를 등록하고, 키움 호출이 미니PC 공인 IP에서 되는지 확인한다. 첫 장 세션을 미니PC에서 기록한 뒤 Mac LaunchAgent를 내린다.
+   - 2026-11-23 사용자 승인("ADR 0059 1단계 착수해줘")으로 구현했다. `python -m services.collector.systemd install|start|stop|uninstall|status|print`가 유닛 두 개(`com.pensivetraveler.siw.collector.watch-condition`·`watch-halts`)를 쓴다.
+   - 배포본은 미니PC의 저장소 복제본(`~/stock-intelligence`)이다. Mac처럼 별도 배포본을 두지 않는다. 그 기기는 개발에 쓰지 않기 때문이다.
+   - 데이터 폴더는 `--data-dir`, 없으면 `.env`의 `SIW_DATA_DIR`(저장소 기준)이다. 키 탭이 쓰는 API와 같은 키 목록을 읽어야 하기 때문이다.
+   - `Restart=always`, 60초 간격으로, Mac LaunchAgent의 `KeepAlive`·`ThrottleInterval 60`과 같다. 로그인 직후 키링보다 먼저 떠서 실패해도 다시 시작한다.
+   - `watch-condition`은 **키움 실계좌 키**로 구독한다(조회만 한다). 미니PC에 실계좌 키를 등록해야 한다.
+   - 순서와 되돌리기는 [런북](../runbooks/agent-mini-pc.md) 4a절에 있다.
 2. **Mac으로 가져오기:** 2절 방식을 구현하고, 사본의 신선도를 표시한다.
 3. **흐름과 실행:** 선정 흐름 3~7단계(ADR 0057)와 Agent 실행을 장중에 미니PC에서 돌릴지는 따로 정한다. Research에서 승인한 전략을 미니PC로 옮기는 경로(ADR 0045의 남은 일)와 묶여 있다.
 
