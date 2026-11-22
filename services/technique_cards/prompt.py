@@ -67,16 +67,13 @@ in text. period and value are null unless the source says the number.
 - Every number in a condition (period or value) has a value_citation: the number, and the \
 locator and exact quote of the line where the source says it. Do not cite one line for a \
 number said on another. Numbers said in words count ("fifty", "두 배").
-- Every condition and statement has citations: locator is the transcript time of the line \
-where the words start (mm:ss as shown, or h:mm:ss), quote is the source's words copied \
-exactly, one sentence or less.
+- Every condition and statement has citations: {locator_rule}
 - A stated rule with no measure ("volume should surge", "a strong candle", "near the line") is \
 not a condition: put it in ambiguities if a number could settle it (give the question to ask \
 the user), otherwise in inexpressible. Never in both.
 - timeframe, universe, position (size) and inexpressible are short statements with citations. \
 Write text in the source's language. Empty lists when absent.
-- The transcript may be automatic captions: no punctuation, sentences split across lines, \
-mis-heard words.
+{source_note}
 {part_note}
 source_id: {source_id}
 title: {title}
@@ -85,22 +82,49 @@ Source:
 {source}"""
 
 
+# Where a citation points, by the source's unit (citations.source_unit). The "time" wording is
+# the evaluated prompt v3, unchanged; "page" and "para" are new (2026-11-15, not evaluated).
+LOCATOR_RULES = {
+    "time": "locator is the transcript time of the line where the words start (mm:ss as "
+    "shown, or h:mm:ss), quote is the source's words copied exactly, one sentence or less.",
+    "page": "locator is the page the words are on, as shown before the page (p. 12), quote "
+    "is the source's words copied exactly, one sentence or less.",
+    "para": "locator is the paragraph number shown before the paragraph (¶3), quote is the "
+    "source's words copied exactly, one sentence or less.",
+}
+SOURCE_NOTES = {
+    "time": "- The transcript may be automatic captions: no punctuation, sentences split across "
+    "lines, mis-heard words.",
+    "page": "- The source is a PDF's text: lines may be cut mid-sentence and tables may lose "
+    "their columns; page headers and footers are not rules.",
+    "para": "- The source is a text the investor wrote or kept: its paragraphs are numbered.",
+}
+
+
 def structured_prompt(
     source_id: str,
     title: str,
     source: str,
     part: tuple[int, int] | None = None,
     span: tuple[str, str, str] | None = None,
+    unit: str = "time",
 ) -> str:
-    """`part` (k, n) and `span` (from, to, whole length) mark a time slice of a long source."""
+    """`part` (k, n) and `span` (from, to, whole length) mark a slice of a long source; `unit`
+    is how the source is cited (time, page or para)."""
     note = ""
     if part is not None:
         where = f" covering {span[0]}-{span[1]} of a {span[2]} source" if span else ""
         note = (
-            f"- This is part {part[0]} of {part[1]}{where}, a time slice; write the rules said "
+            f"- This is part {part[0]} of {part[1]}{where}, a "
+            f"{'time slice' if unit == 'time' else 'slice'}; write the rules said "
             "in this part only. The parts are merged afterwards. The speaker may revise a rule "
             "said in another part: write what this part says.\n"
         )
     return STRUCTURED_INSTRUCTIONS.format(
-        source_id=source_id, title=title, source=source, part_note=note
+        source_id=source_id,
+        title=title,
+        source=source,
+        part_note=note,
+        locator_rule=LOCATOR_RULES[unit],
+        source_note=SOURCE_NOTES[unit],
     )

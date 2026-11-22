@@ -30,7 +30,7 @@ from services.screening.structure.sessions import canonical_sha256, text, utc
 
 MODEL_VERSION = "darkpool-stress-siw/2.0.0"
 DERIVED_FROM = "darkpool-stress/2.0.0"
-FEATURE_VERSION = "darkpool-stress-siw-features/2.0.0"
+FEATURE_VERSION = "darkpool-stress-siw-features/2.0.1"
 FORECAST_HASH_VERSION = "darkpool-stress-siw-forecast/2.0"
 SCHEMA_VERSION = "2.0-siw.1"
 APPROVED_STATUSES = frozenset({"SHADOW_APPROVED", "PRODUCTION_APPROVED"})
@@ -349,28 +349,37 @@ def _zone_stability(
     return result
 
 
+def _side(zone: dict[str, Any], close: Decimal) -> str:
+    if zone["low"] <= close <= zone["high"]:
+        return "inside"
+    return "below" if close < zone["low"] else "above"
+
+
 def _path_features(zones: list[dict[str, Any]], bars: list[dict[str, Any]]) -> dict[str, Any]:
-    closes = sorted((str(bar["date"]), bar["close"]) for bar in bars)[-20:]
-    reentries = crossings = holds = 0
+    """Close path over the last 20 daily closes, per zone and summed.
+
+    A crossing is a close on the other side of a zone from the close before it. It holds
+    when the next close stays on that new side. `close_hold_rate` is held crossings over
+    crossings that have a next close; the newest close's crossing cannot be judged yet.
+    (SIW's reading: the original model's definition was not available when this was ported.)
+    """
+    closes = [close for _, close in sorted((str(bar["date"]), bar["close"]) for bar in bars)[-20:]]
+    reentries = crossings = judged = holds = 0
     for zone in zones:
-        previous = None
-        for _, close in closes:
-            if zone["low"] <= close <= zone["high"]:
-                state = "inside"
-            elif close < zone["low"]:
-                state = "below"
-            else:
-                state = "above"
-            if previous in ("below", "above") and state == "inside":
+        sides = [_side(zone, close) for close in closes]
+        for index in range(1, len(sides)):
+            previous, state = sides[index - 1], sides[index]
+            if previous != "inside" and state == "inside":
                 reentries += 1
-            if previous in ("below", "above") and state in ("below", "above") and previous != state:
+            if previous != "inside" and state != "inside" and previous != state:
                 crossings += 1
-                holds += 1
-            previous = state
+                if index + 1 < len(sides):
+                    judged += 1
+                    holds += sides[index + 1] == state
     return {
         "reentry_count_20": reentries if closes else None,
         "cross_count_20": crossings if closes else None,
-        "close_hold_rate": ratio(Decimal(holds) / crossings) if crossings else None,
+        "close_hold_rate": ratio(Decimal(holds) / judged) if judged else None,
     }
 
 

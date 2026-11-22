@@ -96,6 +96,7 @@ from services.market_data.kiwoom_account import sync_executions as kiwoom_sync
 from services.market_data.kiwoom_account import sync_fees as kiwoom_sync_fees
 from services.market_data.kiwoom_conditions import ConditionNotFoundError
 from services.market_data.kiwoom_conditions import Connect as KiwoomConditionConnect
+from services.market_data.locations import market_data_dir_from_env
 from services.market_data.market_router import MarketRouter
 from services.market_data.meritz import market_quote as meritz_quote
 from services.market_data.meritz_account import SEOUL
@@ -243,10 +244,10 @@ def _error_response(request: Request, status_code: int, code: str, message: str)
 
 def _default_market_data_provider(credentials: CredentialStore | None) -> MarketDataProvider:
     upstream = provider_from_env(credentials)
-    configured_data_dir = os.getenv("SIW_DATA_DIR", "").strip()
-    if not configured_data_dir:
+    market_dir = market_data_dir_from_env()
+    if market_dir is None:
         return upstream
-    return CachedMarketDataProvider(upstream, LocalMarketDataStore(Path(configured_data_dir)))
+    return CachedMarketDataProvider(upstream, LocalMarketDataStore(market_dir))
 
 
 class _LazyCredentials:
@@ -458,10 +459,10 @@ class _LazyKoreanProvider:
                         market="KR",
                     )
                 )
-                configured = os.getenv("SIW_DATA_DIR", "").strip()
+                market_dir = market_data_dir_from_env()
                 self._provider = (
-                    CachedMarketDataProvider(adapter, LocalMarketDataStore(Path(configured)))
-                    if configured
+                    CachedMarketDataProvider(adapter, LocalMarketDataStore(market_dir))
+                    if market_dir is not None
                     else adapter
                 )
                 self._key = key
@@ -728,9 +729,9 @@ def create_app(
 
     def ticks() -> TickStore | None:
         if ticks_holder[0] is None:
-            configured = os.getenv("SIW_DATA_DIR", "").strip()
-            if configured:
-                ticks_holder[0] = TickStore(Path(configured))
+            market_dir = market_data_dir_from_env()
+            if market_dir is not None:
+                ticks_holder[0] = TickStore(market_dir)
         return ticks_holder[0]
 
     # Ticker changes and delistings (ADR 0033), from the Alpaca key when there is one.
@@ -1024,7 +1025,8 @@ def create_app(
         """Splits of a US listing: Alpaca's, and the dilution analyzer's filing readings
         next to them (ADR 0046).
 
-        Evidence only: no price depends on this, and a difference names neither side wrong.
+        A difference names neither side wrong. Only Alpaca's splits are used for a price:
+        the chart scales a dilution price by those after its filing date, as its candles are.
         """
         parts = instrument_id.split(":")
         ticker = parts[1].upper() if len(parts) == 4 and parts[0] == "us" else None

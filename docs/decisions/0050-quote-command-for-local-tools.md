@@ -29,7 +29,7 @@ ADR 0046 says SIW alone fetches and stores prices, and that no other program rea
 - **Values:**
   - `last` is the close of the latest 1-minute bar of the current extended-hours day, not a trade or quote.
   - `today_volume` sums today's 1-minute bars by session.
-  - `adv` sums regular-session 1-minute bars per session. `adv_daily_bar` gives Alpaca's 1Day volumes alongside, because the two differ (AAPL 2026-10-30, 5 days: 28.8M vs 45.9M) and which one the analyzer should use is its decision.
+  - `adv` sums regular-session 1-minute bars per session. `adv_daily_bar` gives Alpaca's 1Day volumes alongside, because the two differ (AAPL 2026-10-30, 5 days: 28.8M vs 45.9M) and which one the analyzer should use is its decision. Cause (checked 2026-11-16, AAPL 2026-10-26~30, SIP raw): Alpaca's 1Day volume includes pre- and post-market trades. Regular-session 1m bars are 59–65% of it; all 1m bars from 04:00 to 20:00 ET are 97.8–100%. The small rest is not explained (likely trades outside the 1m bars).
   - Prices and shares are decimal strings. A value that cannot be known is null, never 0.
 - **Exit codes:**
   - 0: answered

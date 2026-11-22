@@ -61,6 +61,13 @@ export interface SessionQuote {
   open: string;
   last: string;
   lastFinal: boolean;
+  /** From the same regular-session 60m bars (디자인-siw-2): no extra request. */
+  high?: string;
+  low?: string;
+  /** Sum of the bars' volume, in the bars' unit. */
+  volume?: string;
+  /** Each 60m bar's close, oldest first, for a small trend line. */
+  closes?: string[];
 }
 
 /** Filters of the read-only reconciliation; days are each exchange's own dates. */
@@ -410,15 +417,29 @@ export function createMarketApi(
       });
       const first = response.bars.at(0);
       const last = response.bars.at(-1);
-      return first && last
-        ? {
-            instrumentId,
-            sessionDate,
-            open: first.open,
-            last: last.close,
-            lastFinal: last.is_final,
-          }
-        : null;
+      if (!first || !last) return null;
+      // Keep the API's decimal strings; numbers only pick which bar is highest or lowest.
+      const high = response.bars.reduce((best, bar) =>
+        Number(bar.high) > Number(best.high) ? bar : best,
+      ).high;
+      const low = response.bars.reduce((best, bar) =>
+        Number(bar.low) < Number(best.low) ? bar : best,
+      ).low;
+      const volume = response.bars.reduce(
+        (sum, bar) => sum + Number(bar.volume),
+        0,
+      );
+      return {
+        instrumentId,
+        sessionDate,
+        open: first.open,
+        last: last.close,
+        lastFinal: last.is_final,
+        high,
+        low,
+        volume: String(volume),
+        closes: response.bars.map((bar) => bar.close),
+      };
     },
     async instruments() {
       const response = await get<MarketInstrumentsResponse>(

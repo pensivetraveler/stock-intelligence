@@ -8,28 +8,29 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useRef } from "react";
+import { CHART_CHROME, DECK } from "./theme";
 
 const BASE = {
   autoSize: true,
   layout: {
-    background: { type: ColorType.Solid, color: "#10131a" },
-    textColor: "#8b95a5",
+    background: { type: ColorType.Solid, color: CHART_CHROME.background },
+    textColor: CHART_CHROME.text,
   },
   grid: {
-    vertLines: { color: "#1a202a" },
-    horzLines: { color: "#1a202a" },
+    vertLines: { color: CHART_CHROME.grid },
+    horzLines: { color: CHART_CHROME.grid },
   },
-  rightPriceScale: { borderColor: "#232a36" },
-  timeScale: { borderColor: "#232a36", timeVisible: true },
+  rightPriceScale: { borderColor: CHART_CHROME.border },
+  timeScale: { borderColor: CHART_CHROME.border, timeVisible: true },
   // The wheel scrolls the results column; dragging and pinching still pan and zoom.
   handleScroll: { mouseWheel: false },
   handleScale: { mouseWheel: false },
 } as const;
 
 const CURVE_COLORS = {
-  equity: "#5b8def",
-  benchmark: "#9eabba",
-  drawdown: "#f23645",
+  equity: DECK.accent,
+  benchmark: DECK.inkDim,
+  drawdown: DECK.down,
 };
 
 const seconds = (utc: string) =>

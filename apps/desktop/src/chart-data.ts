@@ -4,6 +4,7 @@ import { isDailyTimeframe } from "./timeframes";
 import { US_ZONE, zoneFormat, type MarketZone } from "./market-zone";
 
 import { translateDynamic, translator, type Translate } from "./i18n";
+import { DECK } from "./theme";
 
 export interface CandlePoint {
   time: number;
@@ -23,8 +24,8 @@ export interface VolumePoint {
 }
 
 export const COLORS = {
-  up: "#3fb68b",
-  down: "#e5566b",
+  up: DECK.up,
+  down: DECK.down,
   uncertain: "#8a94a6",
   volumeUp: "rgba(63, 182, 139, 0.35)",
   volumeDown: "rgba(229, 86, 107, 0.35)",

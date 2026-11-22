@@ -115,7 +115,7 @@ describe("API connection state", () => {
     expect(oldCalls).toHaveLength(1);
   });
 
-  it("opens the keys manager from the right rail as a modal", async () => {
+  it("opens the keys manager in the settings dialog from the sidebar", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(healthResponse());
     render(<App fetcher={fetcher} retryMs={60_000} />);
     await screen.findByText("connected");
@@ -123,21 +123,21 @@ describe("API connection state", () => {
     expect(
       screen.queryByRole("heading", { name: "API keys" }),
     ).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "API keys" }));
-    const dialog = await screen.findByRole("dialog", { name: "API keys" });
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
     expect(
       within(dialog).getByRole("heading", { name: "API keys" }),
     ).toBeInTheDocument();
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(
-      screen.queryByRole("dialog", { name: "API keys" }),
+      screen.queryByRole("dialog", { name: "Settings" }),
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "API keys" }));
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     fireEvent.click(
       await screen.findByRole("button", { name: "Close API keys" }),
     );
     expect(
-      screen.queryByRole("dialog", { name: "API keys" }),
+      screen.queryByRole("dialog", { name: "Settings" }),
     ).not.toBeInTheDocument();
   });
 
@@ -157,7 +157,7 @@ describe("API connection state", () => {
       target: { value: "ko" },
     });
     expect(
-      await screen.findByRole("button", { name: "API 키 관리" }),
+      await screen.findByRole("button", { name: "설정" }),
     ).toBeInTheDocument();
     expect(screen.getByText("연결됨")).toBeInTheDocument();
     expect(screen.getByText("API 사용 가능")).toBeInTheDocument();

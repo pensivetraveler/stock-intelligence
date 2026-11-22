@@ -259,7 +259,7 @@ describe("AgentApp", () => {
         now={() => new Date("2026-10-23T14:34:10Z")}
       />,
     );
-    expect(await screen.findByText("꺼짐")).toBeInTheDocument();
+    expect(await screen.findByText("꺼짐 — 주문 허용")).toBeInTheDocument();
     expect(screen.getByTestId("runner-state")).toHaveTextContent("무장됨");
     expect(screen.getByText("마지막 응답: 3분 전")).toBeInTheDocument();
     expect(screen.getByText("무장: strat-1@2")).toBeInTheDocument();

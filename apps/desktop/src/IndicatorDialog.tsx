@@ -9,6 +9,7 @@ import {
   type IndicatorCategory,
   type IndicatorDefinition,
 } from "./indicators";
+import { ModalFrame } from "./Shell";
 
 interface IndicatorDialogProps {
   /** Names of the chart the indicators go to, e.g. "AAPL · 5m". */
@@ -69,121 +70,108 @@ export function IndicatorDialog({
   );
 
   return (
-    <div
-      className="modal-backdrop"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+    <ModalFrame
+      label={t("ind.title")}
+      className="indicator-dialog"
+      onClose={onClose}
     >
-      <section
-        className="modal indicator-dialog"
-        role="dialog"
-        aria-label={t("ind.title")}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
-        }}
-      >
-        <header className="modal-head">
-          <h2>{t("ind.title")}</h2>
-          <span className="workspace-note">{t("ind.target", { target })}</span>
-          <button
-            type="button"
-            className="tb-button"
-            aria-label={t("ind.close")}
-            onClick={onClose}
-          >
-            ✕
-          </button>
-        </header>
-        <input
-          autoFocus
-          className="modal-search"
-          value={query}
-          placeholder={t("ind.search")}
-          aria-label={t("ind.search")}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <div className="indicator-body">
-          <nav
-            className="indicator-categories"
-            aria-label={t("ind.categories")}
-          >
-            {CATEGORIES.filter(
-              (item) =>
-                (item !== "custom" || custom) &&
-                (item !== "formula" || onNewFormula) &&
-                (item !== "pine" || onNewPine),
-            ).map((item) => (
-              <button
-                key={item}
-                type="button"
-                className="tb-button"
-                aria-pressed={category === item}
-                onClick={() => setCategory(item)}
-              >
-                {t(`ind.cat.${item}`)}
+      <header className="modal-head">
+        <h2>{t("ind.title")}</h2>
+        <span className="workspace-note">{t("ind.target", { target })}</span>
+        <button
+          type="button"
+          className="tb-button"
+          aria-label={t("ind.close")}
+          onClick={onClose}
+        >
+          ✕
+        </button>
+      </header>
+      <input
+        autoFocus
+        className="modal-search"
+        value={query}
+        placeholder={t("ind.search")}
+        aria-label={t("ind.search")}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      <div className="indicator-body">
+        <nav className="indicator-categories" aria-label={t("ind.categories")}>
+          {CATEGORIES.filter(
+            (item) =>
+              (item !== "custom" || custom) &&
+              (item !== "formula" || onNewFormula) &&
+              (item !== "pine" || onNewPine),
+          ).map((item) => (
+            <button
+              key={item}
+              type="button"
+              className="tb-button"
+              aria-pressed={category === item}
+              onClick={() => setCategory(item)}
+            >
+              {t(`ind.cat.${item}`)}
+            </button>
+          ))}
+        </nav>
+        <ul className="indicator-list">
+          {onNewFormula && category === "formula" ? (
+            <li>
+              <button type="button" onClick={onNewFormula}>
+                <span>{t("formula.newButton")}</span>
+                <small>{t("formula.newHint")}</small>
               </button>
-            ))}
-          </nav>
-          <ul className="indicator-list">
-            {onNewFormula && category === "formula" ? (
-              <li>
-                <button type="button" onClick={onNewFormula}>
-                  <span>{t("formula.newButton")}</span>
-                  <small>{t("formula.newHint")}</small>
+            </li>
+          ) : null}
+          {onNewPine && category === "pine" ? (
+            <li>
+              <button type="button" onClick={onNewPine}>
+                <span>{t("pine.newButton")}</span>
+                <small>{t("pine.newHint")}</small>
+              </button>
+            </li>
+          ) : null}
+          {custom && onEditCustom && category === "custom" ? (
+            <li>
+              <button type="button" onClick={() => onEditCustom(null)}>
+                <span>{t("pyind.newButton")}</span>
+                <small>{t("pyind.newHint")}</small>
+              </button>
+            </li>
+          ) : null}
+          {shown.map((item) => {
+            const own = customDefinitions.find((c) => c.definition === item);
+            return (
+              <li
+                key={item.id}
+                className={own ? "indicator-custom" : undefined}
+              >
+                <button type="button" onClick={() => onAdd(item)}>
+                  <span>{item.name[language]}</span>
+                  <small>
+                    {item.short} ·{" "}
+                    {t(item.pane === "price" ? "ind.onPrice" : "ind.ownPane")}
+                  </small>
                 </button>
-              </li>
-            ) : null}
-            {onNewPine && category === "pine" ? (
-              <li>
-                <button type="button" onClick={onNewPine}>
-                  <span>{t("pine.newButton")}</span>
-                  <small>{t("pine.newHint")}</small>
-                </button>
-              </li>
-            ) : null}
-            {custom && onEditCustom && category === "custom" ? (
-              <li>
-                <button type="button" onClick={() => onEditCustom(null)}>
-                  <span>{t("pyind.newButton")}</span>
-                  <small>{t("pyind.newHint")}</small>
-                </button>
-              </li>
-            ) : null}
-            {shown.map((item) => {
-              const own = customDefinitions.find((c) => c.definition === item);
-              return (
-                <li
-                  key={item.id}
-                  className={own ? "indicator-custom" : undefined}
-                >
-                  <button type="button" onClick={() => onAdd(item)}>
-                    <span>{item.name[language]}</span>
-                    <small>
-                      {item.short} ·{" "}
-                      {t(item.pane === "price" ? "ind.onPrice" : "ind.ownPane")}
-                    </small>
+                {own && onEditCustom ? (
+                  <button
+                    type="button"
+                    className="tb-button"
+                    aria-label={t("pyind.edit", { name: own.item.name })}
+                    onClick={() => onEditCustom(own.item)}
+                  >
+                    ✎
                   </button>
-                  {own && onEditCustom ? (
-                    <button
-                      type="button"
-                      className="tb-button"
-                      aria-label={t("pyind.edit", { name: own.item.name })}
-                      onClick={() => onEditCustom(own.item)}
-                    >
-                      ✎
-                    </button>
-                  ) : null}
-                </li>
-              );
-            })}
-            {shown.length === 0 ? (
-              <li className="symbol-empty">{t("ind.none")}</li>
-            ) : null}
-          </ul>
-        </div>
-        <p className="workspace-note">{t("ind.note")}</p>
-      </section>
-    </div>
+                ) : null}
+              </li>
+            );
+          })}
+          {shown.length === 0 ? (
+            <li className="symbol-empty">{t("ind.none")}</li>
+          ) : null}
+        </ul>
+      </div>
+      <p className="workspace-note">{t("ind.note")}</p>
+    </ModalFrame>
   );
 }

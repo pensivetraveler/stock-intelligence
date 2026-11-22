@@ -34,3 +34,14 @@ Roadmap Phase 4 asks for "minimal visual composition using a safe expression/gra
 
 - Formulas should be usable in backtest rules. That needs a Python evaluator with a shared parity fixture, like ADR 0021's indicators.
 - Formulas need conditions or several outputs.
+
+## Amendment — 2026-11-15: statements, settings, several lines ([ADR 0058](0058-pine-import-to-native-indicators.md) §2)
+
+The "conditions or several outputs" item above is now open. Pine Script indicators are to be converted into formulas, so the language grew. A formula that is one expression works as before.
+
+- **Statements:** one per line (or separated by `;`), with `//` comments: `name = value`, `name = input(default, "Title", minval, maxval, step)`, `plot(value, "Title", color, linewidth, style)` and `hline(level)`.
+- **Values:** `true`/`false`, `na`, colours `"#rrggbb"`/`"#rrggbbaa"`, comparisons, `and`/`or`/`not`, `cond ? a : b`, `%`, and `x[n]` (n a constant from 0 to 500). A comparison with a missing value is false, as in Pine Script.
+- **Settings:** number, true/false and price (`input(close)`) settings become the indicator's settings. A window length may be a number setting, narrowed to a whole number from 1 to 500. The warm-up uses the setting's value.
+- **Functions added:** `crossover`, `crossunder`, `cum`, `tr`, `macd`/`macd_signal`/`macd_hist`, `bb_upper`/`bb_lower`, `stoch`, `cci`, `mfi`, `nz`, `na`. Each matches the Pine interpreter's function on test bars (within 1e-9).
+- **Limits:** 4,000 characters, 1,000 nodes, 32 settings, 16 plots, 16 levels.
+- **Still:** no `eval`, a hand-written parser and evaluator, no look-ahead (tested for every function), and no backtest use.

@@ -387,7 +387,7 @@ def test_routes_extract_check_resolve_and_recheck(
 ) -> None:
     client, service = _app(tmp_path)
 
-    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model=""):  # type: ignore[no-untyped-def]
+    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model="", **_):  # type: ignore[no-untyped-def]
         return extract.Extraction(
             card=_card(),
             attempts=[
@@ -511,7 +511,7 @@ def test_routes_pass_the_model_and_refuse_others(
     client, _service = _app(tmp_path)
     used: list[str] = []
 
-    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model=""):  # type: ignore[no-untyped-def]
+    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model="", **_):  # type: ignore[no-untyped-def]
         used.append(model)
         return extract.Extraction(card=_card(), attempts=[{"model": model, "ok": True}])
 
@@ -820,28 +820,32 @@ def test_draft_routes_need_a_ready_card_and_the_users_tick(
     assert stale.status_code == 409 and "changed" in stale.json()["error"]["message"]
 
 
-def test_default_model_setting_is_used_and_limited_to_argon_and_astra(
+def test_default_model_setting_is_used_and_limited_to_fable_argon_and_astra(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, service = _app(tmp_path)
     settings = client.get("/v1/technique-settings").json()
     assert settings["default_model"] == "google/gemini-4-argon"
-    assert settings["default_choices"] == ["google/gemini-4-argon", "openai/gpt-6-astra"]
+    assert settings["default_choices"] == [
+        "anthropic/claude-fable-5.2", "google/gemini-4-argon", "openai/gpt-6-astra"
+    ]  # fmt: skip
     assert settings["default_reset"] is None
-    assert "anthropic/claude-fable-5.2" not in settings["models"]  # paused 2026-11-15
-    for refused in ("openai/gpt-6-luna", "anthropic/claude-fable-5.2"):
-        assert (
-            client.put("/v1/technique-settings", json={"default_model": refused}).status_code == 422
-        )
-    paused = client.post(
-        "/v1/technique-cards", json={"item_ref": ITEM, "model": "anthropic/claude-fable-5.2"}
+    # Paused and back the same day (#LAG-SIW-2, #LAG-SIW-3).
+    assert "anthropic/claude-fable-5.2" in settings["models"]
+    assert extract.PAUSED_MODELS == ()
+    assert (
+        client.put("/v1/technique-settings", json={"default_model": "openai/gpt-6-luna"})
+        .status_code == 422
+    )  # fmt: skip
+    fable = client.put(
+        "/v1/technique-settings", json={"default_model": "anthropic/claude-fable-5.2"}
     )
-    assert paused.status_code == 422
+    assert fable.json()["default_model"] == "anthropic/claude-fable-5.2"
     changed = client.put("/v1/technique-settings", json={"default_model": "openai/gpt-6-astra"})
     assert changed.json()["default_model"] == "openai/gpt-6-astra"
     used: list[str] = []
 
-    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model=""):  # type: ignore[no-untyped-def]
+    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model="", **_):  # type: ignore[no-untyped-def]
         used.append(model)
         return extract.Extraction(card=_card(), attempts=[{"model": model, "ok": True}])
 
@@ -858,18 +862,18 @@ def test_default_model_setting_is_used_and_limited_to_argon_and_astra(
     )
 
 
-def test_a_saved_fable_default_goes_back_to_argon_and_says_so(tmp_path: Path) -> None:
-    """Fable paused 2026-11-15 (#LAG-SIW-2): a default saved before the pause is put back."""
+def test_a_saved_default_no_longer_offered_goes_back_to_argon_and_says_so(tmp_path: Path) -> None:
+    """As when Fable was paused (#LAG-SIW-2): a default no longer offered is put back."""
     client, service = _app(tmp_path)
     service.store.set_default_model("openai/gpt-6-astra")
     with service.store._lock:
         service.store._db.execute(
-            "UPDATE technique_settings SET value = 'anthropic/claude-fable-5.2'"
+            "UPDATE technique_settings SET value = 'example/paused-model'"
             " WHERE name = 'default_model'"
         )
     settings = client.get("/v1/technique-settings").json()
     assert settings["default_model"] == "google/gemini-4-argon"
-    assert settings["default_reset"]["from"] == "anthropic/claude-fable-5.2"
+    assert settings["default_reset"]["from"] == "example/paused-model"
     assert settings["default_reset"]["to"] == "google/gemini-4-argon"
     reopened = CardStore(tmp_path / "cards.sqlite3", datetime.now)
     assert reopened.default_model() == "google/gemini-4-argon"

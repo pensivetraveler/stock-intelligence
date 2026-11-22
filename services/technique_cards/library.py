@@ -6,8 +6,11 @@ answer is one JSON envelope; exit code 0 is not "allowed", the envelope is judge
 
 - The list is the tag subscription's deliveries (topic `매매기법`, paged to the end).
 - A source's text is fetched with `context assemble` + `context hydrate` into a cache outside
-  the repository (directories 0700, files 0600). The transcript layer is the hydrated file with
-  the most `[mm:ss]` lines.
+  the repository (directories 0700, files 0600). The layer kept is, in this order: the hydrated
+  file with the most `[mm:ss]` lines (captions); else the one with the most `[p. N]` lines (a
+  PDF's text, knowledge-library pdftext); else the longest text the library records as observed
+  and not a summary or interpretation (`archive get`: a note the investor wrote, a web page's
+  body), never JSON metadata or the PDF's own bytes (user request 2026-11-15).
 - Before each reuse the cached text is rechecked (`context hydration-check`): `still_usable`
   is used, `conditional` is used and shown as conditional, `stop_using` / `unknown` deletes the
   cache and the caller marks the card's evidence withdrawn.
@@ -31,9 +34,20 @@ TAG = "매매기법"
 USABLE = ("still_usable", "conditional")
 WITHDRAWN = ("stop_using", "unknown")
 TIMED_LINE = re.compile(r"^\[\d+:\d{2}(?::\d{2})?\]", re.MULTILINE)
+PAGE_LINE = re.compile(r"^\[p\.\s?\d+\]\s*$", re.MULTILINE)
+# Layers a summary or a model's reading, never the source itself.
+DERIVED_KINDS = ("summary", "interpretation")
 TIMEOUT_SECONDS = 120
 
 Runner = Callable[[list[str], dict[str, Any]], dict[str, Any]]
+
+
+def _is_json(text: str) -> bool:
+    try:
+        json.loads(text)
+    except ValueError:
+        return False
+    return True
 
 
 class LibraryError(RuntimeError):
@@ -234,20 +248,11 @@ class Library:
             ["context", "hydrate", "--out-dir", str(hydrated)],
             {"context_ref": context["context_ref"], "items": selected},
         )
-        best: tuple[Path, int, dict[str, Any]] | None = None
-        for path in hydrated.iterdir():
-            if path.name.endswith(".meta.json"):
-                continue
-            text = path.read_text(encoding="utf-8", errors="replace")
-            count = len(TIMED_LINE.findall(text))
-            meta_path = path.with_name(path.name + ".meta.json")
-            meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
-            if count and (best is None or count > best[1]):
-                best = (path, count, meta)
-        if best is None or not best[2].get("revision_ref"):
+        try:
+            path, meta = self._source_layer(hydrated)
+        except LibraryError:
             shutil.rmtree(target)
-            raise LibraryError("no timed transcript layer in this item")
-        path, _count, meta = best
+            raise
         transcript = target / "transcript.txt"
         shutil.copyfile(path, transcript)
         os.chmod(transcript, 0o600)
@@ -276,6 +281,40 @@ class Library:
         )
         os.chmod(record, 0o600)
         return fetched
+
+    def _source_layer(self, hydrated: Path) -> tuple[Path, dict[str, Any]]:
+        """The hydrated file to use as the source, and its meta (see the module note)."""
+        files: list[tuple[Path, str, dict[str, Any]]] = []
+        for path in sorted(hydrated.iterdir()):
+            if path.name.endswith(".meta.json"):
+                continue
+            meta_path = path.with_name(path.name + ".meta.json")
+            meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+            if not meta.get("revision_ref"):
+                continue
+            data = path.read_bytes()
+            if b"\x00" in data or data.startswith(b"%PDF"):
+                continue  # binary: the PDF itself
+            files.append((path, data.decode("utf-8", errors="replace"), meta))
+        for pattern in (TIMED_LINE, PAGE_LINE):
+            counted = [(len(pattern.findall(text)), path, meta) for path, text, meta in files]
+            counted = [c for c in counted if c[0]]
+            if counted:
+                _count, path, meta = max(counted, key=lambda c: c[0])
+                return path, meta
+        written: list[tuple[int, Path, dict[str, Any]]] = []
+        for path, text, meta in files:
+            if not text.strip() or _is_json(text):
+                continue
+            layer = self._call(
+                ["archive", "get"], {"target": {"revision_ref": meta["revision_ref"]}}
+            )
+            if layer.get("origin_type") == "observed" and layer.get("kind") not in DERIVED_KINDS:
+                written.append((len(text.strip()), path, meta))
+        if written:
+            _size, path, meta = max(written, key=lambda w: w[0])
+            return path, meta
+        raise LibraryError("no captions, PDF text or written text in this item")
 
     def cached(self, item_ref: str) -> Fetched | None:
         """The cached transcript of an item, if it is there and unchanged."""
