@@ -1748,6 +1748,10 @@ const en = {
   "liveacct.tabs": "SIW Agent screens",
   "liveacct.tab.paper": "Paper trading",
   "liveacct.tab.live": "Live account",
+  "liveacct.tab.keys": "Keys",
+  "keys.agentTitle": "SIW Agent — keys",
+  "keys.agentNote":
+    "Keys registered here are stored only in this computer's keychain. They are not copied to or from SIW Research on another computer.",
   "liveacct.title": "SIW Agent — live account",
   "liveacct.banner":
     "Live account — real orders with real money. The runner sends an order only after you confirm it here.",
@@ -3905,6 +3909,10 @@ const ko: Record<MessageKey, string> = {
   "liveacct.tabs": "SIW Agent 화면",
   "liveacct.tab.paper": "모의투자",
   "liveacct.tab.live": "실계좌",
+  "liveacct.tab.keys": "키",
+  "keys.agentTitle": "SIW Agent — 키",
+  "keys.agentNote":
+    "여기서 등록한 키는 이 컴퓨터의 키체인에만 저장됩니다. 다른 컴퓨터의 SIW Research와 서로 옮겨지지 않습니다.",
   "liveacct.title": "SIW Agent — 실계좌",
   "liveacct.banner":
     "실계좌 — 실제 돈으로 하는 실제 주문입니다. 여기서 승인한 주문만 실행기가 보냅니다.",
