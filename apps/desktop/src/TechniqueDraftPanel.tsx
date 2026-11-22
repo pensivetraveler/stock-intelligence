@@ -7,6 +7,7 @@ import {
   MODEL_NAMES,
   SCRIPT_MODEL,
   type DraftAssumption,
+  type StrategyPine,
   type TechniqueCard,
   type TechniqueCardsApi,
   type TechniqueDraft,
@@ -51,6 +52,7 @@ export function TechniqueDraftPanel({
   const [name, setName] = useState(card.title.slice(0, 120));
   const [accept, setAccept] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [pine, setPine] = useState<StrategyPine | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -276,12 +278,53 @@ export function TechniqueDraftPanel({
             </pre>
           ) : null}
           {shown.strategy_id ? (
-            <p className="tc-ready" role="status">
-              {t("td.saved", {
-                id: shown.strategy_id,
-                version: shown.strategy_version ?? 0,
-              })}
-            </p>
+            <div className="td-saved">
+              <p className="tc-ready" role="status">
+                {t("td.saved", {
+                  id: shown.strategy_id,
+                  version: shown.strategy_version ?? 0,
+                })}
+              </p>
+              <button
+                type="button"
+                className="tb-button"
+                onClick={() => {
+                  api
+                    .pine(shown.strategy_id!, shown.strategy_version ?? 1)
+                    .then(setPine)
+                    .catch((reason: unknown) => setError(message(reason)));
+                }}
+              >
+                {t("td.pine")}
+              </button>
+              {pine && pine.strategy_id === shown.strategy_id ? (
+                <div className="td-pine">
+                  <p className="workspace-note">{t("td.pineNote")}</p>
+                  {pine.unsupported.length ? (
+                    <ul
+                      className="td-problems"
+                      aria-label={t("td.pineUnsupported")}
+                    >
+                      {pine.unsupported.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <pre className="td-definition" aria-label={t("td.pine")}>
+                    {pine.source}
+                  </pre>
+                  <button
+                    type="button"
+                    className="tb-button"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(pine.source);
+                    }}
+                  >
+                    {t("td.pineCopy")}
+                  </button>
+                </div>
+              ) : null}
+            </div>
           ) : (
             <div className="td-save">
               {shown.needs_accept ? (

@@ -502,7 +502,9 @@ export function TechniqueCardsScreen({
                           reason: t(
                             s.reason === "limit"
                               ? "tc.switchLimit"
-                              : "tc.switchFailed",
+                              : s.reason === "key"
+                                ? "tc.switchKey"
+                                : "tc.switchFailed",
                           ),
                         })}
                       </li>

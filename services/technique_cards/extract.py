@@ -11,8 +11,9 @@
 - A slice whose answer is cut off (length), refused, or does not match the schema, or whose
   call fails for a passing reason (5xx, timeout), is retried once on the same model, then once
   on luna; after that the extraction fails and the user is told.
-- A model at its limit (HTTP 429 or 402, or an error naming a rate limit, quota or credits) is
-  not retried: the slice goes to the next model of another company (`chain`: Fable → the
+- A model at its limit (HTTP 429 or 402, or an error naming a rate limit, quota or credits),
+  or whose key is missing or refused (401, 403; the Claude key's 401s of 2026-11-15), is not
+  retried: the slice goes to the next model of another company (`chain`: Fable → the
   default setting or Argon → luna; gateway request #LAG-SIW-4, user instruction 2026-11-15).
   When the answer says when to try again, the model is skipped until then (`LimitBook`).
   The card's usage keeps the model asked for and every switch with its reason.
@@ -98,12 +99,15 @@ class AttemptFailed(RuntimeError):
         usage: dict[str, Any] | None = None,
         limited: bool = False,
         retry_at: datetime | None = None,
+        key: bool = False,
     ) -> None:
         super().__init__(reason)
         self.reason = reason
         self.usage = usage or {}
         self.limited = limited
         self.retry_at = retry_at
+        # The key is missing or refused (401, 403): the same model would refuse again.
+        self.key = key
 
 
 class LimitBook(Protocol):
@@ -121,6 +125,7 @@ _LIMIT_WORDS = re.compile(
     re.IGNORECASE,
 )
 LIMIT_STATUSES = (402, 429)
+KEY_STATUSES = (401, 403)
 # A limit end further away than this is not trusted (a wrong header would hide a model).
 MAX_HOLD = timedelta(days=7)
 
@@ -169,6 +174,8 @@ def _error_text(response: httpx.Response) -> str:
 def http_failure(service: str, response: httpx.Response) -> AttemptFailed:
     """An HTTP error answer, sorted into a limit or a failure a retry may fix."""
     status = response.status_code
+    if status in KEY_STATUSES:
+        return AttemptFailed(f"{service} HTTP {status}: key refused", key=True)
     limited = status in LIMIT_STATUSES or bool(_LIMIT_WORDS.search(_error_text(response)))
     if not limited:
         return AttemptFailed(f"{service} HTTP {status}")
@@ -191,7 +198,7 @@ class Extraction:
     attempts: list[dict[str, Any]] = field(default_factory=list)
     parts: int = 1
     requested: str = ""
-    # Each move to another model: {"part", "from", "to", "reason": "limit" | "failed"}.
+    # Each move to another model: {"part", "from", "to", "reason": "limit" | "key" | "failed"}.
     switches: list[dict[str, Any]] = field(default_factory=list)
 
     @property
@@ -231,7 +238,7 @@ def call_anthropic(
     transport: httpx.BaseTransport | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if not keys.anthropic:
-        raise AttemptFailed("no Claude (Anthropic) key on the Keys screen")
+        raise AttemptFailed("no Claude (Anthropic) key on the Keys screen", key=True)
     body = {
         "model": SONNET_MODEL,
         "max_tokens": STRUCTURED_MAX_TOKENS,
@@ -284,7 +291,7 @@ def call_openrouter(
     model: str = FALLBACK_MODEL,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if not keys.openrouter:
-        raise AttemptFailed("no OpenRouter key on the Keys screen")
+        raise AttemptFailed("no OpenRouter key on the Keys screen", key=True)
     body = {
         "model": model,
         "max_tokens": STRUCTURED_MAX_TOKENS,
@@ -429,10 +436,10 @@ def _slice(
         except AttemptFailed as exc:
             record.update(exc.usage, reason=exc.reason)
             attempts.append(record)
-            if exc.limited:
-                if exc.retry_at is not None and limits is not None:
+            if exc.limited or exc.key:
+                if exc.limited and exc.retry_at is not None and limits is not None:
                     limits.hold(step, exc.retry_at, exc.reason)
-                index, tries = move(index + 1, "limit"), 0
+                index, tries = move(index + 1, "limit" if exc.limited else "key"), 0
                 continue
             tries += 1
             if step == model and tries < 2:
