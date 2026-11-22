@@ -115,6 +115,7 @@ describe("review Agent panel", () => {
   it("reviews chosen executions of this instrument only and marks hindsight", async () => {
     const api = fakeApi();
     renderPanel(api);
+    fireEvent.click(screen.getByRole("tab", { name: "Fills" }));
     const list = screen.getByRole("list", { name: "Executions to review" });
     expect(within(list).getAllByRole("checkbox")).toHaveLength(1);
     fireEvent.click(within(list).getByRole("checkbox"));
@@ -153,6 +154,7 @@ describe("review Agent panel", () => {
         symbolOf={(id) => (id === AAPL ? "AAPL" : id)}
       />,
     );
+    fireEvent.click(screen.getByRole("tab", { name: "Fills" }));
     const list = screen.getByRole("list", { name: "Executions to review" });
     expect(within(list).getByText(/\[Toss account 2\]/)).toBeInTheDocument();
     expect(within(list).getByText(/\[Kiwoom\]/)).toBeInTheDocument();
@@ -197,6 +199,7 @@ describe("review Agent panel", () => {
   it("reviews FINRA weekly ATS volume at the chart's time and says what it is not", async () => {
     const api = fakeApi();
     renderPanel(api);
+    fireEvent.click(screen.getByRole("tab", { name: "Dark pool" }));
     expect(
       screen.getByText(/No direction, prices or intraday/),
     ).toBeInTheDocument();
@@ -219,6 +222,7 @@ describe("review Agent panel", () => {
   it("asks for filings with hindsight only when ticked", async () => {
     const api = fakeApi();
     renderPanel(api);
+    fireEvent.click(screen.getByRole("tab", { name: "Filings" }));
     fireEvent.click(screen.getByRole("button", { name: "Review filings" }));
     await waitFor(() =>
       expect(api.reviewFilings).toHaveBeenLastCalledWith({
@@ -243,6 +247,7 @@ describe("review Agent panel", () => {
       }),
     });
     renderPanel(api);
+    fireEvent.click(screen.getByRole("tab", { name: "Dark pool" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Review weekly ATS volume" }),
     );

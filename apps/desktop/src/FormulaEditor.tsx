@@ -9,6 +9,7 @@ import {
   parseFormula,
 } from "./formula";
 import { useI18n } from "./i18n";
+import { ModalFrame } from "./Shell";
 
 export interface FormulaValue {
   label: string;
@@ -141,32 +142,22 @@ export function FormulaDialog({
 }) {
   const { t } = useI18n();
   return (
-    <div
-      className="modal-backdrop"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+    <ModalFrame
+      label={t("formula.title")}
+      className="formula-dialog"
+      onClose={onClose}
     >
-      <section
-        className="modal formula-dialog"
-        role="dialog"
-        aria-label={t("formula.title")}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
-        }}
-      >
-        <header className="modal-head">
-          <h2>{t("formula.title")}</h2>
-          <span className="workspace-note">{t("ind.target", { target })}</span>
-        </header>
-        <p className="workspace-note">{t("formula.note")}</p>
-        <FormulaFields
-          initial={FORMULA_EXAMPLE}
-          submitLabel={t("formula.add")}
-          onSubmit={onAdd}
-          onCancel={onClose}
-        />
-      </section>
-    </div>
+      <header className="modal-head">
+        <h2>{t("formula.title")}</h2>
+        <span className="workspace-note">{t("ind.target", { target })}</span>
+      </header>
+      <p className="workspace-note">{t("formula.note")}</p>
+      <FormulaFields
+        initial={FORMULA_EXAMPLE}
+        submitLabel={t("formula.add")}
+        onSubmit={onAdd}
+        onCancel={onClose}
+      />
+    </ModalFrame>
   );
 }

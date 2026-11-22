@@ -11,6 +11,7 @@ import {
   type PineProgram,
   runPine,
 } from "./pine";
+import { ModalFrame } from "./Shell";
 
 /** A few made-up bars to try the script on, so a misspelt name shows before adding. */
 const TRIAL_BARS = Array.from({ length: 30 }, (_, i) => {
@@ -155,49 +156,39 @@ export function PineDialog({
 }) {
   const { t } = useI18n();
   return (
-    <div
-      className="modal-backdrop"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+    <ModalFrame
+      label={t("pine.title")}
+      className="formula-dialog pine-dialog"
+      onClose={onClose}
     >
-      <section
-        className="modal formula-dialog pine-dialog"
-        role="dialog"
-        aria-label={t("pine.title")}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
-        }}
-      >
-        <header className="modal-head">
-          <h2>{t("pine.title")}</h2>
-          <span className="workspace-note">{t("ind.target", { target })}</span>
-        </header>
-        <p className="workspace-note">{t("pine.note")}</p>
-        {onAssistant ? (
-          <p className="bt-actions">
-            <button type="button" className="tb-button" onClick={onAssistant}>
-              {t("ia.open")}
-            </button>
-            <span className="workspace-note">{t("ia.title")}</span>
-          </p>
-        ) : null}
-        {onResearch ? (
-          <p className="bt-actions">
-            <button type="button" className="tb-button" onClick={onResearch}>
-              {t("sr.open")}
-            </button>
-            <span className="workspace-note">{t("sr.title")}</span>
-          </p>
-        ) : null}
-        <PineFields
-          initial={PINE_EXAMPLE}
-          examples
-          submitLabel={t("formula.add")}
-          onSubmit={onAdd}
-          onCancel={onClose}
-        />
-      </section>
-    </div>
+      <header className="modal-head">
+        <h2>{t("pine.title")}</h2>
+        <span className="workspace-note">{t("ind.target", { target })}</span>
+      </header>
+      <p className="workspace-note">{t("pine.note")}</p>
+      {onAssistant ? (
+        <p className="bt-actions">
+          <button type="button" className="tb-button" onClick={onAssistant}>
+            {t("ia.open")}
+          </button>
+          <span className="workspace-note">{t("ia.title")}</span>
+        </p>
+      ) : null}
+      {onResearch ? (
+        <p className="bt-actions">
+          <button type="button" className="tb-button" onClick={onResearch}>
+            {t("sr.open")}
+          </button>
+          <span className="workspace-note">{t("sr.title")}</span>
+        </p>
+      ) : null}
+      <PineFields
+        initial={PINE_EXAMPLE}
+        examples
+        submitLabel={t("formula.add")}
+        onSubmit={onAdd}
+        onCancel={onClose}
+      />
+    </ModalFrame>
   );
 }
