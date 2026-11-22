@@ -114,6 +114,50 @@ def parse_source(text: str) -> list[Line]:
     return parse_pages(text) if unit == "page" else parse_paragraphs(text)
 
 
+def render_source(lines: list[Line]) -> str:
+    """Lines back to source text that `parse_source` reads into the same lines."""
+    unit = unit_of(lines)
+    if unit == "time":
+        return "\n".join(f"[{format_time(line.seconds)}] {line.text}" for line in lines) + "\n"
+    if unit == "para":
+        return "\n\n".join(line.text for line in lines) + "\n"
+    out: list[str] = []
+    page: int | None = None
+    for line in lines:
+        if line.seconds != page:
+            page = line.seconds
+            out.append(f"[p. {page}]")
+        out.append(line.text)
+    return "\n".join(out) + "\n"
+
+
+def join_volumes(texts: list[str]) -> tuple[str, list[tuple[int, int]]]:
+    """The volumes of a series as one source, numbered on from the volume before.
+
+    Pages, paragraphs or times of volume 2 start after the last of volume 1, so `p. N` names one
+    place in the whole series. Returns the joined text and each volume's first and last position.
+    Volumes of different kinds (a PDF and a transcript) cannot be joined (ValueError).
+    """
+    units = {source_unit(text) for text in texts if text.strip()}
+    if len(units) > 1:
+        raise ValueError("the volumes of the series are different kinds of text")
+    joined: list[Line] = []
+    ranges: list[tuple[int, int]] = []
+    offset = 0
+    for text in texts:
+        lines = parse_source(text)
+        if not lines:
+            ranges.append((offset + 1, offset))
+            continue
+        # A transcript's next volume starts a second after the last line (its 00:00 is a time).
+        shift = offset + (1 if lines[0].unit == "time" and joined else 0)
+        shifted = [Line(line.seconds + shift, line.text, line.unit) for line in lines]
+        joined.extend(shifted)
+        ranges.append((shifted[0].seconds, shifted[-1].seconds))
+        offset = shifted[-1].seconds
+    return (render_source(joined) if joined else ""), ranges
+
+
 def format_time(seconds: int) -> str:
     hours, rest = divmod(seconds, 3600)
     minutes, secs = divmod(rest, 60)
