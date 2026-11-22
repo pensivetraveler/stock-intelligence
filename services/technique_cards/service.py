@@ -58,6 +58,12 @@ class TechniqueCards:
         return self._listed[1]
 
     def _usable(self, item_ref: str) -> tuple[Fetched, str]:
+        # Under the item's lock, so a request that arrives while another is fetching the same
+        # item waits and then reuses that cache instead of fetching it again.
+        with self.library.lock(item_ref):
+            return self._usable_locked(item_ref)
+
+    def _usable_locked(self, item_ref: str) -> tuple[Fetched, str]:
         cached = self.library.cached(item_ref)
         if cached is not None:
             outcome = self.library.recheck(cached.context_ref, cached.revision_ref)
