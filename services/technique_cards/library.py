@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import unicodedata
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -284,7 +285,9 @@ class Library:
             return None
         raw_series = item.get("series")
         series: dict[str, Any] = raw_series if isinstance(raw_series, dict) else {}
-        name = str(series.get("name") or "").strip()[:256]  # contract 0.5.1: 1-256 characters
+        # Contract 0.5.1: 1-256 characters. Names from macOS file names arrive decomposed (NFD);
+        # composed (NFC) keeps one spelling, so a `kl-series:` ref typed or pasted still matches.
+        name = unicodedata.normalize("NFC", str(series.get("name") or "")).strip()[:256]
         try:
             index = int(series.get("index") or 0)
         except (TypeError, ValueError):
