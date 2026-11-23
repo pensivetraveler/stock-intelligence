@@ -261,7 +261,7 @@
 - **실시간 조건 기록기** `watch-condition`: 뉴욕 04:00–20:00에 `SIW_당일급등주` 편입·이탈을 `kiwoom_condition_watch.sqlite3`에 덧붙인다. 30분마다 구독 갱신, 끊기면 재연결. `export-condition`. [실확인: 일부 시간대 침묵 원인 미확인]
 - **halt 기록기** `watch-halts`: 뉴욕 03:58–20:00 Alpaca SIP `statuses` 전 종목을 `sip_status_watch.sqlite3`에 기록한다. [실확인: 연결·하트비트만, 장중 실제 halt 미확인]
 - **오늘의 후보 패널**(`CandidatesPanel.tsx`): 조건검색 기록에서 후보 목록, 편입 횟수·머문 시간·편입 시점(Alpaca), 기록 빈틈 줄, 정오 전환(`as_of`). 열: 재료(2단계), 지금 수급(3단계), 정보(4단계), 뉴스 B, 희석 C, 장외 체결 D, 가격 구조.
-- **B 뉴스 재료:** news-analysis 서비스(`127.0.0.1:8776`) 클라이언트. 45초 대기 후 `pending`, 다시 보기. NIR 요약(추론 표시). 두 결론("걸러야 할 재료인가", "급등의 명분인가")으로 통과·그날 제외·재료 미확인을 정하고, cutoff 시가총액(토스 발행주식수 × cutoff 전 종가)을 함께 보낸다. [미확인: 실제 서비스와 이어 본 확인]
+- **B 뉴스 재료:** news-analysis 서비스(`127.0.0.1:8776`) 클라이언트. 45초 대기 후 `pending`, 다시 보기. NIR 요약(추론 표시). 두 결론("걸러야 할 재료인가", "급등의 명분인가")으로 통과·그날 제외·재료 미확인을 정하고, cutoff 시가총액(앞선 세션 희석 분석기 주식 수, 없으면 토스 발행주식수 + 경고 × cutoff 전 종가)을 함께 보낸다. 후보마다 세션당 한 번 자동 실행(`NewsAutoRunner`, `SIW_SCREENING_NEWS_AUTO=0`이면 끔). [미확인: 실제 서비스와 이어 본 확인, 장중 자동 실행]
 - **C 희석 공급 가격대:** 주식 희석 분석기 서비스 호출(규칙만, 고른 종목에만 LLM). [미확인: 성공 경로]
 - **D 장외 체결(TRF 보고):** Alpaca SIP 체결 중 FINRA ADF(`D`)의 가격대별 거래량·봉우리·장외 비중. 닫힌 20세션은 세션 캐시에서, 오늘만 직접 읽는다. 장 마감 뒤 미리 받기(`SIW_SCREENING_PREFETCH=0`이면 끔). 명령 `python -m services.screening.off_exchange`. [실확인: STAK·AAPL]
 - **장외 체결 가격 구조 모델**(ADR 0053): 세션 가격대 캐시, Decimal 모델, 불변 등록부, 사후 판정·walk-forward·shadow audit. [미확인: 실제 20세션·평가 데이터셋]

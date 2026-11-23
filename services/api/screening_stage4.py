@@ -47,6 +47,18 @@ DILUTION_WAIT_SECONDS = 5.0
 OFF_EXCHANGE_PER_TICK = 2
 
 
+def session_candidates(
+    screening: ScreeningStore, root: Path, window: Any, cutoff: datetime, condition_name: str
+) -> list[str]:
+    """The day's candidates as the panel lists them, in the order they first appeared."""
+    watched = read_watched(watch_path(root), window, cutoff, condition_name)
+    seen: dict[str, str] = {item.symbol: item.first_seen_utc for item in watched.symbols}
+    for symbol, added in screening.manual(window.session_date):
+        seen.setdefault(symbol, added)
+    ordered = sorted(seen, key=lambda symbol: (seen[symbol], symbol))
+    return [symbol for symbol in ordered if SYMBOL.fullmatch(symbol)]
+
+
 class Stage4Runner:
     def __init__(
         self,
@@ -76,12 +88,7 @@ class Stage4Runner:
 
     def _candidates(self, screening: ScreeningStore, root: Path, window: Any) -> list[str]:
         cutoff = min(self._clock(), window.post_close_utc)
-        watched = read_watched(watch_path(root), window, cutoff, self._condition_name)
-        seen: dict[str, str] = {item.symbol: item.first_seen_utc for item in watched.symbols}
-        for symbol, added in screening.manual(window.session_date):
-            seen.setdefault(symbol, added)
-        ordered = sorted(seen, key=lambda symbol: (seen[symbol], symbol))
-        return [symbol for symbol in ordered if SYMBOL.fullmatch(symbol)]
+        return session_candidates(screening, root, window, cutoff, self._condition_name)
 
     def tick(self, stop: Callable[[], bool] = lambda: False) -> dict[str, Any] | None:
         """One pass over today's candidates; None outside a session or when unconfigured."""

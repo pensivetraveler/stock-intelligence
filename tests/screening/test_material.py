@@ -15,7 +15,14 @@ from typing import Any
 import pytest
 
 from services.market_data.provider import BarsQuery, BarsResult
-from services.screening.market_cap import Shares, market_cap_context, shares_from_stock_info
+from services.screening.market_cap import (
+    DILUTION_SOURCE,
+    TOSS_FALLBACK_WARNING,
+    Shares,
+    market_cap_context,
+    shares_from_dilution,
+    shares_from_stock_info,
+)
 from services.screening.material import (
     flow_stage2,
     from_conclusions,
@@ -301,7 +308,150 @@ def test_without_a_share_source_no_context_is_sent(tmp_path: Path) -> None:
     http, screening = app_for(tmp_path, fake)
     done = http.post("/v1/screening/checks/news", json={"symbol": "ABCD"}).json()
     assert "context" not in json.loads(fake.requests[0].content)
-    assert done["result"]["context_note"] == "no share count source is configured"
+    assert done["result"]["context_note"] == (
+        "dilution: no earlier dilution analysis; Toss: no share count source is configured"
+    )
+    screening.close()
+
+
+def dilution_check(
+    session_date: str,
+    created: str,
+    amount: str | None = "28133538",
+    status: str = "computed",
+    value_day: str | None = None,
+    filed: tuple[str, ...] = ("2026-08-07",),
+) -> dict[str, Any]:
+    """A stored dilution check (check C) carrying only the analyzer's as-of share count."""
+    return {
+        "check": "dilution",
+        "symbol": "ABCD",
+        "session_date": session_date,
+        "created_at_utc": created,
+        "status": "incomplete",
+        "result": {
+            "result_id": "r" * 32,
+            "contract": {
+                "shares_outstanding": {
+                    "as_of": {
+                        "amount": amount,
+                        "unit": "shares",
+                        "status": status,
+                        "as_of": value_day or session_date,
+                        "sources": [{"form": "10-Q", "filing_date": f} for f in filed],
+                    }
+                }
+            },
+        },
+    }
+
+
+def test_the_dilution_share_count_comes_from_an_earlier_session_only() -> None:
+    # CUTOFF is 2026-11-09 10:00 New York.
+    friday = dilution_check("2026-11-06", "2026-11-06T15:00:00Z")
+    shares, why = shares_from_dilution([friday], CUTOFF)
+    assert why is None and shares is not None
+    assert shares.count == Decimal("28133538") and shares.kind == DILUTION_SOURCE
+    context, _ = market_cap_context("us.x", CUTOFF, shares, bars_until(CUTOFF))
+    assert context is not None
+    assert context["market_cap_source"].startswith("siw:dilution-shares_x_1m-close:dilution-")
+    # The analysis of the cutoff's own day may include filings made after the cutoff.
+    today = dilution_check("2026-11-09", "2026-11-09T14:00:00Z")
+    assert shares_from_dilution([today], CUTOFF)[0] is None
+    # A filing dated the cutoff's day, or a check stored after the cutoff, is not used.
+    cites_today = dilution_check("2026-11-06", "2026-11-06T15:00:00Z", filed=("2026-11-09",))
+    assert shares_from_dilution([cites_today], CUTOFF)[0] is None
+    stored_late = dilution_check("2026-11-06", "2026-11-09T15:00:01Z")
+    assert shares_from_dilution([stored_late], CUTOFF)[0] is None
+    # Unknown or unverified counts are not facts.
+    assert (
+        shares_from_dilution([dilution_check("2026-11-06", "2026-11-06T15:00:00Z", None)], CUTOFF)[
+            0
+        ]
+        is None
+    )
+    unverified = dilution_check("2026-11-06", "2026-11-06T15:00:00Z", status="unverified")
+    assert shares_from_dilution([unverified], CUTOFF)[0] is None
+    # The newest usable value wins.
+    newer = dilution_check("2026-11-07", "2026-11-07T15:00:00Z", amount="30000000")
+    found, _ = shares_from_dilution([friday, newer, today], CUTOFF)
+    assert found is not None and found.count == Decimal("30000000")
+
+
+def test_the_news_request_prefers_the_dilution_count_and_warns_on_toss(tmp_path: Path) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from services.api.main import _error_response
+    from services.api.screening_news_routes import register_screening_news_routes
+    from services.market_data.broker_common import instrument_listing
+    from tests.screening.test_news_service import NOW, no_sleep
+
+    fake = FakeService()
+    screening = ScreeningStore(tmp_path / "screening.sqlite3", lambda: NOW)
+    app = FastAPI()
+    register_screening_news_routes(
+        app,
+        store=lambda: screening,
+        listing_for=lambda s: instrument_listing(s, "XNAS", "test", "test-r1", "test"),
+        news_service=fake.service,
+        error_response=_error_response,
+        clock=lambda: NOW,
+        sleep=no_sleep,
+        read_shares=lambda _s, _i: Shares(Decimal("19300000"), NOW, "toss-us"),
+        get_bars=lambda: bars_until(NOW),
+    )
+    http = TestClient(app)
+    toss = http.post("/v1/screening/checks/news", json={"symbol": "ABCD"}).json()
+    assert toss["result"]["context_sent"]["market_cap_source"].startswith("siw:toss-shares")
+    assert toss["result"]["shares_note"].startswith(TOSS_FALLBACK_WARNING)
+    assert any(w.startswith(TOSS_FALLBACK_WARNING) for w in toss["warnings"])
+
+    earlier = dilution_check("2026-11-06", "2026-11-06T15:00:00Z")
+    screening.add_check(
+        {
+            **earlier,
+            "kind": "screening_check",
+            "schema_version": "0.1",
+            "instrument_id": "us.x",
+            "cutoff_utc": "2026-11-06T15:00:00Z",
+            "after_the_fact": False,
+            "strategy": None,
+            "versions": {},
+            "warnings": [],
+            "sources": {},
+        }
+    )
+    preferred = http.post("/v1/screening/checks/news", json={"symbol": "ABCD"}).json()
+    sent = preferred["result"]["context_sent"]
+    assert sent["market_cap_source"].startswith("siw:dilution-shares_x_1m-close")
+    assert sent["market_cap_usd"] == 70333845  # 28,133,538 x $2.50
+    assert preferred["result"]["shares_note"] is None
+
+    # A past session (Friday 11-06) gets the count of a session before it (Thursday), not
+    # Friday's own analysis, and never Toss read now.
+    thursday = dilution_check("2026-11-05", "2026-11-05T15:00:00Z", amount="20000000")
+    for stored in (thursday, {**earlier, "created_at_utc": "2026-11-06T15:00:00Z"}):
+        screening.add_check(
+            {
+                **stored,
+                "kind": "screening_check",
+                "schema_version": "0.1",
+                "instrument_id": "us.x",
+                "cutoff_utc": stored["created_at_utc"],
+                "after_the_fact": False,
+                "strategy": None,
+                "versions": {},
+                "warnings": [],
+                "sources": {},
+            }
+        )
+    past = http.post(
+        "/v1/screening/checks/news", json={"symbol": "ABCD", "session_date": "2026-11-06"}
+    ).json()
+    # The share count was found; the fake bars only exist around NOW, so no price.
+    assert past["result"]["context_note"] == "no final 1m bar before the cutoff"
+    assert past["result"]["shares_note"] is None
     screening.close()
 
 

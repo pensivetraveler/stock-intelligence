@@ -3311,3 +3311,10 @@
 - **변경:** 자료 목록은 `item get`에 `item_refs`(한 번에 50개까지)로 한 번에 묻는다. 0.5.1 전 도서관(`INVALID_REQUEST`)이면 예전처럼 6개씩 한 건씩 묻는다. 일괄 조회는 members를 주지 않아 목록의 `eligibility`는 비어 있다(화면은 쓰지 않음, 미리보기·추출은 단건 조회로 그대로 받는다). 원문 받기는 단건 `item get`의 `members[].layers`에 `pdf_text`가 있으면 그 층만 assemble·hydrate한다. 층 이름이 없는 자료(영상·옛 수용분)는 전처럼 모든 층을 받는다.
 - **실측(실제 도서관, CLI):** 목록 20건 7.5초 → 2.6초. 원펀치 1·2권 받기 약 19초 → 6.6·5.1초(145,904·129,440바이트, PDF 원본 안 받음). 영상(xaQbzSl7Z1U)은 9.4초로 그대로.
 - **시험:** 일괄 조회 한 번(null 항목 건너뜀), 0.5.1 전 도서관에서 한 건씩, `pdf_text` 층만 assemble. `tests/technique_cards` 통과.
+
+## 뉴스 검사 자동 실행·시가총액 주식 수(ADR 0057 184·251) — 2026-11-23
+
+- **추가:** `services/api/screening_news_auto.py`(`NewsAutoRunner`). 미국 세션 동안 30초마다 그날 후보 중 뉴스 검사가 없는 종목에 한 번씩(틱마다 한 개, 처음 보인 순서) check B를 요청한다. 패널 검사가 있으면 건너뛰고, 오류는 다시 돌리지 않으며, 기다리는 검사가 남으면 새로 요청하지 않는다. `result.news_auto.requested_by: "news_auto"`로 구별. NIR 월 상한 도달(`nir.state: stopped`)의 첫 시각을 로그·보고에 남긴다. `SIW_SCREENING_NEWS_AUTO=0`이면 끔.
+- **변경:** 뉴스 검사 코드를 `NewsChecks`(`services/api/screening_news_routes.py`)로 빼서 라우트와 실행기가 같이 쓴다. 시가총액 주식 수는 cutoff 뉴욕 날짜보다 앞선 세션에 저장된 희석 검사의 분석기 `shares_outstanding.as_of`를 먼저 쓴다(`shares_from_dilution`; 근거 공시 날짜도 그날보다 앞서야 함). 없으면 진행 중인 세션은 Toss 값과 경고(`result.shares_note`), 끝난 세션은 보내지 않는다. 출처 `siw:dilution-shares_x_1m-close:…`.
+- **시험:** `tests/screening/test_news_auto.py` 6개, `tests/screening/test_material.py`에 2개 추가·1개 수정. `./scripts/verify.sh` 결과는 PR에 적는다.
+- **미확인:** 실제 장중 자동 실행, NIR 비용과 상한 도달 시점, 분석기 주식 수가 실제로 쓰인 비율(그날 처음 후보가 된 종목은 Toss로 내려갈 수 있음).
