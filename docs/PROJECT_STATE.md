@@ -3259,3 +3259,14 @@
 - **변경:** 카드에 사용자 철회 칸(`user_withdrawn_at`·`user_withdrawn_note`, 근거 철회와 별개)과 `POST /v1/technique-cards/{id}/withdraw`. `POST /v1/technique-cards`는 철회되지 않은 카드가 있는 자료에 `mode`(`new_version`+`card_id` / `new_card`)를 요구하고 없으면 409 `technique_card_exists`. 새 판은 이전 추출과 확인을 `technique_card_extractions`에 남기고 확인을 비운 채 판을 올린다. 화면: 미리보기에서 새 판/새 카드 고르기(고르기 전 추출 버튼 꺼짐), 카드 화면 "카드 철회"(확인 대화상자), 목록 "사용자 철회".
 - **결함 수정:** 저장된 '수정' 조건(basis `user`)을 그대로 다시 보내면 스키마 검사가 422로 거절했다(화면도 이전 수정을 다시 보냄 — 수정이 있는 카드를 다시 저장하면 실패). 검사 때만 basis를 `source`로 보고, 저장은 전처럼 `user`.
 - **확인:** `pytest tests/technique_cards tests/api`, `mypy`, `ruff check`, 데스크톱 `tsc --noEmit`·`vitest run` 통과. 실제 앱 화면에서 누르는 것은 미실행(배포 뒤 Argon 카드 철회 때 확인).
+
+## 종목 선정 흐름 남은 결정 6건 — 2026-11-23
+
+- **사용자 결정(ADR 0057 "2026-11-23 사용자 결정", ADR 0052 §3, ADR 0046):**
+  - 3단계 "장 마감" = 세션 끝 20:00 ET 유지(조기 폐장일 17:00). 주문은 6단계 16:00 취소 규칙이 따로 막는다. (mondash 143)
+  - 3단계 판정 시점 20초 유지. (286)
+  - 2단계 뉴스 검사를 후보마다 자동 실행한다. (184, 구현 필요)
+  - 시가총액 추정의 발행주식수는 주식 희석 분석기 값을 쓰고, 없으면 Toss 값 + 경고. (251, 구현 필요)
+  - 분석기 `splits.sqlite`의 `listing_changes`는 SIW에 표시하지 않는다. 병합 리더는 영향 없음(`user_version` 1, 별도 표). (211)
+  - 뉴스 검사 호출은 HTTP 유지, news-analysis CLI로 바꾸지 않는다. (247)
+- **코드 변경:** 없음(문서만). 184·251 구현은 종목 선정 세션 몫이다.
