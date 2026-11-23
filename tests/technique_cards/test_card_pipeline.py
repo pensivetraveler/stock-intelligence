@@ -1097,10 +1097,10 @@ def test_draft_routes_need_a_ready_card_and_the_users_tick(
     models: list[str] = []
     real_draft = strategy_draft.draft
 
-    def fake_draft(card: dict[str, Any], model: str, keys: Keys) -> dict[str, Any]:
+    def fake_draft(card: dict[str, Any], model: str, keys: Keys, **choice: Any) -> dict[str, Any]:
         models.append(model)
         return real_draft(
-            card, model, keys,
+            card, model, keys, **choice,
             call=lambda s, m: _reply(
                 DONCHIAN,
                 [

@@ -3066,7 +3066,13 @@ export interface BacktestResults {
     instrument_id: Identifier;
     side: Side;
     signal_utc: UtcTimestamp;
-    status: "queued" | "filled" | "rejected" | "unfilled_at_end" | "expired";
+    status:
+      | "queued"
+      | "filled"
+      | "rejected"
+      | "unfilled_at_end"
+      | "expired"
+      | "cancelled";
     reason: Identifier | null;
     filled_at_utc: UtcTimestamp | null;
     /**
@@ -3092,7 +3098,12 @@ export interface BacktestResults {
     exit_utc: UtcTimestamp | null;
     exit_price: NonNegativeDecimalString | null;
     exit_reason:
-      "signal" | "stop_loss" | "trailing_stop" | "take_profit" | "open_at_end";
+      | "signal"
+      | "stop_loss"
+      | "trailing_stop"
+      | "take_profit"
+      | "breakeven_stop"
+      | "open_at_end";
     open_quantity: NonNegativeDecimalString;
     net_pnl: DecimalString;
     return: DecimalString | null;

@@ -646,6 +646,12 @@ def _volma(bars: Sequence[Bar], p: dict[str, float], _z: str) -> dict[str, Serie
     return {"volume": volume, "average": sma(volume, _int(p, "length"))}
 
 
+def _tv(bars: Sequence[Bar], _p: dict[str, float], _z: str) -> dict[str, Series]:
+    """Trading value, approximated as close x volume (ADR 0061): the true value is the sum
+    of price x size over the bar's trades, which bars do not carry."""
+    return {"value": [bar.close * bar.volume for bar in bars]}
+
+
 INDICATORS.update(
     {
         "vwma": IndicatorSpec({"length": 20}, ("value",), _vwma),
@@ -682,6 +688,7 @@ INDICATORS.update(
         "mfi": IndicatorSpec({"length": 14}, ("value",), _mfi),
         "cmf": IndicatorSpec({"length": 20}, ("value",), _cmf),
         "volma": IndicatorSpec({"length": 20}, ("volume", "average"), _volma),
+        "tv": IndicatorSpec({}, ("value",), _tv),
     }
 )
 

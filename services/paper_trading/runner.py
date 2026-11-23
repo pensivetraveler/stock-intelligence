@@ -99,6 +99,11 @@ class RunPlan:
     # Live plans only: seconds the user has to confirm each order (ADR 0047).
     confirm_seconds: int | None = None
 
+    def __post_init__(self) -> None:
+        if "setup" in self.definition:
+            # Resting limit ladders and their stops are not in the runner (ADR 0061 §4).
+            raise ValueError("a setup strategy is for backtests only, not the paper runner")
+
     def approval_content(self) -> dict[str, Any]:
         content = {
             "strategy": {

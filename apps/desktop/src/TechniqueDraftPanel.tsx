@@ -54,6 +54,20 @@ export function TechniqueDraftPanel({
   const [confirm, setConfirm] = useState(false);
   const [pine, setPine] = useState<StrategyPine | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The items this draft uses (ADR 0061): all unless the user unticks some.
+  const [items, setItems] = useState<string[]>([]);
+  const [left, setLeft] = useState<Set<number>>(new Set());
+  const [label, setLabel] = useState("");
+
+  useEffect(() => {
+    api
+      .draftItems(card.card_id)
+      .then((found) => {
+        setItems(found);
+        setLeft(new Set());
+      })
+      .catch((reason: unknown) => setError(message(reason)));
+  }, [api, card.card_id, card.version]);
 
   const load = useCallback(() => {
     api
@@ -96,8 +110,15 @@ export function TechniqueDraftPanel({
 
   const start = () => {
     setError(null);
-    api
-      .startDraft(card.card_id, model)
+    const chosen = items.map((_, i) => i).filter((i) => !left.has(i));
+    const choice = {
+      ...(left.size ? { items: chosen } : {}),
+      ...(label.trim() ? { label: label.trim() } : {}),
+    };
+    (Object.keys(choice).length
+      ? api.startDraft(card.card_id, model, choice)
+      : api.startDraft(card.card_id, model)
+    )
       .then((job) => setRunning(job.draft_id))
       .catch((reason: unknown) => setError(message(reason)));
   };
@@ -160,10 +181,21 @@ export function TechniqueDraftPanel({
             ))}
           </select>
         </label>
+        <label>
+          {t("td.label")}
+          <input
+            value={label}
+            maxLength={80}
+            placeholder={t("td.labelHint")}
+            onChange={(event) => setLabel(event.target.value)}
+          />
+        </label>
         <button
           type="button"
           className="primary-button"
-          disabled={running !== null}
+          disabled={
+            running !== null || (items.length > 0 && left.size === items.length)
+          }
           onClick={start}
         >
           {running
@@ -183,6 +215,7 @@ export function TechniqueDraftPanel({
             >
               {drafts.map((d) => (
                 <option key={d.draft_id} value={d.draft_id}>
+                  {d.result?.label ? `${d.result.label} · ` : ""}
                   {modelName(d.model, t("td.scriptOnly"))} · {d.state}
                   {d.strategy_id
                     ? ` · ${d.strategy_id} v${d.strategy_version}`
@@ -193,6 +226,32 @@ export function TechniqueDraftPanel({
           </label>
         ) : null}
       </div>
+      {items.length ? (
+        <details className="td-items">
+          <summary>
+            {t("td.items", {
+              n: items.length - left.size,
+              total: items.length,
+            })}
+          </summary>
+          <p className="workspace-note">{t("td.itemsNote")}</p>
+          {items.map((item, i) => (
+            <label key={i} className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={!left.has(i)}
+                onChange={(event) => {
+                  const next = new Set(left);
+                  if (event.target.checked) next.delete(i);
+                  else next.add(i);
+                  setLeft(next);
+                }}
+              />
+              {i + 1}. {item}
+            </label>
+          ))}
+        </details>
+      ) : null}
 
       {shown && result ? (
         <div className="td-result">
@@ -227,7 +286,9 @@ export function TechniqueDraftPanel({
                   <tr
                     key={index}
                     className={
-                      entry?.status === "mapped" || entry?.status === "absent"
+                      entry?.status === "mapped" ||
+                      entry?.status === "absent" ||
+                      entry?.status === "excluded"
                         ? undefined
                         : "tc-flagged"
                     }

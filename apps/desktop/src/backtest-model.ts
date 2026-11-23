@@ -360,6 +360,8 @@ function conditionsOf(
 export function rulesDraftOf(
   definition: Record<string, unknown>,
 ): RulesDraft | null {
+  // A base-bar setup (ADR 0061) has no form yet: keep it as saved, never re-save it.
+  if ("setup" in definition) return null;
   const stopAtr = definition.stop_loss_atr as
     { length: number; mult: string } | undefined;
   const trailing = definition.trailing_stop as

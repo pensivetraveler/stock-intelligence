@@ -8,6 +8,9 @@ At each bar time, across instruments in ID order:
   3. positions are marked to the close;
   4. a final bar is shown to the strategy, whose orders wait for the instrument's next bar.
 
+A setup strategy (ADR 0061) places its own orders instead: in step 1-2 its resting legs,
+stop and targets are checked, and in step 4 the final bar moves its state.
+
 Money is Decimal throughout. Nothing here is random; identical inputs give identical
 results. Fills stay in the result document; nothing is written to any ledger.
 """
@@ -33,6 +36,7 @@ from services.backtest.protection import (
     follow,
 )
 from services.backtest.sandbox import StrategyProcess
+from services.backtest.setup import SetupState, line, new_legs
 from services.backtest.strategy import (
     CustomLookup,
     RuleEvaluator,
@@ -174,9 +178,15 @@ class RuleSignals:
         process: Callable[..., StrategyProcess] = StrategyProcess,
     ) -> None:
         self.definition = definition
+        setup = definition.get("setup")
+        rules = (
+            (definition["entry"], definition["exit"])
+            if setup is None
+            else (setup["base"], setup["breakout"])
+        )
         operands = [
             operand
-            for rule in (definition["entry"], definition["exit"])
+            for rule in rules
             for operand in _operands(rule)
             if "indicator" in operand and parse_custom(operand["indicator"]) is not None
         ]
@@ -250,6 +260,8 @@ class RuleSignals:
         return series
 
     def signals(self, instrument_id: str, index: int, book: dict[str, Any]) -> list[dict[str, Any]]:
+        if "setup" in self.definition:
+            return []  # the engine runs a setup's orders itself (ADR 0061)
         evaluator = self.evaluators[instrument_id]
         exit_rule = self.definition["exit"]
         if book["position"] is not None:
@@ -408,6 +420,11 @@ class Backtest:
         self.protection = ProtectionRules.of(definition)
         self._atr: dict[str, AtrHistory] = {}
         self.max_positions = int(definition.get("max_positions", 10))
+        self.setup: dict[str, Any] | None = definition.get("setup")
+        self.setups: dict[str, SetupState] = {}
+        self.final_bars: dict[str, list[EngineBar]] = {
+            item.instrument_id: [b for b in item.bars if b.final] for item in self.inputs
+        }
 
     # --- protective stops ---------------------------------------------------------
 
@@ -616,6 +633,248 @@ class Backtest:
             notes.append("ambiguous_stop_target")
         self._sell(order, position.quantity, hit.reference, bar.time, hit.reason, notes)
 
+    # --- setup strategies (ADR 0061) ----------------------------------------------
+
+    def _setup_state(self, instrument_id: str) -> SetupState:
+        return self.setups.setdefault(instrument_id, SetupState())
+
+    def _end_setup(self, state: SetupState, status: str) -> None:
+        """Back to idle; legs still resting are cancelled or expired."""
+        for leg in state.legs:
+            if leg.order is not None and not leg.filled:
+                leg.order.status = status
+        self.setups_reset(state)
+
+    @staticmethod
+    def setups_reset(state: SetupState) -> None:
+        state.__init__()  # type: ignore[misc]
+
+    def _price_legs(self, instrument_id: str, state: SetupState) -> None:
+        """Move every resting leg to its line and size for the next bar."""
+        assert self.setup is not None
+        sizing = self.definition["sizing"]
+        mode, value = sizing["mode"], Decimal(sizing["value"])
+        stop = line(state, Decimal(self.setup["stop_level"]))
+        equity = self.equity()
+        for leg in state.legs:
+            if leg.filled or leg.order is None:
+                continue
+            price = line(state, leg.level)
+            share = leg.size_pct / HUNDRED
+            order = leg.order
+            order.price = price
+            order.quantity = None
+            order.cash_target = None
+            if mode == "percent_equity":
+                order.cash_target = equity * value / HUNDRED * share
+            elif mode == "fixed_cash":
+                order.cash_target = value * share
+            elif mode == "fixed_shares":
+                order.quantity = int((value * share).to_integral_value(rounding=ROUND_DOWN))
+            else:  # risk_pct: losing value % of equity if the stop line is hit
+                risk = price - stop
+                order.quantity = (
+                    0
+                    if risk <= 0
+                    else int(
+                        (equity * value / HUNDRED * share / risk).to_integral_value(
+                            rounding=ROUND_DOWN
+                        )
+                    )
+                )
+
+    def _setup_close(self, instrument_id: str, index: int, bar: EngineBar) -> None:
+        """Move the setup's state at a final bar's close (it reads bars up to `index`)."""
+        assert self.setup is not None
+        setup = self.setup
+        source = self.source
+        if not isinstance(source, RuleSignals):
+            raise StrategyError("a setup strategy needs the rules evaluator")
+        evaluator = source.evaluators[instrument_id]
+        state = self._setup_state(instrument_id)
+        if state.phase == "holding" and instrument_id not in self.positions:
+            self.setups_reset(state)
+        if state.phase == "armed":
+            stop = line(state, Decimal(setup["stop_level"]))
+            state.waited += 1
+            if bar.low <= stop:
+                self._end_setup(state, "cancelled")  # the structure broke before a fill
+            elif state.waited > setup["entry_within"]:
+                self._end_setup(state, "expired")
+            else:
+                assert state.high is not None
+                state.high = max(state.high, bar.high)
+                self._price_legs(instrument_id, state)
+                return
+        if state.phase == "base":
+            evaluator.base_index = state.base
+            breakout_holds = setup["breakout"] is None or evaluator.holds(setup["breakout"], index)
+            evaluator.base_index = None
+            if bar.close > state.base_high and breakout_holds:
+                busy = len(self.positions) + sum(
+                    1 for s in self.setups.values() if s.phase == "armed"
+                )
+                if busy >= self.max_positions:
+                    self.setups_reset(state)
+                    return
+                state.phase = "armed"
+                state.breakout = index
+                state.waited = 0
+                state.high = bar.high
+                state.legs = new_legs(setup)
+                for leg in state.legs:
+                    order = self._new_order(instrument_id, "buy", bar.time)
+                    order.order_type = "limit"
+                    order.status = "resting"
+                    leg.order = order
+                self._price_legs(instrument_id, state)
+                return
+            state.waited += 1
+            if bar.low < state.base_low or state.waited >= setup["breakout_within"]:
+                self.setups_reset(state)
+            elif evaluator.holds(setup["base"], index):
+                self.setups_reset(state)  # a newer base bar replaces the waiting one
+        if state.phase == "idle" and evaluator.holds(setup["base"], index):
+            final = self.final_bars[instrument_id][index]
+            state.phase = "base"
+            state.base = index
+            state.base_low = final.low
+            state.base_high = final.high
+            state.waited = 0
+
+    def _buy_leg(self, instrument_id: str, state: SetupState, n: int, bar: EngineBar) -> bool:
+        """Fill leg n if this bar trades through its line; True when it was bought inside
+        the bar (not at the open)."""
+        leg = state.legs[n]
+        order = leg.order
+        triggered = self._trigger(order, bar)
+        if triggered is None:
+            return False
+        reference, price, reason = triggered
+        notes: list[str] = []
+        if order.quantity is not None:
+            quantity = order.quantity
+            per_share = price * (1 + self.config.fee_rate)
+            affordable = int(
+                ((self.cash - self.config.fee_per_order) / per_share).to_integral_value(
+                    rounding=ROUND_DOWN
+                )
+            )
+            if quantity > affordable:
+                quantity = max(affordable, 0)
+                notes.append("reduced_to_available_cash")
+        else:
+            budget = order.cash_target
+            if budget > self.cash:
+                budget = self.cash
+                notes.append("reduced_to_available_cash")
+            per_share = price * (1 + self.config.fee_rate)
+            spendable = budget - self.config.fee_per_order
+            quantity = (
+                int((spendable / per_share).to_integral_value(rounding=ROUND_DOWN))
+                if spendable > 0
+                else 0
+            )
+        if quantity <= 0:
+            self._reject(order, "insufficient_cash" if notes else "quantity_rounds_to_zero")
+            leg.order = None
+            return False
+        notional = Decimal(quantity) * price
+        fee = self._fee(notional)
+        self.cash -= notional + fee
+        position = self.positions.get(instrument_id)
+        if position is None:
+            trade = Trade(instrument_id, order.order_id, bar.time, price, quantity, notional + fee)
+            self.positions[instrument_id] = Position(
+                quantity, notional + fee, trade, Levels(), intrabar_entry=reference != bar.open
+            )
+        else:
+            trade = position.trade
+            trade.entry_price = (
+                trade.entry_price * Decimal(position.quantity) + notional
+            ) / Decimal(position.quantity + quantity)
+            trade.quantity += quantity
+            trade.cost += notional + fee
+            position.quantity += quantity
+            position.cost += notional + fee
+        self._record_fill(order, quantity, price, fee, bar.time, reason, reference, notes)
+        leg.filled = True
+        state.deepest = n
+        state.step = 0
+        if state.phase == "armed":
+            assert self.setup is not None
+            state.phase = "holding"  # the high is frozen from here on
+            state.stop = line(state, Decimal(self.setup["stop_level"]))
+        return reference != bar.open
+
+    def _setup_bar(self, instrument_id: str, bar: EngineBar) -> None:
+        """Resting legs, then the stop, then the targets, on this bar."""
+        state = self.setups.get(instrument_id)
+        if state is None or state.phase not in ("armed", "holding"):
+            return
+        if state.raise_stop_next:
+            position = self.positions.get(instrument_id)
+            if position is not None and state.stop is not None:
+                state.stop = max(state.stop, position.trade.entry_price.quantize(PRICE))
+                state.at_breakeven = True
+            state.raise_stop_next = False
+        inside = False
+        if not state.took_target:
+            for n, leg in enumerate(state.legs):
+                if not leg.filled and leg.order is not None:
+                    inside = self._buy_leg(instrument_id, state, n, bar) or inside
+        position = self.positions.get(instrument_id)
+        if position is None or state.stop is None:
+            return
+        ladder = state.legs[state.deepest].targets
+        stop_order = Order("", instrument_id, "sell", bar.time, order_type="stop", price=state.stop)
+        hit = self._trigger(stop_order, bar)
+        if hit is not None:
+            target_hit = state.step < len(ladder) and bar.high > line(state, ladder[state.step][0])
+            notes = ["same_bar_as_entry"] if inside else []
+            if target_hit and not inside:
+                notes.append("ambiguous_stop_target")
+            order = self._new_order(instrument_id, "sell", bar.time)
+            order.order_type = "stop"
+            order.price = state.stop
+            reason = "breakeven_stop" if state.at_breakeven else "stop_loss"
+            self._sell(order, position.quantity, hit[0], bar.time, reason, notes, hit[1])
+            self._end_setup(state, "cancelled")
+            return
+        if inside:
+            return  # this bar's high may have come before the fill: targets wait a bar
+        while state.step < len(ladder):
+            level, share = ladder[state.step]
+            order = Order("", instrument_id, "sell", bar.time, order_type="limit")
+            order.price = line(state, level)
+            triggered = self._trigger(order, bar)
+            if triggered is None:
+                return
+            held = self.positions[instrument_id].quantity
+            quantity = (
+                held
+                if share == HUNDRED
+                else int((Decimal(held) * share / HUNDRED).to_integral_value(rounding=ROUND_DOWN))
+            )
+            state.step += 1
+            if quantity <= 0:
+                continue
+            sell = self._new_order(instrument_id, "sell", bar.time)
+            sell.order_type = "limit"
+            sell.price = order.price
+            self._sell(sell, quantity, triggered[0], bar.time, "take_profit", [], triggered[1])
+            if not state.took_target:
+                state.took_target = True
+                for leg in state.legs:
+                    if leg.order is not None and not leg.filled:
+                        leg.order.status = "cancelled"
+                        leg.order = None
+                if self.setup is not None and self.setup["breakeven_after_target"]:
+                    state.raise_stop_next = True
+            if instrument_id not in self.positions:
+                self.setups_reset(state)
+                return
+
     # --- signals --------------------------------------------------------------------
 
     def _queue(self, instrument_id: str, intents: list[dict[str, Any]], time: int) -> None:
@@ -770,7 +1029,10 @@ class Backtest:
                                 order.status = "expired"
                             self.pending[instrument_id].remove(order)
                 for instrument_id in active:
-                    self._protect(instrument_id, bars_at[instrument_id][time])
+                    if self.setup is not None:
+                        self._setup_bar(instrument_id, bars_at[instrument_id][time])
+                    else:
+                        self._protect(instrument_id, bars_at[instrument_id][time])
                 for instrument_id in active:
                     bar = bars_at[instrument_id][time]
                     self.last_close[instrument_id] = bar.close
@@ -810,6 +1072,9 @@ class Backtest:
                         "equity": _money(equity),
                         "open_positions": len(self.positions),
                     }
+                    if self.setup is not None:
+                        self._setup_close(instrument_id, signal_index[instrument_id][time], bar)
+                        continue
                     pending = self.pending.get(instrument_id, [])
                     if self.definition["type"] == "rules" and pending:
                         continue  # one order at a time per instrument
@@ -824,6 +1089,10 @@ class Backtest:
         for orders in self.pending.values():
             for order in orders:
                 order.status = "unfilled_at_end"
+        for state in self.setups.values():
+            for leg in state.legs:
+                if leg.order is not None and not leg.filled:
+                    leg.order.status = "unfilled_at_end"
         self.progress(1.0)
         return self._results(exposed, len(times))
 

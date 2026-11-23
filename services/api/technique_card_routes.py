@@ -10,7 +10,9 @@
 - `POST /v1/technique-cards/{card_id}/resolutions`  the user's confirm / edit / drop + answers
 - `POST /v1/technique-cards/{card_id}/withdraw`     the user withdraws a card (kept, not used)
 - `POST /v1/technique-cards/{card_id}/recheck`      library recheck before reuse
-- `POST /v1/technique-cards/{card_id}/drafts`       rules strategy draft from a ready card (L3)
+- `GET  /v1/technique-cards/{card_id}/draft-items`  the numbered items a draft is made from
+- `POST /v1/technique-cards/{card_id}/drafts`       rules strategy draft from a ready card (L3);
+                                                    `items` and `label` pick one way (ADR 0061)
 - `GET  /v1/technique-cards/{card_id}/drafts`       that card's drafts
 - `GET  /v1/technique-drafts/{draft_id}`            one draft with what blocks saving it
 - `POST /v1/technique-drafts/{draft_id}/save`       save as a rules strategy (the user's button)
@@ -95,6 +97,10 @@ class DraftRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
     # "script" converts by code alone (no model, no cost); a model gets what the script left.
     model: ModelChoice | Literal["script"] | None = None
+    # The card items this draft uses (numbers from draft-items); None: all (ADR 0061 §5).
+    items: list[int] | None = Field(default=None, min_length=1, max_length=200)
+    # The way of trading the card this draft is, as the user names it ("원펀치 0.75").
+    label: str = Field(default="", max_length=80)
 
 
 class SaveDraftRequest(BaseModel):
@@ -411,6 +417,10 @@ def register_technique_card_routes(
             return error_response(
                 request, 409, "technique_card_not_ready", "; ".join(card["blocks"])
             )
+        try:
+            strategy_draft.selection(strategy_draft.card_items(card), body.items)
+        except ConversationError as exc:
+            return error_response(request, 422, "invalid_draft_items", str(exc))
         with running:
             existing = service.store.running_draft(card_id)
             if existing is not None:
@@ -425,7 +435,9 @@ def register_technique_card_routes(
         def work() -> None:
             result, error = None, ""
             try:
-                result = strategy_draft.draft(card, model, current_keys)
+                result = strategy_draft.draft(
+                    card, model, current_keys, chosen=body.items, label=body.label.strip()
+                )
             except ConversationError as exc:
                 error = str(exc)
             except Exception as exc:  # noqa: BLE001 - the draft must end, and say why
@@ -435,6 +447,24 @@ def register_technique_card_routes(
         launch(work)
         return JSONResponse(
             status_code=202, content={"kind": "technique_card_draft_job", "draft_id": draft_id}
+        )
+
+    @application.get("/v1/technique-cards/{card_id}/draft-items", response_model=None)
+    def draft_items(request: Request, card_id: str) -> Response:
+        service = cards()
+        if service is None:
+            return unavailable(request)
+        try:
+            card = service.store.get(card_id)
+        except CardNotFoundError:
+            return error_response(request, 404, "technique_card_not_found", "No such card")
+        return JSONResponse(
+            {
+                "kind": "technique_card_draft_items",
+                "card_id": card_id,
+                "card_version": card["version"],
+                "items": strategy_draft.card_items(card),
+            }
         )
 
     @application.get("/v1/technique-cards/{card_id}/drafts", response_model=None)
