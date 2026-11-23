@@ -64,6 +64,7 @@
   - `versions`에는 검사 판과 계약, 서비스 판, 규칙 판·해시, 출처별 파서, (있으면) NIR 프롬프트 판·모델을 담는다. `sources`에는 `{service, contract, result_id}`를 담는다.
   - 기다리던 검사는 `POST /v1/screening/checks/news/{check_id}/refresh`로 같은 cutoff에서 다시 확인한다.
   - 다른 계약 판(`news-contract-v1`이 아닌 것)은 받지 않는다. SIW는 서비스를 띄우지 않는다. 서비스 주소는 `SIW_NEWS_URL`이고 이 컴퓨터 주소만 허용한다.
+  - **호출 방식(2026-11-23 사용자 결정):** HTTP를 유지한다. news-analysis CLI(그 저장소 PR #14, 53b3f17, ADR 0005)로 바꾸지 않는다. CLI도 같은 8776 서비스에 묻고, SIW API는 상주 서버라 호출마다 프로세스를 띄울 이득이 없다.
 - **범주:** 서비스 규칙(`news-rules-2`, 2026-11-10부터 `news-rules-3`)을 따른다. 카드는 서비스 범주 여덟 개 모두에 이름을 붙인다. 구속력 있는 계약(`binding_contract`)과 MOU·LOI(`non_binding_intent`)를 나누고, 유상증자·공모 같은 희석 기사는 범주로 두지 않고 `out_of_scope.dilution`으로 표시만 한다. 희석은 C가 판단한다.
 - **개별 분석(NIR)·사이클 분석(CIR):** 서비스의 모듈이다. 모델 배정과 사용자 확정은 서비스 쪽에서 다룬다(news-analysis ADR 0002: openai/gpt-6-luna, 대체 claude-haiku-5.5, 건당 $0.01·월 $15 상한). CIR 분석은 보류(사용자 결정 2026-11-10).
 - **카드의 NIR 요약(검사 판 `screening-news-3`, 사용자 결정 2026-11-10):** 서비스 결과의 `nir` 블록에서 만든 기사(`created`·`reused`)를 최대 5건, 사건 종류·구속력·확정/잠재 금액·경제적 실체·홍보성 위험·확신·한국어 요약으로 보인다. 늘 "LLM 추론, 확인된 사실 아님"을 함께 적고, 기사에서 못 찾은 값이나 규칙과 어긋난 점이 있으면 표시한다. LLM 판단이 없으면(키 없음·상한 도달·서비스가 LLM 단계 전 판·옛 결과) 범주가 있을 때 "규칙 결과만"과 이유를 보인다. LLM은 `status`를 바꾸지 않고, 뉴스가 없거나 LLM이 없어도 후보는 빠지지 않는다.
