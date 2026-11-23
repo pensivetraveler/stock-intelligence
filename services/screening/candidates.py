@@ -95,11 +95,21 @@ def _gap(start: datetime, end: datetime) -> bool:
 
 
 def read_watched(
-    path: Path, window: SessionWindow, cutoff: datetime, condition_name: str
+    path: Path,
+    window: SessionWindow,
+    cutoff: datetime,
+    condition_name: str,
+    now: datetime | None = None,
 ) -> WatchRead:
-    """The symbols the condition listed or added in the session window before `cutoff`."""
+    """The symbols the condition listed or added in the session window before `cutoff`.
+
+    `open_now` says a watch is running at `now`. A read cut before `now` (a past session, or
+    an `as_of` cut) is never recording now, even when its watch outlived the cut. Without
+    `now` the cutoff is taken as the present moment.
+    """
     low_time = window.pre_open_utc
     high_time = min(cutoff, window.post_close_utc)
+    cut_before_now = now is not None and high_time < now
     if not path.exists():
         coverage = WatchCoverage()
         if _gap(low_time, high_time):
@@ -164,7 +174,7 @@ def read_watched(
             ended = max([watch["started_at_utc"], *(str(r["received_at_utc"]) for r in rows)])
             end_reason = "unclosed"
             coverage.interrupted += 1
-        coverage.open_now = ended is None or ended >= high
+        coverage.open_now = not cut_before_now and (ended is None or ended >= high)
         heard = min(ended, high) if ended is not None else high
         heard_time = _parse(heard)
         coverage.last_heard_utc = max(coverage.last_heard_utc or heard, heard)

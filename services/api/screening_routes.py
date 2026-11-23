@@ -211,7 +211,7 @@ def register_screening_routes(
         cutoff = min(now, window.post_close_utc)
         if as_of is not None:
             cutoff = min(cutoff, as_of)
-        watched = read_watched(watch_path(root), window, cutoff, CONDITION_NAME)
+        watched = read_watched(watch_path(root), window, cutoff, CONDITION_NAME, now=now)
         latest = screening.latest(window.session_date)
         # Stage 2 (ADR 0057 §2): each candidate's verdict from its news checks. A news
         # check made after an `as_of` cut is not hidden here: the verdict says its cutoff.

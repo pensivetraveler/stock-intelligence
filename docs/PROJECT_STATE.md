@@ -3342,3 +3342,9 @@
 - **변경:** `checks.not_computable` 추가(검사 판 2). 비교 기준은 있으나 SIW가 모르는 값을 비교하면 `not_computable`("계산 못 하는 값"), 이름이 알려진 값은 종류가 `other`여도 표시하지 않는다. 화면에 새 표시와 사용 요약의 개수를 더했다. 준비됨 조건은 그대로(어떤 표시든 사용자가 처리해야 함).
 - **실제 카드 재검사:** #6 표시 없음, #7·#9·#11 계산 못 하는 값, #10·#12·#13 기준 없음(그대로). 저장된 카드는 다음 재확인 때 새 검사로 바뀐다(같은 원문일 때).
 - **시험:** `tests/technique_cards` 통과(새 시험: 알려진 이름·모르는 값·비교 없음 구분), 화면 `TechniqueCardsScreen.test.tsx` 13개·`i18n.test.ts` 통과, 타입 검사 통과.
+
+## 2026-11-23 후보 패널: 지난 세션을 '지금 기록 중'으로 표시하던 문제
+
+- 원인: `read_watched`는 기준 시각(장 마감 또는 `as_of`)까지만 본다. 감시가 그 시각 뒤에 끝났으면(11-13은 다음 날까지 이어짐) `open_now`가 참이 되어, 지난 세션도 "기록 중"으로 보였다.
+- 고침: `read_watched(..., now=)`를 받는다. 기준 시각이 `now`보다 앞이면 `open_now`는 항상 거짓이다. 후보 문서와 흐름 API가 `now`를 넘긴다.
+- 검사: `tests/screening/test_screening.py::test_a_read_cut_before_now_is_not_recording_now`, `pytest tests/screening` 통과, ruff·mypy 통과.

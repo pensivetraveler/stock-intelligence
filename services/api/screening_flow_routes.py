@@ -101,7 +101,7 @@ def register_screening_flow_routes(
             return error_response(request, 422, "not_a_session", "that date has no US session")
         now = clock()
         cutoff = min(now, window.post_close_utc)
-        watched = read_watched(watch_path(root), window, cutoff, CONDITION_NAME)
+        watched = read_watched(watch_path(root), window, cutoff, CONDITION_NAME, now=now)
         symbols = [item.symbol for item in watched.symbols]
         symbols += [s for s, _ in screening.manual(window.session_date) if s not in symbols]
         bars = get_bars()
