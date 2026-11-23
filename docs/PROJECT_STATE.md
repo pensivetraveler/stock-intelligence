@@ -3342,3 +3342,11 @@
 - **변경:** `checks.not_computable` 추가(검사 판 2). 비교 기준은 있으나 SIW가 모르는 값을 비교하면 `not_computable`("계산 못 하는 값"), 이름이 알려진 값은 종류가 `other`여도 표시하지 않는다. 화면에 새 표시와 사용 요약의 개수를 더했다. 준비됨 조건은 그대로(어떤 표시든 사용자가 처리해야 함).
 - **실제 카드 재검사:** #6 표시 없음, #7·#9·#11 계산 못 하는 값, #10·#12·#13 기준 없음(그대로). 저장된 카드는 다음 재확인 때 새 검사로 바뀐다(같은 원문일 때).
 - **시험:** `tests/technique_cards` 통과(새 시험: 알려진 이름·모르는 값·비교 없음 구분), 화면 `TechniqueCardsScreen.test.tsx` 13개·`i18n.test.ts` 통과, 타입 검사 통과.
+
+## 뉴스 검사: 다른 회사 기사 걸러내기(회사명 보내기) — 2026-11-23
+
+- **증상:** MRLN 뉴스 검사 결과에 MERLIN Properties 어닝콜 자료와 Satellogic 기사가 섞였다. 뉴스 공급자(MarketNewsAPI, Finnhub)가 다른 회사 기사에 MRLN 태그를 붙인 것이 원인이다.
+- **뉴스 분석기 쪽 수정(회신 #SIW-news-1):** news-analysis PR #15(`a43921d`), news_check 1.3. 기사마다 `ticker_match`(confirmed·assumed·mismatch)를 매기고, mismatch 기사는 `articles`에 남기되 범주·결론에서 빼 `ticker_mismatch`에 모은다. 요청 `context.company_name`(1~120자)을 받으면 여러 종목 태그 기사도 판정한다.
+- **SIW 변경:** 검사 B 요청 `context`에 종목 디렉터리의 회사명(`company_name`)을 시가총액과 별개로 넣는다(디렉터리가 없거나 이름이 없으면 보내지 않음, 공급자 호출 없음). 카드 요약에 `ticker_mismatch`를 두고, 다른 회사 기사는 "최근 기사"로 보이지 않으며 걸러낸 건수를 표시한다. `versions.ticker_match_version`을 기록한다. 검사 판 `screening-news-5`.
+- **시험:** `tests/screening`·`tests/api` 219개 통과(새 시험: 회사명 전송·공백 정리, 이름 없음·조회 실패 시 context 없음, mismatch 기사 제외 요약), 화면 vitest 535개, 타입 검사·prettier·ruff·mypy 통과.
+- **미확인:** 실제 서비스로 회사명을 넣은 검사(장중 확인 — mondash 182·325와 함께). 디렉터리 이름은 Alpaca 종목 목록의 법인명이라 뉴스 표기와 다를 수 있다(분석기 판정은 문자열 기준).

@@ -1346,6 +1346,8 @@ interface NewsResult {
   article_count?: number;
   categories?: Record<string, number>;
   out_of_scope?: { dilution?: { articles?: number } };
+  /** news_check 1.3: articles about another company, left out of the result. */
+  ticker_mismatch?: { source_id: string; record_id: string; reason: string }[];
   feeds?: {
     source_id: string;
     state: string;
@@ -1476,6 +1478,7 @@ function NewsDetail({
     ([, count]) => count > 0,
   );
   const dilution = result.out_of_scope?.dilution?.articles ?? 0;
+  const mismatch = result.ticker_mismatch?.length ?? 0;
   return (
     <div
       className="research-scroll"
@@ -1517,6 +1520,11 @@ function NewsDetail({
       {dilution > 0 ? (
         <p className="workspace-note" role="status">
           {t("candidates.newsDilution", { count: dilution })}
+        </p>
+      ) : null}
+      {mismatch > 0 ? (
+        <p className="workspace-note" role="status">
+          {t("candidates.newsMismatch", { count: mismatch })}
         </p>
       ) : null}
       {(result.feeds ?? []).length > 0 ? (

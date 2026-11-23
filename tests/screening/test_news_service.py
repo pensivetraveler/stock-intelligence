@@ -313,6 +313,29 @@ def test_summary_without_llm_is_rules_only() -> None:
     assert stopped["rules_only"] is True and stopped["reason"] == "no_llm_key"
 
 
+def test_summary_sets_aside_articles_about_another_company() -> None:
+    check = news_check()
+    other = article("ABCD:art_3", "2026-11-09T14:00:00Z", "What Other Co (OTHR) Said on Its Call")
+    other["ticker_match"] = {"state": "mismatch", "reason": "other_ticker_in_headline"}
+    check["articles"] = [*check["articles"], other]
+    check["classifications"] = [
+        *check["classifications"],
+        classification("ABCD:art_3", "2026-11-09T14:00:00Z", ["binding_contract"], False),
+    ]
+    check["ticker_mismatch"] = [
+        {
+            "source_id": "marketnewsapi-news",
+            "record_id": "ABCD:art_3",
+            "reason": "other_ticker_in_headline",
+        }
+    ]
+    digest = summary(check)
+    assert digest["ticker_mismatch"] == check["ticker_mismatch"]
+    # The newest tagged article is about another company: the card shows the one before.
+    assert digest["latest_categorized"]["record_id"] == "ABCD:art_1"
+    assert summary(news_check())["ticker_mismatch"] == []  # before news_check 1.3
+
+
 def test_llm_versions_are_recorded(tmp_path: Path) -> None:
     check = news_check()
     check["nir"] = nir_block("not_needed")
@@ -333,7 +356,11 @@ def test_llm_versions_are_recorded(tmp_path: Path) -> None:
 # --- routes ---------------------------------------------------------------------------
 
 
-def app_for(tmp_path: Path, fake: FakeService | None) -> tuple[TestClient, ScreeningStore]:
+def app_for(
+    tmp_path: Path,
+    fake: FakeService | None,
+    company_name: Any = None,
+) -> tuple[TestClient, ScreeningStore]:
     screening = ScreeningStore(tmp_path / "screening.sqlite3", lambda: NOW)
 
     def listing_for(symbol: str) -> dict[str, Any] | None:
@@ -350,6 +377,7 @@ def app_for(tmp_path: Path, fake: FakeService | None) -> tuple[TestClient, Scree
         error_response=_error_response,
         clock=lambda: NOW,
         sleep=no_sleep,
+        company_name=company_name,
     )
     return TestClient(app), screening
 
@@ -374,6 +402,39 @@ def test_route_stores_the_check(tmp_path: Path) -> None:
     assert any("15-minute delay" in w for w in stored["warnings"])
     assert screening.latest(date(2026, 11, 9))["ABCD"]["news"]["status"] == "material"
     screening.close()
+
+
+def sent_body(fake: FakeService) -> dict[str, Any]:
+    [posted] = [r for r in fake.requests if r.method == "POST"]
+    return dict(json.loads(posted.content))
+
+
+def test_route_sends_the_company_name(tmp_path: Path) -> None:
+    fake = FakeService()
+    fake.check["versions"]["ticker_match_version"] = "ticker-match-1"
+    names = {"us:abcd:xnas:2026": "  Abcd   Holdings, Inc. "}
+    http, screening = app_for(tmp_path, fake, company_name=names.get)
+    stored = http.post("/v1/screening/checks/news", json={"symbol": "ABCD"}).json()
+    validate_document(stored)
+    # Sent without a market cap (no share count here), whitespace tidied.
+    assert sent_body(fake)["context"] == {"company_name": "Abcd Holdings, Inc."}
+    assert stored["result"]["context_sent"] == {"company_name": "Abcd Holdings, Inc."}
+    assert stored["result"]["context_note"]  # why there is no market cap
+    assert stored["versions"]["ticker_match_version"] == "ticker-match-1"
+    screening.close()
+
+
+def test_no_company_name_sends_no_context(tmp_path: Path) -> None:
+    def broken(_instrument_id: str) -> str | None:
+        raise OSError("directory not readable")
+
+    for lookup in (None, broken, lambda _id: "   "):
+        fake = FakeService()
+        http, screening = app_for(tmp_path / str(id(lookup)), fake, company_name=lookup)
+        stored = http.post("/v1/screening/checks/news", json={"symbol": "ABCD"}).json()
+        assert "context" not in sent_body(fake)
+        assert stored["result"]["context_sent"] == {}
+        screening.close()
 
 
 def test_past_session_asks_at_its_close(tmp_path: Path) -> None:

@@ -11,7 +11,10 @@ The request carries the cutoff market cap as `context` (news_check 1.1;
 earlier session's stored dilution check, or else Toss's (read before the cutoff is taken,
 only for a session not over yet, with a warning). Nothing sent is later than the cutoff.
 What was sent is kept in `result.context_sent` and sent again when a waiting check is
-submitted later. Stage 2 (ADR 0057 U-b) reads the result's `conclusions` in
+submitted later. It also carries the company name from the symbol directory as
+`context.company_name` (news_check 1.3), with or without a market cap, so the service can
+set aside articles a feed tagged with this ticker that are about another company
+(`ticker_mismatch`). Stage 2 (ADR 0057 U-b) reads the result's `conclusions` in
 `services/screening/material.py`. `NewsChecks` is shared by the routes and the runner that
 checks every candidate by itself (`services/api/screening_news_auto.py`, ADR 0057 184).
 """
@@ -55,6 +58,8 @@ SYMBOL = re.compile(r"^[A-Z][A-Z0-9.]{0,9}$")
 MAX_DAYS_BACK = 10
 DEFAULT_LOOKBACK_HOURS = 72
 MAX_LOOKBACK_HOURS = 24 * 30
+#: news_check 1.3 `context.company_name`: 1 to 120 characters.
+MAX_COMPANY_NAME = 120
 # Reading the feeds takes a few seconds, and the service's LLM step adds about six
 # seconds an article (at most five); longer checks stay `pending` and are picked up by
 # the refresh route.
@@ -84,13 +89,26 @@ class NewsChecks:
         sleep: Callable[[float], None] | None = None,
         read_shares: ReadShares | None = None,
         get_bars: Callable[[], GetBars] | None = None,
+        company_name: Callable[[str], str | None] | None = None,
     ) -> None:
         self._clock = clock
+        self._company_name = company_name
         self._service = news_service
         self._wait = wait_seconds
         self._sleep = sleep
         self._read_shares = read_shares
         self._get_bars = get_bars
+
+    def _name(self, instrument_id: str) -> str | None:
+        """The company name for `context.company_name`, or None (the context is optional)."""
+        if self._company_name is None:
+            return None
+        try:
+            name = self._company_name(instrument_id)
+        except Exception:  # noqa: BLE001 - the name is optional input
+            return None
+        name = " ".join((name or "").split())[:MAX_COMPANY_NAME].strip()
+        return name or None
 
     def _toss_now(self, symbol: str, instrument_id: str) -> tuple[Shares | None, str | None]:
         """Toss's share count read now (before the cutoff is taken), or why not."""
@@ -177,7 +195,14 @@ class NewsChecks:
         check = result.get("news_check") or {}
         versions: dict[str, str] = {"check": CHECK_VERSION, "contract": CONTRACT}
         service_versions = check.get("versions") or {}
-        for key in ("service", "rules_version", "rules_sha256", "nir_prompt_version", "nir_model"):
+        for key in (
+            "service",
+            "rules_version",
+            "rules_sha256",
+            "nir_prompt_version",
+            "nir_model",
+            "ticker_match_version",
+        ):
             if service_versions.get(key):
                 versions[key] = str(service_versions[key])
         for source_id, parser in (service_versions.get("parsers") or {}).items():
@@ -230,14 +255,18 @@ class NewsChecks:
         """Asks the service at the session's cutoff and stores the check."""
         shares, why_not, warning = self._shares(screening, window, symbol, instrument_id)
         cutoff = min(self._clock(), window.post_close_utc)
-        context, note = self._context(instrument_id, cutoff, shares, why_not)
+        market_cap, note = self._context(instrument_id, cutoff, shares, why_not)
+        context = dict(market_cap or {})
+        name = self._name(instrument_id)
+        if name is not None:
+            context["company_name"] = name
         base: dict[str, Any] = {
             **(extra or {}),
             "lookback_hours": lookback_hours,
             # What SIW sent as `context` (news_check 1.1); kept for a later resubmit.
             "context_sent": context or {},
             "context_note": note,
-            "shares_note": warning if context else None,
+            "shares_note": warning if market_cap else None,
         }
         status, result = self._ask(symbol, cutoff, lookback_hours, None, base)
         made = self._document(window, symbol, instrument_id, cutoff, status, result)
@@ -284,6 +313,7 @@ def register_screening_news_routes(
     sleep: Callable[[float], None] | None = None,
     read_shares: ReadShares | None = None,
     get_bars: Callable[[], GetBars] | None = None,
+    company_name: Callable[[str], str | None] | None = None,
 ) -> None:
     checks = NewsChecks(
         clock=clock,
@@ -292,6 +322,7 @@ def register_screening_news_routes(
         sleep=sleep,
         read_shares=read_shares,
         get_bars=get_bars,
+        company_name=company_name,
     )
 
     def session_window(requested: date | None) -> Any:
