@@ -217,6 +217,7 @@ function fakeApi(): TechniqueCardsApi {
     card: vi.fn().mockResolvedValue(card()),
     resolve: vi.fn().mockResolvedValue(card()),
     recheck: vi.fn().mockResolvedValue(card()),
+    withdraw: vi.fn().mockResolvedValue(card()),
     settings: vi.fn().mockResolvedValue(settings),
     setDefaultModel: vi.fn().mockImplementation(async (model: string) => ({
       ...settings,
@@ -285,6 +286,85 @@ describe("technique cards", () => {
     expect(
       screen.getByText("GPT-6 Luna · made 2026-11-14 15:05 UTC · version 7"),
     ).toBeTruthy();
+  });
+
+  it("asks new version or new card when the source already has a card", async () => {
+    const api = fakeApi();
+    vi.mocked(api.sources).mockResolvedValue([
+      {
+        item_ref: ITEM,
+        title: "Demo lesson",
+        url: "https://example.test/v",
+        source_key: "demo",
+        tags: ["매매기법"],
+        delivered_at: "2026-11-14T00:00:00Z",
+        eligibility: ["conditional"],
+        card_ids: ["c1"],
+      },
+    ]);
+    vi.mocked(api.cards).mockResolvedValue([card()]);
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[0]);
+    const extract = await screen.findByRole("button", {
+      name: "Extract card (costs money)",
+    });
+    expect((extract as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      screen.getByText("This source already has 1 card(s). Extract as:"),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("radio", {
+        name: /a new version of the newest card \(2026-11-14 00:00 UTC · version 1\)/,
+      }),
+    );
+    fireEvent.click(extract);
+    await waitFor(() =>
+      expect(api.start).toHaveBeenCalledWith(ITEM, "google/gemini-4-argon", {
+        mode: "new_version",
+        cardId: "c1",
+      }),
+    );
+  });
+
+  it("withdraws a card after the user confirms and marks it in the list", async () => {
+    const api = fakeApi();
+    const withdrawn = card({
+      user_withdrawn_at: "2026-11-23T06:00:00Z",
+      ready: false,
+    });
+    vi.mocked(api.cards).mockResolvedValue([card()]);
+    vi.mocked(api.card)
+      .mockResolvedValueOnce(card())
+      .mockResolvedValue(withdrawn);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false);
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    const list = await screen.findByRole("complementary");
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Withdraw card" }),
+    );
+    expect(api.withdraw).not.toHaveBeenCalled();
+    confirm.mockReturnValueOnce(true);
+    vi.mocked(api.cards).mockResolvedValue([withdrawn]);
+    fireEvent.click(screen.getByRole("button", { name: "Withdraw card" }));
+    await waitFor(() => expect(api.withdraw).toHaveBeenCalledWith("c1"));
+    expect(await within(list).findByText("withdrawn by you")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Withdraw card" })).toBeNull();
+    confirm.mockRestore();
   });
 
   it("says when a model at its limit was replaced", async () => {

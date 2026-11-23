@@ -71,6 +71,7 @@ function blockedText(
 ): string {
   const parts: string[] = [];
   if (card.withdrawn) parts.push(t("tc.withdrawn"));
+  if (card.user_withdrawn_at) parts.push(t("tc.userWithdrawn"));
   if (!["still_usable", "conditional"].includes(card.recheck_outcome)) {
     parts.push(t("tc.recheckState", { outcome: card.recheck_outcome }));
   }
@@ -109,6 +110,9 @@ export function TechniqueCardsScreen({
   const [added, setAdded] = useState<AddedCondition[]>([]);
   const [onlyUncited, setOnlyUncited] = useState(false);
   const [settings, setSettings] = useState<TechniqueSettings | null>(null);
+  // With a card already for the source: "version" (new version of its newest card) or
+  // "card" (a separate card); the user must pick before extracting (ADR 0056, 2026-11-23).
+  const [choice, setChoice] = useState<"version" | "card" | null>(null);
 
   const load = useCallback(
     (refresh = false) => {
@@ -168,6 +172,7 @@ export function TechniqueCardsScreen({
 
   const showPreview = (source: TechniqueSource, model?: string) => {
     setPreview(null);
+    setChoice(null);
     setCard(null);
     setPreviewing(source.title || source.source_key);
     api
@@ -180,10 +185,22 @@ export function TechniqueCardsScreen({
       .finally(() => setPreviewing(null));
   };
 
+  const existing =
+    sources?.find((item) => item.item_ref === preview?.item_ref)?.card_ids ??
+    [];
   const extract = () => {
     if (!preview) return;
-    api
-      .start(preview.item_ref, preview.model)
+    if (existing.length && choice === null) return;
+    const started = !existing.length
+      ? api.start(preview.item_ref, preview.model)
+      : api.start(
+          preview.item_ref,
+          preview.model,
+          choice === "version"
+            ? { mode: "new_version", cardId: existing[0] }
+            : { mode: "new_card" },
+        );
+    started
       .then((started) => {
         setJob({ id: started.job_id, item: preview.item_ref });
         setPreview(null);
@@ -213,6 +230,17 @@ export function TechniqueCardsScreen({
         answers,
         added.filter((entry) => entry.text.trim()),
       )
+      .then(() => {
+        openCard(card.card_id);
+        load();
+      })
+      .catch((reason: unknown) => setError(message(reason)));
+  };
+
+  const withdraw = () => {
+    if (!card || !window.confirm(t("tc.withdrawConfirm"))) return;
+    api
+      .withdraw(card.card_id)
       .then(() => {
         openCard(card.card_id);
         load();
@@ -387,11 +415,13 @@ export function TechniqueCardsScreen({
                     })}
                   </span>
                   <span className="workspace-note">
-                    {summary.withdrawn
-                      ? t("tc.withdrawn")
-                      : summary.ready
-                        ? t("tc.ready")
-                        : t("tc.needsReview", { n: summary.blocks.length })}
+                    {summary.user_withdrawn_at
+                      ? t("tc.userWithdrawn")
+                      : summary.withdrawn
+                        ? t("tc.withdrawn")
+                        : summary.ready
+                          ? t("tc.ready")
+                          : t("tc.needsReview", { n: summary.blocks.length })}
                   </span>
                 </li>
               ))}
@@ -457,9 +487,44 @@ export function TechniqueCardsScreen({
                   </dd>
                 </dl>
                 <p className="workspace-note">{t("tc.sendNote")}</p>
+                {existing.length ? (
+                  <fieldset className="tc-choice">
+                    <legend>
+                      {t("tc.existingCards", { n: existing.length })}
+                    </legend>
+                    <label className="checkbox-row">
+                      <input
+                        type="radio"
+                        name="tc-choice"
+                        checked={choice === "version"}
+                        onChange={() => setChoice("version")}
+                      />
+                      {t("tc.newVersion", {
+                        title: (() => {
+                          const newest = cards.find(
+                            (c) => c.card_id === existing[0],
+                          );
+                          return newest
+                            ? `${newest.created_at.slice(0, 16).replace("T", " ")} UTC · ${t("tc.versionN", { version: newest.version })}`
+                            : existing[0].slice(0, 8);
+                        })(),
+                      })}
+                    </label>
+                    <label className="checkbox-row">
+                      <input
+                        type="radio"
+                        name="tc-choice"
+                        checked={choice === "card"}
+                        onChange={() => setChoice("card")}
+                      />
+                      {t("tc.newCard")}
+                    </label>
+                  </fieldset>
+                ) : null}
                 <button
                   type="button"
                   className="primary-button"
+                  disabled={existing.length > 0 && choice === null}
                   onClick={extract}
                 >
                   {t("tc.extract")}
@@ -511,7 +576,6 @@ export function TechniqueCardsScreen({
                     ))}
                   </ul>
                 ) : null}
-
                 <table className="tc-conditions">
                   <thead>
                     <tr>
@@ -598,7 +662,6 @@ export function TechniqueCardsScreen({
                     })}
                   </tbody>
                 </table>
-
                 {card.card.ambiguities.length ? (
                   <section aria-label={t("tc.ambiguities")}>
                     <h4>{t("tc.ambiguities")}</h4>
@@ -621,7 +684,6 @@ export function TechniqueCardsScreen({
                     ))}
                   </section>
                 ) : null}
-
                 <section aria-label={t("tc.added")}>
                   <h4>{t("tc.added")}</h4>
                   <p className="workspace-note">{t("tc.addedNote")}</p>
@@ -684,7 +746,6 @@ export function TechniqueCardsScreen({
                     {t("tc.addedAdd")}
                   </button>
                 </section>
-
                 {(
                   [
                     "universe",
@@ -709,16 +770,19 @@ export function TechniqueCardsScreen({
                     </section>
                   ) : null,
                 )}
-
                 <button
                   type="button"
                   className="primary-button"
-                  disabled={card.withdrawn}
+                  disabled={card.withdrawn || Boolean(card.user_withdrawn_at)}
                   onClick={save}
                 >
                   {t("tc.save")}
-                </button>
-
+                </button>{" "}
+                {card.user_withdrawn_at ? null : (
+                  <button type="button" onClick={withdraw}>
+                    {t("tc.withdraw")}
+                  </button>
+                )}
                 {card.ready && !card.withdrawn ? (
                   <TechniqueDraftPanel
                     key={`${card.card_id}:${card.version}`}
@@ -728,7 +792,6 @@ export function TechniqueCardsScreen({
                     defaultModel={settings?.default_model ?? CHOOSABLE_DEFAULT}
                   />
                 ) : null}
-
                 <section aria-label={t("tc.timeline")}>
                   <h4>{t("tc.timeline")}</h4>
                   {timeline === null ? (

@@ -55,6 +55,13 @@ CREATE TABLE IF NOT EXISTS technique_card_versions (
     saved_at TEXT NOT NULL,
     PRIMARY KEY (card_id, version)
 );
+CREATE TABLE IF NOT EXISTS technique_card_extractions (
+    card_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    extraction TEXT NOT NULL,
+    replaced_at TEXT NOT NULL,
+    PRIMARY KEY (card_id, version)
+);
 CREATE TABLE IF NOT EXISTS technique_card_drafts (
     draft_id TEXT PRIMARY KEY,
     card_id TEXT NOT NULL,
@@ -100,6 +107,8 @@ def ready(row: dict[str, Any]) -> tuple[bool, list[str]]:
     blocks = []
     if row["withdrawn"]:
         blocks.append("evidence withdrawn")
+    if row.get("user_withdrawn_at"):
+        blocks.append("withdrawn by the user")
     if row["recheck_outcome"] not in ("still_usable", "conditional"):
         blocks.append(f"library recheck: {row['recheck_outcome']}")
     resolved = row["resolutions"].get("conditions", {})
@@ -120,6 +129,13 @@ class CardStore:
             self._db.execute(
                 "ALTER TABLE technique_cards ADD COLUMN members TEXT NOT NULL DEFAULT '[]'"
             )
+        # 2026-11-23: the user may withdraw a card (one of two from the same source); kept
+        # apart from `withdrawn`, which says the library withdrew the evidence.
+        for column in ("user_withdrawn_at", "user_withdrawn_note"):
+            if column not in columns:
+                self._db.execute(
+                    f"ALTER TABLE technique_cards ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
+                )
         self._lock = threading.Lock()
         self._clock = clock
 
@@ -251,6 +267,113 @@ class CardStore:
                 "SELECT * FROM technique_cards ORDER BY created_at DESC, card_id"
             ).fetchall()
         return [self._row(row) for row in rows]
+
+    def active_card_ids(self, item_ref: str) -> builtins.list[str]:
+        """The source's cards the user has not withdrawn, newest first."""
+        return [
+            row["card_id"]
+            for row in self.list()
+            if row["item_ref"] == item_ref and not row["user_withdrawn_at"]
+        ]
+
+    def withdraw(self, card_id: str, note: str) -> dict[str, Any]:
+        """The user's withdrawal: the card stays for the record but is no longer used."""
+        self.get(card_id)
+        with self._lock:
+            self._db.execute(
+                "UPDATE technique_cards SET user_withdrawn_at = ?, user_withdrawn_note = ?,"
+                " updated_at = ? WHERE card_id = ? AND user_withdrawn_at = ''",
+                (_utc(self._clock()), note, _utc(self._clock()), card_id),
+            )
+        return self.get(card_id)
+
+    def replace(self, card_id: str, fields: dict[str, Any]) -> str:
+        """A new extraction as the card's next version (ADR 0056, 2026-11-23).
+
+        The previous extraction and its resolutions are kept in `technique_card_extractions`;
+        the new version starts with no resolutions, because the conditions are new."""
+        current = self.get(card_id)
+        if current["user_withdrawn_at"]:
+            raise ValueError("the card was withdrawn by the user")
+        if current["item_ref"] != fields["item_ref"]:
+            raise ValueError("the card is from another source")
+        kept = {
+            key: current[key]
+            for key in (
+                "title",
+                "url",
+                "card",
+                "checks",
+                "resolutions",
+                "usage",
+                "attempts",
+                "versions",
+                "context_ref",
+                "revision_ref",
+                "transcript_sha256",
+                "verification_status",
+                "recheck_outcome",
+                "rechecked_at",
+                "members",
+                "created_at",
+            )
+        }
+        empty: dict[str, dict[str, Any]] = {"conditions": {}, "ambiguities": {}}
+        now = _utc(self._clock())
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                self._db.execute(
+                    "INSERT INTO technique_card_extractions (card_id, version, extraction,"
+                    " replaced_at) VALUES (?, ?, ?, ?)",
+                    (card_id, current["version"], json.dumps(kept, ensure_ascii=False), now),
+                )
+                self._db.execute(
+                    "UPDATE technique_cards SET title = ?, url = ?, version = version + 1,"
+                    " card = ?, checks = ?, resolutions = ?, usage = ?, attempts = ?,"
+                    " versions = ?, context_ref = ?, revision_ref = ?, transcript_sha256 = ?,"
+                    " verification_status = ?, recheck_outcome = ?, rechecked_at = ?,"
+                    " members = ?, updated_at = ? WHERE card_id = ?",
+                    (
+                        fields["title"],
+                        fields["url"],
+                        json.dumps(fields["card"], ensure_ascii=False),
+                        json.dumps(fields["checks"], ensure_ascii=False),
+                        json.dumps(empty),
+                        json.dumps(fields["usage"]),
+                        json.dumps(fields["attempts"]),
+                        json.dumps(fields["versions"]),
+                        fields["context_ref"],
+                        fields["revision_ref"],
+                        fields["transcript_sha256"],
+                        fields["verification_status"],
+                        fields["recheck_outcome"],
+                        now,
+                        json.dumps(fields.get("members") or [], ensure_ascii=False),
+                        now,
+                        card_id,
+                    ),
+                )
+                self._db.execute(
+                    "INSERT INTO technique_card_versions (card_id, version, resolutions, saved_at)"
+                    " VALUES (?, ?, ?, ?)",
+                    (card_id, current["version"] + 1, json.dumps(empty), now),
+                )
+                self._db.execute("COMMIT")
+            except Exception:
+                self._db.execute("ROLLBACK")
+                raise
+        return card_id
+
+    def extractions(self, card_id: str) -> builtins.list[dict[str, Any]]:
+        """Earlier extractions of the card, oldest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT version, extraction, replaced_at FROM technique_card_extractions"
+                " WHERE card_id = ? ORDER BY version",
+                (card_id,),
+            ).fetchall()
+        return [{"version": r[0], "replaced_at": r[2]} | json.loads(r[1]) for r in rows]
 
     def resolve(
         self,

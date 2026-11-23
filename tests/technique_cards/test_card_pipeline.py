@@ -1094,7 +1094,10 @@ def test_default_model_setting_is_used_and_limited_to_fable_argon_and_astra(
     assert preview["model"] == "openai/gpt-6-astra"
     assert preview["default_model"] == "openai/gpt-6-astra"
     client.post("/v1/technique-cards", json={"item_ref": ITEM})
-    client.post("/v1/technique-cards", json={"item_ref": ITEM, "model": "openai/gpt-6-luna"})
+    client.post(
+        "/v1/technique-cards",
+        json={"item_ref": ITEM, "model": "openai/gpt-6-luna", "mode": "new_card"},
+    )
     assert used == ["openai/gpt-6-astra", "openai/gpt-6-luna"]
     # The setting survives a new store on the same file.
     assert CardStore(tmp_path / "cards.sqlite3", datetime.now).default_model() == (
@@ -1132,3 +1135,118 @@ def test_fable_and_astra_go_through_openrouter() -> None:
         models.append(seen[0]["model"])
         assert seen[0]["provider"]["data_collection"] == "deny"
     assert models == ["anthropic/claude-fable-5.2", "openai/gpt-6-astra"]
+
+
+# --- one source, several cards (ADR 0056, 2026-11-23) ------------------------------------
+
+
+def _fake_extract_with(card: dict[str, Any]):  # type: ignore[no-untyped-def]
+    def fake(source_id, title, lines, keys, call=None, transport=None, model="", **_):  # type: ignore[no-untyped-def]
+        return extract.Extraction(
+            card=copy.deepcopy(card),
+            attempts=[{"part": 1, "model": "google/gemini-4-argon", "ok": True}],
+        )
+
+    return fake
+
+
+def test_a_second_extraction_asks_new_version_or_new_card(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, service = _app(tmp_path)
+    monkeypatch.setattr(
+        "services.technique_cards.service.extract_card", _fake_extract_with(_card())
+    )
+    first = client.post("/v1/technique-cards", json={"item_ref": ITEM}).json()
+    card_id = client.get(f"/v1/technique-cards/jobs/{first['job_id']}").json()["card_id"]
+    saved = client.post(
+        f"/v1/technique-cards/{card_id}/resolutions",
+        json={"version": 1, "conditions": {"3": {"action": "drop"}}, "ambiguities": {"0": "2배"}},
+    )
+    assert saved.status_code == 200
+
+    asked = client.post("/v1/technique-cards", json={"item_ref": ITEM})
+    assert asked.status_code == 409
+    assert asked.json()["error"]["code"] == "technique_card_exists"
+    assert card_id in asked.json()["error"]["message"]
+    wrong = client.post(
+        "/v1/technique-cards", json={"item_ref": ITEM, "mode": "new_version", "card_id": "x"}
+    )
+    assert wrong.status_code == 422
+
+    second = copy.deepcopy(_card())
+    second["conditions"] = second["conditions"][:2]
+    monkeypatch.setattr("services.technique_cards.service.extract_card", _fake_extract_with(second))
+    again = client.post(
+        "/v1/technique-cards", json={"item_ref": ITEM, "mode": "new_version", "card_id": card_id}
+    ).json()
+    job = client.get(f"/v1/technique-cards/jobs/{again['job_id']}").json()
+    assert job["state"] == "done" and job["card_id"] == card_id
+    card = client.get(f"/v1/technique-cards/{card_id}").json()
+    assert card["version"] == 3 and len(card["card"]["conditions"]) == 2
+    assert card["resolutions"] == {"conditions": {}, "ambiguities": {}}
+    kept = service.store.extractions(card_id)
+    assert [k["version"] for k in kept] == [2]
+    assert len(kept[0]["card"]["conditions"]) == len(_card()["conditions"])
+    assert kept[0]["resolutions"]["ambiguities"] == {"0": "2배"}
+    assert len(client.get("/v1/technique-cards").json()["cards"]) == 1
+
+    other = client.post("/v1/technique-cards", json={"item_ref": ITEM, "mode": "new_card"}).json()
+    other_id = client.get(f"/v1/technique-cards/jobs/{other['job_id']}").json()["card_id"]
+    assert other_id != card_id
+    assert len(client.get("/v1/technique-cards").json()["cards"]) == 2
+
+
+def test_the_user_withdraws_one_card_and_it_is_kept_but_not_used(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, service = _app(tmp_path)
+    monkeypatch.setattr(
+        "services.technique_cards.service.extract_card", _fake_extract_with(_card())
+    )
+    job = client.post("/v1/technique-cards", json={"item_ref": ITEM}).json()
+    card_id = client.get(f"/v1/technique-cards/jobs/{job['job_id']}").json()["card_id"]
+    client.post(
+        f"/v1/technique-cards/{card_id}/resolutions",
+        json={"version": 1, "conditions": {"1": {"action": "confirm"}, "3": {"action": "drop"}}},
+    )
+    assert client.get(f"/v1/technique-cards/{card_id}").json()["ready"] is True
+
+    assert client.post("/v1/technique-cards/nope/withdraw", json={}).status_code == 404
+    out = client.post(f"/v1/technique-cards/{card_id}/withdraw", json={"note": " 중복 "}).json()
+    assert out["user_withdrawn_at"] == "2026-11-14T00:00:00Z"
+    assert out["user_withdrawn_note"] == "중복"
+    assert out["ready"] is False and "withdrawn by the user" in out["blocks"]
+    listed = client.get("/v1/technique-cards").json()["cards"]
+    assert listed[0]["user_withdrawn_at"]  # still listed, marked
+    assert client.get("/v1/technique-sources").json()["sources"][0]["card_ids"] == []
+    # With the only card withdrawn, a new extraction is a new card without asking.
+    assert client.post("/v1/technique-cards", json={"item_ref": ITEM}).status_code == 202
+    refused = client.post(
+        "/v1/technique-cards", json={"item_ref": ITEM, "mode": "new_version", "card_id": card_id}
+    )
+    assert refused.status_code == 422
+    assert service.store.get(card_id)["version"] == 2
+
+
+def test_a_saved_edit_can_be_sent_back_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _service = _app(tmp_path)
+    monkeypatch.setattr(
+        "services.technique_cards.service.extract_card", _fake_extract_with(_card())
+    )
+    job = client.post("/v1/technique-cards", json={"item_ref": ITEM}).json()
+    card_id = client.get(f"/v1/technique-cards/jobs/{job['job_id']}").json()["card_id"]
+    edited = copy.deepcopy(_card()["conditions"][1]) | {"left": _op("indicator", "rsi", period=2)}
+    client.post(
+        f"/v1/technique-cards/{card_id}/resolutions",
+        json={"version": 1, "conditions": {"1": {"action": "edit", "condition": edited}}},
+    )
+    stored = client.get(f"/v1/technique-cards/{card_id}").json()["resolutions"]["conditions"]
+    assert stored["1"]["condition"]["basis"] == "user"
+    again = client.post(
+        f"/v1/technique-cards/{card_id}/resolutions",
+        json={"version": 2, "conditions": stored, "ambiguities": {"0": "2배"}},
+    )
+    assert again.status_code == 200, again.json()
