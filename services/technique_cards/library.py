@@ -15,6 +15,11 @@ answer is one JSON envelope; exit code 0 is not "allowed", the envelope is judge
   is used, `conditional` is used and shown as conditional, `stop_using` / `unknown` deletes the
   cache and the caller marks the card's evidence withdrawn.
 - Third-party text never goes into the repository, logs or error messages.
+- The list looks items up in one call (`item get` with `item_refs`, up to 50 a call, library
+  contract 0.5.1, #SIW-lib-23); a library without it is asked item by item, six at a time.
+- A PDF's text: when the item records its layers (`members[].layers`, contract 0.5.1), only the
+  `pdf_text` layer is assembled and hydrated, not the PDF itself (28 MB took 18.6 s; the text
+  layer alone 1.8 s). Items without layer names hydrate every layer as before.
 - A series (volumes 1 and 2 of one book, `item.series = {"name", "index"}`, #SIW-lib-23) is one
   source: the list shows it once (`kl-series:<name>`), and its text is the volumes in order with
   pages (or paragraphs, or times) numbered on from the volume before (user request 2026-11-22).
@@ -30,6 +35,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import unicodedata
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -46,6 +52,8 @@ DERIVED_KINDS = ("summary", "interpretation")
 TIMEOUT_SECONDS = 120
 # Each library call is its own process (~1-2 s); item lookups for the list run side by side.
 LIST_WORKERS = 6
+BATCH_ITEMS = 50  # contract 0.5.1: `item_refs` takes 1-50
+PDF_TEXT_LAYER = "pdf_text"
 SERIES_PREFIX = "kl-series:"
 
 Runner = Callable[[list[str], dict[str, Any]], dict[str, Any]]
@@ -207,6 +215,35 @@ def group_series(sources: list[Source]) -> list[Source]:
     return out
 
 
+def _source_from(
+    item_ref: str, item: dict[str, Any], members: list[dict[str, Any]], delivered_at: str
+) -> Source | None:
+    """A Source from an item (single or batched `item get`), or None when it is not ours."""
+    tags = sorted({str(t.get("name")) for t in item.get("tags") or [] if isinstance(t, dict)})
+    if item.get("state") not in (None, "current") or TAG not in tags:
+        return None
+    raw_series = item.get("series")
+    series: dict[str, Any] = raw_series if isinstance(raw_series, dict) else {}
+    # Contract 0.5.1: 1-256 characters. Names from macOS file names arrive decomposed (NFD);
+    # composed (NFC) keeps one spelling, so a `kl-series:` ref typed or pasted still matches.
+    name = unicodedata.normalize("NFC", str(series.get("name") or "")).strip()[:256]
+    try:
+        index = int(series.get("index") or 0)
+    except (TypeError, ValueError):
+        index = 0
+    return Source(
+        item_ref=item_ref,
+        title=str(item.get("title") or "")[:500],
+        url=str(item.get("url") or "")[:500],
+        source_key=str(item.get("source_key") or "")[:100],
+        tags=tags,
+        delivered_at=delivered_at,
+        eligibility=[str(m.get("eligibility_outcome")) for m in members],
+        series=name,
+        series_index=index if name else 0,
+    )
+
+
 @dataclass(frozen=True)
 class Fetched:
     """A cached transcript: where it is and what to recheck before using it again."""
@@ -266,40 +303,43 @@ class Library:
             newer = str(delivery.get("sent_at", "")) >= str(latest.get(ref, {}).get("sent_at", ""))
             if ref and delivery.get("state") == "sent" and newer:
                 latest[ref] = delivery
-        with ThreadPoolExecutor(max_workers=LIST_WORKERS) as pool:
-            looked_up = pool.map(
-                lambda pair: self.source(pair[0], str(pair[1].get("sent_at") or "")),
-                list(latest.items()),
-            )
-            found = [source for source in looked_up if source is not None]
+        pairs = list(latest.items())
+        try:
+            found = self._sources_batched(pairs)
+        except LibraryError as exc:
+            if exc.reason_code not in ("INVALID_REQUEST", "VALIDATION_FAILED"):
+                raise
+            # A library before contract 0.5.1 has no `item_refs`: ask item by item.
+            with ThreadPoolExecutor(max_workers=LIST_WORKERS) as pool:
+                looked_up = pool.map(
+                    lambda pair: self.source(pair[0], str(pair[1].get("sent_at") or "")),
+                    pairs,
+                )
+                found = [source for source in looked_up if source is not None]
         found.sort(key=lambda s: s.delivered_at, reverse=True)
         return group_series(found)
+
+    def _sources_batched(self, pairs: list[tuple[str, dict[str, Any]]]) -> list[Source]:
+        """The delivered items, up to 50 a call. No members come back, so no eligibility."""
+        found: list[Source] = []
+        for start in range(0, len(pairs), BATCH_ITEMS):
+            chunk = pairs[start : start + BATCH_ITEMS]
+            data = self._call(["item", "get"], {"item_refs": [ref for ref, _ in chunk]})
+            items = data.get("items")
+            if not isinstance(items, list) or len(items) != len(chunk):
+                raise LibraryError("library answered item_refs without one item per ref")
+            for (ref, delivery), item in zip(chunk, items, strict=True):
+                if isinstance(item, dict):  # null: gone or not visible
+                    source = _source_from(ref, item, [], str(delivery.get("sent_at") or ""))
+                    if source is not None:
+                        found.append(source)
+        return found
 
     def source(self, item_ref: str, delivered_at: str = "") -> Source | None:
         """One current item carrying the technique tag, or None."""
         data = self._call(["item", "get"], {"item_ref": item_ref})
-        item = data.get("item") or {}
-        tags = sorted({str(t.get("name")) for t in item.get("tags") or [] if isinstance(t, dict)})
-        if item.get("state") not in (None, "current") or TAG not in tags:
-            return None
-        raw_series = item.get("series")
-        series: dict[str, Any] = raw_series if isinstance(raw_series, dict) else {}
-        name = str(series.get("name") or "").strip()[:256]  # contract 0.5.1: 1-256 characters
-        try:
-            index = int(series.get("index") or 0)
-        except (TypeError, ValueError):
-            index = 0
-        return Source(
-            item_ref=item_ref,
-            title=str(item.get("title") or "")[:500],
-            url=str(item.get("url") or "")[:500],
-            source_key=str(item.get("source_key") or "")[:100],
-            tags=tags,
-            delivered_at=delivered_at,
-            eligibility=[str(m.get("eligibility_outcome")) for m in data.get("members") or []],
-            series=name,
-            series_index=index if name else 0,
-        )
+        members = [m for m in data.get("members") or [] if isinstance(m, dict)]
+        return _source_from(item_ref, data.get("item") or {}, members, delivered_at)
 
     def _item_dir(self, item_ref: str) -> Path:
         return self.cache_dir / hashlib.sha256(item_ref.encode()).hexdigest()[:32]
@@ -317,7 +357,15 @@ class Library:
 
     def _fetch(self, item_ref: str) -> Fetched:
         data = self._call(["item", "get"], {"item_ref": item_ref})
-        refs = [str(m["artifact_ref"]) for m in data.get("members") or [] if m.get("artifact_ref")]
+        members = [m for m in data.get("members") or [] if isinstance(m, dict)]
+        refs = [str(m["artifact_ref"]) for m in members if m.get("artifact_ref")]
+        pdf_text = [
+            str(m["artifact_ref"])
+            for m in members
+            if m.get("artifact_ref") and PDF_TEXT_LAYER in (m.get("layers") or [])
+        ]
+        if pdf_text:
+            refs = pdf_text  # the PDF's text only, not the PDF itself
         if not refs:
             raise LibraryError("the item has no layers")
         context = self._call(

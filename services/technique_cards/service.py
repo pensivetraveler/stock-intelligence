@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
@@ -74,6 +75,7 @@ class TechniqueCards:
         """One source: a single item from the library, or a series from the (cached) list."""
         if not item_ref.startswith(SERIES_PREFIX):
             return self.library.source(item_ref)
+        item_ref = unicodedata.normalize("NFC", item_ref)  # series names are kept composed
         for refresh in (False, True):
             for source in self.sources(refresh):
                 if source.item_ref == item_ref:

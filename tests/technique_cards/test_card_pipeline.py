@@ -144,6 +144,8 @@ class FakeCli:
                 return ok | {"data": {"deliveries": deliveries, "next_cursor": "page2"}}
             deliveries = [{"item_ref": OTHER, "state": "sent", "sent_at": "2026-11-14T12:00:00Z"}]
             return ok | {"data": {"deliveries": deliveries, "next_cursor": None}}
+        if args[:2] == ["item", "get"] and "item_refs" in request:
+            return {"status": "error", "reason_code": "INVALID_REQUEST", "data": None}  # pre-0.5.1
         if args[:2] == ["item", "get"]:
             tags = [{"name": "매매기법"}] if request["item_ref"] == ITEM else [{"name": "요리"}]
             item = {"title": "Demo", "url": "https://example.test/v", "source_key": "demo"}
@@ -329,6 +331,8 @@ class SeriesCli:
                 for n, ref in enumerate((V2, SOLO, V1))
             ]
             return ok | {"data": {"deliveries": deliveries, "next_cursor": None}}
+        if args[:2] == ["item", "get"] and "item_refs" in request:
+            return {"status": "error", "reason_code": "INVALID_REQUEST", "data": None}  # pre-0.5.1
         if args[:2] == ["item", "get"]:
             ref = request["item_ref"]
             series = {V1: {"name": "원펀치", "index": 1}, V2: {"name": "원펀치", "index": 2}}
@@ -486,6 +490,82 @@ def test_series_routes_preview_and_extract_one_card(
     assert missing.status_code == 404
     bad = client.post("/v1/technique-sources/preview", json={"item_ref": "kl-series:"})
     assert bad.status_code == 422
+
+
+def test_a_decomposed_series_name_is_kept_composed(tmp_path: Path) -> None:
+    """2026-11-23: the library sent the name in NFD (a macOS file name); an NFC ref got 404."""
+    import unicodedata
+
+    class NfdCli(SeriesCli):
+        def __call__(self, args: list[str], request: dict[str, Any]) -> dict[str, Any]:
+            answer = super().__call__(args, request)
+            series = (answer.get("data") or {}).get("item", {}).get("series")
+            if args[:2] == ["item", "get"] and series:
+                series["name"] = unicodedata.normalize("NFD", "원펀치매매")
+            return answer
+
+    service = _series_service(tmp_path, NfdCli())
+    listed = service.sources()
+    assert listed[0].item_ref == "kl-series:원펀치매매"
+    assert unicodedata.is_normalized("NFC", listed[0].item_ref)
+    for ref in ("kl-series:원펀치매매", unicodedata.normalize("NFD", "kl-series:원펀치매매")):
+        source = service.source(ref)
+        assert source is not None and len(source.members) == 2
+
+
+class BatchCli(SeriesCli):
+    """A library on contract 0.5.1: `item_refs` lookups and layer names on members."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.assembled: list[list[str]] = []
+
+    def __call__(self, args: list[str], request: dict[str, Any]) -> dict[str, Any]:
+        if args[:2] == ["item", "get"] and "item_refs" in request:
+            self.calls.append(args + ["<batch>"])
+            items = []
+            for ref in request["item_refs"]:
+                if ref == SOLO:
+                    items.append(None)  # gone or not visible
+                    continue
+                single = super().__call__(["item", "get"], {"item_ref": ref})
+                self.calls.pop()
+                items.append(single["data"]["item"])
+            return {"status": "success", "reason_code": "OK", "data": {"items": items}}
+        if args[:2] == ["item", "get"]:
+            answer = super().__call__(args, request)
+            ref = request["item_ref"]
+            answer["data"]["members"] = [
+                {"artifact_ref": f"{ref}#pdf", "layers": ["pdf_original"]},
+                {"artifact_ref": f"{ref}#a", "layers": ["pdf_text"]},
+                {"artifact_ref": f"{ref}#sum", "layers": ["summary"]},
+            ]
+            return answer
+        if args[:2] == ["context", "assemble"]:
+            self.assembled.append(list(request["candidate_artifact_refs"]))
+        return super().__call__(args, request)
+
+
+def test_the_list_asks_for_all_items_in_one_call(tmp_path: Path) -> None:
+    cli = BatchCli()
+    sources = Library(_config(), tmp_path, cli).sources()
+    assert [s.item_ref for s in sources] == ["kl-series:원펀치"]  # SOLO came back null
+    item_calls = [c for c in cli.calls if c[:2] == ["item", "get"]]
+    assert item_calls == [["item", "get", "<batch>"]]
+
+
+def test_a_library_without_item_refs_is_asked_item_by_item(tmp_path: Path) -> None:
+    cli = SeriesCli()  # answers INVALID_REQUEST to item_refs
+    sources = Library(_config(), tmp_path, cli).sources()
+    assert [s.item_ref for s in sources] == ["kl-series:원펀치", SOLO]
+    assert sum(c[:2] == ["item", "get"] for c in cli.calls) == 1 + 3
+
+
+def test_only_the_pdf_text_layer_is_hydrated_when_layers_are_named(tmp_path: Path) -> None:
+    cli = BatchCli()
+    fetched = Library(_config(), tmp_path / "cache", cli).fetch(V1)
+    assert cli.assembled == [[f"{V1}#a"]]
+    assert fetched.path.read_text() == VOLUME_TEXT[V1]
 
 
 # --- L2: extraction -----------------------------------------------------------------------
