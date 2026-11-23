@@ -22,6 +22,13 @@ from services.custom_indicators.runner import IndicatorError, clean_params
 COMPARISONS = ("cross_above", "cross_below", "gt", "gte", "lt", "lte")
 PRICES = ("open", "high", "low", "close", "volume")
 SIZING_MODES = ("percent_equity", "fixed_cash", "fixed_shares")
+# Only with a setup (ADR 0061): shares so that a stop at the setup's stop loses this % of equity.
+SETUP_SIZING_MODES = (*SIZING_MODES, "risk_pct")
+SETUP_KINDS = ("base_fib",)
+BASE_FIELDS = ("open", "high", "low", "close", "volume", "value")
+MAX_LEGS = 4
+MAX_TARGETS = 4
+MAX_SETUP_BARS = 500
 MAX_CODE_BYTES = 100_000
 MAX_DEPTH = 6
 MAX_CONDITIONS = 40
@@ -91,8 +98,18 @@ def _custom_operand(value: dict[str, Any], custom: CustomLookup | None) -> dict[
     return {"indicator": indicator, "params": dict(params), "output": output}
 
 
-def _operand(value: object, custom: CustomLookup | None = None) -> dict[str, Any]:
-    """An operand, optionally `offset` bars back; absent keeps old fingerprints."""
+def _operand(
+    value: object, custom: CustomLookup | None = None, base_ok: bool = False
+) -> dict[str, Any]:
+    """An operand, optionally `offset` bars back; absent keeps old fingerprints.
+
+    `base_ok`: a setup's breakout condition may read the base bar (`{"base": "high"}`)."""
+    if isinstance(value, dict) and "base" in value:
+        if not base_ok:
+            raise StrategyError("a base bar value is only for a setup's breakout condition")
+        if set(value) != {"base"} or value["base"] not in BASE_FIELDS:
+            raise StrategyError(f"base must be one of {', '.join(BASE_FIELDS)}, alone")
+        return {"base": value["base"]}
     if not isinstance(value, dict) or "offset" not in value:
         return _current_operand(value, custom)
     offset = value["offset"]
@@ -159,7 +176,11 @@ def _time_window(value: object) -> dict[str, str]:
 
 
 def _condition(
-    value: object, depth: int, counter: list[int], custom: CustomLookup | None
+    value: object,
+    depth: int,
+    counter: list[int],
+    custom: CustomLookup | None,
+    base_ok: bool = False,
 ) -> dict[str, Any]:
     counter[0] += 1
     if counter[0] > MAX_CONDITIONS:
@@ -173,7 +194,9 @@ def _condition(
             items = value[group]
             if set(value) != {group} or not isinstance(items, list) or not items:
                 raise StrategyError(f"{group!r} must be the only field and a non-empty list")
-            return {group: [_condition(item, depth + 1, counter, custom) for item in items]}
+            return {
+                group: [_condition(item, depth + 1, counter, custom, base_ok) for item in items]
+            }
     if "time" in value:
         if set(value) != {"time"}:
             raise StrategyError("'time' must be the only field of its condition")
@@ -182,8 +205,8 @@ def _condition(
         raise StrategyError(f"a comparison needs op ({', '.join(COMPARISONS)}), left and right")
     return {
         "op": value["op"],
-        "left": _operand(value["left"], custom),
-        "right": _operand(value["right"], custom),
+        "left": _operand(value["left"], custom, base_ok),
+        "right": _operand(value["right"], custom, base_ok),
     }
 
 
@@ -215,10 +238,7 @@ def _risk(definition: dict[str, Any], clean: dict[str, Any]) -> None:
         clean[name] = (
             None if value is None else _decimal(value, name, Decimal("0.01"), Decimal("1000"))
         )
-    limit = definition.get("max_positions", 10)
-    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
-        raise StrategyError("max_positions must be a whole number from 1 to 100")
-    clean["max_positions"] = limit
+    clean["max_positions"] = _max_positions(definition)
 
 
 def _atr_distance(value: dict[str, Any], what: str) -> dict[str, Any]:
@@ -261,6 +281,99 @@ def _protective_stops(definition: dict[str, Any], clean: dict[str, Any]) -> None
         raise StrategyError("trailing_stop mode must be pct or atr")
 
 
+def _bars(value: object, what: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_SETUP_BARS:
+        raise StrategyError(f"{what} must be a whole number from 1 to {MAX_SETUP_BARS}")
+    return value
+
+
+def _level(value: object, what: str) -> str:
+    return _decimal(value, what, Decimal(0), Decimal(1))
+
+
+def _setup(value: object, counter: list[int], custom: CustomLookup | None) -> dict[str, Any]:
+    """A base-bar Fibonacci setup (ADR 0061): legs, their targets and the stop line."""
+    fields = {"kind", "base", "breakout", "breakout_within", "entry_within", "legs"}
+    fields |= {"stop_level", "breakeven_after_target"}
+    if not isinstance(value, dict) or set(value) != fields:
+        raise StrategyError(f"a setup needs exactly {', '.join(sorted(fields))}")
+    if value["kind"] not in SETUP_KINDS:
+        raise StrategyError(f"setup kind must be one of {', '.join(SETUP_KINDS)}")
+    breakout = value["breakout"]
+    legs = value["legs"]
+    if not isinstance(legs, list) or not 1 <= len(legs) <= MAX_LEGS:
+        raise StrategyError(f"a setup needs 1 to {MAX_LEGS} legs")
+    stop = _level(value["stop_level"], "stop_level")
+    clean_legs: list[dict[str, Any]] = []
+    previous = Decimal(-1)
+    for n, leg in enumerate(legs):
+        what = f"leg {n}"
+        if not isinstance(leg, dict) or set(leg) != {"level", "size_pct", "targets"}:
+            raise StrategyError(f"{what} needs exactly level, size_pct and targets")
+        level = _level(leg["level"], f"{what} level")
+        if Decimal(level) <= previous:
+            raise StrategyError("legs must go deeper: each level above the one before")
+        if Decimal(level) >= Decimal(stop):
+            raise StrategyError(f"{what} level must be above the stop line (below stop_level)")
+        previous = Decimal(level)
+        targets = leg["targets"]
+        if not isinstance(targets, list) or not 1 <= len(targets) <= MAX_TARGETS:
+            raise StrategyError(f"{what} needs 1 to {MAX_TARGETS} targets")
+        clean_targets: list[dict[str, str]] = []
+        above = Decimal(level)
+        for k, target in enumerate(targets):
+            name = f"{what} target {k}"
+            if not isinstance(target, dict) or set(target) != {"level", "sell_pct"}:
+                raise StrategyError(f"{name} needs exactly level and sell_pct")
+            line = _level(target["level"], f"{name} level")
+            if Decimal(line) >= above:
+                raise StrategyError(f"{name} must be above the one before (a smaller level)")
+            above = Decimal(line)
+            share = _decimal(target["sell_pct"], f"{name} sell_pct", Decimal("0.01"), Decimal(100))
+            clean_targets.append({"level": line, "sell_pct": share})
+        if Decimal(clean_targets[-1]["sell_pct"]) != 100:
+            raise StrategyError(f"{what}'s last target must sell 100 (what is left)")
+        size = _decimal(leg["size_pct"], f"{what} size_pct", Decimal("0.01"), Decimal(100))
+        clean_legs.append({"level": level, "size_pct": size, "targets": clean_targets})
+    if sum(Decimal(leg["size_pct"]) for leg in clean_legs) != 100:
+        raise StrategyError("the legs' size_pct must add up to 100")
+    if not isinstance(value["breakeven_after_target"], bool):
+        raise StrategyError("breakeven_after_target must be true or false")
+    return {
+        "kind": value["kind"],
+        "base": _condition(value["base"], 0, counter, custom),
+        "breakout": None
+        if breakout is None
+        else _condition(breakout, 0, counter, custom, base_ok=True),
+        "breakout_within": _bars(value["breakout_within"], "breakout_within"),
+        "entry_within": _bars(value["entry_within"], "entry_within"),
+        "legs": clean_legs,
+        "stop_level": stop,
+        "breakeven_after_target": value["breakeven_after_target"],
+    }
+
+
+def _sizing(definition: dict[str, Any], modes: tuple[str, ...]) -> dict[str, str]:
+    sizing = definition.get("sizing", {"mode": "percent_equity", "value": 10})
+    if not isinstance(sizing, dict) or sizing.get("mode") not in modes:
+        raise StrategyError(f"sizing mode must be one of {', '.join(modes)}")
+    if set(sizing) != {"mode", "value"}:
+        raise StrategyError("sizing needs exactly mode and value")
+    mode = sizing["mode"]
+    high = Decimal("100") if mode in ("percent_equity", "risk_pct") else Decimal("1e12")
+    amount = _decimal(sizing["value"], "sizing value", Decimal("0.0001"), high)
+    if mode == "fixed_shares" and Decimal(amount) != Decimal(amount).to_integral_value():
+        raise StrategyError("fixed_shares must be a whole number")
+    return {"mode": mode, "value": amount}
+
+
+def _max_positions(definition: dict[str, Any]) -> int:
+    limit = definition.get("max_positions", 10)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise StrategyError("max_positions must be a whole number from 1 to 100")
+    return int(limit)
+
+
 def uses_time_conditions(condition: dict[str, Any] | None) -> bool:
     if condition is None:
         return False
@@ -278,7 +391,16 @@ def validate_definition(definition: object, custom: CustomLookup | None = None) 
         raise StrategyError("a strategy definition must be an object")
     kind = definition.get("type")
     clean: dict[str, Any] = {"type": kind}
-    if kind == "rules":
+    if kind == "rules" and "setup" in definition:
+        # A setup strategy (ADR 0061) places and manages its own orders: nothing else trades.
+        extra = set(definition) - {"type", "setup", "sizing", "max_positions"}
+        if extra:
+            raise StrategyError(f"a setup strategy does not take: {', '.join(sorted(extra))}")
+        counter = [0]
+        clean["setup"] = _setup(definition["setup"], counter, custom)
+        clean["sizing"] = _sizing(definition, SETUP_SIZING_MODES)
+        clean["max_positions"] = _max_positions(definition)
+    elif kind == "rules":
         allowed = {"type", "entry", "exit", "stop_loss_pct", "take_profit_pct"}
         allowed |= {"sizing", "max_positions", "entry_order", "exit_order"}
         allowed |= {"stop_loss_atr", "trailing_stop"}
@@ -289,17 +411,7 @@ def validate_definition(definition: object, custom: CustomLookup | None = None) 
         clean["entry"] = _condition(definition.get("entry"), 0, counter, custom)
         exit_rule = definition.get("exit")
         clean["exit"] = None if exit_rule is None else _condition(exit_rule, 0, counter, custom)
-        sizing = definition.get("sizing", {"mode": "percent_equity", "value": 10})
-        if not isinstance(sizing, dict) or sizing.get("mode") not in SIZING_MODES:
-            raise StrategyError(f"sizing mode must be one of {', '.join(SIZING_MODES)}")
-        if set(sizing) != {"mode", "value"}:
-            raise StrategyError("sizing needs exactly mode and value")
-        mode = sizing["mode"]
-        high = Decimal("100") if mode == "percent_equity" else Decimal("1e12")
-        amount = _decimal(sizing["value"], "sizing value", Decimal("0.0001"), high)
-        if mode == "fixed_shares" and Decimal(amount) != Decimal(amount).to_integral_value():
-            raise StrategyError("fixed_shares must be a whole number")
-        clean["sizing"] = {"mode": mode, "value": amount}
+        clean["sizing"] = _sizing(definition, SIZING_MODES)
         # Absent means market at the next open, as before (keeps old fingerprints).
         for name in ("entry_order", "exit_order"):
             if name in definition:
@@ -346,6 +458,8 @@ class RuleEvaluator:
     time_zone: str
     custom_series: dict[str, Series] = field(default_factory=dict)
     _cache: dict[str, Series] = field(default_factory=dict)
+    # The setup's base bar (ADR 0061), read by `{"base": ...}` operands; None: no value.
+    base_index: int | None = None
 
     def _series(self, operand: dict[str, Any]) -> Series | None:
         if "indicator" not in operand:
@@ -361,6 +475,14 @@ class RuleEvaluator:
         return self._cache[key]
 
     def _value(self, operand: dict[str, Any], i: int) -> float | None:
+        if "base" in operand:
+            # Only bars before i: the base bar always closed before its breakout.
+            if self.base_index is None or self.base_index >= i:
+                return None
+            bar = self.bars[self.base_index]
+            if operand["base"] == "value":
+                return bar.close * bar.volume
+            return float(getattr(bar, operand["base"]))
         i -= operand.get("offset", 0)
         if i < 0:
             return None

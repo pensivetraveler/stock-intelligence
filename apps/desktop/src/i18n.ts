@@ -787,6 +787,7 @@ const en = {
   "bt.reason.trailing_stop": "Trailing stop",
   "bt.reason.stop_unavailable": "ATR not ready for the stop",
   "bt.reason.take_profit": "Take profit",
+  "bt.reason.breakeven_stop": "Breakeven stop",
   "bt.reason.open_at_end": "Open at end",
   "bt.reason.insufficient_cash": "Not enough cash",
   "bt.reason.quantity_rounds_to_zero": "Rounds to zero shares",
@@ -1898,6 +1899,12 @@ const en = {
   "td.s.unconvertible": "Cannot express",
   "td.s.absent": "Not used (left out)",
   "td.s.missing": "No answer",
+  "td.s.excluded": "Not in this draft",
+  "td.label": "Way",
+  "td.labelHint": "e.g. one punch 0.75",
+  "td.items": "Items in this draft ({n} of {total})",
+  "td.itemsNote":
+    "Untick the items another way of trading this card uses; they are not sent and not counted as left out.",
   "td.scriptOnly": "Script only (no model, free)",
   "td.scripted": "by script",
   "td.scriptNote":
@@ -1908,6 +1915,10 @@ const en = {
   "td.a.ma_as_sma": 'Item {n}: "moving average" read as a simple average (sma)',
   "td.a.long_only":
     "Item {n}: both sides in the source; only the long side is kept",
+  "td.a.setup_windows":
+    "Whole draft: bars to wait for the breakout and for the first fill ({value}) are not in the source",
+  "td.a.trading_value_approx":
+    "Whole draft: trading value is read as close × volume, an approximation",
   "td.confirm": "I checked the {n} reading(s) above and keep them",
   "td.confirmNeeded": "tick to keep the readings the source did not state",
   "td.accept": "Save without the {n} item(s) the rules cannot express",
@@ -2978,6 +2989,7 @@ const ko: Record<MessageKey, string> = {
   "bt.reason.trailing_stop": "트레일링 스톱",
   "bt.reason.stop_unavailable": "손절용 ATR 값이 아직 없음",
   "bt.reason.take_profit": "익절",
+  "bt.reason.breakeven_stop": "본전 손절",
   "bt.reason.open_at_end": "종료 시 보유",
   "bt.reason.insufficient_cash": "현금 부족",
   "bt.reason.quantity_rounds_to_zero": "수량이 0주",
@@ -4069,6 +4081,12 @@ const ko: Record<MessageKey, string> = {
   "td.s.unconvertible": "못 옮김",
   "td.s.absent": "쓰지 않음(비워 둠)",
   "td.s.missing": "답 없음",
+  "td.s.excluded": "이 초안에서 안 씀",
+  "td.label": "방식",
+  "td.labelHint": "예: 원펀치 0.75",
+  "td.items": "이 초안에 쓸 항목 ({n}/{total})",
+  "td.itemsNote":
+    "다른 방식에 쓰는 항목은 체크를 푸세요. 보내지 않고 못 옮김에도 세지 않습니다.",
   "td.scriptOnly": "스크립트만(모델 없음, 무료)",
   "td.scripted": "스크립트",
   "td.scriptNote":
@@ -4078,6 +4096,9 @@ const ko: Record<MessageKey, string> = {
     "항목 {n}: {param}이(가) 원문에 없어 {indicator}의 엔진 기본값 {value}을(를) 씀",
   "td.a.ma_as_sma": '항목 {n}: "이동평균"을 단순 이동평균(sma)으로 봄',
   "td.a.long_only": "항목 {n}: 원문은 양방향이지만 매수 쪽만 씀",
+  "td.a.setup_windows":
+    "초안 전체: 돌파·첫 체결을 기다릴 봉 수({value})는 원문에 없음",
+  "td.a.trading_value_approx": "초안 전체: 거래대금을 종가×거래량으로 근사함",
   "td.confirm": "위 해석 {n}개를 확인했고 그대로 씀",
   "td.confirmNeeded": "원문에 없는 해석을 쓰려면 체크",
   "td.accept": "규칙으로 못 옮긴 {n}개 항목을 빼고 저장",

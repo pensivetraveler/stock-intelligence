@@ -157,6 +157,20 @@ def _place(condition: dict[str, Any], assumptions: list[dict[str, Any]]) -> dict
         stop = {"length": int(length), "mult": str(value)}
         return {"kind": "field", "name": "stop_loss_atr",
                 "value": _normal_field("stop_loss_atr", stop)}  # fmt: skip
+    if (
+        right.get("kind") == "percent"
+        and right.get("name") == "previous_close"
+        and left.get("kind") == "price"
+        and left.get("name") == "close"
+        and comparator in ("above", "at_or_above")
+    ):
+        # "The close N % or more above the previous close" is the 1-bar rate of change.
+        if right.get("value") is None:
+            raise NotScriptable("the percent is blank")
+        rule = {"op": OPS[comparator], "left": {"indicator": "roc", "params": {"length": 1},
+                "output": "value"}, "right": {"value": str(right["value"])}}  # fmt: skip
+        group = "entry" if field == "entry" else "exit"
+        return {"kind": group, "rule": _normal_condition(rule)}
     if right.get("kind") in ("percent", "range_multiple", "atr_multiple", "bars"):
         raise NotScriptable(f"a '{right['kind']}' comparison is a distance, not a rule operand")
     if comparator in ("rises", "falls"):
@@ -256,8 +270,10 @@ def kept(
     if entry["status"] != "mapped":
         return False
     want = place["rule"] if place["kind"] in ("entry", "exit") else place["value"]
-    root = "/" + (place["name"] if place["kind"] == "field" else place["kind"])
+    roots = ["/" + (place["name"] if place["kind"] == "field" else place["kind"])]
+    if place["kind"] == "entry" and "setup" in definition:
+        roots = ["/setup/base", "/setup/breakout"]  # a setup's entry conditions (ADR 0061)
     return any(
-        pointer.startswith(root) and _at(definition, pointer) == want
+        pointer.startswith(tuple(roots)) and _at(definition, pointer) == want
         for pointer in entry["rule_paths"]
     )

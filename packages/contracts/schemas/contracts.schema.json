@@ -5515,7 +5515,8 @@
                   "filled",
                   "rejected",
                   "unfilled_at_end",
-                  "expired"
+                  "expired",
+                  "cancelled"
                 ]
               },
               "reason": {
@@ -5621,6 +5622,7 @@
                   "stop_loss",
                   "trailing_stop",
                   "take_profit",
+                  "breakeven_stop",
                   "open_at_end"
                 ]
               },

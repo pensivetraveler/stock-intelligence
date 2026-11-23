@@ -1149,6 +1149,17 @@ export const INDICATORS: IndicatorDefinition[] = [
       return { volume, average: sma(volume, p.length) };
     },
   },
+  {
+    // Close x volume: an approximation of the value traded (ADR 0061).
+    id: "tv",
+    name: { en: "Trading Value (close × volume)", ko: "거래대금(종가×거래량)" },
+    short: "TV",
+    category: "volume",
+    pane: "separate",
+    inputs: [],
+    outputs: [{ key: "value", label: "TV", color: GREY, kind: "histogram" }],
+    compute: (bars) => ({ value: bars.map((bar) => bar.close * bar.volume) }),
+  },
 ];
 
 export function rsi(source: Series, length: number): Series {
