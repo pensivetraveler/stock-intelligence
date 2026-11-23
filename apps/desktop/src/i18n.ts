@@ -1748,6 +1748,10 @@ const en = {
   "liveacct.tabs": "SIW Agent screens",
   "liveacct.tab.paper": "Paper trading",
   "liveacct.tab.live": "Live account",
+  "liveacct.tab.keys": "Keys",
+  "keys.agentTitle": "SIW Agent — keys",
+  "keys.agentNote":
+    "Keys registered here are stored only in this computer's keychain. They are not copied to or from SIW Research on another computer.",
   "liveacct.title": "SIW Agent — live account",
   "liveacct.banner":
     "Live account — real orders with real money. The runner sends an order only after you confirm it here.",
@@ -1812,6 +1816,7 @@ const en = {
   "tc.switch": "Slice {part}: {from} {reason}, so {to} was used",
   "tc.switchLimit": "was at its limit",
   "tc.switchFailed": "failed",
+  "tc.switchKey": "had its key refused (check the Keys screen)",
   "tc.chooseModel": "Model for this extraction",
   "tc.assigned": "{model} (default)",
   "tc.defaultModel": "Default model",
@@ -1900,6 +1905,11 @@ const en = {
   "td.name": "Strategy name",
   "td.blocked": "Cannot save: {blocks}",
   "td.save": "Save as a rules strategy",
+  "td.pine": "Pine template",
+  "td.pineNote":
+    "For a side-by-side check on TradingView. Set fees and slippage to the backtest run's; a stop placed on the fill bar and a stop and target in one bar can differ from the engine.",
+  "td.pineUnsupported": "Not converted (false in the template)",
+  "td.pineCopy": "Copy",
   "td.saved":
     "Saved as {id} version {version}. Run its backtest on the backtest screen.",
   "rv.title": "Trade review",
@@ -3899,6 +3909,10 @@ const ko: Record<MessageKey, string> = {
   "liveacct.tabs": "SIW Agent 화면",
   "liveacct.tab.paper": "모의투자",
   "liveacct.tab.live": "실계좌",
+  "liveacct.tab.keys": "키",
+  "keys.agentTitle": "SIW Agent — 키",
+  "keys.agentNote":
+    "여기서 등록한 키는 이 컴퓨터의 키체인에만 저장됩니다. 다른 컴퓨터의 SIW Research와 서로 옮겨지지 않습니다.",
   "liveacct.title": "SIW Agent — 실계좌",
   "liveacct.banner":
     "실계좌 — 실제 돈으로 하는 실제 주문입니다. 여기서 승인한 주문만 실행기가 보냅니다.",
@@ -3961,6 +3975,7 @@ const ko: Record<MessageKey, string> = {
   "tc.switch": "{part}구간: {from}이(가) {reason} {to}(으)로 대체함",
   "tc.switchLimit": "한도에 걸려",
   "tc.switchFailed": "실패해",
+  "tc.switchKey": "키가 거절돼(키 화면 확인)",
   "tc.chooseModel": "이번 추출에 쓸 모델",
   "tc.assigned": "{model} (기본)",
   "tc.defaultModel": "기본 모델",
@@ -4049,6 +4064,11 @@ const ko: Record<MessageKey, string> = {
   "td.name": "전략 이름",
   "td.blocked": "저장할 수 없음: {blocks}",
   "td.save": "규칙 전략으로 저장",
+  "td.pine": "Pine 템플릿",
+  "td.pineNote":
+    "TradingView에서 나란히 비교하는 용도입니다. 수수료·미끄러짐은 비교할 백테스트 실행과 같게 맞추세요. 체결 봉의 손절, 한 봉에서 손절·목표가 함께 닿는 경우는 엔진과 다를 수 있습니다.",
+  "td.pineUnsupported": "옮기지 못한 규칙(템플릿에서는 false)",
+  "td.pineCopy": "복사",
   "td.saved":
     "{id} 버전 {version}으로 저장했습니다. 백테스트 화면에서 실행하세요.",
   "rv.title": "매매 복기",

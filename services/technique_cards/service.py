@@ -17,7 +17,13 @@ from decimal import Decimal
 from typing import Any
 
 from services.technique_cards.checks import check_card, timeline
-from services.technique_cards.citations import Line, parse_source, unit_of
+from services.technique_cards.citations import (
+    Line,
+    format_locator,
+    join_volumes,
+    parse_source,
+    unit_of,
+)
 from services.technique_cards.extract import (
     CHOOSABLE_MODELS,
     PRICES,
@@ -30,7 +36,14 @@ from services.technique_cards.extract import (
     ladder,
     prompts_for,
 )
-from services.technique_cards.library import USABLE, Fetched, Library, LibraryError, Source
+from services.technique_cards.library import (
+    SERIES_PREFIX,
+    USABLE,
+    Fetched,
+    Library,
+    LibraryError,
+    Source,
+)
 from services.technique_cards.store import CardStore
 
 # Rough sizes for the preview only (not measured per source): Korean and English captions
@@ -57,7 +70,57 @@ class TechniqueCards:
             self._listed = (now, self.library.sources())
         return self._listed[1]
 
+    def source(self, item_ref: str) -> Source | None:
+        """One source: a single item from the library, or a series from the (cached) list."""
+        if not item_ref.startswith(SERIES_PREFIX):
+            return self.library.source(item_ref)
+        for refresh in (False, True):
+            for source in self.sources(refresh):
+                if source.item_ref == item_ref:
+                    return source
+        return None
+
+    def _usable_source(self, source: Source) -> tuple[Fetched, str, list[dict[str, Any]]]:
+        """The source's text and recheck outcome; a series also says where each volume is."""
+        if not source.is_series:
+            fetched, outcome = self._usable(source.item_ref)
+            return fetched, outcome, []
+        parts = [self._usable(volume.item_ref) for volume in source.members]
+        texts = [f.path.read_text(encoding="utf-8", errors="replace") for f, _ in parts]
+        try:
+            text, ranges = join_volumes(texts)
+        except ValueError as exc:
+            raise LibraryError(str(exc)) from exc
+        fetched = self.library.keep_series(source.item_ref, text, [f for f, _ in parts])
+        outcome = "conditional" if any(o == "conditional" for _, o in parts) else "still_usable"
+        unit = unit_of(self._lines(fetched))
+        volumes = [
+            {
+                "item_ref": volume.item_ref,
+                "title": volume.title,
+                "index": volume.series_index,
+                "from": format_locator(unit, first),
+                "to": format_locator(unit, last),
+            }
+            for volume, (first, last) in zip(source.members, ranges, strict=True)
+        ]
+        return fetched, outcome, volumes
+
+    @staticmethod
+    def _prompt_title(source: Source, volumes: list[dict[str, Any]]) -> str:
+        """A series tells the model where each volume is in the joined text."""
+        if not volumes:
+            return source.title
+        where = ", ".join(f"{v['index']}권 {v['from']}–{v['to']}" for v in volumes)
+        return f"{source.title} (시리즈 {len(volumes)}권: {where})"
+
     def _usable(self, item_ref: str) -> tuple[Fetched, str]:
+        # Under the item's lock, so a request that arrives while another is fetching the same
+        # item waits and then reuses that cache instead of fetching it again.
+        with self.library.lock(item_ref):
+            return self._usable_locked(item_ref)
+
+    def _usable_locked(self, item_ref: str) -> tuple[Fetched, str]:
         cached = self.library.cached(item_ref)
         if cached is not None:
             outcome = self.library.recheck(cached.context_ref, cached.revision_ref)
@@ -78,9 +141,11 @@ class TechniqueCards:
 
     def preview(self, source: Source, model: str | None = None) -> dict[str, Any]:
         model = model or self.store.default_model()
-        fetched, outcome = self._usable(source.item_ref)
+        fetched, outcome, volumes = self._usable_source(source)
         lines = self._lines(fetched)
-        prompts = prompts_for(source.source_key or source.item_ref, source.title, lines)
+        prompts = prompts_for(
+            source.source_key or source.item_ref, self._prompt_title(source, volumes), lines
+        )
         input_tokens = sum(int(Decimal(len(p)) / CHARS_PER_TOKEN) for p in prompts)
         output_tokens = OUTPUT_TOKENS_PER_PART * len(prompts)
         price_in, price_out = PRICES[model]
@@ -104,6 +169,7 @@ class TechniqueCards:
             "verification_status": fetched.verification_status,
             "data_grade": fetched.data_grade,
             "recheck_outcome": outcome,
+            "volumes": volumes,
         }
 
     def extract(
@@ -115,11 +181,11 @@ class TechniqueCards:
     ) -> str:
         """Extract, check and store; returns the card id. Raises on any failure."""
         model = model or self.store.default_model()
-        fetched, outcome = self._usable(source.item_ref)
+        fetched, outcome, volumes = self._usable_source(source)
         lines = self._lines(fetched)
         extraction: Extraction = extract_card(
             source.source_key or source.item_ref,
-            source.title,
+            self._prompt_title(source, volumes),
             lines,
             keys,
             call=call,
@@ -145,6 +211,10 @@ class TechniqueCards:
                 "transcript_sha256": fetched.sha256,
                 "verification_status": fetched.verification_status,
                 "recheck_outcome": outcome,
+                "members": [
+                    m | {"index": v["index"], "from": v["from"], "to": v["to"]}
+                    for m, v in zip(fetched.members, volumes, strict=True)
+                ],
             }
         )
 
@@ -160,12 +230,23 @@ class TechniqueCards:
 
     def recheck(self, card_id: str) -> dict[str, Any]:
         row = self.store.get(card_id)
-        try:
-            outcome = self.library.recheck(row["context_ref"], row["revision_ref"])
-        except LibraryError:
-            outcome = "unknown"
+        # A series card is as usable as its least usable volume.
+        targets = row["members"] or [row]
+        outcomes = []
+        for target in targets:
+            try:
+                outcomes.append(self.library.recheck(target["context_ref"], target["revision_ref"]))
+            except LibraryError:
+                outcomes.append("unknown")
+        unusable = [o for o in outcomes if o not in USABLE]
+        if unusable:
+            outcome = unusable[0]
+        else:
+            outcome = "conditional" if "conditional" in outcomes else "still_usable"
         if outcome not in USABLE:
             self.library.forget(row["item_ref"])
+            for target in row["members"]:
+                self.library.forget(target["item_ref"])
             return self.store.rechecked(card_id, outcome)
         # The same source text: run the script checks again, so a fixed checker reaches cards
         # made before the fix (Korean units, 2026-11-16). Another text is not checked here.

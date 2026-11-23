@@ -1,4 +1,5 @@
 import type {
+  CredentialListResponse,
   LiveConfirmationListResponse,
   PaperApproval,
   PaperIntentListResponse,
@@ -7,6 +8,7 @@ import type {
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import type { CredentialApi } from "../credential-api";
 import { AgentApp } from "./AgentApp";
 import type { LiveApi } from "./live-api";
 import { createPaperApi, type PaperApi } from "./paper-api";
@@ -676,5 +678,61 @@ describe("AgentApp live account (ADR 0047)", () => {
         instruments: [{ instrument_id: "us:aapl:xnas:2026", symbol: "AAPL" }],
       }),
     );
+  });
+});
+
+describe("keys tab", () => {
+  const EMPTY_KEYS: CredentialListResponse = {
+    kind: "credential_list_response",
+    schema_version: "0.1",
+    active_provider: "fake",
+    providers: [
+      {
+        provider: "kiwoom",
+        display_name: "키움증권",
+        per_account: true,
+        fields: [
+          { name: "app_key", label: "App key" },
+          { name: "secret_key", label: "Secret key" },
+        ],
+      },
+    ],
+    credentials: [],
+  };
+
+  function fakeKeys(): CredentialApi {
+    const unused = () => Promise.reject(new Error("not used in this test"));
+    return {
+      list: vi.fn<CredentialApi["list"]>(() => Promise.resolve(EMPTY_KEYS)),
+      add: vi.fn<CredentialApi["add"]>(unused),
+      update: vi.fn<CredentialApi["update"]>(unused),
+      replaceSecrets: vi.fn<CredentialApi["replaceSecrets"]>(unused),
+      move: vi.fn<CredentialApi["move"]>(unused),
+      remove: vi.fn<CredentialApi["remove"]>(unused),
+    };
+  }
+
+  it("opens the keys panel on this machine's API only when the tab is chosen", async () => {
+    const keys = fakeKeys();
+    render(
+      <AgentApp
+        paperApi={fakeApi()}
+        credentialApi={keys}
+        runnerControl={noControl}
+        pollMs={60_000}
+        languageStorage={null}
+        defaultLanguage="en"
+      />,
+    );
+    expect(keys.list).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("tab", { name: "Keys" }));
+    expect(
+      await screen.findByRole("heading", { name: "API keys" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/stored only in this computer's keychain/),
+    ).toBeTruthy();
+    await waitFor(() => expect(keys.list).toHaveBeenCalled());
+    expect(keys.add).not.toHaveBeenCalled();
   });
 });

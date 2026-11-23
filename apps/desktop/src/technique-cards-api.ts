@@ -118,7 +118,7 @@ export interface ModelSwitch {
   part: number;
   from: string;
   to: string;
-  reason: "limit" | "failed";
+  reason: "limit" | "key" | "failed";
 }
 
 export interface CardSummary {
@@ -247,6 +247,17 @@ export interface TechniqueDraft {
   needs_confirm?: boolean;
 }
 
+/** A saved strategy as a Pine v6 template, to compare on TradingView (ADR 0056 ⑤). */
+export interface StrategyPine {
+  kind: "backtest_strategy_pine";
+  strategy_id: string;
+  version: number;
+  source: string;
+  /** Rules with no Pine form written here; they are `false` in the source. */
+  unsupported: string[];
+  template_version: number;
+}
+
 export interface TechniqueCardsApi {
   sources(refresh?: boolean): Promise<TechniqueSource[]>;
   /** `model`: the assigned sonnet when left out, or another choosable model. */
@@ -275,6 +286,7 @@ export interface TechniqueCardsApi {
     acceptUnconvertible: boolean,
     confirmAssumptions?: boolean,
   ): Promise<TechniqueDraft>;
+  pine(strategyId: string, version: number): Promise<StrategyPine>;
 }
 
 export function createTechniqueCardsApi(
@@ -403,6 +415,12 @@ export function createTechniqueCardsApi(
             confirm_assumptions: confirmAssumptions,
           },
         },
+      ),
+    pine: (strategyId, version) =>
+      callForKind<StrategyPine>(
+        target,
+        `/v1/backtests/strategies/${encodeURIComponent(strategyId)}/pine?version=${version}`,
+        "backtest_strategy_pine",
       ),
   };
 }

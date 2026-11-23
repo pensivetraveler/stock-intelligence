@@ -45,7 +45,11 @@ from services.technique_cards.service import SourceWithdrawnError, TechniqueCard
 from services.technique_cards.store import CardNotFoundError
 from services.technique_cards.structured_schema import STRUCTURED_SCHEMA
 
-ITEM_REF = r"^kl://[a-z0-9][a-z0-9-]{0,62}/item/[0-9A-HJKMNP-TV-Z]{26}$"
+# A library item, or a series of items (`kl-series:<name>`, name 1-256 characters, #SIW-lib-23).
+ITEM_REF = (
+    r"^(?:kl://[a-z0-9][a-z0-9-]{0,62}/item/[0-9A-HJKMNP-TV-Z]{26}"
+    r"|kl-series:[^\x00-\x1f\x7f]{1,256})$"
+)
 _CONDITION_VALIDATOR = jsonschema.Draft202012Validator(
     {**STRUCTURED_SCHEMA["$defs"]["condition"], "$defs": STRUCTURED_SCHEMA["$defs"]}
 )
@@ -189,7 +193,7 @@ def register_technique_card_routes(
         if service is None:
             return unavailable(request)
         try:
-            source = service.library.source(body.item_ref)
+            source = service.source(body.item_ref)
             if source is None:
                 return error_response(
                     request, 404, "technique_source_not_found", "No current item with that tag"
@@ -214,7 +218,7 @@ def register_technique_card_routes(
                     status_code=202, content={"kind": "technique_card_job", "job_id": existing}
                 )
             try:
-                source = service.library.source(body.item_ref)
+                source = service.source(body.item_ref)
             except LibraryError as exc:
                 return library_error(request, exc)
             if source is None:

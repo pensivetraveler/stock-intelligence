@@ -15,6 +15,9 @@ answer is one JSON envelope; exit code 0 is not "allowed", the envelope is judge
   is used, `conditional` is used and shown as conditional, `stop_using` / `unknown` deletes the
   cache and the caller marks the card's evidence withdrawn.
 - Third-party text never goes into the repository, logs or error messages.
+- A series (volumes 1 and 2 of one book, `item.series = {"name", "index"}`, #SIW-lib-23) is one
+  source: the list shows it once (`kl-series:<name>`), and its text is the volumes in order with
+  pages (or paragraphs, or times) numbered on from the volume before (user request 2026-11-22).
 """
 
 from __future__ import annotations
@@ -25,7 +28,10 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
+import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -38,6 +44,9 @@ PAGE_LINE = re.compile(r"^\[p\.\s?\d+\]\s*$", re.MULTILINE)
 # Layers a summary or a model's reading, never the source itself.
 DERIVED_KINDS = ("summary", "interpretation")
 TIMEOUT_SECONDS = 120
+# Each library call is its own process (~1-2 s); item lookups for the list run side by side.
+LIST_WORKERS = 6
+SERIES_PREFIX = "kl-series:"
 
 Runner = Callable[[list[str], dict[str, Any]], dict[str, Any]]
 
@@ -130,9 +139,17 @@ class Source:
     tags: list[str]
     delivered_at: str
     eligibility: list[str]
+    series: str = ""
+    series_index: int = 0
+    # A series source: its volumes, in order (each a single-item source).
+    members: tuple[Source, ...] = ()
+
+    @property
+    def is_series(self) -> bool:
+        return bool(self.members)
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "item_ref": self.item_ref,
             "title": self.title,
             "url": self.url,
@@ -141,6 +158,53 @@ class Source:
             "delivered_at": self.delivered_at,
             "eligibility": self.eligibility,
         }
+        if self.members:
+            out["series"] = {
+                "name": self.series,
+                "volumes": [
+                    {"item_ref": m.item_ref, "title": m.title, "index": m.series_index}
+                    for m in self.members
+                ],
+            }
+        return out
+
+
+def series_ref(name: str) -> str:
+    return SERIES_PREFIX + name
+
+
+def group_series(sources: list[Source]) -> list[Source]:
+    """Volumes of one series become one source; a series with one volume here stays as it is."""
+    by_name: dict[str, list[Source]] = {}
+    for source in sources:
+        if source.series:
+            by_name.setdefault(source.series.casefold(), []).append(source)
+    out: list[Source] = []
+    placed: set[str] = set()
+    for source in sources:
+        key = source.series.casefold()
+        volumes = by_name.get(key, []) if source.series else []
+        if len(volumes) < 2:
+            out.append(source)
+            continue
+        if key in placed:
+            continue
+        placed.add(key)
+        volumes = sorted(volumes, key=lambda v: (v.series_index, v.title))
+        out.append(
+            Source(
+                item_ref=series_ref(volumes[0].series),
+                title=volumes[0].series,
+                url="",
+                source_key=series_ref(volumes[0].series)[:100],
+                tags=sorted({t for v in volumes for t in v.tags}),
+                delivered_at=max(v.delivered_at for v in volumes),
+                eligibility=[e for v in volumes for e in v.eligibility],
+                series=volumes[0].series,
+                members=tuple(volumes),
+            )
+        )
+    return out
 
 
 @dataclass(frozen=True)
@@ -154,6 +218,9 @@ class Fetched:
     sha256: str
     verification_status: str
     data_grade: str
+    # A series: every volume's {item_ref, context_ref, revision_ref}; context_ref and
+    # revision_ref above are the first volume's.
+    members: tuple[dict[str, str], ...] = ()
 
 
 class Library:
@@ -161,6 +228,13 @@ class Library:
         self.config = config
         self.cache_dir = cache_dir
         self._run = run or cli_runner(config)
+        self._locks: dict[str, threading.RLock] = {}
+        self._locks_guard = threading.Lock()
+
+    def lock(self, item_ref: str) -> threading.RLock:
+        """One lock per item: two requests never fetch or replace the same cache folder at once."""
+        with self._locks_guard:
+            return self._locks.setdefault(item_ref, threading.RLock())
 
     def _call(self, args: list[str], request: dict[str, Any]) -> dict[str, Any]:
         envelope = self._run(args, request)
@@ -192,13 +266,14 @@ class Library:
             newer = str(delivery.get("sent_at", "")) >= str(latest.get(ref, {}).get("sent_at", ""))
             if ref and delivery.get("state") == "sent" and newer:
                 latest[ref] = delivery
-        found = []
-        for ref, delivery in latest.items():
-            source = self.source(ref, str(delivery.get("sent_at") or ""))
-            if source is not None:
-                found.append(source)
+        with ThreadPoolExecutor(max_workers=LIST_WORKERS) as pool:
+            looked_up = pool.map(
+                lambda pair: self.source(pair[0], str(pair[1].get("sent_at") or "")),
+                list(latest.items()),
+            )
+            found = [source for source in looked_up if source is not None]
         found.sort(key=lambda s: s.delivered_at, reverse=True)
-        return found
+        return group_series(found)
 
     def source(self, item_ref: str, delivered_at: str = "") -> Source | None:
         """One current item carrying the technique tag, or None."""
@@ -207,6 +282,13 @@ class Library:
         tags = sorted({str(t.get("name")) for t in item.get("tags") or [] if isinstance(t, dict)})
         if item.get("state") not in (None, "current") or TAG not in tags:
             return None
+        raw_series = item.get("series")
+        series: dict[str, Any] = raw_series if isinstance(raw_series, dict) else {}
+        name = str(series.get("name") or "").strip()[:256]  # contract 0.5.1: 1-256 characters
+        try:
+            index = int(series.get("index") or 0)
+        except (TypeError, ValueError):
+            index = 0
         return Source(
             item_ref=item_ref,
             title=str(item.get("title") or "")[:500],
@@ -215,13 +297,25 @@ class Library:
             tags=tags,
             delivered_at=delivered_at,
             eligibility=[str(m.get("eligibility_outcome")) for m in data.get("members") or []],
+            series=name,
+            series_index=index if name else 0,
         )
 
     def _item_dir(self, item_ref: str) -> Path:
         return self.cache_dir / hashlib.sha256(item_ref.encode()).hexdigest()[:32]
 
     def fetch(self, item_ref: str) -> Fetched:
-        """Hydrate the item's layers into a fresh cache folder and keep the transcript layer."""
+        """Hydrate the item's layers into a fresh cache folder and keep the transcript layer.
+
+        The layers are hydrated into a private staging folder and moved into place only when
+        complete, under the item's lock: a second request for the same item waits instead of
+        deleting the folder the first one is still writing (2026-11-22, a book cached its
+        metadata note instead of its PDF text).
+        """
+        with self.lock(item_ref):
+            return self._fetch(item_ref)
+
+    def _fetch(self, item_ref: str) -> Fetched:
         data = self._call(["item", "get"], {"item_ref": item_ref})
         refs = [str(m["artifact_ref"]) for m in data.get("members") or [] if m.get("artifact_ref")]
         if not refs:
@@ -238,25 +332,27 @@ class Library:
         if not selected:
             raise LibraryError("the library selected no layer of this item")
         target = self._item_dir(item_ref)
-        if target.exists():
-            shutil.rmtree(target)
-        hydrated = target / "hydrated"
-        hydrated.mkdir(parents=True, mode=0o700)
+        self.cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(self.cache_dir, 0o700)
-        os.chmod(target, 0o700)
-        self._call(
-            ["context", "hydrate", "--out-dir", str(hydrated)],
-            {"context_ref": context["context_ref"], "items": selected},
-        )
+        staging = Path(tempfile.mkdtemp(prefix=".fetch-", dir=self.cache_dir))  # 0700
         try:
+            hydrated = staging / "hydrated"
+            hydrated.mkdir(mode=0o700)
+            self._call(
+                ["context", "hydrate", "--out-dir", str(hydrated)],
+                {"context_ref": context["context_ref"], "items": selected},
+            )
             path, meta = self._source_layer(hydrated)
-        except LibraryError:
-            shutil.rmtree(target)
+            shutil.copyfile(path, staging / "transcript.txt")
+            os.chmod(staging / "transcript.txt", 0o600)
+            shutil.rmtree(hydrated)
+            if target.exists():
+                shutil.rmtree(target)
+            os.rename(staging, target)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
             raise
         transcript = target / "transcript.txt"
-        shutil.copyfile(path, transcript)
-        os.chmod(transcript, 0o600)
-        shutil.rmtree(hydrated)
         fetched = Fetched(
             item_ref=item_ref,
             context_ref=str(context["context_ref"]),
@@ -335,7 +431,66 @@ class Library:
             sha256=digest,
             verification_status=str(record.get("verification_status") or "unverified"),
             data_grade=str(record.get("data_grade") or "private"),
+            members=tuple(record.get("members") or ()),
         )
+
+    def keep_series(self, series_item_ref: str, text: str, volumes: list[Fetched]) -> Fetched:
+        """Cache a series' joined text like an item's, recording every volume to recheck."""
+        with self.lock(series_item_ref):
+            target = self._item_dir(series_item_ref)
+            self.cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.chmod(self.cache_dir, 0o700)
+            staging = Path(tempfile.mkdtemp(prefix=".fetch-", dir=self.cache_dir))
+            members = tuple(
+                {
+                    "item_ref": v.item_ref,
+                    "context_ref": v.context_ref,
+                    "revision_ref": v.revision_ref,
+                }
+                for v in volumes
+            )
+            grades = {v.data_grade for v in volumes}
+            statuses = {v.verification_status for v in volumes}
+            first = volumes[0]
+            try:
+                transcript = staging / "transcript.txt"
+                transcript.write_text(text, encoding="utf-8")
+                os.chmod(transcript, 0o600)
+                fetched = Fetched(
+                    item_ref=series_item_ref,
+                    context_ref=first.context_ref,
+                    revision_ref=first.revision_ref,
+                    path=target / "transcript.txt",
+                    sha256=hashlib.sha256(transcript.read_bytes()).hexdigest(),
+                    # Volumes that differ: the series is unverified and private.
+                    verification_status=first.verification_status
+                    if len(statuses) == 1
+                    else "unverified",
+                    data_grade=first.data_grade if len(grades) == 1 else "private",
+                    members=members,
+                )
+                record = staging / "fetched.json"
+                record.write_text(
+                    json.dumps(
+                        {
+                            "item_ref": series_item_ref,
+                            "context_ref": fetched.context_ref,
+                            "revision_ref": fetched.revision_ref,
+                            "sha256": fetched.sha256,
+                            "verification_status": fetched.verification_status,
+                            "data_grade": fetched.data_grade,
+                            "members": list(members),
+                        }
+                    )
+                )
+                os.chmod(record, 0o600)
+                if target.exists():
+                    shutil.rmtree(target)
+                os.rename(staging, target)
+            except BaseException:
+                shutil.rmtree(staging, ignore_errors=True)
+                raise
+            return fetched
 
     def recheck(self, context_ref: str, revision_ref: str) -> str:
         """`still_usable` | `conditional` | `stop_using` | `unknown` (refused = unknown)."""
@@ -353,6 +508,7 @@ class Library:
 
     def forget(self, item_ref: str) -> None:
         """Delete the cached text of an item (evidence withdrawn)."""
-        target = self._item_dir(item_ref)
-        if target.exists():
-            shutil.rmtree(target)
+        with self.lock(item_ref):
+            target = self._item_dir(item_ref)
+            if target.exists():
+                shutil.rmtree(target)

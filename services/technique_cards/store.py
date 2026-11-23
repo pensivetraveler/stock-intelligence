@@ -115,6 +115,11 @@ class CardStore:
         self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self._db.row_factory = sqlite3.Row
         self._db.executescript(SCHEMA)
+        columns = {r[1] for r in self._db.execute("PRAGMA table_info(technique_cards)")}
+        if "members" not in columns:  # 2026-11-22: a series card records every volume
+            self._db.execute(
+                "ALTER TABLE technique_cards ADD COLUMN members TEXT NOT NULL DEFAULT '[]'"
+            )
         self._lock = threading.Lock()
         self._clock = clock
 
@@ -194,8 +199,8 @@ class CardStore:
                 "INSERT INTO technique_cards (card_id, item_ref, title, url, version, card,"
                 " checks, resolutions, usage, attempts, versions, context_ref, revision_ref,"
                 " transcript_sha256, verification_status, recheck_outcome, rechecked_at,"
-                " created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                " ?, ?, ?, ?)",
+                " created_at, updated_at, members) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?,"
+                " ?, ?, ?, ?, ?, ?, ?)",
                 (
                     card_id,
                     fields["item_ref"],
@@ -215,13 +220,14 @@ class CardStore:
                     now,
                     now,
                     now,
+                    json.dumps(fields.get("members") or [], ensure_ascii=False),
                 ),
             )
         return card_id
 
     def _row(self, row: sqlite3.Row) -> dict[str, Any]:
         out = dict(row)
-        for key in ("card", "checks", "resolutions", "usage", "attempts", "versions"):
+        for key in ("card", "checks", "resolutions", "usage", "attempts", "versions", "members"):
             out[key] = json.loads(out[key])
         out["withdrawn"] = bool(out["withdrawn"])
         out["ready"], out["blocks"] = ready(out)

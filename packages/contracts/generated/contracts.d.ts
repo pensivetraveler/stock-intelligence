@@ -42,6 +42,7 @@ export type StockIntelligenceWorkstationContractsV01 =
   | TickListResponse
   | BacktestStrategy
   | BacktestStrategyListResponse
+  | BacktestStrategyPine
   | BacktestRun
   | BacktestRunListResponse
   | BacktestResults
@@ -1381,6 +1382,15 @@ export interface BacktestStrategyListResponse {
   kind: "backtest_strategy_list_response";
   schema_version: SchemaVersion;
   strategies: BacktestStrategy[];
+}
+export interface BacktestStrategyPine {
+  kind: "backtest_strategy_pine";
+  schema_version: SchemaVersion;
+  strategy_id: string;
+  version: number;
+  source: string;
+  unsupported: string[];
+  template_version: number;
 }
 export interface BacktestRun {
   kind: "backtest_run";
