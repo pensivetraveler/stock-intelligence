@@ -38,7 +38,9 @@ from services.api.parent_watch import parent_pid_from_env, start_parent_watch
 from services.api.review_routes import register_review_routes
 from services.api.screener_routes import register_screener_routes
 from services.api.screening_flow_routes import register_screening_flow_routes
-from services.api.screening_news_routes import register_screening_news_routes
+from services.api.screening_news_auto import NEWS_WAIT_SECONDS as NEWS_AUTO_WAIT
+from services.api.screening_news_auto import NewsAutoRunner, news_auto_enabled
+from services.api.screening_news_routes import NewsChecks, register_screening_news_routes
 from services.api.screening_off_exchange_routes import (
     OffExchangeChecks,
     finra_review_from,
@@ -915,7 +917,29 @@ def create_app(
             if stage4_enabled()
             else None
         )
+        # Stage 2 (ADR 0057, 2026-11-23 decision 184): a news check once a session for
+        # every candidate, before the user opens it in the panel.
+        news_auto = (
+            NewsAutoRunner(
+                store=screening.get,
+                data_dir=screening.data_dir,
+                listing_for=listing_for,
+                news=NewsChecks(
+                    clock=clock,
+                    news_service=lambda: NewsService(news_url()),
+                    wait_seconds=NEWS_AUTO_WAIT,
+                    read_shares=lambda symbol, instrument_id: toss_shares(symbol, instrument_id),
+                    get_bars=lambda: MarketBarsService(provider.get()).get_bars,
+                ),
+                clock=clock,
+                condition_name=SCREENING_CONDITION_NAME,
+            ).start()
+            if news_auto_enabled()
+            else None
+        )
         yield
+        if news_auto is not None:
+            news_auto.set()
         if stage4 is not None:
             stage4.set()
         if prefetch is not None:

@@ -3289,3 +3289,10 @@
   - main e61c15e로 SIW Agent를 다시 빌드해 설치했다(11-04 설치본은 휴지통).
   - 같은 날 모의 확인(60)이 먼저다. 실행 승인·무장·주문 승인은 사용자가 하고, 코딩 Agent는 끝난 뒤 원장·로그만 읽는다.
 - **미확인:** 새 SIW Agent 실행 화면, 실행기 설치, kiwoom2 계좌의 미국주식 권한·예수금.
+
+## 뉴스 검사 자동 실행·시가총액 주식 수(ADR 0057 184·251) — 2026-11-23
+
+- **추가:** `services/api/screening_news_auto.py`(`NewsAutoRunner`). 미국 세션 동안 30초마다 그날 후보 중 뉴스 검사가 없는 종목에 한 번씩(틱마다 한 개, 처음 보인 순서) check B를 요청한다. 패널 검사가 있으면 건너뛰고, 오류는 다시 돌리지 않으며, 기다리는 검사가 남으면 새로 요청하지 않는다. `result.news_auto.requested_by: "news_auto"`로 구별. NIR 월 상한 도달(`nir.state: stopped`)의 첫 시각을 로그·보고에 남긴다. `SIW_SCREENING_NEWS_AUTO=0`이면 끔.
+- **변경:** 뉴스 검사 코드를 `NewsChecks`(`services/api/screening_news_routes.py`)로 빼서 라우트와 실행기가 같이 쓴다. 시가총액 주식 수는 cutoff 뉴욕 날짜보다 앞선 세션에 저장된 희석 검사의 분석기 `shares_outstanding.as_of`를 먼저 쓴다(`shares_from_dilution`; 근거 공시 날짜도 그날보다 앞서야 함). 없으면 진행 중인 세션은 Toss 값과 경고(`result.shares_note`), 끝난 세션은 보내지 않는다. 출처 `siw:dilution-shares_x_1m-close:…`.
+- **시험:** `tests/screening/test_news_auto.py` 6개, `tests/screening/test_material.py`에 2개 추가·1개 수정. `./scripts/verify.sh` 결과는 PR에 적는다.
+- **미확인:** 실제 장중 자동 실행, NIR 비용과 상한 도달 시점, 분석기 주식 수가 실제로 쓰인 비율(그날 처음 후보가 된 종목은 Toss로 내려갈 수 있음).
