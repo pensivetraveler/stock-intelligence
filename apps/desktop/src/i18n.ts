@@ -1807,9 +1807,11 @@ const en = {
   "tc.withdrawn": "evidence withdrawn",
   "tc.userWithdrawn": "withdrawn by you",
   "tc.withdraw": "Withdraw card",
-  "tc.withdrawConfirm": "Withdraw this card? It stays in the list, marked withdrawn, and can no longer make a strategy draft.",
+  "tc.withdrawConfirm":
+    "Withdraw this card? It stays in the list, marked withdrawn, and can no longer make a strategy draft.",
   "tc.existingCards": "This source already has {n} card(s). Extract as:",
-  "tc.newVersion": "a new version of the newest card ({title}); its checks stay with the earlier version",
+  "tc.newVersion":
+    "a new version of the newest card ({title}); its checks stay with the earlier version",
   "tc.newCard": "a separate new card",
   "tc.versionN": "version {version}",
   "tc.ready": "ready",
@@ -3973,9 +3975,12 @@ const ko: Record<MessageKey, string> = {
   "tc.withdrawn": "근거 철회",
   "tc.userWithdrawn": "사용자 철회",
   "tc.withdraw": "카드 철회",
-  "tc.withdrawConfirm": "이 카드를 철회할까요? 목록에는 '사용자 철회'로 남고, 전략 초안을 더 만들 수 없습니다.",
-  "tc.existingCards": "이 자료에는 카드가 이미 {n}장 있습니다. 어떻게 추출할까요?",
-  "tc.newVersion": "가장 최근 카드({title})의 새 판으로 — 지금까지 확인한 내용은 이전 판에 남음",
+  "tc.withdrawConfirm":
+    "이 카드를 철회할까요? 목록에는 '사용자 철회'로 남고, 전략 초안을 더 만들 수 없습니다.",
+  "tc.existingCards":
+    "이 자료에는 카드가 이미 {n}장 있습니다. 어떻게 추출할까요?",
+  "tc.newVersion":
+    "가장 최근 카드({title})의 새 판으로 — 지금까지 확인한 내용은 이전 판에 남음",
   "tc.newCard": "별도 새 카드로",
   "tc.versionN": "{version}판",
   "tc.ready": "준비됨",

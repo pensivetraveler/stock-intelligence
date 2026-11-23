@@ -261,8 +261,7 @@ export interface StrategyPine {
 }
 
 export type ExtractChoice =
-  | { mode: "new_version"; cardId: string }
-  | { mode: "new_card" };
+  { mode: "new_version"; cardId: string } | { mode: "new_card" };
 
 export interface TechniqueCardsApi {
   sources(refresh?: boolean): Promise<TechniqueSource[]>;

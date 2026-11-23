@@ -354,7 +354,9 @@ describe("technique cards", () => {
       ).toHaveLength(2),
     );
     fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
-    fireEvent.click(await screen.findByRole("button", { name: "Withdraw card" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Withdraw card" }),
+    );
     expect(api.withdraw).not.toHaveBeenCalled();
     confirm.mockReturnValueOnce(true);
     vi.mocked(api.cards).mockResolvedValue([withdrawn]);

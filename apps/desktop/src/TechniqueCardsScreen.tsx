@@ -420,8 +420,8 @@ export function TechniqueCardsScreen({
                       : summary.withdrawn
                         ? t("tc.withdrawn")
                         : summary.ready
-                        ? t("tc.ready")
-                        : t("tc.needsReview", { n: summary.blocks.length })}
+                          ? t("tc.ready")
+                          : t("tc.needsReview", { n: summary.blocks.length })}
                   </span>
                 </li>
               ))}
@@ -576,7 +576,6 @@ export function TechniqueCardsScreen({
                     ))}
                   </ul>
                 ) : null}
-
                 <table className="tc-conditions">
                   <thead>
                     <tr>
@@ -663,7 +662,6 @@ export function TechniqueCardsScreen({
                     })}
                   </tbody>
                 </table>
-
                 {card.card.ambiguities.length ? (
                   <section aria-label={t("tc.ambiguities")}>
                     <h4>{t("tc.ambiguities")}</h4>
@@ -686,7 +684,6 @@ export function TechniqueCardsScreen({
                     ))}
                   </section>
                 ) : null}
-
                 <section aria-label={t("tc.added")}>
                   <h4>{t("tc.added")}</h4>
                   <p className="workspace-note">{t("tc.addedNote")}</p>
@@ -749,7 +746,6 @@ export function TechniqueCardsScreen({
                     {t("tc.addedAdd")}
                   </button>
                 </section>
-
                 {(
                   [
                     "universe",
@@ -774,7 +770,6 @@ export function TechniqueCardsScreen({
                     </section>
                   ) : null,
                 )}
-
                 <button
                   type="button"
                   className="primary-button"
@@ -788,7 +783,6 @@ export function TechniqueCardsScreen({
                     {t("tc.withdraw")}
                   </button>
                 )}
-
                 {card.ready && !card.withdrawn ? (
                   <TechniqueDraftPanel
                     key={`${card.card_id}:${card.version}`}
@@ -798,7 +792,6 @@ export function TechniqueCardsScreen({
                     defaultModel={settings?.default_model ?? CHOOSABLE_DEFAULT}
                   />
                 ) : null}
-
                 <section aria-label={t("tc.timeline")}>
                   <h4>{t("tc.timeline")}</h4>
                   {timeline === null ? (
