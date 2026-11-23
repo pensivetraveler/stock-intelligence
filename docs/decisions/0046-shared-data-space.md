@@ -104,6 +104,11 @@ Each step ships and is checked alone, and a backup comes before any move.
 - **SEC files changing during an analysis:** when one run reads a URL several times, only the last content enters the analyzer's key. The gap exists today, and frequent SIW refreshes make it more likely for a run dated today. Its size has not been measured.
 - **Rights and need for `market/`:** with no reader, moving the store gains nothing yet and still carries the move's risk.
 
+## Listing-unit changes (2026-11-23 user decision)
+
+- The analyzer added a separate `listing_changes` table to `splits.sqlite` (its 0cf1e90; e.g. POM, 10 ADS → 3 Class A shares). `user_version` stays 1 and the `splits` rows SIW reads are unchanged, so `read_filing_splits` keeps working.
+- User decision: SIW does **not** read or show `listing_changes` for now (rare; prices are not adjusted for it either way). Decide again when a listing change affects a symbol SIW charts or screens.
+
 ## Reconsider when
 
 - the analyzer moves to AWS, or the programs otherwise run on different machines;
