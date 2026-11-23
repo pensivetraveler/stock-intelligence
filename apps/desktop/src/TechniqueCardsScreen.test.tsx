@@ -224,6 +224,12 @@ function fakeApi(): TechniqueCardsApi {
       default_model: model,
     })),
     startDraft: vi.fn().mockResolvedValue({ draft_id: "d1" }),
+    draftItems: vi
+      .fn()
+      .mockResolvedValue([
+        "[entry, long, from the source] buy",
+        "[position] bet small",
+      ]),
     draft: vi.fn().mockResolvedValue(draftDone),
     drafts: vi.fn().mockResolvedValue([]),
     pine: vi.fn().mockResolvedValue({
@@ -586,6 +592,61 @@ describe("technique cards", () => {
     expect(screen.getByLabelText("Pine template")).toHaveTextContent(
       "//@version=6",
     );
+  });
+
+  it("drafts one way of trading the card from the items left ticked", async () => {
+    const api = fakeApi();
+    const oneWay: TechniqueDraft = {
+      ...draftDone,
+      needs_accept: false,
+      result: {
+        ...draftDone.result!,
+        selected: [0],
+        label: "one punch 0.75",
+        conversion: {
+          ...draftDone.result!.conversion,
+          mapping: [
+            draftDone.result!.conversion.mapping[0]!,
+            {
+              index: 1,
+              condition: "bet small",
+              status: "excluded",
+              rule_paths: [],
+              reason: "not used in this draft (the investor's choice)",
+            },
+          ],
+        },
+        unconvertible: 0,
+      },
+    };
+    vi.mocked(api.draft).mockResolvedValue(oneWay);
+    vi.mocked(api.cards).mockResolvedValue([card()]);
+    vi.mocked(api.card).mockResolvedValue(card({ ready: true, blocks: [] }));
+    render(
+      <TechniqueCardsScreen api={api} onClose={() => undefined} pollMs={5} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Demo lesson" }),
+      ).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Demo lesson" })[1]);
+    const second = await screen.findByLabelText("2. [position] bet small");
+    fireEvent.click(second);
+    fireEvent.change(screen.getByLabelText("Way"), {
+      target: { value: "one punch 0.75" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Make a draft (costs money)" }),
+    );
+    await waitFor(() =>
+      expect(api.startDraft).toHaveBeenCalledWith(
+        "c1",
+        "google/gemini-4-argon",
+        { items: [0], label: "one punch 0.75" },
+      ),
+    );
+    expect(await screen.findByText("Not in this draft")).toBeTruthy();
   });
 
   it("drafts by script for free and asks to keep an unstated reading", async () => {

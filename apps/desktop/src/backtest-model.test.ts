@@ -319,7 +319,7 @@ describe("comparison with real fills", () => {
 
 describe("indicators offered to backtests", () => {
   it("include every chart indicator but never a look-ahead output", () => {
-    expect(BACKTEST_INDICATOR_IDS).toHaveLength(34);
+    expect(BACKTEST_INDICATOR_IDS).toHaveLength(35);
     expect(backtestOutputs("ichimoku").map((output) => output.key)).toEqual([
       "conversion",
       "base",

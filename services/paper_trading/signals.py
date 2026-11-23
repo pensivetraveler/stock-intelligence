@@ -28,6 +28,8 @@ def rule_signals(
     clean = validate_definition(definition)
     if clean["type"] != "rules":
         raise StrategyError("paper runner: only rules strategies are offered for now")
+    if "setup" in clean:
+        raise StrategyError("paper runner: a setup strategy is for backtests only (ADR 0061)")
     if ProtectionRules.of(clean).active and any(
         (clean.get(name) or {"type": "market"})["type"] != "market"
         for name in ("entry_order", "exit_order")

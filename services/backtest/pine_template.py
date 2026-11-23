@@ -209,6 +209,13 @@ def to_pine(definition: dict[str, Any], name: str) -> dict[str, Any]:
     """{"source", "unsupported", "version"} for a validated rules definition."""
     if definition.get("type") != "rules":
         return {"source": "", "unsupported": ["only rules strategies"], "version": TEMPLATE_VERSION}
+    if "setup" in definition:
+        # Base bar state, moving limit ladders and partial exits (ADR 0061): not templated yet.
+        return {
+            "source": "",
+            "unsupported": ["/setup: a base-bar Fibonacci setup has no Pine template yet"],
+            "version": TEMPLATE_VERSION,
+        }
     w = _Writer()
     entry = w.condition(definition.get("entry"), "/entry")
     exit_ = w.condition(definition.get("exit"), "/exit")

@@ -200,6 +200,9 @@ def strategy_what_if(
         definition = validate_definition(strategy["definition"])
     except StrategyError as exc:
         return {**base, "status": "unknown", "detail": f"cannot be replayed here: {exc}"}
+    if "setup" in definition:
+        # Its entries are resting limit ladders, not an entry rule (ADR 0061).
+        return {**base, "status": "unknown", "detail": "a setup strategy is not replayed here"}
     info = _info(trade)
     actual = _actual(info)
     entry = _first_entry(info.executions)
@@ -342,6 +345,8 @@ def suggest_strategies(
             definition = validate_definition(strategy["definition"])
         except StrategyError:
             continue
+        if "setup" in definition:
+            continue  # no entry rule to check (ADR 0061)
         held = []
         for timeframe, bars in series.items():
             if not bars:

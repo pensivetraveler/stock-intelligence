@@ -254,6 +254,17 @@ def rule_parts(definition: dict[str, Any]) -> list[str]:
     for name in ("stop_loss_pct", "take_profit_pct", "stop_loss_atr", "trailing_stop"):
         if definition.get(name) is not None:
             parts.append(f"/{name}")
+    setup = definition.get("setup")
+    if setup is not None:
+        # A base-bar setup (ADR 0061): its conditions, every leg's line and target, the stop.
+        parts += [*_leaves(setup["base"], "/setup/base")]
+        parts += [*_leaves(setup["breakout"], "/setup/breakout")]
+        for n, leg in enumerate(setup["legs"]):
+            parts.append(f"/setup/legs/{n}/level")
+            parts += [f"/setup/legs/{n}/targets/{k}" for k in range(len(leg["targets"]))]
+        parts.append("/setup/stop_level")
+        if setup["breakeven_after_target"]:
+            parts.append("/setup/breakeven_after_target")
     return parts
 
 
@@ -273,9 +284,15 @@ def _covers(pointer: str, part: str) -> bool:
 
 
 def check_mapping(
-    definition: dict[str, Any] | None, conditions: list[str], mapping: list[dict[str, Any]]
+    definition: dict[str, Any] | None,
+    conditions: list[str],
+    mapping: list[dict[str, Any]],
+    skip: frozenset[int] = frozenset(),
 ) -> list[str]:
-    """What stops this conversion from being complete; empty when nothing is unresolved."""
+    """What stops this conversion from being complete; empty when nothing is unresolved.
+
+    `skip`: items the user left out of this draft (technique drafts, ADR 0061 §5); a mapping
+    for one of them is a problem, a missing one is not."""
     problems: list[str] = []
     seen: dict[int, dict[str, Any]] = {}
     for item in mapping:
@@ -286,11 +303,15 @@ def check_mapping(
             or not (0 <= index < len(conditions))
         ):
             problems.append(f"mapping names condition {index}, which does not exist")
+        elif index in skip:
+            problems.append(f"condition {index} was not chosen for this draft")
         elif index in seen:
             problems.append(f"condition {index} is mapped twice")
         else:
             seen[index] = item
     for index, text in enumerate(conditions):
+        if index in skip:
+            continue
         entry = seen.get(index)
         if entry is None:
             problems.append(f"condition {index} has no mapping: {text}")
@@ -344,6 +365,7 @@ def convert(
     call: Call,
     system: str | None = None,
     request: str | None = None,
+    skip: frozenset[int] = frozenset(),
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """(the conversion as stored, each reply's usage). A definition that fails validation goes
     back to Claude with the error; a mapping problem does not, it is shown to the investor.
@@ -411,7 +433,7 @@ def convert(
         for item in answer.get("mapping") or []
         if item.get("status") in STATUSES
     ]
-    problems = check_mapping(definition, conditions, mapping)
+    problems = check_mapping(definition, conditions, mapping, skip)
     if error is not None:
         problems.insert(0, f"the rules are invalid: {error}")
     return (

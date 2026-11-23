@@ -70,6 +70,19 @@ def test_stops_targets_and_not_used_items() -> None:
     assert none["place"] == {"kind": "absent", "pointer": "/take_profit_pct"}
 
 
+def test_a_percent_over_the_previous_close_is_the_one_bar_rate_of_change() -> None:
+    # 원펀치 2권 item 1: "종가가 15% 이상인 장대양봉" (ADR 0061 §5).
+    jump = _convert(comparator="at_or_above", right=_op("percent", "previous_close", value=15))
+    assert jump["place"] == {
+        "kind": "entry",
+        "rule": {"op": "gte", "left": {"indicator": "roc", "params": {"length": 1},
+                 "output": "value"}, "right": {"value": "15"}},
+    }  # fmt: skip
+    assert jump["assumptions"] == []
+    fall = _convert(comparator="below", right=_op("percent", "previous_close", value=5))
+    assert fall["place"] is None
+
+
 @pytest.mark.parametrize(
     "over",
     [
@@ -245,3 +258,134 @@ def test_a_model_may_leave_out_a_fixed_item_whose_text_says_more(tmp_path: Path)
 
     blocked = strategy_draft.draft(row, "google/gemini-4-argon", KEYS, call=silent)
     assert any("condition 1" in p for p in blocked["blocking"])
+
+
+MODEL = "google/gemini-4-argon"
+
+# --- one way of trading a card per draft, and setups (ADR 0061) -----------------------
+
+SETUP = {
+    "type": "rules",
+    "setup": {
+        "kind": "base_fib",
+        "base": {"all": [DONCHIAN["entry"]]},
+        "breakout": {"op": "gt", "left": {"indicator": "tv"}, "right": {"base": "value"}},
+        "breakout_within": 20,
+        "entry_within": 20,
+        "legs": [{"level": "0.75", "size_pct": "100",
+                  "targets": [{"level": "0.25", "sell_pct": "100"}]}],
+        "stop_level": "1",
+        "breakeven_after_target": False,
+    },
+    "sizing": {"mode": "risk_pct", "value": "1"},
+}  # fmt: skip
+
+
+def test_a_script_draft_of_chosen_items_marks_the_rest_excluded(tmp_path: Path) -> None:
+    row = _ready_card(_store(tmp_path))
+    result = strategy_draft.draft(row, "script", KEYS, chosen=[0, 1], label="Donchian only")
+    statuses = [m["status"] for m in result["conversion"]["mapping"]]
+    assert statuses == ["mapped", "mapped", "excluded"]
+    assert result["selected"] == [0, 1] and result["label"] == "Donchian only"
+    assert result["unconvertible"] == 0 and result["blocking"] == []
+    assert strategy_draft.save_blocks(result, row, accept=False) == []
+
+
+def test_a_model_sees_only_the_chosen_items_and_may_not_map_others(tmp_path: Path) -> None:
+    row = _ready_card(_store(tmp_path))
+    sent: list[str] = []
+
+    def call(system: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        sent.append(messages[0]["content"])
+        return _reply(
+            {"type": "rules", "entry": DONCHIAN["entry"]},
+            [
+                {"index": 0, "status": "mapped", "rule_paths": ["/entry"], "reason": ""},
+                {"index": 1, "status": "mapped", "rule_paths": ["/entry"], "reason": ""},
+                {"index": 2, "status": "unconvertible", "rule_paths": [], "reason": "vague"},
+            ],
+        )
+
+    result = strategy_draft.draft(row, MODEL, KEYS, call=call, chosen=[0, 2], label="A")
+    lines = sent[0].splitlines()
+    assert "This draft is one way of trading the card, named by the investor: A" in lines
+    assert any(line.startswith("0. ") for line in lines)
+    assert any(line.startswith("2. ") for line in lines)
+    assert not any(line.startswith("1. ") for line in lines)
+    assert "condition 1 was not chosen for this draft" in result["blocking"]
+    assert result["conversion"]["mapping"][1]["status"] == "excluded"
+
+
+def test_a_setup_draft_keeps_scripted_entries_in_the_base_and_asks_for_readings(
+    tmp_path: Path,
+) -> None:
+    row = _ready_card(_store(tmp_path))
+
+    def call(system: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        assert '"kind": "base_fib"' in system and "risk_pct" in system
+        return _reply(
+            SETUP,
+            [
+                {"index": 0, "status": "mapped", "rule_paths": ["/setup/base/all/0"],
+                 "reason": ""},
+                {"index": 2, "status": "mapped",
+                 "rule_paths": ["/setup/legs/0", "/setup/stop_level", "/setup/breakout",
+                                "/sizing"], "reason": ""},
+            ],
+        )  # fmt: skip
+
+    result = strategy_draft.draft(row, MODEL, KEYS, call=call, chosen=[0, 2])
+    assert result["blocking"] == [], result["blocking"]
+    assert {a["kind"] for a in result["assumptions"]} == {"setup_windows", "trading_value_approx"}
+    assert strategy_draft.save_blocks(result, row, accept=False) == [
+        "1 item(s) rest on a reading the source did not state: tick"
+    ]
+    assert strategy_draft.save_blocks(result, row, accept=False, confirm=True) == []
+
+
+def test_a_setup_part_no_item_reaches_is_a_problem(tmp_path: Path) -> None:
+    row = _ready_card(_store(tmp_path))
+
+    def call(system: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        return _reply(
+            SETUP,
+            [
+                {"index": 0, "status": "mapped", "rule_paths": ["/setup/base/all/0"],
+                 "reason": ""},
+                {"index": 2, "status": "mapped", "rule_paths": ["/setup/legs/0"], "reason": ""},
+            ],
+        )  # fmt: skip
+
+    result = strategy_draft.draft(row, MODEL, KEYS, call=call, chosen=[0, 2])
+    assert any("/setup/stop_level" in problem for problem in result["blocking"])
+    assert any("/setup/breakout" in problem for problem in result["blocking"])
+
+
+def test_draft_items_route_and_a_bad_choice(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    service = TechniqueCards(Library(_config(), tmp_path / "cache", FakeCli()), store)
+    app = FastAPI()
+
+    def error(request: Any, status: int, code: str, message: str) -> JSONResponse:
+        return JSONResponse(
+            status_code=status, content={"error": {"code": code, "message": message}}
+        )
+
+    register_technique_card_routes(
+        app, cards=lambda: service, keys=lambda: KEYS, error_response=error,
+        start=lambda w: w(), strategies=lambda: FakeStrategies(),
+    )  # fmt: skip
+    row = _ready_card(store)
+    client = TestClient(app)
+    listed = client.get(f"/v1/technique-cards/{row['card_id']}/draft-items").json()
+    assert listed["items"] == strategy_draft.card_items(row)
+    bad = client.post(
+        f"/v1/technique-cards/{row['card_id']}/drafts", json={"model": "script", "items": [7]}
+    )
+    assert bad.status_code == 422 and bad.json()["error"]["code"] == "invalid_draft_items"
+    made = client.post(
+        f"/v1/technique-cards/{row['card_id']}/drafts",
+        json={"model": "script", "items": [0, 1], "label": "원펀치 0.75"},
+    )
+    draft = client.get(f"/v1/technique-drafts/{made.json()['draft_id']}").json()
+    assert draft["result"]["label"] == "원펀치 0.75" and draft["result"]["selected"] == [0, 1]

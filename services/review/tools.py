@@ -484,6 +484,8 @@ class ToolContext:
             definition = validate_definition(found["definition"])
         except StrategyError as exc:
             raise ToolInputError(f"this strategy cannot be evaluated here: {exc}") from exc
+        if "setup" in definition:
+            raise ToolInputError("a setup strategy has no entry rule to evaluate here (ADR 0061)")
         timeframe = _timeframe(tool_input.get("timeframe"))
         cutoff = self._at(tool_input.get("at"))
         instrument = self.trade.instrument_id

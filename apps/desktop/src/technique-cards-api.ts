@@ -202,18 +202,31 @@ export interface TechniqueSettings {
 export interface DraftMapping {
   index: number;
   condition: string;
-  status: "mapped" | "unconvertible" | "absent";
+  /** "excluded": the user left the item out of this draft (ADR 0061). */
+  status: "mapped" | "unconvertible" | "absent" | "excluded";
   rule_paths: string[];
   reason: string;
 }
 
 /** A reading the script took that the source did not state; saving needs the user's tick. */
 export interface DraftAssumption {
+  /** -1: a reading of the whole draft, not of one item (ADR 0061). */
   index: number;
-  kind: "default_length" | "ma_as_sma" | "long_only";
+  kind:
+    | "default_length"
+    | "ma_as_sma"
+    | "long_only"
+    | "setup_windows"
+    | "trading_value_approx";
   indicator?: string;
   param?: string;
-  value?: number;
+  value?: number | string;
+}
+
+/** The card items one draft uses, and the name of that way of trading (ADR 0061). */
+export interface DraftChoice {
+  items?: number[];
+  label?: string;
 }
 
 /** Converts by code alone: no model, no cost (script first, 2026-11-15). */
@@ -237,6 +250,9 @@ export interface TechniqueDraft {
     };
     /** Item numbers the script converted; a model may not change them. */
     scripted?: number[];
+    /** Item numbers this draft uses, and the user's name for it (ADR 0061). */
+    selected?: number[];
+    label?: string;
     assumptions?: DraftAssumption[];
     unconvertible: number;
     blocking: string[];
@@ -288,8 +304,14 @@ export interface TechniqueCardsApi {
   withdraw(cardId: string, note?: string): Promise<CardSummary>;
   settings(): Promise<TechniqueSettings>;
   setDefaultModel(model: string): Promise<TechniqueSettings>;
-  /** Rules strategy draft from a ready card (ADR 0056 L3). */
-  startDraft(cardId: string, model: string): Promise<{ draft_id: string }>;
+  /** Rules strategy draft from a ready card (ADR 0056 L3); `choice` picks its items. */
+  startDraft(
+    cardId: string,
+    model: string,
+    choice?: DraftChoice,
+  ): Promise<{ draft_id: string }>;
+  /** The numbered items a draft is made from. */
+  draftItems(cardId: string): Promise<string[]>;
   draft(draftId: string): Promise<TechniqueDraft>;
   drafts(cardId: string): Promise<TechniqueDraft[]>;
   saveDraft(
@@ -401,13 +423,24 @@ export function createTechniqueCardsApi(
           body: { default_model: model },
         },
       ),
-    startDraft: (cardId, model) =>
+    startDraft: (cardId, model, choice) =>
       callForKind<{ kind: "technique_card_draft_job"; draft_id: string }>(
         target,
         `/v1/technique-cards/${encodeURIComponent(cardId)}/drafts`,
         "technique_card_draft_job",
-        { body: { model } },
+        { body: { model, ...choice } },
       ),
+    draftItems: async (cardId) =>
+      (
+        await callForKind<{
+          kind: "technique_card_draft_items";
+          items: string[];
+        }>(
+          target,
+          `/v1/technique-cards/${encodeURIComponent(cardId)}/draft-items`,
+          "technique_card_draft_items",
+        )
+      ).items,
     draft: (draftId) =>
       callForKind<TechniqueDraft>(
         target,
