@@ -451,6 +451,43 @@ def test_a_series_card_is_withdrawn_when_any_volume_is(tmp_path: Path) -> None:
     assert service.library.cached(V2) is None
 
 
+def test_series_routes_preview_and_extract_one_card(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-11-23: the route refused `kl-series:` refs (422) though the service took them."""
+    service = _series_service(tmp_path, SeriesCli())
+    app = FastAPI()
+
+    def error(request: Any, status: int, code: str, message: str) -> JSONResponse:
+        return JSONResponse(status_code=status, content={"error": {"code": code}})
+
+    register_technique_card_routes(
+        app, cards=lambda: service, keys=lambda: KEYS, error_response=error, start=lambda w: w()
+    )
+    client = TestClient(app)
+
+    def fake_extract(source_id, title, lines, keys, call=None, transport=None, model="", **_):  # type: ignore[no-untyped-def]
+        assert title.startswith("원펀치 (시리즈 2권:")
+        return extract.Extraction(card=_card(), attempts=[])
+
+    monkeypatch.setattr("services.technique_cards.service.extract_card", fake_extract)
+    listed = client.get("/v1/technique-sources").json()["sources"]
+    assert [s["item_ref"] for s in listed] == ["kl-series:원펀치", SOLO]
+    preview = client.post("/v1/technique-sources/preview", json={"item_ref": "kl-series:원펀치"})
+    assert preview.status_code == 200
+    assert [v["index"] for v in preview.json()["volumes"]] == [1, 2]
+    started = client.post("/v1/technique-cards", json={"item_ref": "kl-series:원펀치"})
+    assert started.status_code == 202
+    job = client.get(f"/v1/technique-cards/jobs/{started.json()['job_id']}").json()
+    card = service.store.get(job["card_id"])
+    assert card["item_ref"] == "kl-series:원펀치"
+    assert [(m["item_ref"], m["index"]) for m in card["members"]] == [(V1, 1), (V2, 2)]
+    missing = client.post("/v1/technique-sources/preview", json={"item_ref": "kl-series:없음"})
+    assert missing.status_code == 404
+    bad = client.post("/v1/technique-sources/preview", json={"item_ref": "kl-series:"})
+    assert bad.status_code == 422
+
+
 # --- L2: extraction -----------------------------------------------------------------------
 
 
