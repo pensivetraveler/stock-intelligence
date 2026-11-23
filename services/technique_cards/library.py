@@ -284,7 +284,7 @@ class Library:
             return None
         raw_series = item.get("series")
         series: dict[str, Any] = raw_series if isinstance(raw_series, dict) else {}
-        name = str(series.get("name") or "").strip()[:120]
+        name = str(series.get("name") or "").strip()[:256]  # contract 0.5.1: 1-256 characters
         try:
             index = int(series.get("index") or 0)
         except (TypeError, ValueError):
