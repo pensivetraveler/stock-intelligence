@@ -178,8 +178,12 @@ class TechniqueCards:
         keys: Keys,
         call: Caller | None = None,
         model: str | None = None,
+        replace: str | None = None,
     ) -> str:
-        """Extract, check and store; returns the card id. Raises on any failure."""
+        """Extract, check and store; returns the card id. Raises on any failure.
+
+        `replace` is a card of the same source the user chose to give a new version to,
+        instead of a new card (ADR 0056, 2026-11-23)."""
         model = model or self.store.default_model()
         fetched, outcome, volumes = self._usable_source(source)
         lines = self._lines(fetched)
@@ -195,28 +199,29 @@ class TechniqueCards:
         )
         checks = check_card(extraction.card, lines)
         usage = extraction.usage | {"parts": extraction.parts, "flags": checks["counts"]}
-        return self.store.add(
-            {
-                "item_ref": source.item_ref,
-                "title": source.title,
-                "url": source.url,
-                "card": extraction.card,
-                "checks": checks,
-                "usage": usage,
-                "attempts": extraction.attempts,
-                "versions": VERSIONS
-                | {"model": model, "fallback": ladder(model)[-1], "source_unit": unit_of(lines)},
-                "context_ref": fetched.context_ref,
-                "revision_ref": fetched.revision_ref,
-                "transcript_sha256": fetched.sha256,
-                "verification_status": fetched.verification_status,
-                "recheck_outcome": outcome,
-                "members": [
-                    m | {"index": v["index"], "from": v["from"], "to": v["to"]}
-                    for m, v in zip(fetched.members, volumes, strict=True)
-                ],
-            }
-        )
+        fields = {
+            "item_ref": source.item_ref,
+            "title": source.title,
+            "url": source.url,
+            "card": extraction.card,
+            "checks": checks,
+            "usage": usage,
+            "attempts": extraction.attempts,
+            "versions": VERSIONS
+            | {"model": model, "fallback": ladder(model)[-1], "source_unit": unit_of(lines)},
+            "context_ref": fetched.context_ref,
+            "revision_ref": fetched.revision_ref,
+            "transcript_sha256": fetched.sha256,
+            "verification_status": fetched.verification_status,
+            "recheck_outcome": outcome,
+            "members": [
+                m | {"index": v["index"], "from": v["from"], "to": v["to"]}
+                for m, v in zip(fetched.members, volumes, strict=True)
+            ],
+        }
+        if replace is not None:
+            return self.store.replace(replace, fields)
+        return self.store.add(fields)
 
     def card(self, card_id: str) -> dict[str, Any]:
         """The card with the transcript timeline when the cached text is still the same."""
