@@ -549,6 +549,7 @@ export function TechniqueCardsScreen({
                     cost: card.usage.cost_usd,
                     unbacked: card.checks.counts.unbacked ?? 0,
                     noCriterion: card.checks.counts.no_criterion ?? 0,
+                    notComputable: card.checks.counts.not_computable ?? 0,
                     corrected: card.corrected,
                   })}{" "}
                   {t("tc.recheckState", { outcome: card.recheck_outcome })}{" "}

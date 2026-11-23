@@ -91,7 +91,7 @@ export interface StructuredCard {
 }
 
 export interface Flag {
-  code: "unbacked" | "no_criterion" | "inference";
+  code: "unbacked" | "no_criterion" | "not_computable" | "inference";
   reason: string;
 }
 

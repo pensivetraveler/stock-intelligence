@@ -3835,7 +3835,8 @@ body {
 }
 
 .tc-flag-unbacked,
-.tc-flag-no_criterion {
+.tc-flag-no_criterion,
+.tc-flag-not_computable {
   border-color: var(--siw-caution-ink);
   color: var(--siw-caution-ink);
 }
