@@ -1,6 +1,7 @@
 # ADR 0037 — SIW Agent 단계 1: 모의투자 주문 실행 설계(키움 먼저, 한국투자 다음)
 
 - **Status:** accepted (2026-10-23 사용자 답변 반영). 구현 단위마다 사용자의 별도 명시 승인이 있어야 착수한다. P0는 승인됐다.
+- **Changed (2026-11-23):** [ADR 0057](0057-selection-flow-seven-stages.md) 7단계(종목 선정 흐름의 키움 모의 자동 실행)에 한해, 실행 승인에 종목을 적지 않고 "그날 선정 흐름을 지난 종목" 규칙으로 승인한 것으로 본다(§3 대상 종목, §5 종목 허용목록). 무장은 사용자가 끄거나 킬 스위치가 켜질 때까지 유지된다. 1건 주문 한도는 100만 원에서 200만 원으로 올린다(§5). 그 밖의 규칙(전략·한도 변경 시 새 승인, 킬 스위치, 실계좌 도메인 차단)은 그대로다.
 - **Date:** 2026-10-23
 - **Related:** [ADR 0036](0036-desktop-app-roles.md)(앱 역할·주문 Gate), [ADR 0018](0018-broker-api-execution-ledger.md)(증권사 API 원장), [ADR 0021](0021-backtest-engine.md)(백테스트 엔진·전략 버전), [ADR 0029](0029-kiwoom-order-history-sync.md)(키움 조회 전용 연동), [ADR 0013](0013-broker-market-data-adapters.md)·[ADR 0014](0014-provider-key-registry.md)(증권사 시세 연동·키 보관), [ADR 0028](0028-electron-desktop-shell.md)(Electron의 API 기동)
 
