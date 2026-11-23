@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 from services.api.technique_card_routes import register_technique_card_routes
 from services.assistant import conversion
 from services.technique_cards import extract
-from services.technique_cards.checks import check_card, no_criterion, timeline
+from services.technique_cards.checks import check_card, no_criterion, not_computable, timeline
 from services.technique_cards.citations import (
     Line,
     join_volumes,
@@ -566,6 +566,34 @@ def test_only_the_pdf_text_layer_is_hydrated_when_layers_are_named(tmp_path: Pat
     fetched = Library(_config(), tmp_path / "cache", cli).fetch(V1)
     assert cli.assembled == [[f"{V1}#a"]]
     assert fetched.path.read_text() == VOLUME_TEXT[V1]
+
+
+def test_a_value_siw_cannot_compute_is_not_called_criterionless() -> None:
+    """2026-11-23 card 841c304b: '거래대금 50억 이상' and '5일 상승률 +20%' had a number but were
+    flagged 기준 없음 because the model put kind `other` on the left side."""
+    trading_value = _condition(
+        left=_op("other", "trading_value", period=1),
+        comparator="at_or_above",
+        right=_op("value", "none", value=5_000_000_000),
+    )
+    assert no_criterion(trading_value) == "" and not_computable(trading_value) == ""
+    five_day_return = _condition(
+        left=_op("other", "other", period=5),
+        comparator="below",
+        right=_op("percent", "none", value=20),
+    )
+    assert no_criterion(five_day_return) == ""
+    assert not_computable(five_day_return) == "the compared value is not one SIW computes"
+    nothing = _condition(left=_op("none", "none"), comparator="above")
+    assert no_criterion(nothing) == "nothing compared" and not_computable(nothing) == ""
+    vague = _condition(left=_op("other", "other"), comparator="other", right=_op("none", "none"))
+    assert no_criterion(vague) == "no comparison" and not_computable(vague) == ""
+    checks = check_card({"conditions": [trading_value, five_day_return, vague]}, [])
+    codes = [
+        [f["code"] for f in c["flags"] if f["code"] != "unbacked"] for c in checks["conditions"]
+    ]
+    assert codes == [[], ["not_computable"], ["no_criterion"]]
+    assert checks["counts"]["not_computable"] == 1 and checks["counts"]["no_criterion"] == 1
 
 
 # --- L2: extraction -----------------------------------------------------------------------

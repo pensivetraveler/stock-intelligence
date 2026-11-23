@@ -1840,7 +1840,7 @@ const en = {
   "tc.blocked": "Not ready: {blocks}",
   "tc.unresolved": "flagged conditions to decide {list}",
   "tc.usage":
-    "{models} · {input} in / {output} out tokens · ${cost} · unbacked {unbacked} · no criterion {noCriterion} · corrected {corrected}",
+    "{models} · {input} in / {output} out tokens · ${cost} · unbacked {unbacked} · no criterion {noCriterion} · not computable {notComputable} · corrected {corrected}",
   "tc.recheckState": "Library recheck: {outcome}.",
   "tc.recheck": "Recheck now",
   "tc.field": "Field",
@@ -1853,6 +1853,7 @@ const en = {
   "tc.f.stop_loss": "Stop loss",
   "tc.flag.unbacked": "Unbacked",
   "tc.flag.no_criterion": "No criterion",
+  "tc.flag.not_computable": "Not computable",
   "tc.flag.inference": "Model inference",
   "tc.a.confirm": "Confirm",
   "tc.a.edit": "Edit numbers",
@@ -4010,7 +4011,7 @@ const ko: Record<MessageKey, string> = {
   "tc.blocked": "아직 아님: {blocks}",
   "tc.unresolved": "결정할 표시된 조건 {list}",
   "tc.usage":
-    "{models} · 입력 {input} / 출력 {output} 토큰 · ${cost} · 근거 없음 {unbacked} · 기준 없음 {noCriterion} · 고친 조건 {corrected}",
+    "{models} · 입력 {input} / 출력 {output} 토큰 · ${cost} · 근거 없음 {unbacked} · 기준 없음 {noCriterion} · 계산 못 하는 값 {notComputable} · 고친 조건 {corrected}",
   "tc.recheckState": "도서관 재확인: {outcome}.",
   "tc.recheck": "지금 재확인",
   "tc.field": "칸",
@@ -4023,6 +4024,7 @@ const ko: Record<MessageKey, string> = {
   "tc.f.stop_loss": "손절",
   "tc.flag.unbacked": "근거 없음",
   "tc.flag.no_criterion": "기준 없음",
+  "tc.flag.not_computable": "계산 못 하는 값",
   "tc.flag.inference": "모델 추론",
   "tc.a.confirm": "확인",
   "tc.a.edit": "숫자 고치기",

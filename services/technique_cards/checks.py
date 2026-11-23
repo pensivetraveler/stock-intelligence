@@ -6,6 +6,10 @@
    period (RSI 14 as a default) is caught here.
 2. `no_criterion` (기준 없음): an entry / exit / stop-loss condition with nothing to compare
    against — no comparator, no right side, or a numeric side without its number.
+   `not_computable` (계산 못 하는 값): the condition has a criterion, but what it compares is
+   not a quantity SIW knows (the model put `other`: a 5-day return, an ETF's NAV premium). A
+   known name (`trading_value`, `market_cap` …) under kind `other` is not flagged: the schema
+   has no kind for it (2026-11-23, "거래대금 50억 이상" was flagged as having no criterion).
 3. The timeline: every transcript line with the conditions and universe filters that cite it,
    so the user can see what the card left out.
 
@@ -17,11 +21,13 @@ from __future__ import annotations
 from typing import Any
 
 from services.technique_cards.citations import Line, format_locator, locator_position, unit_of
+from services.technique_cards.structured_schema import NAMES
 from services.technique_cards.structured_scoring import ground_condition
 
-CHECKS_VERSION = 1
+CHECKS_VERSION = 2  # 2026-11-23: `not_computable` split from `no_criterion`
 NUMERIC_KINDS = {"value", "percent", "atr_multiple", "range_multiple", "bars"}
 VAGUE = {"none", "other"}
+KNOWN_NAMES = set(NAMES) - VAGUE - {"candle"}
 WINDOW_SECONDS = 15
 
 
@@ -32,7 +38,7 @@ def no_criterion(condition: dict[str, Any]) -> str:
     right = condition.get("right") or {}
     if comparator in VAGUE:
         return "no comparison"
-    if str(left.get("kind") or "none") in VAGUE:
+    if str(left.get("kind") or "none") == "none":
         return "nothing compared"
     for side, operand in (("left", left), ("right", right)):
         if str(operand.get("kind")) in NUMERIC_KINDS and operand.get("value") is None:
@@ -41,6 +47,16 @@ def no_criterion(condition: dict[str, Any]) -> str:
         return ""  # "RSI rises" says a direction; how much is asked only when a number is given
     if str(right.get("kind") or "none") in VAGUE:
         return "nothing to compare against"
+    return ""
+
+
+def not_computable(condition: dict[str, Any]) -> str:
+    """Why SIW cannot compute what a condition compares, or "" when it can (or has no criterion)."""
+    if no_criterion(condition):
+        return ""
+    left = condition.get("left") or {}
+    if str(left.get("kind")) == "other" and str(left.get("name") or "none") not in KNOWN_NAMES:
+        return "the compared value is not one SIW computes"
     return ""
 
 
@@ -54,6 +70,9 @@ def check_card(card: dict[str, Any], lines: list[Line]) -> dict[str, Any]:
         reason = no_criterion(condition)
         if reason:
             flags.append({"code": "no_criterion", "reason": reason})
+        reason = not_computable(condition)
+        if reason:
+            flags.append({"code": "not_computable", "reason": reason})
         if condition.get("basis") == "claude_inference":
             flags.append({"code": "inference", "reason": "the model's inference, not the source"})
         conditions.append({"index": index, "field": condition.get("field"), "flags": flags})
@@ -64,6 +83,9 @@ def check_card(card: dict[str, Any], lines: list[Line]) -> dict[str, Any]:
             "unbacked": sum(any(f["code"] == "unbacked" for f in c["flags"]) for c in conditions),
             "no_criterion": sum(
                 any(f["code"] == "no_criterion" for f in c["flags"]) for c in conditions
+            ),
+            "not_computable": sum(
+                any(f["code"] == "not_computable" for f in c["flags"]) for c in conditions
             ),
             "ambiguities": len(card.get("ambiguities") or []),
             "inexpressible": len(card.get("inexpressible") or []),
