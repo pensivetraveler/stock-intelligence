@@ -2,11 +2,13 @@
 
 - `GET  /v1/technique-sources`                      library items tagged 매매기법 (L1)
 - `POST /v1/technique-sources/preview`              fetch + recheck, what would be sent
-- `POST /v1/technique-cards`                        start an extraction (the user's button)
+- `POST /v1/technique-cards`                        start an extraction (the user's button);
+                                                    with a card already, `mode` new_version/new_card
 - `GET  /v1/technique-cards/jobs/{job_id}`          extraction state
 - `GET  /v1/technique-cards`                        stored cards (summaries)
 - `GET  /v1/technique-cards/{card_id}`              card, checks, resolutions, timeline
 - `POST /v1/technique-cards/{card_id}/resolutions`  the user's confirm / edit / drop + answers
+- `POST /v1/technique-cards/{card_id}/withdraw`     the user withdraws a card (kept, not used)
 - `POST /v1/technique-cards/{card_id}/recheck`      library recheck before reuse
 - `POST /v1/technique-cards/{card_id}/drafts`       rules strategy draft from a ready card (L3)
 - `GET  /v1/technique-cards/{card_id}/drafts`       that card's drafts
@@ -77,6 +79,18 @@ class ItemRequest(BaseModel):
     model: ModelChoice | None = None
 
 
+class ExtractRequest(ItemRequest):
+    # When the source already has a card the user says whether this extraction is that
+    # card's next version or a separate card (ADR 0056, 2026-11-23); unasked is refused.
+    mode: Literal["new_version", "new_card"] | None = None
+    card_id: str | None = Field(default=None, max_length=64)
+
+
+class WithdrawRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str = Field(default="", max_length=500)
+
+
 class DraftRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
     # "script" converts by code alone (no model, no cost); a model gets what the script left.
@@ -128,6 +142,7 @@ def _summary(row: dict[str, Any]) -> dict[str, Any]:
             "recheck_outcome",
             "rechecked_at",
             "withdrawn",
+            "user_withdrawn_at",
             "ready",
             "blocks",
             "corrected",
@@ -177,7 +192,8 @@ def register_technique_card_routes(
             return library_error(request, exc)
         by_item: dict[str, list[str]] = {}
         for row in service.store.list():
-            by_item.setdefault(row["item_ref"], []).append(row["card_id"])
+            if not row["user_withdrawn_at"]:  # a card the user withdrew is not counted
+                by_item.setdefault(row["item_ref"], []).append(row["card_id"])
         return JSONResponse(
             {
                 "kind": "technique_sources",
@@ -207,10 +223,27 @@ def register_technique_card_routes(
             return library_error(request, exc)
 
     @application.post("/v1/technique-cards", response_model=None)
-    def start_extraction(request: Request, body: ItemRequest) -> Response:
+    def start_extraction(request: Request, body: ExtractRequest) -> Response:
         service = cards()
         if service is None:
             return unavailable(request)
+        active = service.store.active_card_ids(body.item_ref)
+        if body.mode is None and active:
+            return error_response(
+                request,
+                409,
+                "technique_card_exists",
+                "This source already has a card; say mode new_version (with card_id) or"
+                f" new_card. Cards: {', '.join(active)}",
+            )
+        if body.mode == "new_version" and body.card_id not in active:
+            return error_response(
+                request,
+                422,
+                "invalid_technique_card_version",
+                "new_version needs card_id of a card of this source the user has not withdrawn",
+            )
+        replace = body.card_id if body.mode == "new_version" else None
         with running:
             existing = service.store.running_job(body.item_ref)
             if existing is not None:
@@ -231,10 +264,10 @@ def register_technique_card_routes(
         def work() -> None:
             card_id, error, attempts = None, "", []
             try:
-                card_id = service.extract(source, current_keys, model=body.model)
+                card_id = service.extract(source, current_keys, model=body.model, replace=replace)
             except ExtractionError as exc:
                 error, attempts = str(exc), exc.attempts
-            except (SourceWithdrawnError, LibraryError) as exc:
+            except (SourceWithdrawnError, LibraryError, ValueError) as exc:
                 error = str(exc)
             except Exception as exc:  # noqa: BLE001 - the job must end, and say why
                 error = f"unexpected {type(exc).__name__}"
@@ -274,6 +307,17 @@ def register_technique_card_routes(
         except CardNotFoundError:
             return error_response(request, 404, "technique_card_not_found", "No such card")
 
+    @application.post("/v1/technique-cards/{card_id}/withdraw", response_model=None)
+    def withdraw(request: Request, card_id: str, body: WithdrawRequest) -> Response:
+        service = cards()
+        if service is None:
+            return unavailable(request)
+        try:
+            row = service.store.withdraw(card_id, body.note.strip())
+        except CardNotFoundError:
+            return error_response(request, 404, "technique_card_not_found", "No such card")
+        return JSONResponse({"kind": "technique_card", **row})
+
     @application.post("/v1/technique-cards/{card_id}/resolutions", response_model=None)
     def resolve(request: Request, card_id: str, body: ResolutionsRequest) -> Response:
         service = cards()
@@ -292,7 +336,12 @@ def register_technique_card_routes(
                     request, 422, "invalid_technique_resolution", f"No condition {key}"
                 )
             if resolution.action == "edit":
-                errors = list(_CONDITION_VALIDATOR.iter_errors(resolution.condition))
+                # A saved edit comes back marked `user`; the schema checks the condition's
+                # slots, and the basis is set to `user` below either way.
+                checked = resolution.condition
+                if isinstance(checked, dict) and checked.get("basis") == "user":
+                    checked = checked | {"basis": "source"}
+                errors = list(_CONDITION_VALIDATOR.iter_errors(checked))
                 if resolution.condition is None or errors:
                     return error_response(
                         request,

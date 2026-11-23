@@ -131,6 +131,8 @@ export interface CardSummary {
   recheck_outcome: string;
   rechecked_at: string;
   withdrawn: boolean;
+  /** Set when the user withdrew the card (ADR 0056, 2026-11-23); empty otherwise. */
+  user_withdrawn_at?: string;
   ready: boolean;
   blocks: string[];
   corrected: number;
@@ -258,11 +260,19 @@ export interface StrategyPine {
   template_version: number;
 }
 
+export type ExtractChoice =
+  { mode: "new_version"; cardId: string } | { mode: "new_card" };
+
 export interface TechniqueCardsApi {
   sources(refresh?: boolean): Promise<TechniqueSource[]>;
   /** `model`: the assigned sonnet when left out, or another choosable model. */
   preview(itemRef: string, model?: string): Promise<TechniquePreview>;
-  start(itemRef: string, model?: string): Promise<TechniqueJob>;
+  /** With a card already for the source, `choice` says new version of `cardId` or new card. */
+  start(
+    itemRef: string,
+    model?: string,
+    choice?: ExtractChoice,
+  ): Promise<TechniqueJob>;
   job(jobId: string): Promise<TechniqueJob>;
   cards(): Promise<CardSummary[]>;
   card(cardId: string): Promise<TechniqueCard>;
@@ -274,6 +284,8 @@ export interface TechniqueCardsApi {
     added?: AddedCondition[],
   ): Promise<CardSummary>;
   recheck(cardId: string): Promise<CardSummary>;
+  /** The user withdraws a card: it stays listed, marked, and is no longer used. */
+  withdraw(cardId: string, note?: string): Promise<CardSummary>;
   settings(): Promise<TechniqueSettings>;
   setDefaultModel(model: string): Promise<TechniqueSettings>;
   /** Rules strategy draft from a ready card (ADR 0056 L3). */
@@ -315,13 +327,21 @@ export function createTechniqueCardsApi(
         "technique_source_preview",
         { body: { item_ref: itemRef, ...(model ? { model } : {}) } },
       ),
-    start: (itemRef, model) =>
+    start: (itemRef, model, choice) =>
       callForKind<TechniqueJob>(
         target,
         "/v1/technique-cards",
         "technique_card_job",
         {
-          body: { item_ref: itemRef, ...(model ? { model } : {}) },
+          body: {
+            item_ref: itemRef,
+            ...(model ? { model } : {}),
+            ...(choice?.mode === "new_version"
+              ? { mode: "new_version", card_id: choice.cardId }
+              : choice
+                ? { mode: "new_card" }
+                : {}),
+          },
         },
       ),
     job: (jobId) =>
@@ -357,6 +377,13 @@ export function createTechniqueCardsApi(
         `/v1/technique-cards/${encodeURIComponent(cardId)}/recheck`,
         "technique_card",
         { method: "POST" },
+      ),
+    withdraw: (cardId, note = "") =>
+      callForKind<CardSummary & { kind: "technique_card" }>(
+        target,
+        `/v1/technique-cards/${encodeURIComponent(cardId)}/withdraw`,
+        "technique_card",
+        { body: { note } },
       ),
     settings: () =>
       callForKind<TechniqueSettings>(
