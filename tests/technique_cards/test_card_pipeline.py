@@ -488,6 +488,27 @@ def test_series_routes_preview_and_extract_one_card(
     assert bad.status_code == 422
 
 
+def test_a_decomposed_series_name_is_kept_composed(tmp_path: Path) -> None:
+    """2026-11-23: the library sent the name in NFD (a macOS file name); an NFC ref got 404."""
+    import unicodedata
+
+    class NfdCli(SeriesCli):
+        def __call__(self, args: list[str], request: dict[str, Any]) -> dict[str, Any]:
+            answer = super().__call__(args, request)
+            series = (answer.get("data") or {}).get("item", {}).get("series")
+            if args[:2] == ["item", "get"] and series:
+                series["name"] = unicodedata.normalize("NFD", "원펀치매매")
+            return answer
+
+    service = _series_service(tmp_path, NfdCli())
+    listed = service.sources()
+    assert listed[0].item_ref == "kl-series:원펀치매매"
+    assert unicodedata.is_normalized("NFC", listed[0].item_ref)
+    for ref in ("kl-series:원펀치매매", unicodedata.normalize("NFD", "kl-series:원펀치매매")):
+        source = service.source(ref)
+        assert source is not None and len(source.members) == 2
+
+
 # --- L2: extraction -----------------------------------------------------------------------
 
 
