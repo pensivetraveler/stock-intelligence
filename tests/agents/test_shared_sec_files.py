@@ -13,7 +13,7 @@ import pytest
 from services.public_sources.cache import PublicSourceCache
 from services.public_sources.http import RateLimiter, SourceError
 from services.public_sources.sec import TICKERS_URL, SecEdgar
-from services.public_sources.shared_sec import INTERVAL_SECONDS, SharedSecFiles
+from services.public_sources.shared_sec import INTERVAL_SECONDS, YIELD_SECONDS, SharedSecFiles
 
 NOW = datetime(2026, 11, 3, tzinfo=timezone.utc)
 FACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json"
@@ -89,6 +89,27 @@ def test_requests_are_spaced_through_the_lock_file(tmp_path: Path) -> None:
     assert float((tmp_path / "sec.lock").read_text()) == clock.now
     with files.request_turn():
         pass
+    # The pause after its own turn without the lock, then the rest of the interval.
+    assert clock.slept == [
+        pytest.approx(YIELD_SECONDS),
+        pytest.approx(INTERVAL_SECONDS - YIELD_SECONDS),
+    ]
+
+
+def test_a_turn_after_its_own_lets_a_waiting_program_in_first(tmp_path: Path) -> None:
+    # Another program takes the lock during the pause: our next turn waits for its interval.
+    clock = _Clock()
+    files = SharedSecFiles(tmp_path, clock.monotonic, clock.sleep)
+    other = SharedSecFiles(tmp_path, clock.monotonic, clock.sleep)
+    with files.request_turn():
+        pass
+    clock.now += 0.05
+    with other.request_turn():  # a different program: no pause of its own
+        pass
+    clock.slept.clear()
+    with files.request_turn():
+        pass
+    # The pause has already passed; only the interval since the other program's request.
     assert clock.slept == [pytest.approx(INTERVAL_SECONDS)]
 
 

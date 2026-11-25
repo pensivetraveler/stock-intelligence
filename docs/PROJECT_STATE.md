@@ -3362,3 +3362,11 @@
 - 원인: `read_watched`는 기준 시각(장 마감 또는 `as_of`)까지만 본다. 감시가 그 시각 뒤에 끝났으면(11-13은 다음 날까지 이어짐) `open_now`가 참이 되어, 지난 세션도 "기록 중"으로 보였다.
 - 고침: `read_watched(..., now=)`를 받는다. 기준 시각이 `now`보다 앞이면 `open_now`는 항상 거짓이다. 후보 문서와 흐름 API가 `now`를 넘긴다.
 - 검사: `tests/screening/test_screening.py::test_a_read_cut_before_now_is_not_recording_now`, `pytest tests/screening` 통과, ruff·mypy 통과.
+
+## 2026-11-23 SEC 공유 잠금 동시 시험(ADR 0046, mondash #321)과 SIW 쪽 양보
+
+- 시험: SIW `SharedSecFiles.request_turn`과 분석기 `SecClient`(분석기 1a10906, `rate_lock=default_rate_lock()`)가 같은 `~/Trading/stock-data/sec.lock`으로 각각 30회 실제 SEC 요청을 동시에 보냈다(스크립트는 세션 scratchpad, 저장소 밖).
+- 결과(고치기 전): 60회 모두 200, 15.1초, 어느 1초 구간이든 최대 5회(한도 10/s 이하), 전송 겹침 0, 최소 간격 0.227초. 그러나 잠금에 대기열이 없어 SIW 30회가 연달아 잠금을 다시 잡았고, 분석기는 7.5초 동안 들어오지 못했다(순서 `aa s×30 a×28`).
+- 고침: SIW는 자기 차례 직후 다음 차례 전에 잠금 없이 `YIELD_SECONDS`(0.1초, 분석기 시도 간격 0.05초의 두 배)를 쉰다. 고친 뒤 같은 시험: 최대 5회/초, 겹침 0, 분석기의 최대 대기 0.9초.
+- 분석기도 연달아 잡으면 SIW가 7.5초 기다렸다(SIW 잠금 대기 상한 60초). "주식 희석 분석기" 세션에 요청(#SIW-dil-4)해 분석기 7082b90에 `HOST_YIELD_SECONDS = 0.1`이 들어갔다.
+- 3차(양쪽 양보): 60회 모두 200, 최대 5회/초, 겹침 0. 차례가 번갈아 돌고(`aa (sa)×28 ss`) 자기 요청 사이 최대 대기는 SIW 0.93초, 분석기 0.92초.

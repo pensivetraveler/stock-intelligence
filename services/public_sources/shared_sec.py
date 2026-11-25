@@ -25,6 +25,10 @@ IMMUTABLE_PATH = "/Archives/"
 INTERVAL_SECONDS = 0.2  # both programs compute their wait from this: 5 per second in total
 LOCK_WAIT_SECONDS = 60.0
 PENDING_SECONDS = 1e6  # written while sending, so a holder that dies still leaves an interval
+# The lock has no queue and the analyzer tries it every 0.05 s. Without a pause after a turn,
+# a run of SIW requests takes the lock back at once and the analyzer waits out the whole run
+# (measured 2026-11-23: 30 SIW requests in a row, the analyzer shut out for 7.5 s).
+YIELD_SECONDS = 0.1
 
 
 class SharedSecFiles:
@@ -40,6 +44,7 @@ class SharedSecFiles:
         self._monotonic = monotonic
         self._sleep = sleep
         self._wall_clock = wall_clock
+        self._released_at: float | None = None
 
     def path(self, url: str) -> Path:
         parts = urlsplit(url)
@@ -78,7 +83,15 @@ class SharedSecFiles:
 
     @contextmanager
     def request_turn(self) -> Iterator[None]:
-        """Hold the lock, spaced from the last request, until the response has ended."""
+        """Hold the lock, spaced from the last request, until the response has ended.
+
+        A turn right after this program's own last one first waits `YIELD_SECONDS` without
+        the lock, so another program that is waiting can take its turn (ADR 0046).
+        """
+        if self._released_at is not None:
+            pause = YIELD_SECONDS - (self._monotonic() - self._released_at)
+            if pause > 0:
+                self._sleep(min(pause, YIELD_SECONDS))
         self._lock.parent.mkdir(parents=True, exist_ok=True)
         descriptor = os.open(self._lock, os.O_RDWR | os.O_CREAT, 0o600)
         try:
@@ -96,6 +109,7 @@ class SharedSecFiles:
                     self._stamp(descriptor, 0.0)
             finally:
                 _unlock_descriptor(descriptor)
+                self._released_at = self._monotonic()
         finally:
             os.close(descriptor)
 
