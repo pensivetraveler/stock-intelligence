@@ -1095,6 +1095,8 @@ const en = {
     "Latest tagged ({time} NY): {headline} — {categories}",
   "candidates.newsDilution":
     "{count} articles are about dilution: see the dilution check.",
+  "candidates.newsMismatch":
+    "{count} articles a feed tagged with this ticker are about another company: left out of the result.",
   "candidates.offExchangeDetail": "Off-exchange price levels",
   "candidates.offExchangeMeta":
     "{symbol} · closed sessions {sessions}/{requested}{today} · off-exchange share {share}% · last price {reference} · {status}",
@@ -3295,6 +3297,8 @@ const ko: Record<MessageKey, string> = {
     "최근 분류 기사({time} 뉴욕): {headline} — {categories}",
   "candidates.newsDilution":
     "기사 {count}건은 희석 관련입니다. 희석 검사에서 보세요.",
+  "candidates.newsMismatch":
+    "공급자가 이 종목으로 붙였지만 다른 회사 기사인 {count}건은 결과에서 뺐습니다.",
   "candidates.offExchangeDetail": "장외 체결 가격대",
   "candidates.offExchangeMeta":
     "{symbol} · 닫힌 세션 {sessions}/{requested}개{today} · 장외 비중 {share}% · 마지막 가격 {reference} · {status}",

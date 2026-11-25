@@ -14,6 +14,10 @@ for a news check at the screening cutoff, waits a little, and keeps the service'
   0002). It is inference, never verified fact, and never changes `status`. The card shows
   a short digest marked as inference; without one it says the result is rules only.
   News is optional: no articles, no LLM or a stopped service never drops a candidate.
+- From news_check 1.3 the service marks each article's `ticker_match`; an article a feed
+  tagged with this ticker but that is about another company (`mismatch`) stays in
+  `articles` but is left out of the categories and conclusions and listed in
+  `ticker_mismatch`. The card counts those and never shows one as the latest article.
 """
 
 from __future__ import annotations
@@ -29,7 +33,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-CHECK_VERSION = "screening-news-4"
+CHECK_VERSION = "screening-news-5"
 CONTRACT = "news-contract-v1"
 SERVICE_NAME = "news-analysis"
 DEFAULT_URL = "http://127.0.0.1:8776"
@@ -197,8 +201,18 @@ def summary(check: dict[str, Any]) -> dict[str, Any]:
     ]
     articles = check.get("articles") or []
     classifications = check.get("classifications") or []
+    mismatch = [
+        {
+            "source_id": item.get("source_id"),
+            "record_id": item.get("record_id"),
+            "reason": item.get("reason"),
+        }
+        for item in check.get("ticker_mismatch") or ()
+    ]
     latest = None
     for article, tagged in zip(reversed(articles), reversed(classifications), strict=False):
+        if (article.get("ticker_match") or {}).get("state") == "mismatch":
+            continue
         if tagged.get("categories"):
             latest = {
                 "source_id": article.get("source_id"),
@@ -213,6 +227,8 @@ def summary(check: dict[str, Any]) -> dict[str, Any]:
         "window_start_utc": check.get("window_start_utc"),
         "lookback_hours": check.get("lookback_hours"),
         "article_count": len(articles),
+        # news_check 1.3: articles about another company, kept out of the result.
+        "ticker_mismatch": mismatch,
         "categories": dict(check.get("categories") or {}),
         "out_of_scope": dict(check.get("out_of_scope") or {}),
         "feeds": feeds,
