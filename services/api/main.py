@@ -847,6 +847,14 @@ def create_app(
         entry = directory.lookup(instrument_id) if directory is not None else None
         return directory.listing(entry) if directory is not None and entry is not None else None
 
+    def company_name_for(instrument_id: str) -> str | None:
+        """The company name the symbol directory keeps (the listing has none); None when
+        the directory is not loaded or does not know the instrument. Never fetches."""
+        directory = symbols.get()
+        entry = directory.lookup(instrument_id) if directory is not None else None
+        name = " ".join(entry.name.split()) if entry is not None else ""
+        return name or None
+
     def sync_recent(since: str) -> dict[str, object] | None:
         session, store = toss(), journal.get()
         if session is None or store is None:
@@ -930,6 +938,7 @@ def create_app(
                     wait_seconds=NEWS_AUTO_WAIT,
                     read_shares=lambda symbol, instrument_id: toss_shares(symbol, instrument_id),
                     get_bars=lambda: MarketBarsService(provider.get()).get_bars,
+                    company_name=company_name_for,
                 ),
                 clock=clock,
                 condition_name=SCREENING_CONDITION_NAME,
@@ -1957,6 +1966,7 @@ def create_app(
         clock=clock,
         read_shares=toss_shares,
         get_bars=lambda: MarketBarsService(provider.get()).get_bars,
+        company_name=company_name_for,
     )
 
     # Provider and cache I/O are blocking; a sync endpoint runs in FastAPI's threadpool

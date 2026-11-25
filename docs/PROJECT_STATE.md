@@ -3349,6 +3349,14 @@
 - **별도 논의:** 장중 가격대 수정 반영, 결과 보기, 빈 한도(일 주문 수·일 손실·하루 종목 수·종목별 보유).
 - **변경:** 문서만(ADR 0057 7단계 "실행 승인과 한도"와 "사용자가 정할 것", ADR 0037 "Changed (2026-11-23)" 줄). 코드 없음. 실행기의 종목 허용목록·한도 코드는 구현 때 바꾼다.
 
+## 뉴스 검사: 다른 회사 기사 걸러내기(회사명 보내기) — 2026-11-23
+
+- **증상:** MRLN 뉴스 검사 결과에 MERLIN Properties 어닝콜 자료와 Satellogic 기사가 섞였다. 뉴스 공급자(MarketNewsAPI, Finnhub)가 다른 회사 기사에 MRLN 태그를 붙인 것이 원인이다.
+- **뉴스 분석기 쪽 수정(회신 #SIW-news-1):** news-analysis PR #15(`a43921d`), news_check 1.3. 기사마다 `ticker_match`(confirmed·assumed·mismatch)를 매기고, mismatch 기사는 `articles`에 남기되 범주·결론에서 빼 `ticker_mismatch`에 모은다. 요청 `context.company_name`(1~120자)을 받으면 여러 종목 태그 기사도 판정한다.
+- **SIW 변경:** 검사 B 요청 `context`에 종목 디렉터리의 회사명(`company_name`)을 시가총액과 별개로 넣는다(디렉터리가 없거나 이름이 없으면 보내지 않음, 공급자 호출 없음). 카드 요약에 `ticker_mismatch`를 두고, 다른 회사 기사는 "최근 기사"로 보이지 않으며 걸러낸 건수를 표시한다. `versions.ticker_match_version`을 기록한다. 검사 판 `screening-news-5`.
+- **시험:** `tests/screening`·`tests/api` 219개 통과(새 시험: 회사명 전송·공백 정리, 이름 없음·조회 실패 시 context 없음, mismatch 기사 제외 요약), 화면 vitest 535개, 타입 검사·prettier·ruff·mypy 통과.
+- **미확인:** 실제 서비스로 회사명을 넣은 검사(장중 확인 — mondash 182·325와 함께). 디렉터리 이름은 Alpaca 종목 목록의 법인명이라 뉴스 표기와 다를 수 있다(분석기 판정은 문자열 기준).
+
 ## 2026-11-23 SEC 공유 잠금 동시 시험(ADR 0046, mondash #321)과 SIW 쪽 양보
 
 - 시험: SIW `SharedSecFiles.request_turn`과 분석기 `SecClient`(분석기 1a10906, `rate_lock=default_rate_lock()`)가 같은 `~/Trading/stock-data/sec.lock`으로 각각 30회 실제 SEC 요청을 동시에 보냈다(스크립트는 세션 scratchpad, 저장소 밖).
