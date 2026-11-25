@@ -3370,3 +3370,12 @@
 - 고침: SIW는 자기 차례 직후 다음 차례 전에 잠금 없이 `YIELD_SECONDS`(0.1초, 분석기 시도 간격 0.05초의 두 배)를 쉰다. 고친 뒤 같은 시험: 최대 5회/초, 겹침 0, 분석기의 최대 대기 0.9초.
 - 분석기도 연달아 잡으면 SIW가 7.5초 기다렸다(SIW 잠금 대기 상한 60초). "주식 희석 분석기" 세션에 요청(#SIW-dil-4)해 분석기 7082b90에 `HOST_YIELD_SECONDS = 0.1`이 들어갔다.
 - 3차(양쪽 양보): 60회 모두 200, 최대 5회/초, 겹침 0. 차례가 번갈아 돌고(`aa (sa)×28 ss`) 자기 요청 사이 최대 대기는 SIW 0.93초, 분석기 0.92초.
+
+## 2026-11-25 API 재시작 원인(mondash 323)과 Toss 무체결 종목 시세(mondash 322)
+
+- **323 원인:** 11-23 오후의 API 재시작은 충돌이 아니라 배포였다. 세션들이 PR을 병합할 때마다 배포본(`~/.local/share/siw/collector-app`)을 `origin/main`으로 옮기고 `launchctl kickstart -k`로 다시 띄웠다. 근거: 배포본 reflog의 checkout 시각(15:30·15:37·16:07·16:19·16:33·16:48·22:52·23:03 KST)과 세션 기록의 `kickstart` 명령 시각이 맞고, `api.err.log`에는 예외 없이 모두 정상 종료(`Shutting down` → `Finished server process`)만 있다. 16:33 프로세스(PID 26000)는 시작이 끝나기 전(17초)에 또 다시 띄워져 launchd가 강제 종료(-9)했고, 다음 프로세스가 응답하기까지 1분 가까이 걸렸다. 시스템 로그(`log show`)에는 11-23 기록이 남아 있지 않았다(11-25 16:09 배포는 `service inactive: com.siw.api.serve`로 남음). 모듈 읽기는 지금 3.7~4.5초다.
+- **323 조치:** 코드 수정 없음. README "상시 실행"에 다시 띄우는 동안 요청이 실패한다는 점과, 연달아 병합할 때는 마지막에 한 번만 다시 띄우고 `/health`를 확인한 뒤 다음을 띄우라는 줄을 넣었다. 흐름 API 느림(mondash 187)과는 관계없다.
+- **322 원인:** 데이마켓에서 아직 체결이 없는 종목(11-23 16:37 KST PARA)은 Toss가 시세 시각을 비워 보낸다. `toss_quotes._utc`가 이를 잘못된 자료로 보고 `502 provider_data_invalid`("Toss returned a quote without a valid timestamp")를 냈다. 같은 시각 AAPL은 정상.
+- **322 고침:** 시각이 비었거나 null이면 "체결 없음"으로 본다: `last: null`(시각 없는 가격은 현재가로 쓰지 않음), 호가·체결·가격 제한도 시각 없는 항목은 빼거나 null. 시각이 있는데 못 읽으면 여전히 502이고, 메시지가 어느 값인지(last trade·order book·trade·price limit)와 받은 값을 말한다. 화면 `실시간 시세` 패널은 현재가와 체결이 모두 없으면 "이 출처에서 이번 세션에 아직 체결이 없어 현재가가 없습니다"를 보인다. 실시간 스트림(`toss_stream`)은 원래 시각 없는 프레임을 건너뛰어 바꾸지 않았다.
+- **시험:** `tests/market_data/test_toss_session.py` 9개 통과(새 3개: 무체결·시각 없는 가격·못 읽는 시각 메시지), 화면 `QuotePanel.test.tsx` 2개(새)·`i18n.test.ts` 통과, `tsc` 통과.
+- **미확인:** 실제 무체결 종목의 Toss 원래 응답 모양(어느 필드가 비는지). 11-25 17:06 KST에는 PARA도 체결이 있어 재현하지 못했다. 시험은 `timestamp`가 null·빈 문자열인 경우를 가정한다.
