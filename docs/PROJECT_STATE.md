@@ -3357,6 +3357,12 @@
 - **시험:** `tests/screening`·`tests/api` 219개 통과(새 시험: 회사명 전송·공백 정리, 이름 없음·조회 실패 시 context 없음, mismatch 기사 제외 요약), 화면 vitest 535개, 타입 검사·prettier·ruff·mypy 통과.
 - **미확인:** 실제 서비스로 회사명을 넣은 검사(장중 확인 — mondash 182·325와 함께). 디렉터리 이름은 Alpaca 종목 목록의 법인명이라 뉴스 표기와 다를 수 있다(분석기 판정은 문자열 기준).
 
+## 2026-11-23 후보 패널: 지난 세션을 '지금 기록 중'으로 표시하던 문제
+
+- 원인: `read_watched`는 기준 시각(장 마감 또는 `as_of`)까지만 본다. 감시가 그 시각 뒤에 끝났으면(11-13은 다음 날까지 이어짐) `open_now`가 참이 되어, 지난 세션도 "기록 중"으로 보였다.
+- 고침: `read_watched(..., now=)`를 받는다. 기준 시각이 `now`보다 앞이면 `open_now`는 항상 거짓이다. 후보 문서와 흐름 API가 `now`를 넘긴다.
+- 검사: `tests/screening/test_screening.py::test_a_read_cut_before_now_is_not_recording_now`, `pytest tests/screening` 통과, ruff·mypy 통과.
+
 ## 2026-11-23 SEC 공유 잠금 동시 시험(ADR 0046, mondash #321)과 SIW 쪽 양보
 
 - 시험: SIW `SharedSecFiles.request_turn`과 분석기 `SecClient`(분석기 1a10906, `rate_lock=default_rate_lock()`)가 같은 `~/Trading/stock-data/sec.lock`으로 각각 30회 실제 SEC 요청을 동시에 보냈다(스크립트는 세션 scratchpad, 저장소 밖).

@@ -67,6 +67,22 @@ def test_candidates_are_first_seen_times_before_the_cutoff(tmp_path: Path) -> No
     assert read.coverage.interrupted == 0
 
 
+def test_a_read_cut_before_now_is_not_recording_now(tmp_path: Path) -> None:
+    # The second watch never ended: read at its own moment it is recording, but a past
+    # session (cut at post-close) or an as_of cut read later is not recording "now".
+    record(tmp_path)
+    assert read_watched(
+        watch_path(tmp_path), WINDOW, at(60), CONDITION.name, now=at(60)
+    ).coverage.open_now
+    later = WINDOW.post_close_utc + timedelta(days=10)
+    past = read_watched(
+        watch_path(tmp_path), WINDOW, WINDOW.post_close_utc, CONDITION.name, now=later
+    )
+    assert not past.coverage.open_now
+    cut = read_watched(watch_path(tmp_path), WINDOW, at(60), CONDITION.name, now=at(400))
+    assert not cut.coverage.open_now and cut.coverage.watches == 2
+
+
 def test_reading_the_record_never_writes_to_it(tmp_path: Path) -> None:
     record(tmp_path)
     path = watch_path(tmp_path)
