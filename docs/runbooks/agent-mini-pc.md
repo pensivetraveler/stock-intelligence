@@ -143,6 +143,8 @@ CI의 `agent-linux` 작업(`.github/workflows/ci.yml`)과 같은 구성이다. �
    cd ~/stock-intelligence && cp .env.example .env && chmod 600 .env
    ```
 
+   공백이 든 값은 큰따옴표로 감싼다(예: `SIW_SEC_USER_AGENT="이름 메일"`). 수집기 유닛은 `uv run --env-file .env`로 읽는데, uv는 따옴표 없는 공백 값에서 `Failed to parse environment file` 경고만 내고 **그 줄부터 끝까지 모든 변수를 버린다**(2026-11-25 미니PC uv 0.13.9 실측). `set -a; . ./.env`를 쓰는 스크립트는 같은 줄에서 종료 127로 끝난다. 확인: `grep -nE '^[A-Z_]+=[^"#]*[[:space:]]' .env`가 아무것도 내지 않아야 한다.
+
 6. API가 쓸 Python 환경을 미리 만든다. 앱이 처음 뜰 때 기다리는 시간이 줄어든다.
 
    ```bash
