@@ -239,6 +239,7 @@
           ],
           "shelves": [],
           "incomplete_reasons": [],
+          "rules_only_incomplete": false,
           "reason": null
         },
         "off_exchange": {

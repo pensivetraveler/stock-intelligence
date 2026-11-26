@@ -31,6 +31,19 @@ LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
 FACT_STATUSES = frozenset({"confirmed", "computed", "inferred"})
 NO_RESULT_STATES = frozenset({"blocked", "unsupported", "failed"})
 AFTER_BASE_MARK = "(기준 시점 뒤 발행)"
+LLM_DISABLED = "llm_disabled"
+
+
+def rules_only_incomplete(status: object, reasons: object) -> bool:
+    """True when a check is incomplete only because the analyzer ran on rules alone.
+
+    With llm=false the analyzer always adds `llm_disabled` (stage 4 asks this way by design,
+    ADR 0057), so the panel says "rules only" instead of "partial". Any other reason
+    (sec_fetch_failed, table_limit, ...) keeps it plainly incomplete (mondash -353).
+    """
+    if status != "incomplete" or not isinstance(reasons, list) or not reasons:
+        return False
+    return all(item == LLM_DISABLED for item in reasons)
 
 
 class DilutionServiceDown(RuntimeError):

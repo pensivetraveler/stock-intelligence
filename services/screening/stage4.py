@@ -21,6 +21,7 @@ from datetime import date, datetime
 from typing import Any
 
 from services.screening.candidates import utc_text
+from services.screening.dilution import rules_only_incomplete
 from services.screening.material import stage2_verdict
 from services.screening.store import ScreeningStore
 
@@ -87,6 +88,9 @@ def _dilution(document: Mapping[str, Any]) -> dict[str, Any]:
         "capacity": list(result.get("capacity") or []),
         "shelves": list(result.get("shelves") or []),
         "incomplete_reasons": [str(item) for item in result.get("incomplete_reasons") or []],
+        "rules_only_incomplete": rules_only_incomplete(
+            document["status"], result.get("incomplete_reasons")
+        ),
         "reason": result.get("reason"),
     }
 
