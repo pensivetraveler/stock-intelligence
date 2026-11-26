@@ -32,6 +32,7 @@ On 2026-10-20 the user decided:
   - It reads the first enabled real-account Toss key on the Keys screen, whichever market-data provider is active.
   - Nothing is stored, and responses are `no-store`.
   - The Live quote panel refreshes every 5 seconds and pauses during replay.
+  - (2026-11-25) A stock with no trade yet in the session (quiet day-market names such as PARA) comes back from Toss with empty times. That is `last: null` (and no order book or trades without a time), not a 502; the panel says there is no trade yet. A time that is present but unreadable is still `502 provider_data_invalid`, and the message names which value (last trade, order book, trade, price limit).
 
 ## Stage 3 — stock and market info (implemented 2026-10-20)
 
