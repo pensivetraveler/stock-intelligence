@@ -3398,6 +3398,7 @@
 - **변경:** [docs/runbooks/live-orders.md](runbooks/live-orders.md)를 추가했다. 현재 상태, L3 당일 사용자 순서(모의 먼저), 사후 확인(Agent 읽기만), 메리츠 체결 시각 조건, ADR 0060 열기 조건 충족 표(네 조건 모두 미충족). ADR 0047 점검표와 ADR 0060 "Revisit when"에서 링크했다. 코드 변경 없음.
 - **미실행:** 시험(문서만 바꿈).
 - **추가(같은 날):** 상위 세션 배정으로 ADR 0060 §5 '열기 조건 3 설계안'(앱 안 확인 경로 A~E, 추천 B 보안 키+하루 만료)을 적었다. 사용자 선택 대기, 코드 없음.
+
 ## 2026-11-26 키움 해외 모의 장외 매도·STOP 점검 명령(ADR 0044, mondash #316)
 
 - 추가: `python -m services.paper_trading.probe`(`orders`·`order`·`cancel`)와 `KiwoomPaperBroker.probe_order`. 주문당 1주, $1,000 이하, `--yes` 필수. 모의 실행기가 무장 중이거나 킬 스위치 중이면 거절한다. 모의 원장에 쓰지 않는다. 실행기는 계속 지정가만 낸다.
