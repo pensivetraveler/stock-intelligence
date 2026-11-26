@@ -1660,6 +1660,18 @@ const en = {
     "Paper trading (모의투자) only — no real orders. Orders go to the broker's paper server.",
   "paper.kill": "Kill switch: stop new orders",
   "paper.error": "Problem: {message}",
+  "apistart.port_in_use":
+    "Another program is using port {port}, so the local API could not start.{holder} Quit that program and reopen SIW Agent. Check with: lsof -nP -iTCP:{port} -sTCP:LISTEN",
+  "apistart.holder": " Using it: {holder}.",
+  "apistart.no_repo":
+    "The local API could not start: the repository folder was not found. Set SIW_REPO_DIR or the repo_dir in the app's settings file.",
+  "apistart.no_uv":
+    "The local API could not start: uv was not found (~/.local/bin/uv, /opt/homebrew/bin/uv, /usr/local/bin/uv).",
+  "apistart.spawn_failed": "The local API could not start: {detail}",
+  "apistart.exited":
+    "The local API stopped while starting ({detail}). See api.log in the app's log folder.",
+  "apistart.timeout":
+    "The local API did not answer within 60 seconds and was stopped. See api.log in the app's log folder.",
   "paper.loading": "Loading…",
   "paper.status": "Runner",
   "paper.state.halted": "Halted: {reason}",
@@ -3849,6 +3861,18 @@ const ko: Record<MessageKey, string> = {
     "모의투자 전용 — 실제 주문이 아닙니다. 주문은 증권사 모의투자 서버로만 갑니다.",
   "paper.kill": "킬 스위치: 신규 주문 중지",
   "paper.error": "문제: {message}",
+  "apistart.port_in_use":
+    "다른 프로그램이 포트 {port}을(를) 쓰고 있어 로컬 API를 시작하지 못했습니다.{holder} 그 프로그램을 끄고 SIW Agent를 다시 여세요. 확인 명령: lsof -nP -iTCP:{port} -sTCP:LISTEN",
+  "apistart.holder": " 쓰는 프로그램: {holder}.",
+  "apistart.no_repo":
+    "저장소 폴더를 찾지 못해 로컬 API를 시작하지 못했습니다. SIW_REPO_DIR 또는 앱 설정 파일의 repo_dir를 확인하세요.",
+  "apistart.no_uv":
+    "uv를 찾지 못해 로컬 API를 시작하지 못했습니다(~/.local/bin/uv, /opt/homebrew/bin/uv, /usr/local/bin/uv).",
+  "apistart.spawn_failed": "로컬 API를 시작하지 못했습니다: {detail}",
+  "apistart.exited":
+    "로컬 API가 시작하다 멈췄습니다({detail}). 앱 로그 폴더의 api.log를 보세요.",
+  "apistart.timeout":
+    "로컬 API가 60초 안에 응답하지 않아 멈췄습니다. 앱 로그 폴더의 api.log를 보세요.",
   "paper.loading": "불러오는 중…",
   "paper.status": "실행기",
   "paper.state.halted": "정지됨: {reason}",
