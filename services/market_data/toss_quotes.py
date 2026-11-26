@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, TypeGuard
 
 from packages.contracts.validator import validate_document
 from services.market_data.provider import InvalidBarsQueryError, ProviderDataError
@@ -21,13 +21,15 @@ TRADE_COUNT = 30
 CURRENCIES = frozenset({"USD", "KRW"})
 
 
-def _utc(value: object) -> str:
+def _utc(value: object, field: str) -> str:
     try:
         stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError as exc:
-        raise ProviderDataError("Toss returned a quote without a valid timestamp") from exc
+        raise ProviderDataError(
+            f"Toss returned an unreadable {field} time {str(value)[:40]!r}"
+        ) from exc
     if stamp.tzinfo is None:
-        raise ProviderDataError("Toss returned a quote timestamp without an offset")
+        raise ProviderDataError(f"Toss returned a {field} time without a UTC offset")
     return stamp.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
@@ -39,6 +41,15 @@ def _decimal(value: object, *, non_negative: bool = False) -> str:
     if not number.is_finite() or (non_negative and number < 0):
         raise ProviderDataError("Toss returned a quote with an invalid number")
     return format(number, "f")
+
+
+def _stamped(item: object) -> TypeGuard[dict[str, Any]]:
+    """Whether Toss gave this item a time at all.
+
+    A stock with no trade yet in the session (a quiet day-market name such as PARA)
+    comes back with an empty or null time: that is "no trade", not broken data.
+    """
+    return isinstance(item, dict) and item.get("timestamp") not in (None, "")
 
 
 def _levels(items: object) -> list[dict[str, str]]:
@@ -91,36 +102,41 @@ def market_quote(
         .astimezone(timezone.utc)
         .isoformat(timespec="seconds")
         .replace("+00:00", "Z"),
+        # No last price without its trade time: a price we cannot place in time is not
+        # shown as the latest trade.
         "last": (
-            {"price": _decimal(price["lastPrice"]), "at_utc": _utc(price["timestamp"])}
-            if price is not None
+            {
+                "price": _decimal(price["lastPrice"]),
+                "at_utc": _utc(price["timestamp"], "last trade"),
+            }
+            if _stamped(price) and price.get("lastPrice") not in (None, "")
             else None
         ),
         "orderbook": (
             {
-                "at_utc": _utc(book["timestamp"]),
+                "at_utc": _utc(book["timestamp"], "order book"),
                 "asks": _levels(book.get("asks")),
                 "bids": _levels(book.get("bids")),
             }
-            if isinstance(book, dict) and book.get("timestamp")
+            if _stamped(book)
             else None
         ),
         "trades": [
             {
                 "price": _decimal(item["price"]),
                 "volume": _decimal(item["volume"], non_negative=True),
-                "at_utc": _utc(item["timestamp"]),
+                "at_utc": _utc(item["timestamp"], "trade"),
             }
             for item in (trades if isinstance(trades, list) else [])
-            if isinstance(item, dict)
+            if _stamped(item)  # a trade with no time cannot be placed in the list
         ],
         "price_limits": (
             {
                 "upper": _decimal(limits["upperLimitPrice"]),
                 "lower": _decimal(limits["lowerLimitPrice"]),
-                "at_utc": _utc(limits["timestamp"]),
+                "at_utc": _utc(limits["timestamp"], "price limit"),
             }
-            if isinstance(limits, dict) and limits.get("upperLimitPrice") is not None
+            if _stamped(limits) and limits.get("upperLimitPrice") is not None
             else None
         ),
     }
