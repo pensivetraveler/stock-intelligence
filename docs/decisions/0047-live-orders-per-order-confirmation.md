@@ -99,7 +99,7 @@ ADR 0036은 주문을 세 단계로 연다. 단계 2는 "실계좌, 주문마다
 - **실행기 체크아웃은 배포본(사용자 "배포본 + .env 연결"):** `settings.json`에 `repo_dir: ~/.local/share/siw/collector-app`을 썼다. 개발 체크아웃 `.env`로 심볼릭 링크를 두려 했으나, 그 파일의 `SIW_DATA_DIR`은 상대 경로(`data`)라 배포본에서는 없는 폴더를 가리키고, 쓰지 않는 키 값도 담고 있다. 그래서 배포본에 키 없는 `.env`(권한 600)를 따로 두고 `SIW_DATA_DIR`을 개발 체크아웃 `data/`의 절대 경로로 적었다(시세 저장소·공급업체 설정도 같은 값). 배포본에서 `uv run --env-file .env`로 데이터 폴더, 시세 저장소(`~/Trading/stock-data/market`), 실전 키 두 개의 목록이 보이는 것을 확인했다(키 값은 읽지 않음). 배포본은 git이 `.env`를 무시한다.
 - **설치:** main e61c15e에서 `corepack pnpm exec tauri build --bundles app`(exit 0, 9.9 MiB)를 빌드해 `/Applications/SIW Agent.app`에 설치했다. 11-04 설치본은 휴지통(`SIW Agent 20261104.app`)으로 옮겼다. 새 앱 실행·실행기 설치는 사용자가 한다(미확인).
 
-**당일 순서(모두 사용자 조작, 실행기 주기 10초):**
+**당일 순서(모두 사용자 조작, 실행기 주기 10초):** 사전 확인·사후 확인 명령을 더한 판은 [실계좌 주문 런북](../runbooks/live-orders.md) §2·§3.
 
 1. 같은 날 모의 확인(`stock-intelligence-60`): SIW Agent 모의 탭에서 `strategy-0a1868c8e441` v1, 해외모의 키로 승인·무장, 모의 상주 실행기 설치. 미국 정규장(23:30 KST) 뒤. 익절·트레일링·상주 실행기 경로가 모의 원장에 남는지 본다.
 2. 새 SIW Agent를 열어 실계좌 탭이 보이는지 확인(설치·체크아웃·키는 위에서 정리함).
