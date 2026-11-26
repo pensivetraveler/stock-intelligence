@@ -34,6 +34,7 @@ from services.collector.halt_watch import store_path
 from services.market_data.calendar import NEW_YORK, SessionWindow, UsEquityCalendar
 from services.market_data.provider import MarketDataError
 from services.screening.candidates import read_watched, utc_text, watch_path
+from services.screening.flow_bars import SettledBarsMemo
 from services.screening.flow_watch import CHECK_VERSION, RULES_VERSION, flow_check
 from services.screening.halts import HaltRead, recorded_halts
 from services.screening.material import (
@@ -73,6 +74,9 @@ def register_screening_flow_routes(
     stage2: GetStage2 = stage2_by_symbol,
 ) -> None:
     calendar = UsEquityCalendar("XNAS")
+    # The settled head of each candidate's session bars, so each minute's call fetches only
+    # the unsettled tail (mondash -187; see services/screening/flow_bars.py).
+    memo = SettledBarsMemo()
 
     def session_window(requested: date | None) -> SessionWindow | None:
         if requested is not None:
@@ -104,7 +108,8 @@ def register_screening_flow_routes(
         watched = read_watched(watch_path(root), window, cutoff, CONDITION_NAME, now=now)
         symbols = [item.symbol for item in watched.symbols]
         symbols += [s for s, _ in screening.manual(window.session_date) if s not in symbols]
-        bars = get_bars()
+        memo.use_session(window.pre_open_utc)
+        bars = memo.bars(get_bars())
         # By default, what `siw-collector watch-halts` recorded under the data dir.
         read_halts = halts or recorded_halts(store_path(root))
         verdicts = stage2(screening, window.session_date)
