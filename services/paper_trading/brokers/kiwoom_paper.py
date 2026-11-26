@@ -229,6 +229,34 @@ class KiwoomPaperBroker:
         }
         return self._send(endpoint, body, code, reference_field="ord_no")
 
+    def probe_order(
+        self,
+        side: Literal["buy", "sell"],
+        symbol: str,
+        venue: str,
+        quantity: Decimal,
+        trde_tp: str,
+        price: Decimal | None,
+        stop_price: Decimal | None = None,
+    ) -> SubmitResult:
+        """One hand-run order for checking what the paper server takes (probe.py only).
+
+        The runner never calls this: it sends limit orders through `submit`. Here any
+        spec'd `trde_tp` (STOP 35, STOP LIMIT 34, ...) may be sent, still to the paper
+        host only, so the operator can record whether the paper server accepts it.
+        """
+        if venue not in EXCHANGE_CODES.values():
+            raise OrderNotSupportedError(f"unknown Kiwoom exchange code {venue}")
+        body = {
+            "stex_tp": venue,
+            "stk_cd": symbol,
+            "ord_qty": _price_text(quantity),
+            "ord_uv": _price_text(price) if price is not None else "",
+            "stop_pric": _price_text(stop_price) if stop_price is not None else "",
+            "trde_tp": trde_tp,
+        }
+        return self._send(BUY if side == "buy" else SELL, body, trde_tp, reference_field="ord_no")
+
     def cancel(self, broker_order_ref: str, instrument_id: str, symbol: str) -> SubmitResult:
         body = {
             "orig_ord_no": broker_order_ref,

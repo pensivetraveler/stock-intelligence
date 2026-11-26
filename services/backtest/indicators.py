@@ -652,6 +652,19 @@ def _tv(bars: Sequence[Bar], _p: dict[str, float], _z: str) -> dict[str, Series]
     return {"value": [bar.close * bar.volume for bar in bars]}
 
 
+def _upper_wick_pct(bars: Sequence[Bar], _p: dict[str, float], _z: str) -> dict[str, Series]:
+    """The upper wick as a percent of the bar's range: (high - max(open, close)) / (high - low)
+    x 100. A bar with no range has no wick (0)."""
+    return {
+        "value": [
+            0.0
+            if bar.high == bar.low
+            else (bar.high - max(bar.open, bar.close)) / (bar.high - bar.low) * 100
+            for bar in bars
+        ]
+    }
+
+
 INDICATORS.update(
     {
         "vwma": IndicatorSpec({"length": 20}, ("value",), _vwma),
@@ -689,6 +702,7 @@ INDICATORS.update(
         "cmf": IndicatorSpec({"length": 20}, ("value",), _cmf),
         "volma": IndicatorSpec({"length": 20}, ("volume", "average"), _volma),
         "tv": IndicatorSpec({}, ("value",), _tv),
+        "upper_wick_pct": IndicatorSpec({}, ("value",), _upper_wick_pct),
     }
 )
 

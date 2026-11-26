@@ -167,6 +167,9 @@ export function QuotePanel({
               {liveConnected ? t("quote.live") : t("quote.polling")}
             </small>
           </p>
+          {!last && trades.length === 0 ? (
+            <p className="workspace-note">{t("quote.noTrade")}</p>
+          ) : null}
           {quote.price_limits ? (
             <p className="workspace-note">
               {t("quote.limits", {

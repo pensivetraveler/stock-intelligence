@@ -736,3 +736,75 @@ describe("keys tab", () => {
     expect(keys.add).not.toHaveBeenCalled();
   });
 });
+
+describe("AgentApp — local API start problem", () => {
+  it("says which program holds the API port", async () => {
+    const check = vi.fn(async () => ({
+      kind: "port_in_use" as const,
+      port: 8765,
+      detail: "python3.1 (pid 998)",
+    }));
+    render(
+      <AgentApp
+        paperApi={fakeApi()}
+        runnerControl={noControl}
+        apiStartCheck={check}
+        languageStorage={null}
+        defaultLanguage="ko"
+      />,
+    );
+    const alert = await screen.findByText(/포트 8765/);
+    expect(alert).toHaveTextContent("python3.1 (pid 998)");
+    expect(alert).toHaveTextContent("lsof -nP -iTCP:8765 -sTCP:LISTEN");
+  });
+
+  it("explains a missing uv in English", async () => {
+    render(
+      <AgentApp
+        paperApi={fakeApi()}
+        runnerControl={noControl}
+        apiStartCheck={async () => ({ kind: "no_uv", port: 8765, detail: "" })}
+        languageStorage={null}
+        defaultLanguage="en"
+      />,
+    );
+    expect(await screen.findByText(/uv was not found/)).toBeInTheDocument();
+  });
+
+  it("hides the notice once the shell reports no problem", async () => {
+    let problem: { kind: "timeout"; port: number; detail: string } | null = {
+      kind: "timeout",
+      port: 8765,
+      detail: "",
+    };
+    render(
+      <AgentApp
+        paperApi={fakeApi()}
+        runnerControl={noControl}
+        apiStartCheck={async () => problem}
+        pollMs={20}
+        languageStorage={null}
+        defaultLanguage="en"
+      />,
+    );
+    expect(await screen.findByText(/within 60 seconds/)).toBeInTheDocument();
+    problem = null;
+    await waitFor(() =>
+      expect(screen.queryByText(/within 60 seconds/)).not.toBeInTheDocument(),
+    );
+  });
+
+  it("shows nothing outside the Agent shell", async () => {
+    render(
+      <AgentApp
+        paperApi={fakeApi()}
+        runnerControl={noControl}
+        apiStartCheck={null}
+        languageStorage={null}
+        defaultLanguage="en"
+      />,
+    );
+    await screen.findByRole("note");
+    expect(screen.queryByText(/local API/)).not.toBeInTheDocument();
+  });
+});
