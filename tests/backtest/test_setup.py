@@ -197,6 +197,20 @@ def test_breakout_reads_the_base_bar_value() -> None:
     assert fills(run(setup(setup={"breakout": rule}), strong + after))[0][0] == "buy"
 
 
+def test_base_can_require_a_short_upper_wick() -> None:
+    # Original One-Punch book 2 base bar: upper wick at most 30 % of the bar's range.
+    base = {"all": [
+        {"op": "gte", "left": {"indicator": "roc", "params": {"length": 1}},
+         "right": {"value": "15"}},
+        {"op": "lte", "left": {"indicator": "upper_wick_pct"}, "right": {"value": "30"}},
+    ]}  # fmt: skip
+    rest = [(12, 12, 11, 11), (11, 15, 11, 14.5), (14.5, 14.5, 10.9, 11.5)]
+    clean = [(10, 10, 10, 10), (10, 12, 10, 12), *rest]  # no wick
+    wicked = [(10, 10, 10, 10), (10, 14, 10, 12), *rest]  # wick (14 - 12) / 4 = 50 %
+    assert fills(run(setup(setup={"base": base}), clean))
+    assert fills(run(setup(setup={"base": base}), wicked)) == []
+
+
 def test_risk_pct_sizes_by_the_distance_to_the_stop() -> None:
     one_punch = {"legs": [{"level": "0.75", "size_pct": "100",
                             "targets": [{"level": "0.25", "sell_pct": "100"}]}]}  # fmt: skip

@@ -1160,6 +1160,25 @@ export const INDICATORS: IndicatorDefinition[] = [
     outputs: [{ key: "value", label: "TV", color: GREY, kind: "histogram" }],
     compute: (bars) => ({ value: bars.map((bar) => bar.close * bar.volume) }),
   },
+  {
+    // The upper wick as a percent of the bar's range; a bar with no range has no wick.
+    id: "upper_wick_pct",
+    name: { en: "Upper Wick % of Range", ko: "윗꼬리 비율(봉 길이 대비 %)" },
+    short: "UWick%",
+    category: "volatility",
+    pane: "separate",
+    inputs: [],
+    outputs: [{ key: "value", label: "UWick%", color: BLUE }],
+    compute: (bars) => ({
+      value: bars.map((bar) =>
+        bar.high === bar.low
+          ? 0
+          : ((bar.high - Math.max(bar.open, bar.close)) /
+              (bar.high - bar.low)) *
+            100,
+      ),
+    }),
+  },
 ];
 
 export function rsi(source: Series, length: number): Series {
