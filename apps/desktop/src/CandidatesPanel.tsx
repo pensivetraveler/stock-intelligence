@@ -156,7 +156,7 @@ function stage4Text(
   const off = info.off_exchange;
   const parts = [
     dilution
-      ? `${t("candidates.stage4.dilution")} ${statusText(t, dilution.status)}`
+      ? `${t("candidates.stage4.dilution")} ${dilutionStatusText(t, dilution.status, dilution.rules_only_incomplete)}`
       : `${t("candidates.stage4.dilution")} —`,
     off
       ? off.status === "pending"
@@ -249,6 +249,30 @@ function statusText(
 ): string {
   const known = STATUSES.find((item) => item === status);
   return known ? t(`candidates.status.${known}`) : status;
+}
+
+/**
+ * A dilution check's status. Rules-only runs (stage 4 asks with llm=false) always carry
+ * `llm_disabled`; when that is the only reason the API sets `rules_only_incomplete` and the
+ * panel says "rules only" instead of "partial" (mondash -353).
+ */
+function dilutionStatusText(
+  t: ReturnType<typeof useI18n>["t"],
+  status: string,
+  rulesOnlyIncomplete: boolean | undefined,
+): string {
+  return status === "incomplete" && rulesOnlyIncomplete
+    ? t("candidates.status.rulesOnly")
+    : statusText(t, status);
+}
+
+/** The same test on a stored check C result (its detail view). */
+function onlyLlmDisabled(reasons: string[] | undefined): boolean {
+  return (
+    reasons !== undefined &&
+    reasons.length > 0 &&
+    reasons.every((item) => item === "llm_disabled")
+  );
 }
 
 /** The record's opening lists: SIW saw the symbol there, not its entry. */
@@ -803,6 +827,15 @@ export function CandidatesPanel({
                         </span>
                         {OTHER_KINDS.map((kind) => {
                           const found = item.checks[kind];
+                          const foundStatus = found
+                            ? kind === "dilution"
+                              ? dilutionStatusText(
+                                  t,
+                                  found.status,
+                                  item.checks.dilution?.rules_only_incomplete,
+                                )
+                              : statusText(t, found.status)
+                            : "";
                           return (
                             <span key={kind} className="cand-check">
                               <span className="cand-check-label">
@@ -814,14 +847,14 @@ export function CandidatesPanel({
                                 <button
                                   type="button"
                                   className="secondary"
-                                  aria-label={`${item.symbol} ${t(`candidates.column.${kind}`)}: ${statusText(t, found.status)}`}
+                                  aria-label={`${item.symbol} ${t(`candidates.column.${kind}`)}: ${foundStatus}`}
                                   onClick={() =>
                                     found.status === "pending"
                                       ? lookAgain(found, kind, item.symbol)
                                       : showDetail(found.check_id)
                                   }
                                 >
-                                  {statusText(t, found.status)}
+                                  {foundStatus}
                                 </button>
                               ) : listing ? (
                                 <button
@@ -1210,7 +1243,11 @@ function DilutionDetail({
         {t("candidates.dilutionMeta", {
           symbol: check.symbol,
           mode: result.llm ? "LLM" : t("candidates.rulesOnly"),
-          status: statusText(t, check.status),
+          status: dilutionStatusText(
+            t,
+            check.status,
+            onlyLlmDisabled(result.incomplete_reasons),
+          ),
         })}
       </p>
       {result.reason ? <p className="chart-error">{result.reason}</p> : null}

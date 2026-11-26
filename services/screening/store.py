@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from services.screening.candidates import utc_text
+from services.screening.dilution import rules_only_incomplete
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS manual_candidates (
@@ -118,15 +119,21 @@ class ScreeningStore:
         """The latest check of each kind, by symbol, for one session date."""
         with self._lock:
             rows = self._db.execute(
-                "SELECT symbol, check_kind, check_id, status, created_at_utc FROM checks "
-                "WHERE session_date = ? ORDER BY check_id",
+                "SELECT symbol, check_kind, check_id, status, created_at_utc, "
+                "CASE WHEN check_kind = 'dilution' "
+                "THEN json_extract(document, '$.result.incomplete_reasons') END AS reasons "
+                "FROM checks WHERE session_date = ? ORDER BY check_id",
                 (session_date.isoformat(),),
             ).fetchall()
         found: dict[str, dict[str, dict[str, Any]]] = {}
         for row in rows:
-            found.setdefault(str(row["symbol"]), {})[str(row["check_kind"])] = {
+            summary: dict[str, Any] = {
                 "check_id": int(row["check_id"]),
                 "status": str(row["status"]),
                 "created_at_utc": str(row["created_at_utc"]),
             }
+            if row["check_kind"] == "dilution":
+                reasons = json.loads(row["reasons"]) if row["reasons"] else []
+                summary["rules_only_incomplete"] = rules_only_incomplete(row["status"], reasons)
+            found.setdefault(str(row["symbol"]), {})[str(row["check_kind"])] = summary
         return found

@@ -7705,6 +7705,10 @@ export interface ScreeningCandidates {
         check_id: number;
         status: string;
         created_at_utc: UtcTimestamp;
+        /**
+         * True when the check is incomplete only because the analyzer ran on rules alone (the sole reason is llm_disabled, which llm=false always adds). The panel shows it as "rules only" instead of "partial". Any other reason keeps it false (mondash -353).
+         */
+        rules_only_incomplete?: boolean;
       };
       off_exchange_structure?: {
         check_id: number;
@@ -11648,6 +11652,10 @@ export interface ScreeningStage4 {
      * @maxItems 50
      */
     incomplete_reasons: string[];
+    /**
+     * True when the check is incomplete only because of llm_disabled (rules-only runs always carry it, ADR 0057 stage 4). The panel shows "rules only" instead of "partial"; any other reason keeps it false (mondash -353).
+     */
+    rules_only_incomplete: boolean;
     reason: string | null;
   };
   off_exchange: null | {
