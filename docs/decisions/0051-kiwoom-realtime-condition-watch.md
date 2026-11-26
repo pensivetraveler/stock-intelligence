@@ -74,13 +74,22 @@ The time zone of field `20` is not documented.
 - **Running the watch inside the API process:** the record would stop whenever the Research app is closed.
 - **Combining the realtime events with a five-minute `search_type` `0` snapshot (prices and volume):** this would make the record check itself. Whether a second request on the subscribed connection disturbs the subscription is not known, so it is left for later.
 
+## Record check on 2026-11-25 (read-only)
+
+The collector's own store (`data/screeners/kiwoom_condition_watch.sqlite3`, opened `mode=ro`) held 312 watches of SIW_당일급등주 from 2026-11-09 to 2026-11-24 (ten sessions; 11-18 and 11-19 are missing because the Mac was off, 11-17 has no aftermarket), with 6,561 enter, 6,141 leave and 8,849 listed rows.
+
+- **`907`:** `2` in all 12,702 enter and leave events, as is `841` (the condition's `seq`). The Kiwoom spec (usa20290) shows `907` only in its example, also as `2`, and does not describe it. A field that never changes cannot say why a ticker entered.
+- **The new day:** every session's first watch (one minute after 04:00 ET) received events, from the first session on (11-09: 194 events before 09:30 ET).
+- **The regular open:** the watch spanning 09:30 ET received events after 09:30 on all nine sessions that had one (11 to 55 events each).
+- **Silent subscriptions during the day:** of 276 renewals, 267 had a fresh list equal to where the previous watch ended. The other nine differed by one ticker each. In eight, that ticker had an event within 26 s of the boundary on one side or the other (a flickering ticker caught by the switch), so no subscription went silent. One (AIXI, 11-13 09:31 ET) was on the list for the whole previous watch with no event and missing from the next list: one leave was not reported, or it left during the switch. Differences after a lost connection (seven) or overnight are expected and shown by `differs_from_previous`.
+- **100-ticker limit:** the largest list a subscription answered had 68 tickers, so the limit was never reached.
+- **Resending after a reconnect:** not needed, since every reconnect opens a new subscription and records its fresh list.
+
 ## Not verified
 
-- what `907` means;
-- why the subscription opened before the premarket open turned silent, and whether a subscription can turn silent at other moments, such as the regular open;
-- whether a subscription opened a minute after the premarket open receives the new day's events;
-- whether the 100-ticker limit applies to the realtime list;
-- whether Kiwoom resends the list or the events after a reconnect without a new subscription.
+- what `907` means (it is always `2`; see above);
+- whether the 100-ticker limit applies to the realtime list (largest list so far: 68);
+- whether a subscription can turn silent at a moment not yet seen; the 30-minute renewal bounds it, and the records so far show no such silence after 11-05.
 
 ## Revisit when
 
