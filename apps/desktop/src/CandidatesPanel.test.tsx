@@ -293,7 +293,17 @@ describe("CandidatesPanel", () => {
       return found.stage4;
     };
     const document = candidates();
-    document.candidates[0].stage4 = info("PASS");
+    const passInfo = info("PASS");
+    // A rules-only analysis whose only reason is llm_disabled reads "rules only" (mondash -353).
+    document.candidates[0].stage4 = {
+      ...passInfo,
+      dilution: passInfo.dilution && {
+        ...passInfo.dilution,
+        status: "incomplete",
+        incomplete_reasons: ["llm_disabled"],
+        rules_only_incomplete: true,
+      },
+    };
     document.candidates[1].stage4 = info("EXCL");
     const api = {
       candidates: vi.fn(() => Promise.resolve(document)),
@@ -306,7 +316,7 @@ describe("CandidatesPanel", () => {
     const passed = await screen.findByLabelText("AAPL Information (stage 4)");
     const levels = info("PASS").off_exchange?.levels.length ?? 0;
     expect(passed.textContent).toBe(
-      `Dilution done · Off-exchange peaks ${levels} · no short data`,
+      `Dilution rules only · Off-exchange peaks ${levels} · no short data`,
     );
     expect(passed.getAttribute("title")).toMatch(/warrant \$1\.25/);
     expect(passed.getAttribute("title")).toMatch(/automatic/);
@@ -383,6 +393,7 @@ describe("CandidatesPanel", () => {
             check_id: 9,
             status: "incomplete",
             created_at_utc: "2026-11-09T15:31:00Z",
+            rules_only_incomplete: true,
           };
         return Promise.resolve(found);
       }),
@@ -408,12 +419,16 @@ describe("CandidatesPanel", () => {
       ),
     );
     expect(api.runDilutionCheck).toHaveBeenCalledTimes(1);
+    // Incomplete only because it ran on rules: said as "rules only" (mondash -353).
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "AAPL Dilution supply: partial",
+        name: "AAPL Dilution supply: rules only",
       }),
     );
     await screen.findByText(/totals are unknown, not zero/);
+    expect(
+      screen.getByText("AAPL · dilution analyzer, rules only · rules only"),
+    ).toBeTruthy();
     expect(screen.getByText("?")).toBeTruthy();
     expect(
       screen.getByText(/may not convert before shareholder approval/),
@@ -440,7 +455,7 @@ describe("CandidatesPanel", () => {
       status: "incomplete",
       result: {
         llm: false,
-        incomplete_reasons: ["llm_disabled"],
+        incomplete_reasons: ["llm_disabled", "sec_fetch_failed"],
         securities: [],
         capacity: [],
       },
@@ -453,6 +468,7 @@ describe("CandidatesPanel", () => {
           check_id: 11,
           status: "incomplete",
           created_at_utc: "2026-11-09T15:31:00Z",
+          rules_only_incomplete: false,
         };
         return Promise.resolve(found);
       }),
@@ -467,6 +483,10 @@ describe("CandidatesPanel", () => {
       }),
     );
     await screen.findByText(/that means unknown, not none/);
+    // Another reason besides rules only keeps it "partial" (mondash -353).
+    expect(
+      screen.getByText("AAPL · dilution analyzer, rules only · partial"),
+    ).toBeTruthy();
   });
 
   it("runs news, off-exchange and structure checks and draws levels", async () => {

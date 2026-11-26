@@ -17,7 +17,12 @@ from packages.contracts.validator import validate_document
 from services.api.main import _error_response
 from services.api.screening_routes import register_screening_routes
 from services.market_data.broker_common import instrument_listing
-from services.screening.dilution import DilutionService, DilutionServiceError, supply_levels
+from services.screening.dilution import (
+    DilutionService,
+    DilutionServiceError,
+    rules_only_incomplete,
+    supply_levels,
+)
 from services.screening.store import ScreeningStore
 
 NOW = datetime(2026, 11, 9, 13, 0, tzinfo=timezone.utc)  # 08:00 New York, pre-market
@@ -170,6 +175,55 @@ def test_an_incomplete_analysis_says_so(setup: Any) -> None:
     check = client.post("/v1/screening/checks/dilution", json={"symbol": "LABT"}).json()
     assert check["status"] == "incomplete"
     assert check["result"]["incomplete_reasons"] == ["llm_disabled"]
+
+
+def test_the_latest_summary_marks_a_rules_only_incomplete_check(tmp_path: Path) -> None:
+    """The candidate list's check summary carries the flag for check C only (mondash -353)."""
+    screening = ScreeningStore(tmp_path / "screening.sqlite3", lambda: NOW)
+
+    def add(symbol: str, kind: str, status: str, reasons: list[str] | None) -> None:
+        result: dict[str, Any] = {} if reasons is None else {"incomplete_reasons": reasons}
+        screening.add_check(
+            {
+                "session_date": "2026-11-09",
+                "symbol": symbol,
+                "check": kind,
+                "status": status,
+                "cutoff_utc": "2026-11-09T13:00:00Z",
+                "created_at_utc": "2026-11-09T13:00:00Z",
+                "result": result,
+            }
+        )
+
+    add("RULE", "dilution", "incomplete", ["llm_disabled"])
+    add("MIXD", "dilution", "incomplete", ["llm_disabled", "sec_fetch_failed"])
+    add("DONE", "dilution", "ok", [])
+    add("WAIT", "dilution", "pending", None)
+    add("RULE", "news", "incomplete", ["llm_disabled"])
+    latest = screening.latest(NOW.date())
+    screening.close()
+    assert latest["RULE"]["dilution"]["rules_only_incomplete"] is True
+    assert latest["MIXD"]["dilution"]["rules_only_incomplete"] is False
+    assert latest["DONE"]["dilution"]["rules_only_incomplete"] is False
+    assert latest["WAIT"]["dilution"]["rules_only_incomplete"] is False
+    assert "rules_only_incomplete" not in latest["RULE"]["news"]
+
+
+@pytest.mark.parametrize(
+    ("status", "reasons", "expected"),
+    [
+        ("incomplete", ["llm_disabled"], True),
+        ("incomplete", ["llm_disabled", "llm_disabled"], True),
+        ("incomplete", ["llm_disabled", "sec_fetch_failed"], False),
+        ("incomplete", ["table_limit"], False),
+        ("incomplete", [], False),
+        ("incomplete", None, False),
+        ("ok", ["llm_disabled"], False),
+        ("error", [], False),
+    ],
+)
+def test_rules_only_incomplete(status: str, reasons: Any, expected: bool) -> None:
+    assert rules_only_incomplete(status, reasons) is expected
 
 
 def test_a_slow_analysis_waits_and_a_refresh_picks_it_up(setup: Any) -> None:

@@ -196,6 +196,8 @@ def test_the_candidates_carry_the_stage4_information(setup: Setup) -> None:
     assert passed["state"] == "done" and passed["stage2_outcome"] == "passed"
     assert passed["dilution"]["requested_by"] == "stage4_auto"
     assert passed["dilution"]["securities"][0]["price"]["amount"] == "1.25"
+    # A complete analysis is not "rules only" (mondash -353); the flag is always there.
+    assert passed["dilution"]["rules_only_incomplete"] is False
     # The fake analyzer answers as of a later date than the session: said, not hidden.
     assert passed["dilution"]["analysis_as_of"] == "2026-11-09"
     assert any("미래 자료" in note for note in passed["notes"])
