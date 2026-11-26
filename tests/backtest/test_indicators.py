@@ -44,6 +44,16 @@ def test_textbook_values_and_warm_up() -> None:
     assert ema([1, 2, 3, 4, 5], 3) == [None, None, 2, 3, 4]
 
 
+def test_upper_wick_pct_is_a_share_of_the_range() -> None:
+    bars = [
+        Bar(time=0, open=10, high=14, low=10, close=12, volume=1),  # (14 - 12) / 4
+        Bar(time=60, open=12, high=14, low=10, close=11, volume=1),  # (14 - 12) / 4, red bar
+        Bar(time=120, open=13, high=13, low=10, close=11, volume=1),  # no upper wick
+        Bar(time=180, open=10, high=10, low=10, close=10, volume=1),  # no range, no wick
+    ]
+    assert compute("upper_wick_pct", bars)["value"] == [50, 50, 0, 0]
+
+
 def test_rejects_unknown_indicators_and_parameters() -> None:
     with pytest.raises(ValueError, match="unknown indicator"):
         compute("nope", BARS)
