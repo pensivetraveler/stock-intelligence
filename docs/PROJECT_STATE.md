@@ -3450,3 +3450,10 @@
 - **변경:** 지표 `upper_wick_pct` 추가([ADR 0061](decisions/0061-base-bar-fibonacci-setup.md) §2-1). 엔진(`indicators.py`)과 차트(`indicators.ts`)에 넣고 parity 픽스처에 사례를 추가했다. 초안 안내에 이름을 넣고 `DRAFT_VERSION`을 6으로 올렸다.
 - **시험:** `pytest tests/backtest tests/technique_cards tests/custom_indicators` 통과(새 시험: 봉 길이 대비 값·봉 길이 0, 기준봉 윗꼬리 조건으로 걸러짐). `ruff`·`mypy` 통과. 데스크톱 `tsc`, `vitest` 536개 통과(백테스트 지표 개수 35 → 36).
 - **다른 세션 안내(11-25):** KDI "외국인 투자자 주식매매행태 분석 및 시사점"(`kl://kl-lib/item/01M83GGWHTV44HABEXFAWN25D1`)은 글자가 깨져 있어 도서관의 다음 수용 전까지 카드 근거로 쓰지 않는다(대시보드 344).
+
+## 2026-11-26 5단계 가격대 계산(ADR 0057 5단계, mondash #358)
+
+- **한 일:** `services/screening/price_levels.py` 순수 계산 모듈. 4단계 사실(희석 공급 가격, 장외 체결 봉우리)·1분봉·2단계 전략·기준 시각으로 눌림·돌파 틀의 매수가·첫 익절·손절·트레일링·수량과 근거·'근거 없음' 사유를 낸다. Decimal, 미래 자료 차단. 규칙과 해석은 ADR 0057 "5단계 계산 구현".
+- **하지 않은 것:** API·패널 표시, 6단계 스크립트, 주문.
+- **검사:** `pytest tests/screening/test_price_levels.py` 10개 통과, ruff·mypy 통과.
+- **확인 필요(종목 선정 세션):** 보수적 전략의 돌파 틀을 켜 둔 해석, 장외 봉우리 가격을 칸 가운데로 쓴 점, 희석 값 중 사실 상태만 쓰는 점, 분할 미보정.
