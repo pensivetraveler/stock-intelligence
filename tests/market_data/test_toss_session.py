@@ -18,7 +18,7 @@ from packages.contracts.validator import validate_document
 from services.api.main import create_app
 from services.market_data.broker_common import BlockedEndpointError
 from services.market_data.fake import FakeMarketDataProvider
-from services.market_data.provider import BarsQuery, InvalidBarsQueryError
+from services.market_data.provider import BarsQuery, InvalidBarsQueryError, ProviderDataError
 from services.market_data.toss import TossConfig, TossMarketDataProvider
 from services.market_data.toss_quotes import market_quote
 from services.market_data.toss_session import TossCredentials, TossSession, session_for
@@ -200,6 +200,50 @@ def test_a_quote_keeps_exact_prices_and_utc_times() -> None:
     assert quote["orderbook"]["asks"] == [{"price": "252.33", "volume": "120"}]
     assert quote["trades"][0]["volume"] == "15"
     assert quote["price_limits"] is None  # US stocks: Toss refuses price limits
+
+
+def _quiet_routes() -> dict[str, Any]:
+    """A day-market name with no trade yet this session (PARA, 2026-11-23): Toss leaves
+    the times empty."""
+    routes = dict(QUOTE_ROUTES)
+    routes["/api/v1/prices"] = (
+        200,
+        {"result": [{"symbol": "PARA", "timestamp": None, "lastPrice": None, "currency": "USD"}]},
+    )
+    routes["/api/v1/orderbook"] = (
+        200,
+        {"result": {"timestamp": "", "currency": "USD", "asks": [], "bids": []}},
+    )
+    routes["/api/v1/trades"] = (200, {"result": []})
+    return routes
+
+
+def test_a_quote_with_no_trade_yet_is_not_broken_data() -> None:
+    quote = market_quote(session(Server(_quiet_routes())), "us:para:xnas:2026", "PARA", lambda: NOW)
+    validate_document(quote)
+    assert quote["last"] is None
+    assert quote["orderbook"] is None
+    assert quote["trades"] == []
+
+
+def test_a_last_price_without_its_time_is_not_shown() -> None:
+    routes = _quiet_routes()
+    routes["/api/v1/prices"] = (
+        200,
+        {"result": [{"symbol": "PARA", "timestamp": "", "lastPrice": "3.03", "currency": "USD"}]},
+    )
+    quote = market_quote(session(Server(routes)), "us:para:xnas:2026", "PARA", lambda: NOW)
+    assert quote["last"] is None  # a price we cannot place in time is not the latest trade
+
+
+def test_an_unreadable_time_says_which_value_was_wrong() -> None:
+    routes = dict(QUOTE_ROUTES)
+    routes["/api/v1/trades"] = (
+        200,
+        {"result": [{"price": "252.31", "volume": "1", "timestamp": "soon", "currency": "USD"}]},
+    )
+    with pytest.raises(ProviderDataError, match="unreadable trade time 'soon'"):
+        market_quote(session(Server(routes)), "us:aapl:xnas:2026", "AAPL", lambda: NOW)
 
 
 def test_quote_api_needs_a_toss_key_and_serves_listed_stocks() -> None:

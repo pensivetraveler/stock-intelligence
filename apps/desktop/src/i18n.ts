@@ -1208,6 +1208,8 @@ const en = {
   "quote.volume": "Volume",
   "quote.time": "Time",
   "quote.limits": "Daily limits: {lower} – {upper}",
+  "quote.noTrade":
+    "No trade yet in this session from this source (quiet names in the day market often have none), so there is no last price.",
   "quote.source":
     "Source {source} (Toss quotes US stocks from some venues only, not the full market) · read {time}, refreshed every 5 seconds",
   "quote.sourceMeritzLine":
@@ -3408,6 +3410,8 @@ const ko: Record<MessageKey, string> = {
   "quote.volume": "수량",
   "quote.time": "시각",
   "quote.limits": "가격 제한: {lower} – {upper}",
+  "quote.noTrade":
+    "이 출처에서 이번 세션에 아직 체결이 없어 현재가가 없습니다(데이마켓의 거래가 적은 종목은 체결이 없을 때가 많음).",
   "quote.source":
     "출처 {source}(토스는 미국 주식을 일부 거래소 기준으로 제공하며 전체 시장 기준이 아님) · {time} 조회, 5초마다 갱신",
   "quote.sourceMeritzLine":

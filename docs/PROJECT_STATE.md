@@ -3377,6 +3377,15 @@
 - **코드 변경:** 없음(문서만).
 - **미확인:** `ticker_mismatch`로 걸러낸 실제 사례.
 
+## 2026-11-25 API 재시작 원인(mondash 323)과 Toss 무체결 종목 시세(mondash 322)
+
+- **323 원인:** 11-23 오후의 API 재시작은 충돌이 아니라 배포였다. 세션들이 PR을 병합할 때마다 배포본(`~/.local/share/siw/collector-app`)을 `origin/main`으로 옮기고 `launchctl kickstart -k`로 다시 띄웠다. 근거: 배포본 reflog의 checkout 시각(15:30·15:37·16:07·16:19·16:33·16:48·22:52·23:03 KST)과 세션 기록의 `kickstart` 명령 시각이 맞고, `api.err.log`에는 예외 없이 모두 정상 종료(`Shutting down` → `Finished server process`)만 있다. 16:33 프로세스(PID 26000)는 시작이 끝나기 전(17초)에 또 다시 띄워져 launchd가 강제 종료(-9)했고, 다음 프로세스가 응답하기까지 1분 가까이 걸렸다. 시스템 로그(`log show`)에는 11-23 기록이 남아 있지 않았다(11-25 16:09 배포는 `service inactive: com.siw.api.serve`로 남음). 모듈 읽기는 지금 3.7~4.5초다.
+- **323 조치:** 코드 수정 없음. README "상시 실행"에 다시 띄우는 동안 요청이 실패한다는 점과, 연달아 병합할 때는 마지막에 한 번만 다시 띄우고 `/health`를 확인한 뒤 다음을 띄우라는 줄을 넣었다. 흐름 API 느림(mondash 187)과는 관계없다.
+- **322 원인:** 데이마켓에서 아직 체결이 없는 종목(11-23 16:37 KST PARA)은 Toss가 시세 시각을 비워 보낸다. `toss_quotes._utc`가 이를 잘못된 자료로 보고 `502 provider_data_invalid`("Toss returned a quote without a valid timestamp")를 냈다. 같은 시각 AAPL은 정상.
+- **322 고침:** 시각이 비었거나 null이면 "체결 없음"으로 본다: `last: null`(시각 없는 가격은 현재가로 쓰지 않음), 호가·체결·가격 제한도 시각 없는 항목은 빼거나 null. 시각이 있는데 못 읽으면 여전히 502이고, 메시지가 어느 값인지(last trade·order book·trade·price limit)와 받은 값을 말한다. 화면 `실시간 시세` 패널은 현재가와 체결이 모두 없으면 "이 출처에서 이번 세션에 아직 체결이 없어 현재가가 없습니다"를 보인다. 실시간 스트림(`toss_stream`)은 원래 시각 없는 프레임을 건너뛰어 바꾸지 않았다.
+- **시험:** `tests/market_data/test_toss_session.py` 9개 통과(새 3개: 무체결·시각 없는 가격·못 읽는 시각 메시지), 화면 `QuotePanel.test.tsx` 2개(새)·`i18n.test.ts` 통과, `tsc` 통과.
+- **미확인:** 실제 무체결 종목의 Toss 원래 응답 모양(어느 필드가 비는지). 11-25 17:06 KST에는 PARA도 체결이 있어 재현하지 못했다. 시험은 `timestamp`가 null·빈 문자열인 경우를 가정한다.
+
 ## 2026-11-25 조건검색 미확인 항목 정리(ADR 0048·0051, mondash #59)
 
 - **한 일:** 수집기 기록(`data/screeners/kiwoom_condition_watch.sqlite3`, 읽기 전용)으로 남은 미확인을 확인했다. 코드 변경 없음. 결과는 ADR 0051 "Record check on 2026-11-25"와 ADR 0055 미확인에 적었다.
@@ -3398,6 +3407,14 @@
 - **변경:** [docs/runbooks/live-orders.md](runbooks/live-orders.md)를 추가했다. 현재 상태, L3 당일 사용자 순서(모의 먼저), 사후 확인(Agent 읽기만), 메리츠 체결 시각 조건, ADR 0060 열기 조건 충족 표(네 조건 모두 미충족). ADR 0047 점검표와 ADR 0060 "Revisit when"에서 링크했다. 코드 변경 없음.
 - **미실행:** 시험(문서만 바꿈).
 - **추가(같은 날):** 상위 세션 배정으로 ADR 0060 §5 '열기 조건 3 설계안'(앱 안 확인 경로 A~E, 추천 B 보안 키+하루 만료)을 적었다. 사용자 선택 대기, 코드 없음.
+
+## Pine 확인 안내: TradingView 대조와 실제 스크립트 표본 — 2026-11-25
+
+- **배경:** 대시보드 248(실제 TradingView 스크립트로 변환율 재측정)과 298(Pine 템플릿을 TradingView에서 돌려 백테스트와 비교)은 사용자가 TradingView에서 해야 한다.
+- **추가 `docs/runbooks/pine-tradingview-check.md`:**
+  - 298: 로컬 실행 `run-98194b2769bd`(042700 일봉, 돈치안 20/10, 거래 3건, +8.32%)의 Pine 템플릿(v1)에 기간 조건 두 줄을 더한 스크립트, TradingView 설정, 엔진 거래 3건 표, 비교 순서와 미리 아는 차이(KRX·NXT 통합 봉, 정수 수량, 기간 끝)를 적었다.
+  - 248: 스크립트를 `data/pine-samples/<이름>/*.pine`(커밋 안 됨)에 넣는 형식과 측정 명령. 명령은 `local-assistant`로 다시 돌려 같은 결과(지표 14개 중 1개 변환)를 확인했다.
+- **미검증:** 템플릿은 여전히 TradingView에서 실행되지 않았다. 사용자 결과를 받으면 차이를 분석해 여기에 더한다.
 
 ## 7단계 장중 수정·결과 보기·빈 한도(ADR 0057) — 2026-11-25
 
