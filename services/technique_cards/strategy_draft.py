@@ -45,7 +45,8 @@ from services.technique_cards.extract import (
 
 # 5: the user picks the items of a draft (`selected`, `label`) and the rules may hold a
 # base-bar Fibonacci setup (ADR 0061).
-DRAFT_VERSION = 5
+# 6: the prompt names "upper_wick_pct" (the upper wick as a percent of the bar's range).
+DRAFT_VERSION = 6
 MAX_TOKENS = 16_000
 TIMEOUT_SECONDS = 300.0
 
@@ -76,7 +77,9 @@ entry after the first target. "risk_pct" (only with a setup) buys so that the st
 loses that percent of equity. A setup's own numbers that no item states (breakout_within,
 entry_within) are your reading: say so in `notes`.
 "tv" (close x volume) is the trading value; it only approximates the value traded. "roc"
-with length 1 is the percent change from the previous close.
+with length 1 is the percent change from the previous close. "upper_wick_pct" is the upper
+wick, high - max(open, close), as a percent of the bar's range (high - low); 0 when the range
+is 0.
 
 How the engine behaves: long positions only, whole shares. Conditions are read at a bar's
 close; market orders fill at the next bar's open. It holds one position per instrument.
