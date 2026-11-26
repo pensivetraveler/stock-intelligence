@@ -21,6 +21,11 @@ import { useI18n, LANGUAGES, type Language } from "../i18n";
 import { I18nProvider } from "../I18nProvider";
 import { KeysPanel } from "../KeysPanel";
 import "../styles.css";
+import {
+  createApiStartCheck,
+  type ApiStartCheck,
+  type ApiStartProblem,
+} from "./api-start";
 import { createLiveApi, type LiveApi } from "./live-api";
 import { createPaperApi, type PaperApi } from "./paper-api";
 import {
@@ -48,6 +53,8 @@ interface AgentAppProps {
   liveApi?: LiveApi;
   liveRunnerControl?: RunnerControl;
   credentialApi?: CredentialApi;
+  /** Asks the shell why it could not start the local API; null outside Tauri. */
+  apiStartCheck?: ApiStartCheck | null;
   pollMs?: number;
   languageStorage?: Storage | null;
   /** The language until the user picks one; SIW Agent opens in Korean. */
@@ -83,30 +90,83 @@ function message(error: unknown): string {
 
 type ScreenProps = Omit<AgentAppProps, "languageStorage" | "defaultLanguage">;
 
-function AgentScreen(props: ScreenProps) {
+/** What blocked the shell from starting the local API, until the API answers. */
+function ApiStartBanner({
+  check,
+  pollMs = 5_000,
+}: {
+  check: ApiStartCheck | null;
+  pollMs?: number;
+}) {
+  const { t } = useI18n();
+  const [found, setFound] = useState<ApiStartProblem | null>(null);
+  useEffect(() => {
+    if (!check) return;
+    let current = true;
+    const poll = () =>
+      check()
+        .then((next) => current && setFound(next))
+        .catch(() => undefined);
+    void poll();
+    const timer = window.setInterval(() => void poll(), pollMs);
+    return () => {
+      current = false;
+      window.clearInterval(timer);
+    };
+  }, [check, pollMs]);
+  if (!found) return null;
+  const holder = found.detail
+    ? t("apistart.holder", { holder: found.detail })
+    : "";
+  const text =
+    found.kind === "port_in_use"
+      ? t("apistart.port_in_use", { port: String(found.port), holder })
+      : t(`apistart.${found.kind}`, { detail: found.detail || "?" });
+  return (
+    <p className="agent-error agent-api-start" role="alert">
+      {text}
+    </p>
+  );
+}
+
+function AgentScreen({ apiStartCheck, ...props }: ScreenProps) {
   const { t } = useI18n();
   const [mode, setMode] = useState<"paper" | "live" | "keys">("paper");
+  const check = useMemo(
+    () => (apiStartCheck === undefined ? createApiStartCheck() : apiStartCheck),
+    [apiStartCheck],
+  );
   const tabs = (
-    <nav className="agent-tabs" role="tablist" aria-label={t("liveacct.tabs")}>
-      {(["paper", "live", "keys"] as const).map((item) => (
-        <button
-          key={item}
-          type="button"
-          role="tab"
-          aria-selected={mode === item}
-          className={`agent-tab ${item === "live" ? "agent-tab-live" : ""}`}
-          onClick={() => setMode(item)}
-        >
-          {t(
-            item === "paper"
-              ? "liveacct.tab.paper"
-              : item === "live"
-                ? "liveacct.tab.live"
-                : "liveacct.tab.keys",
-          )}
-        </button>
-      ))}
-    </nav>
+    <>
+      <ApiStartBanner
+        check={check}
+        {...(props.pollMs === undefined ? {} : { pollMs: props.pollMs })}
+      />
+      <nav
+        className="agent-tabs"
+        role="tablist"
+        aria-label={t("liveacct.tabs")}
+      >
+        {(["paper", "live", "keys"] as const).map((item) => (
+          <button
+            key={item}
+            type="button"
+            role="tab"
+            aria-selected={mode === item}
+            className={`agent-tab ${item === "live" ? "agent-tab-live" : ""}`}
+            onClick={() => setMode(item)}
+          >
+            {t(
+              item === "paper"
+                ? "liveacct.tab.paper"
+                : item === "live"
+                  ? "liveacct.tab.live"
+                  : "liveacct.tab.keys",
+            )}
+          </button>
+        ))}
+      </nav>
+    </>
   );
   if (mode === "keys") return <KeysScreen {...props} tabs={tabs} />;
   return mode === "paper" ? (

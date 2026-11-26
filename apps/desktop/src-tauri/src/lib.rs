@@ -1,7 +1,9 @@
 //! SIW Agent shell (ADR 0036, ADR 0037 §6).
 //!
 //! - Starts the local API from this repository when nothing answers on 127.0.0.1:8765,
-//!   and stops only an API it started itself. `uv run` keeps uvicorn as a child process,
+//!   and stops only an API it started itself. When it cannot (the port is held by
+//!   another program, no repository, no uv, the API exits), it keeps the reason so the
+//!   screen can say what blocked it (`api_start_problem`). `uv run` keeps uvicorn as a child process,
 //!   so the API runs in its own process group and quitting stops the whole group.
 //! - Installs, stops and removes the resident order runners as user services: a
 //!   LaunchAgent on macOS (`launchd`), a systemd user service on Linux (`systemd`, ADR 0045).
@@ -75,6 +77,19 @@ impl RunnerKind {
 /// The API process group this shell started, if any; the child is the group leader.
 struct ApiChild(Mutex<Option<Child>>);
 
+/// Why the shell could not start the local API, for the screen to show.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct ApiStartProblem {
+    /// `port_in_use`, `no_repo`, `no_uv`, `spawn_failed`, `exited` or `timeout`.
+    pub(crate) kind: &'static str,
+    pub(crate) port: u16,
+    /// The program listening on the port (`port_in_use`), the exit status (`exited`) or
+    /// the OS error (`spawn_failed`); empty otherwise.
+    pub(crate) detail: String,
+}
+
+struct ApiProblem(Mutex<Option<ApiStartProblem>>);
+
 #[derive(Serialize, Debug, PartialEq)]
 pub struct RunnerServiceState {
     pub(crate) installed: bool,
@@ -121,13 +136,19 @@ fn find_uv() -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
-fn api_healthy() -> bool {
-    let address: SocketAddr = API_ADDR.parse().expect("valid address");
+fn api_port() -> u16 {
+    API_ADDR.rsplit(':').next().and_then(|p| p.parse().ok()).unwrap_or(8765)
+}
+
+fn api_healthy(addr: &str) -> bool {
+    let Ok(address) = addr.parse::<SocketAddr>() else {
+        return false;
+    };
     let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(800)) else {
         return false;
     };
     let _ = stream.set_read_timeout(Some(Duration::from_millis(1500)));
-    let request = format!("GET /health HTTP/1.1\r\nHost: {API_ADDR}\r\nConnection: close\r\n\r\n");
+    let request = format!("GET /health HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
     if stream.write_all(request.as_bytes()).is_err() {
         return false;
     }
@@ -136,31 +157,125 @@ fn api_healthy() -> bool {
     reply.starts_with("HTTP/1.1 200")
 }
 
-/// Starts the API from the repository unless one already answers. Never fatal: the
-/// screen shows the connection error if the API cannot be started, and keeps retrying.
-fn ensure_api() -> Option<Child> {
-    if api_healthy() {
-        return None;
+/// Whether anything accepts connections on `addr`, API or not.
+fn port_in_use(addr: &str) -> bool {
+    addr.parse::<SocketAddr>()
+        .map(|address| TcpStream::connect_timeout(&address, Duration::from_millis(800)).is_ok())
+        .unwrap_or(false)
+}
+
+/// The program listening on `port`, as `name (pid N)`, when `lsof` can tell.
+fn port_holder(port: u16) -> String {
+    let output = Command::new("lsof")
+        .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Fpc"])
+        .stdin(Stdio::null())
+        .output();
+    let Ok(output) = output else {
+        return String::new();
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    let pid = text.lines().find_map(|line| line.strip_prefix('p'));
+    let name = text.lines().find_map(|line| line.strip_prefix('c'));
+    match (name, pid) {
+        (Some(name), Some(pid)) => format!("{name} (pid {pid})"),
+        (None, Some(pid)) => format!("pid {pid}"),
+        _ => String::new(),
     }
-    let repo = repo_dir()?;
-    let uv = find_uv()?;
+}
+
+fn problem(kind: &'static str, port: u16, detail: String) -> ApiStartProblem {
+    ApiStartProblem { kind, port, detail }
+}
+
+/// Something answers on the port but not as the API. A starting API (e.g. the resident
+/// service restarting) answers within a few seconds, so ask a few times first.
+fn held_by_other(addr: &str, attempts: u32, pause: Duration) -> bool {
+    for attempt in 0..attempts {
+        if !port_in_use(addr) || api_healthy(addr) {
+            return false;
+        }
+        if attempt + 1 < attempts {
+            std::thread::sleep(pause);
+        }
+    }
+    true
+}
+
+/// Before starting anything: why starting the API on `addr` cannot work, if it cannot.
+fn precheck(addr: &str, port: u16, attempts: u32, pause: Duration) -> Option<ApiStartProblem> {
+    held_by_other(addr, attempts, pause).then(|| problem("port_in_use", port, port_holder(port)))
+}
+
+/// Waits for the API `child` started to answer on `addr`. On failure the child is
+/// stopped and the reason returned; the port held by something else comes first, since
+/// that is the one the user can fix.
+fn await_start(child: &mut Child, addr: &str, port: u16, limit: Duration) -> Option<ApiStartProblem> {
+    let deadline = Instant::now() + limit;
+    loop {
+        if let Ok(Some(status)) = child.try_wait() {
+            if port_in_use(addr) && !api_healthy(addr) {
+                return Some(problem("port_in_use", port, port_holder(port)));
+            }
+            return Some(problem("exited", port, status.to_string()));
+        }
+        if api_healthy(addr) {
+            return None;
+        }
+        if Instant::now() >= deadline {
+            stop_group(child, Duration::from_secs(5));
+            return Some(problem("timeout", port, String::new()));
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
+/// Starts the API from the repository unless one already answers. Never fatal: the
+/// screen shows the reason (`api_start_problem`) and the connection error, and keeps
+/// retrying. Returns the child it started, if it is running, and why it could not.
+fn ensure_api() -> (Option<Child>, Option<ApiStartProblem>) {
+    let port = api_port();
+    if api_healthy(API_ADDR) {
+        return (None, None);
+    }
+    if let Some(found) = precheck(API_ADDR, port, 3, Duration::from_secs(1)) {
+        return (None, Some(found));
+    }
+    let Some(repo) = repo_dir() else {
+        return (None, Some(problem("no_repo", port, String::new())));
+    };
+    let Some(uv) = find_uv() else {
+        return (None, Some(problem("no_uv", port, String::new())));
+    };
     let logs = service::log_dir();
     let _ = std::fs::create_dir_all(&logs);
-    let log = std::fs::File::create(logs.join("api.log")).ok()?;
+    let opened = std::fs::File::create(logs.join("api.log"))
+        .and_then(|log| Ok((log.try_clone()?, log)));
+    let (out, err) = match opened {
+        Ok(pair) => pair,
+        Err(error) => return (None, Some(problem("spawn_failed", port, error.to_string()))),
+    };
     let mut command = Command::new(uv);
     command
-        .args(["run", "uvicorn", "services.api.main:app", "--host", "127.0.0.1", "--port", "8765"])
+        .args(["run", "uvicorn", "services.api.main:app", "--host", "127.0.0.1", "--port"])
+        .arg(port.to_string())
         .current_dir(&repo)
         .env("UV_CACHE_DIR", repo.join(".uv-cache"))
         // The API stops itself if this app is killed before it can stop the group.
         .env("SIW_PARENT_PID", std::process::id().to_string())
         .stdin(Stdio::null())
-        .stdout(Stdio::from(log.try_clone().ok()?))
-        .stderr(Stdio::from(log));
+        .stdout(Stdio::from(out))
+        .stderr(Stdio::from(err));
     if repo.join(".env").is_file() {
         command.args(["--env-file", ".env"]);
     }
-    spawn_group(&mut command).ok()
+    let mut child = match spawn_group(&mut command) {
+        Ok(child) => child,
+        Err(error) => return (None, Some(problem("spawn_failed", port, error.to_string()))),
+    };
+    match await_start(&mut child, API_ADDR, port, Duration::from_secs(60)) {
+        None => (Some(child), None),
+        Some(found) => (None, Some(found)),
+    }
 }
 
 /// Spawns `command` as the leader of a new process group. Everything it starts (uv's
@@ -272,19 +387,42 @@ fn live_runner_uninstall() -> Result<RunnerServiceState, String> {
     service::uninstall(RunnerKind::Live)
 }
 
+/// Why the shell could not start the local API, or nothing once the API answers (the
+/// user freed the port and started it, or the resident service came up).
+#[tauri::command]
+async fn api_start_problem(
+    state: tauri::State<'_, ApiProblem>,
+) -> Result<Option<ApiStartProblem>, String> {
+    let current = state.0.lock().map_err(|e| e.to_string())?.clone();
+    let Some(current) = current else {
+        return Ok(None);
+    };
+    let healthy = tauri::async_runtime::spawn_blocking(|| api_healthy(API_ADDR))
+        .await
+        .unwrap_or(false);
+    if healthy {
+        *state.0.lock().map_err(|e| e.to_string())? = None;
+        return Ok(None);
+    }
+    Ok(Some(current))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
         .manage(ApiChild(Mutex::new(None)))
+        .manage(ApiProblem(Mutex::new(None)))
         .setup(|app| {
             let handle = app.handle().clone();
             std::thread::spawn(move || {
-                let child = ensure_api();
+                let (child, found) = ensure_api();
                 *handle.state::<ApiChild>().0.lock().expect("lock") = child;
+                *handle.state::<ApiProblem>().0.lock().expect("lock") = found;
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            api_start_problem,
             runner_state,
             runner_install,
             runner_stop,
@@ -312,6 +450,78 @@ mod tests {
 
     fn alive(pid: libc::pid_t) -> bool {
         unsafe { libc::kill(pid, 0) == 0 }
+    }
+
+    /// Something that is not the API holds a port: it accepts connections and never
+    /// answers HTTP.
+    fn hold_port() -> (std::net::TcpListener, String, u16) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        (listener, format!("127.0.0.1:{port}"), port)
+    }
+
+    /// The defect (dashboard item 24): with the port held, the shell started nothing and
+    /// said nothing. Now it reports the port and does not try to start the API.
+    #[test]
+    fn a_port_held_by_another_program_is_reported() {
+        let (_listener, addr, port) = hold_port();
+        let found = precheck(&addr, port, 2, Duration::from_millis(50)).expect("problem");
+        assert_eq!(found.kind, "port_in_use");
+        assert_eq!(found.port, port);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_holder_is_named() {
+        let (_listener, _addr, port) = hold_port();
+        let holder = port_holder(port);
+        assert!(
+            holder.contains(&format!("pid {}", std::process::id())),
+            "holder was {holder:?}"
+        );
+    }
+
+    #[test]
+    fn a_free_port_is_not_a_problem() {
+        let (listener, addr, port) = hold_port();
+        drop(listener);
+        assert_eq!(precheck(&addr, port, 2, Duration::from_millis(50)), None);
+    }
+
+    /// The API child exits because the port was taken while it started.
+    #[test]
+    fn an_api_that_exits_on_a_held_port_reports_the_port() {
+        let (_listener, addr, port) = hold_port();
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "exit 1"]).stdin(Stdio::null());
+        let mut child = spawn_group(&mut command).expect("spawn");
+        let found = await_start(&mut child, &addr, port, Duration::from_secs(5)).expect("problem");
+        assert_eq!(found.kind, "port_in_use");
+    }
+
+    #[test]
+    fn an_api_that_exits_on_a_free_port_reports_the_exit() {
+        let (listener, addr, port) = hold_port();
+        drop(listener);
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "exit 3"]).stdin(Stdio::null());
+        let mut child = spawn_group(&mut command).expect("spawn");
+        let found = await_start(&mut child, &addr, port, Duration::from_secs(5)).expect("problem");
+        assert_eq!(found.kind, "exited");
+        assert!(found.detail.contains('3'), "detail was {:?}", found.detail);
+    }
+
+    #[test]
+    fn an_api_that_never_answers_times_out_and_is_stopped() {
+        let (listener, addr, port) = hold_port();
+        drop(listener);
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "sleep 60"]).stdin(Stdio::null());
+        let mut child = spawn_group(&mut command).expect("spawn");
+        let found =
+            await_start(&mut child, &addr, port, Duration::from_millis(300)).expect("problem");
+        assert_eq!(found.kind, "timeout");
+        assert!(child.try_wait().expect("wait").is_some());
     }
 
     /// The defect: killing only the leader left its child running with PPID 1.
