@@ -320,6 +320,6 @@ def test_stage7_paper_limits_stay_off_in_a_live_plan_without_them(tmp_path: Path
     runner.step(now + timedelta(seconds=5))
     fake.fill("000000001", "101", at="23:01:30")
     assert runner.step(now + timedelta(seconds=30)).fills == 1
-    feed.bars = _bars(99, 101, 102, 20)  # a loss far past any stage-7 dollar limit
+    feed.bars = _bars(99, 101, 102, 20)  # a deep loss: no stage-7 limit is set
     report = runner.step(_end(feed))
     assert not report.halted and not store.status()["halted"]
