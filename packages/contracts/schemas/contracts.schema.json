@@ -193,6 +193,9 @@
       "$ref": "#/$defs/PaperPositionListResponse"
     },
     {
+      "$ref": "#/$defs/PaperDaySummary"
+    },
+    {
       "$ref": "#/$defs/ReviewTradeListResponse"
     },
     {
@@ -6983,6 +6986,19 @@
           "$ref": "#/$defs/NonNegativeDecimalString",
           "description": "Per-order cap in US dollars (ADR 0047); present only when set."
         },
+        "max_daily_new_instruments": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Instruments newly bought per trading day (ADR 0057 stage 7); present only when set."
+        },
+        "max_daily_loss_usd": {
+          "$ref": "#/$defs/NonNegativeDecimalString",
+          "description": "The day's realized plus unrealized loss in US dollars; reaching it turns the kill switch on (ADR 0057 stage 7). Present only when set."
+        },
+        "max_position_amount_usd": {
+          "$ref": "#/$defs/NonNegativeDecimalString",
+          "description": "Dollar cost held plus bid per instrument (ADR 0057 stage 7); present only when set."
+        },
         "max_order_amount_krw": {
           "anyOf": [
             {
@@ -8116,6 +8132,162 @@
         }
       },
       "description": "Simulated paper fills; never real executions (ADR 0037)."
+    },
+    "PaperDaySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "day",
+        "time_zone",
+        "instruments",
+        "realized_total",
+        "note"
+      ],
+      "properties": {
+        "kind": {
+          "const": "paper_day_summary"
+        },
+        "day": {
+          "type": "string",
+          "format": "date"
+        },
+        "time_zone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "instruments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "instrument_id",
+              "symbol",
+              "currency",
+              "frame",
+              "bought_quantity",
+              "average_buy_price",
+              "sold_quantity",
+              "average_sell_price",
+              "realized",
+              "held_quantity",
+              "held_average_cost",
+              "exits"
+            ],
+            "properties": {
+              "instrument_id": {
+                "$ref": "#/$defs/Identifier"
+              },
+              "symbol": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              },
+              "currency": {
+                "enum": ["USD", "KRW"]
+              },
+              "frame": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The stage-6 strategy frame; null until stage-6 scripts record it."
+              },
+              "bought_quantity": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "average_buy_price": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DecimalString"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sold_quantity": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "average_sell_price": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DecimalString"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "realized": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "held_quantity": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "held_average_cost": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/DecimalString"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "exits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "quantity",
+                    "price",
+                    "realized",
+                    "reason",
+                    "at_utc"
+                  ],
+                  "properties": {
+                    "quantity": {
+                      "$ref": "#/$defs/DecimalString"
+                    },
+                    "price": {
+                      "$ref": "#/$defs/DecimalString"
+                    },
+                    "realized": {
+                      "$ref": "#/$defs/DecimalString"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "at_utc": {
+                      "$ref": "#/$defs/UtcTimestamp"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "realized_total": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "description": "One paper account's day per instrument, from its fills (ADR 0057 stage 7). Average cost, no fees."
     },
     "PaperPositionListResponse": {
       "type": "object",

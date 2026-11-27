@@ -297,3 +297,29 @@ def test_a_live_plan_needs_a_confirmation_window(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="confirm_seconds"):
         runner.step(_end(feed))
     assert _orders_sent(fake) == []
+
+
+def test_stage7_paper_limits_stay_off_in_a_live_plan_without_them(tmp_path: Path) -> None:
+    """ADR 0057 stage-7 limits (PR #250) are paper-only: a live approval without them keeps
+    its limit document, hence its approval ID, and no loss kill switch or new limit acts."""
+    runner, fake, feed, store = _setup(tmp_path)
+    assert set(runner.plan.approval_content()["limits"]) == {
+        "max_order_amount_usd",
+        "max_order_amount_krw",
+        "max_daily_orders",
+        "max_daily_loss_rate",
+        "max_position_amount_krw",
+        "allowed_instrument_ids",
+    }
+    feed.bars = _bars(99, 101)
+    now = _end(feed)
+    runner.step(now)
+    item = _waiting(store)
+    assert item["intent"]["limit_check"]["reasons"] == []
+    store.decide_confirmation(item["intent"]["intent_id"], "confirmed", "test")
+    runner.step(now + timedelta(seconds=5))
+    fake.fill("000000001", "101", at="23:01:30")
+    assert runner.step(now + timedelta(seconds=30)).fills == 1
+    feed.bars = _bars(99, 101, 102, 20)  # a deep loss: no stage-7 limit is set
+    report = runner.step(_end(feed))
+    assert not report.halted and not store.status()["halted"]

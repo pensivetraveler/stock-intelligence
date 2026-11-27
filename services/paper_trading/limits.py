@@ -23,17 +23,27 @@ class PaperLimits:
     max_position_amount_krw: Decimal | None = None
     # US orders only; checked without an exchange rate (ADR 0047).
     max_order_amount_usd: Decimal | None = None
+    # ADR 0057 stage 7 (2026-11-25): instruments newly bought per trading day, the day's
+    # loss in dollars (realized + unrealized; reaching it turns the kill switch on) and the
+    # dollar cost held or bid per instrument. None: no limit.
+    max_daily_new_instruments: int | None = None
+    max_daily_loss_usd: Decimal | None = None
+    max_position_amount_usd: Decimal | None = None
 
     def document(self) -> dict[str, Any]:
         def text(value: Decimal | None) -> str | None:
             return None if value is None else format(value, "f")
 
         # Only when set, so that plans approved before it existed keep their approval ID.
-        extra = (
-            {}
-            if self.max_order_amount_usd is None
-            else {"max_order_amount_usd": text(self.max_order_amount_usd)}
-        )
+        extra: dict[str, Any] = {}
+        if self.max_order_amount_usd is not None:
+            extra["max_order_amount_usd"] = text(self.max_order_amount_usd)
+        if self.max_daily_new_instruments is not None:
+            extra["max_daily_new_instruments"] = self.max_daily_new_instruments
+        if self.max_daily_loss_usd is not None:
+            extra["max_daily_loss_usd"] = text(self.max_daily_loss_usd)
+        if self.max_position_amount_usd is not None:
+            extra["max_position_amount_usd"] = text(self.max_position_amount_usd)
         return {
             **extra,
             "max_order_amount_krw": text(self.max_order_amount_krw),
@@ -66,6 +76,12 @@ class RunnerFacts:
     # Loss since the start of the day as a positive rate (0.02 = 2%), or None if unknown.
     daily_loss_rate: Decimal | None
     position_amount_krw: Decimal | None
+    # Set only when the matching limit is: instruments with a buy sent today, today's loss
+    # in dollars as a positive number (None if a held price is unknown), and the dollar
+    # cost held plus bid in this order's instrument.
+    new_instruments_today: frozenset[str] | None = None
+    daily_loss_usd: Decimal | None = None
+    position_amount_usd: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -130,4 +146,21 @@ def check_limits(
             reasons.append("position_unknown")
         elif facts.position_amount_krw + amount_krw > limits.max_position_amount_krw:
             reasons.append("position_amount_exceeded")
-    return LimitResult(passed=not reasons, reasons=tuple(reasons), order_amount_krw=amount_krw)
+    if limits.max_daily_new_instruments is not None and order.side == "buy":
+        bought = facts.new_instruments_today or frozenset()
+        if order.instrument_id not in bought and len(bought) >= limits.max_daily_new_instruments:
+            reasons.append("daily_new_instrument_limit_exceeded")
+    if limits.max_daily_loss_usd is not None:
+        if facts.daily_loss_usd is None:
+            reasons.append("daily_loss_unknown")
+        elif facts.daily_loss_usd >= limits.max_daily_loss_usd:
+            reasons.append("daily_loss_exceeded")
+    if limits.max_position_amount_usd is not None and order.side == "buy":
+        if order.currency != "USD":
+            reasons.append("order_currency_not_usd")
+        elif facts.position_amount_usd is None or price is None or price <= 0:
+            reasons.append("position_unknown")
+        elif facts.position_amount_usd + order.quantity * price > limits.max_position_amount_usd:
+            reasons.append("position_amount_exceeded")
+    unique = tuple(dict.fromkeys(reasons))
+    return LimitResult(passed=not unique, reasons=unique, order_amount_krw=amount_krw)

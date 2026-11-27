@@ -411,6 +411,53 @@ class PaperOrderStore:
             ).fetchone()
         return int(row[0])
 
+    def account_executions(self, broker_account_ref: str) -> list[dict[str, Any]]:
+        """Every paper fill of one account, for its day's loss and summary."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT document_json FROM paper_executions WHERE broker_account_ref = ?",
+                (broker_account_ref,),
+            ).fetchall()
+        return [dict(json.loads(row["document_json"])) for row in rows]
+
+    def bought_instruments_between(
+        self, broker_account_ref: str, start: datetime, end: datetime
+    ) -> frozenset[str]:
+        """Instruments with a buy sent in [start, end) and not rejected (ADR 0057 stage 7)."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT DISTINCT json_extract(i.document_json, '$.instrument_id') "
+                "FROM order_submissions s JOIN order_intents i USING (intent_id) "
+                "WHERE json_extract(s.document_json, '$.broker_account_ref') = ? "
+                "AND json_extract(i.document_json, '$.side') = 'buy' "
+                "AND s.status != 'rejected' "
+                "AND s.requested_at_utc >= ? AND s.requested_at_utc < ?",
+                (broker_account_ref, _utc(start), _utc(end)),
+            ).fetchall()
+        return frozenset(str(row[0]) for row in rows)
+
+    def open_buy_cost(self, broker_account_ref: str, instrument_id: str) -> Decimal:
+        """Quantity × price of buys sent and not yet filled or cancelled, of one instrument.
+
+        Submissions still waiting for a response count too; a market order counts at its
+        estimated maximum price.
+        """
+        waiting = self.accepted_without_execution() + self.submissions(*OPEN_SUBMISSION_STATUSES)
+        total = Decimal(0)
+        for submission in waiting:
+            if submission["broker_account_ref"] != broker_account_ref:
+                continue
+            intent = self.intent(submission["intent_id"])
+            if intent is None or intent["instrument_id"] != instrument_id:
+                continue
+            if intent["side"] != "buy":
+                continue
+            order = intent["order"]
+            price = order["limit_price"] or order["estimated_max_price"]
+            if price is not None:
+                total += Decimal(order["quantity"]) * Decimal(price)
+        return total
+
     def approval(self, approval: str) -> dict[str, Any] | None:
         with self._connect() as db:
             row = db.execute(

@@ -1703,6 +1703,16 @@ const en = {
   "paper.approve.instruments":
     "Instruments (one per line: instrument ID and symbol)",
   "paper.approve.amount": "Max amount per order (KRW, empty = no limit)",
+  "paper.approve.dailyOrders": "Orders per day (empty = no limit)",
+  "paper.approve.newInstruments":
+    "New symbols bought per day (empty = no limit)",
+  "paper.approve.dailyLoss":
+    "Daily loss in USD, realized + unrealized; reaching it turns the kill switch on (empty = no limit)",
+  "paper.approve.positionUsd":
+    "Max held + bid per symbol (USD, empty = no limit)",
+  "paper.wizard.dayLimitsTitle": "Day limits",
+  "paper.wizard.dayLimits":
+    "{orders} orders/day · {symbols} new symbols/day · loss ${loss}/day · ${position}/symbol",
   "paper.approve.fxMode": "Exchange rate for the KRW amount limit",
   "paper.approve.fxEcos":
     "Bank of Korea ECOS rate, read daily (needs an ECOS key)",
@@ -3904,6 +3914,15 @@ const ko: Record<MessageKey, string> = {
   "paper.approve.key": "키움 모의 키",
   "paper.approve.instruments": "종목(한 줄에 하나: 종목 ID와 티커)",
   "paper.approve.amount": "1건 최대 금액(원, 비우면 제한 없음)",
+  "paper.approve.dailyOrders": "하루 주문 수(비우면 제한 없음)",
+  "paper.approve.newInstruments": "하루 새로 매수할 종목 수(비우면 제한 없음)",
+  "paper.approve.dailyLoss":
+    "하루 손실(달러, 실현+평가). 닿으면 킬 스위치가 켜짐(비우면 제한 없음)",
+  "paper.approve.positionUsd":
+    "종목별 보유+미체결 매수 최대(달러, 비우면 제한 없음)",
+  "paper.wizard.dayLimitsTitle": "하루 한도",
+  "paper.wizard.dayLimits":
+    "하루 주문 {orders}건 · 새 종목 {symbols}개 · 하루 손실 ${loss} · 종목별 ${position}",
   "paper.approve.fxMode": "원화 금액 한도용 환율",
   "paper.approve.fxEcos": "한국은행 ECOS 고시환율, 매일 갱신(ECOS 키 필요)",
   "paper.approve.fxFixed": "직접 입력한 고정 환율",

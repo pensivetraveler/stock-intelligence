@@ -717,7 +717,12 @@ function PlanWizard({
   const [strategyId, setStrategyId] = useState("");
   const [credentialId, setCredentialId] = useState("");
   const [chosen, setChosen] = useState<ChosenInstrument[]>([]);
-  const [amount, setAmount] = useState("1000000");
+  // 2,000,000 KRW per order and the four day limits: ADR 0057 stage 7 (2026-11-23/25).
+  const [amount, setAmount] = useState("2000000");
+  const [dailyOrders, setDailyOrders] = useState("20");
+  const [newSymbols, setNewSymbols] = useState("3");
+  const [dailyLoss, setDailyLoss] = useState("300");
+  const [positionUsd, setPositionUsd] = useState("2000");
   const [rate, setRate] = useState("");
   const [fxMode, setFxMode] = useState<"fixed" | "bok_ecos">("bok_ecos");
   const [equity, setEquity] = useState("");
@@ -791,6 +796,13 @@ function PlanWizard({
         })),
         credential_id: key.credential_id,
         max_order_amount_krw: amount.trim() === "" ? null : amount.trim(),
+        max_daily_orders:
+          dailyOrders.trim() === "" ? null : Number(dailyOrders.trim()),
+        max_daily_new_instruments:
+          newSymbols.trim() === "" ? null : Number(newSymbols.trim()),
+        max_daily_loss_usd: dailyLoss.trim() === "" ? null : dailyLoss.trim(),
+        max_position_amount_usd:
+          positionUsd.trim() === "" ? null : positionUsd.trim(),
         market_buffer_bps: buffer.trim() || "50",
         krw_per_usd:
           fxMode === "bok_ecos" || rate.trim() === "" ? null : rate.trim(),
@@ -887,6 +899,38 @@ function PlanWizard({
             />
           </label>
           <label>
+            {t("paper.approve.dailyOrders")}
+            <input
+              value={dailyOrders}
+              inputMode="numeric"
+              onChange={(event) => setDailyOrders(event.target.value)}
+            />
+          </label>
+          <label>
+            {t("paper.approve.newInstruments")}
+            <input
+              value={newSymbols}
+              inputMode="numeric"
+              onChange={(event) => setNewSymbols(event.target.value)}
+            />
+          </label>
+          <label>
+            {t("paper.approve.dailyLoss")}
+            <input
+              value={dailyLoss}
+              inputMode="decimal"
+              onChange={(event) => setDailyLoss(event.target.value)}
+            />
+          </label>
+          <label>
+            {t("paper.approve.positionUsd")}
+            <input
+              value={positionUsd}
+              inputMode="decimal"
+              onChange={(event) => setPositionUsd(event.target.value)}
+            />
+          </label>
+          <label>
             {t("paper.approve.fxMode")}
             <select
               value={fxMode}
@@ -964,6 +1008,15 @@ function PlanWizard({
             {amount.trim() === ""
               ? t("paper.noLimit")
               : t("paper.wizard.won", { amount: grouped(amount.trim()) })}
+          </dd>
+          <dt>{t("paper.wizard.dayLimitsTitle")}</dt>
+          <dd>
+            {t("paper.wizard.dayLimits", {
+              orders: dailyOrders.trim() || "—",
+              symbols: newSymbols.trim() || "—",
+              loss: dailyLoss.trim() || "—",
+              position: positionUsd.trim() || "—",
+            })}
           </dd>
           <dt>{t("paper.approve.fxMode")}</dt>
           <dd>
