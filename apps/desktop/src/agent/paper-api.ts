@@ -19,6 +19,11 @@ export interface ApprovalRequest {
   instruments: { instrument_id: string; symbol: string }[];
   credential_id: string;
   max_order_amount_krw: string | null;
+  /** ADR 0057 stage 7 limits; null leaves each without a limit. */
+  max_daily_orders?: number | null;
+  max_daily_new_instruments?: number | null;
+  max_daily_loss_usd?: string | null;
+  max_position_amount_usd?: string | null;
   market_buffer_bps: string;
   krw_per_usd: string | null;
   fx_source: string | null;

@@ -331,7 +331,12 @@ describe("AgentApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     // Step 4 reviews, then approves.
-    expect(screen.getByText("1,000,000 KRW")).toBeInTheDocument();
+    expect(screen.getByText("2,000,000 KRW")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "20 orders/day · 3 new symbols/day · loss $300/day · $2000/symbol",
+      ),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     await waitFor(() =>
       expect(api.approve).toHaveBeenCalledWith(
@@ -341,6 +346,11 @@ describe("AgentApp", () => {
           credential_id: "key-1",
           instruments: [{ instrument_id: "us:aapl:xnas:2026", symbol: "AAPL" }],
           fx_mode: "bok_ecos",
+          max_order_amount_krw: "2000000",
+          max_daily_orders: 20,
+          max_daily_new_instruments: 3,
+          max_daily_loss_usd: "300",
+          max_position_amount_usd: "2000",
         }),
       ),
     );

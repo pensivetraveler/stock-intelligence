@@ -29,6 +29,7 @@ from zoneinfo import ZoneInfo
 from services.backtest.data import EngineBar
 from services.backtest.protection import AtrHistory, ExitHit, ProtectionRules, entry_levels
 from services.backtest.strategy import fingerprint, validate_definition
+from services.paper_trading import daily
 from services.paper_trading.brokers.base import BrokerOrder, OrderNotSupportedError, PaperBroker
 from services.paper_trading.intent import (
     FxRate,
@@ -174,6 +175,9 @@ def plan_from_approval(content: dict[str, Any], definition: dict[str, Any]) -> R
             max_daily_loss_rate=number(limits["max_daily_loss_rate"]),
             max_position_amount_krw=number(limits["max_position_amount_krw"]),
             max_order_amount_usd=number(limits.get("max_order_amount_usd")),
+            max_daily_new_instruments=limits.get("max_daily_new_instruments"),
+            max_daily_loss_usd=number(limits.get("max_daily_loss_usd")),
+            max_position_amount_usd=number(limits.get("max_position_amount_usd")),
         ),
         broker_id=content["broker_id"],
         broker_account_ref=content["broker_account_ref"],
@@ -283,6 +287,7 @@ class PaperRunner:
         self.approval_id = store.record_approval(plan.approval_content())
         self._seen: dict[str, int] = {}  # last signal bar shown per instrument (epoch)
         self._rules: ProtectionRules | None = None
+        self._closes: dict[str, Decimal] = {}  # latest final close per instrument
 
     def _fx(self) -> FxRate | None:
         """The plan's fixed rate, or today's ECOS rate; None (orders blocked) if unknown."""
@@ -349,6 +354,7 @@ class PaperRunner:
             source_final = {bar.time for bar in snapshot.bars if bar.final}
             snapshot = replace(snapshot, bars=settled)
             last = snapshot.bars[-1]
+            self._closes[item.instrument_id] = last.close
             if protecting and self._protect(item, snapshot, source_final, now, report, orders):
                 self._seen[item.instrument_id] = last.time
                 continue
@@ -370,7 +376,46 @@ class PaperRunner:
                     report.skipped.append(f"{item.instrument_id}:protection_atr_unknown")
                     continue
                 self._act(item, snapshot, signal, now, report, final_by)
+        self._check_daily_loss(now, report)
         return report
+
+    # -- ADR 0057 stage 7 limits -----------------------------------------------------
+
+    def _time_zone(self) -> str:
+        return self.plan.instruments[0].time_zone if self.plan.instruments else "America/New_York"
+
+    def _day_bounds(self, now: datetime, time_zone: str) -> tuple[datetime, datetime]:
+        zone = ZoneInfo(time_zone)
+        start = datetime.combine(now.astimezone(zone).date(), datetime.min.time(), zone)
+        return start, start + timedelta(days=1)
+
+    def _daily_loss_usd(self, now: datetime) -> Decimal | None:
+        """Today's dollar loss, realized plus unrealized at the latest final close."""
+        time_zone = self._time_zone()
+        fills = self.store.account_executions(self.plan.broker_account_ref)
+        held = daily.books(fills, now.astimezone(ZoneInfo(time_zone)).date(), time_zone)
+        prices = dict(self._closes)
+        for instrument_id, book in held.items():
+            if book.quantity <= 0 or instrument_id in prices:
+                continue
+            snapshot = self.feed.snapshot(instrument_id, now)
+            final = [bar for bar in (snapshot.bars if snapshot else ()) if bar.final]
+            if final:
+                prices[instrument_id] = final[-1].close
+        return daily.daily_loss(
+            fills, now.astimezone(ZoneInfo(time_zone)).date(), time_zone, prices
+        )
+
+    def _check_daily_loss(self, now: datetime, report: StepReport) -> None:
+        """Reaching the daily dollar loss turns the kill switch on: no new entries, while
+        protective exits go on (ADR 0057 stage 7, as in ADR 0037 and ADR 0060)."""
+        cap = self.plan.limits.max_daily_loss_usd
+        if cap is None or report.halted:
+            return
+        loss = self._daily_loss_usd(now)
+        if loss is not None and loss >= cap:
+            self.store.halt(f"daily_loss_limit: loss {loss:.2f} USD >= {cap} USD", "runner")
+            report.halted = True
 
     def _settled(self, bars: Sequence[EngineBar], now: datetime) -> list[EngineBar]:
         """Bars with those past the plan's settle time marked final; the source's own
@@ -517,6 +562,16 @@ class PaperRunner:
 
     # -- signals → orders ------------------------------------------------------------
 
+    def _position_cost_usd(self, instrument_id: str, now: datetime) -> Decimal:
+        """Average cost of the shares held plus buys still open, of one instrument."""
+        time_zone = self._time_zone()
+        fills = self.store.account_executions(self.plan.broker_account_ref)
+        book = daily.books(fills, now.astimezone(ZoneInfo(time_zone)).date(), time_zone).get(
+            instrument_id
+        )
+        held = Decimal(0) if book is None else book.cost
+        return held + self.store.open_buy_cost(self.plan.broker_account_ref, instrument_id)
+
     def _position(self, instrument_id: str) -> Decimal:
         return self.store.position_quantity(self.plan.broker_account_ref, instrument_id)
 
@@ -597,14 +652,22 @@ class PaperRunner:
         if isinstance(order, str):
             report.skipped.append(f"{item.instrument_id}:{order}")
             return
-        local_day = now.astimezone(ZoneInfo(item.time_zone)).date()
-        day_start = datetime.combine(local_day, datetime.min.time(), ZoneInfo(item.time_zone))
+        day_start, day_end = self._day_bounds(now, item.time_zone)
+        limits = plan.limits
+        account = plan.broker_account_ref
         facts = RunnerFacts(
             supported_markets=self.broker.capabilities().markets,
             unknown_submissions=self.store.unknown_submission_count(),
-            orders_today=self.store.submissions_between(day_start, day_start + timedelta(days=1)),
+            orders_today=self.store.submissions_between(day_start, day_end),
             daily_loss_rate=None,
             position_amount_krw=None,
+            new_instruments_today=None
+            if limits.max_daily_new_instruments is None
+            else self.store.bought_instruments_between(account, day_start, day_end),
+            daily_loss_usd=None if limits.max_daily_loss_usd is None else self._daily_loss_usd(now),
+            position_amount_usd=None
+            if limits.max_position_amount_usd is None
+            else self._position_cost_usd(item.instrument_id, now),
         )
         data = SignalData(
             data_as_of_utc=snapshot.data_as_of_utc,

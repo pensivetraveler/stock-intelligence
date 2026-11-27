@@ -64,6 +64,7 @@ export type StockIntelligenceWorkstationContractsV01 =
   | LiveConfirmationListResponse
   | PaperExecutionListResponse
   | PaperPositionListResponse
+  | PaperDaySummary
   | ReviewTradeListResponse
   | ReviewAnnotation
   | ReviewAssignmentResult
@@ -4080,6 +4081,18 @@ export interface PaperOrderLimits {
    * Per-order cap in US dollars (ADR 0047); present only when set.
    */
   max_order_amount_usd?: string;
+  /**
+   * Instruments newly bought per trading day (ADR 0057 stage 7); present only when set.
+   */
+  max_daily_new_instruments?: number;
+  /**
+   * The day's realized plus unrealized loss in US dollars; reaching it turns the kill switch on (ADR 0057 stage 7). Present only when set.
+   */
+  max_daily_loss_usd?: string;
+  /**
+   * Dollar cost held plus bid per instrument (ADR 0057 stage 7); present only when set.
+   */
+  max_position_amount_usd?: string;
   max_order_amount_krw: NonNegativeDecimalString | null;
   max_daily_orders: number | null;
   max_daily_loss_rate: NonNegativeDecimalString | null;
@@ -4292,6 +4305,39 @@ export interface PaperPositionListResponse {
      */
     watched: boolean;
   }[];
+}
+/**
+ * One paper account's day per instrument, from its fills (ADR 0057 stage 7). Average cost, no fees.
+ */
+export interface PaperDaySummary {
+  kind: "paper_day_summary";
+  day: string;
+  time_zone: string;
+  instruments: {
+    instrument_id: Identifier;
+    symbol: string;
+    currency: "USD" | "KRW";
+    /**
+     * The stage-6 strategy frame; null until stage-6 scripts record it.
+     */
+    frame: string | null;
+    bought_quantity: DecimalString;
+    average_buy_price: DecimalString | null;
+    sold_quantity: DecimalString;
+    average_sell_price: DecimalString | null;
+    realized: DecimalString;
+    held_quantity: DecimalString;
+    held_average_cost: DecimalString | null;
+    exits: {
+      quantity: DecimalString;
+      price: DecimalString;
+      realized: DecimalString;
+      reason: string;
+      at_utc: UtcTimestamp;
+    }[];
+  }[];
+  realized_total: DecimalString;
+  note: string;
 }
 export interface ReviewTradeListResponse {
   kind: "review_trade_list";

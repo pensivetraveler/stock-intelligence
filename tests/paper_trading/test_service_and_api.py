@@ -613,3 +613,34 @@ def test_positions_start_empty(client: Any) -> None:
     assert response.status_code == 200
     validate_document(response.json())
     assert response.json()["positions"] == []
+
+
+# -- ADR 0057 stage 7 limits and day summary -----------------------------------------
+
+
+def test_approval_keeps_the_stage7_day_limits(client: Any) -> None:
+    test_client, credential_id = client
+    body = _approval_body(
+        test_client,
+        credential_id,
+        max_daily_orders=20,
+        max_daily_new_instruments=3,
+        max_daily_loss_usd="300",
+        max_position_amount_usd="2000",
+    )
+    response = test_client.post("/v1/paper/approvals", json=body, headers=AGENT)
+    assert response.status_code == 201, response.text
+    limits = response.json()["limits"]
+    assert limits["max_daily_orders"] == 20
+    assert limits["max_daily_new_instruments"] == 3
+    assert (limits["max_daily_loss_usd"], limits["max_position_amount_usd"]) == ("300", "2000")
+
+
+def test_day_summary_endpoint_validates(client: Any) -> None:
+    test_client, _ = client
+    response = test_client.get("/v1/paper/day-summary", params={"day": "2026-11-25"})
+    assert response.status_code == 200, response.text
+    assert response.json()["kind"] == "paper_day_summary"
+    validate_document(response.json())
+    bad = test_client.get("/v1/paper/day-summary", params={"day": "2026-11-25", "time_zone": "X/Y"})
+    assert bad.status_code == 422

@@ -3459,3 +3459,10 @@
 - **하지 않은 것:** API·패널 표시, 6단계 스크립트, 주문.
 - **검사:** `pytest tests/screening/test_price_levels.py` 10개 통과, ruff·mypy 통과.
 - **확인 필요(종목 선정 세션):** 보수적 전략의 돌파 틀을 켜 둔 해석, 장외 봉우리 가격을 칸 가운데로 쓴 점, 희석 값 중 사실 상태만 쓰는 점, 분할 미보정.
+
+## 7단계 구현 1: 모의 한도 4개·하루 요약(ADR 0057) — 2026-11-27
+
+- **사용자 승인:** "남은 것 진행하자" → 범위 "모의 한도 4개 + 하루 요약 (추천)". 장중 정정·손절 이동·틀별 누적은 6단계 스크립트(대시보드 359) 뒤로 미룸.
+- **변경:** `services/paper_trading/limits.py`(새 한도 3개, 이유 `daily_new_instrument_limit_exceeded`·`daily_loss_exceeded`/`daily_loss_unknown`·`position_amount_exceeded`), 새 `services/paper_trading/daily.py`(평균 원가 손익·하루 요약), `runner.py`(사실 계산, 하루 손실 도달 시 킬 스위치), `store.py`(계좌 체결·당일 매수 종목·미체결 매수 금액), `__main__.py`(`summary`), `services/api/paper_routes.py`(승인 필드, `GET /v1/paper/day-summary`), 계약 `PaperOrderLimits` 선택 필드 3개·`PaperDaySummary`, SIW Agent 승인 마법사 한도 칸(기본 20건·3종목·$300·$2,000, 1건 200만 원).
+- **시험:** `scripts/verify.sh` 통과(ruff·mypy, pytest 1,586개, 계약 생성 일치, 화면 vitest 542개). 새 시험 `tests/paper_trading/test_stage7_limits.py`, API 시험 2개, 화면 vitest 승인 마법사 시험 갱신.
+- **미확인:** 실제 키움 모의 체결로 하루 손실·킬 스위치를 확인하지 않았다(모의 무장 운영 때 확인). 하루 요약 화면은 없다(API·CLI만).

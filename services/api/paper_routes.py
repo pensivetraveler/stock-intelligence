@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -26,6 +27,7 @@ from services.api.journal_routes import ErrorResponse
 from services.backtest.protection import ProtectionRules
 from services.backtest.strategy import StrategyError, validate_definition
 from services.credentials.store import CredentialStore, SecretStorageError
+from services.paper_trading import daily
 from services.paper_trading.intent import FxRate, StrategyRef
 from services.paper_trading.limits import PaperLimits
 from services.paper_trading.runner import InstrumentPlan, RunPlan
@@ -53,6 +55,10 @@ class ApprovalRequest(BaseModel):
     max_daily_orders: int | None = Field(default=None, ge=1)
     max_daily_loss_rate: str | None = None
     max_position_amount_krw: str | None = None
+    # ADR 0057 stage 7 (2026-11-25): None leaves each without a limit.
+    max_daily_new_instruments: int | None = Field(default=None, ge=1, le=100)
+    max_daily_loss_usd: str | None = None
+    max_position_amount_usd: str | None = None
     market_buffer_bps: str = "50"
     fee_rate: str = "0"
     krw_per_usd: str | None = None
@@ -184,6 +190,22 @@ def register_paper_routes(
             }
         )
 
+    @application.get("/v1/paper/day-summary", response_model=None)
+    def day_summary(
+        request: Request,
+        day: date,
+        time_zone: str = Query("America/New_York", min_length=1, max_length=64),
+    ) -> Response:
+        """One day's paper fills per instrument (ADR 0057 stage 7). Ledger only."""
+        paper = store()
+        if paper is None:
+            return unavailable(request)
+        try:
+            ZoneInfo(time_zone)
+        except (ValueError, ZoneInfoNotFoundError):
+            return error_response(request, 422, "invalid_time_zone", "Unknown time zone")
+        return respond(daily.store_day_summary(paper, day, time_zone))
+
     @application.post("/v1/paper/approvals", response_model=None)
     def approve(request: Request, body: ApprovalRequest) -> Response:
         if not from_agent(request):
@@ -263,6 +285,11 @@ def register_paper_routes(
                     max_daily_loss_rate=_decimal(body.max_daily_loss_rate, "max_daily_loss_rate"),
                     max_position_amount_krw=_decimal(
                         body.max_position_amount_krw, "max_position_amount_krw"
+                    ),
+                    max_daily_new_instruments=body.max_daily_new_instruments,
+                    max_daily_loss_usd=_decimal(body.max_daily_loss_usd, "max_daily_loss_usd"),
+                    max_position_amount_usd=_decimal(
+                        body.max_position_amount_usd, "max_position_amount_usd"
                     ),
                 ),
                 broker_id="kiwoom",
