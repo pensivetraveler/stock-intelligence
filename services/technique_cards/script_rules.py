@@ -16,6 +16,7 @@ assumption, 2 "not used", 87 left (77 written only as text).
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from services.backtest.indicators import INDICATORS
@@ -57,6 +58,14 @@ OPS = {
     "at_or_below": "lte",
 }
 _ANY_ENTRY = {"op": "gt", "left": {"price": "close"}, "right": {"value": "0"}}
+
+
+# The text says when NOT to act ("상단에서 떨어져도 중심선 위면 팔지 않는다"): the slots then
+# read as the very act it forbids (close crosses below the upper band = an exit), so the script
+# leaves it (card 1b7a80be v2, 2026-11-28).
+_NEGATED = re.compile(
+    r"지\s*(않|말)|안\s*(사|산|팔|판)|\bdo(?:es)?\s+not\b|\bdon'?t\b|\bnever\b", re.I
+)
 
 
 class NotScriptable(Exception):
@@ -209,6 +218,9 @@ def convert(condition: dict[str, Any], base: str) -> dict[str, Any]:
         if timeframe and base and timeframe != base:
             raise NotScriptable("another timeframe than the card's")
         place = _place(condition, assumptions)
+        # "목표가는 두지 않는다" is still a plain absent field; only a rule turns the meaning over.
+        if place["kind"] in ("entry", "exit") and _NEGATED.search(str(condition.get("text") or "")):
+            raise NotScriptable("the text says when not to act; the slots read as when to act")
     except NotScriptable as why:
         return {"place": None, "assumptions": [], "reason": str(why)}
     if side == "both":

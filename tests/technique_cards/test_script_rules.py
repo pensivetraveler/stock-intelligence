@@ -389,3 +389,47 @@ def test_draft_items_route_and_a_bad_choice(tmp_path: Path) -> None:
     )
     draft = client.get(f"/v1/technique-drafts/{made.json()['draft_id']}").json()
     assert draft["result"]["label"] == "원펀치 0.75" and draft["result"]["selected"] == [0, 1]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "워킹 중 주가가 볼린저 밴드 상단에서 떨어져도 중심선 위에 머무는 한 팔지 않는다.",
+        "Do not sell while the close stays above the middle band.",
+        "Never buy a gap above the upper band.",
+    ],
+)
+def test_a_rule_saying_when_not_to_act_is_left(text: str) -> None:
+    # card 1b7a80be v2 (2026-11-28): the slots read "close crosses below the upper band" as an
+    # exit, the opposite of the text.
+    result = script_rules.convert(
+        _condition(
+            field="exit",
+            text=text,
+            comparator="cross_below",
+            right=_op("indicator", "bollinger_upper", period=20, value=2),
+        ),
+        "",
+    )
+    assert result["place"] is None and "not to act" in result["reason"]
+
+
+def test_a_plain_rule_is_still_scripted() -> None:
+    result = script_rules.convert(
+        _condition(text="종가가 볼린저 밴드 중심선 아래에서 끝나면 청산한다."), ""
+    )
+    assert result["place"] is not None
+
+
+def test_saying_a_field_is_not_used_is_still_scripted() -> None:
+    result = script_rules.convert(
+        _condition(
+            field="exit",
+            text="목표가는 두지 않는다.",
+            comparator="none",
+            left=_op("none", "none"),
+            right=_op("none", "none"),
+        ),
+        "",
+    )
+    assert result["place"] == {"kind": "absent", "pointer": "/take_profit_pct"}
