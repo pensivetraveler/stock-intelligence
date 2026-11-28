@@ -1083,6 +1083,9 @@ const en = {
   "candidates.news.offering_announcement": "Offering announcement",
   "candidates.news.offering_completion": "Offering completed",
   "candidates.news.financing_announcement": "Financing announcement",
+  "candidates.news.court_debt": "Court ruling / debt restructuring",
+  "candidates.news.securities_litigation":
+    "Securities class action (notice only)",
   "candidates.nirTitle": "LLM reading of the tagged articles",
   "candidates.nirNotice":
     "Inference by an LLM from the article text, not verified fact; it does not change the status.",
@@ -3310,6 +3313,8 @@ const ko: Record<MessageKey, string> = {
   "candidates.news.offering_announcement": "공모 발표",
   "candidates.news.offering_completion": "공모 완료",
   "candidates.news.financing_announcement": "자금 조달 발표",
+  "candidates.news.court_debt": "법원 결정·채무 조정",
+  "candidates.news.securities_litigation": "증권 집단소송 안내(표시만)",
   "candidates.nirTitle": "분류된 기사의 LLM 판단",
   "candidates.nirNotice":
     "LLM이 기사 글을 읽고 한 추론이며 확인된 사실이 아닙니다. 상태는 바꾸지 않습니다.",
