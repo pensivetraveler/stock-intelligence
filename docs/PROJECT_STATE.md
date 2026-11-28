@@ -3658,3 +3658,14 @@
 - **변경:** `apps/electron/api-process.cjs`에 `residentService()`·`waitForApi()`를 추가했다. `main.cjs`는 상주 서비스 plist가 있으면 API를 띄우지 않고, 창을 연 채 최대 6분 기다린다. 그래도 응답이 없으면 `launchctl print`·로그 위치를 담은 오류 창을 띄운다. plist가 없는 Mac에서는 예전처럼 저장소에서 띄운다. ADR 0028을 고쳤다.
 - **시험:** `apps/electron/test/api-process.test.cjs` 3개를 추가해 `npm test` 17개가 통과했다. 설치된 앱으로 배포 중 재현하는 시험은 미실행이다(새 빌드 설치 필요).
 - **남은 것:** 앱의 API를 누가 껐는지는 확인하지 못했다. API가 돌아온 뒤 화면이 저절로 회복되는지는 확인하지 않았다(화면 곳곳에 "다시 시도"는 있다).
+- **설치(2026-11-28 21:06, 사용자 지시 "Rebuild and install Research after #275 merges"):** main 467a05a로 다시 빌드해 `/Applications/SIW Research.app`에 설치했다. 예전 앱은 휴지통으로 옮겼다.
+  - `repoDir`는 예전과 같이 메인 체크아웃이다.
+  - app.asar sha256은 `2e16d016…`이고, 서명은 하지 않았다.
+- **배포 중 재현 시험(설치본, 사용자 지시 "Test Research during an API restart"):**
+  - **방법:** 진행 중인 백테스트가 없는지 확인하고 Research를 종료했다. 21:10:57에 `launchctl kickstart -k gui/$(id -u)/com.siw.api.serve`를 실행하고, 3초 뒤 Research를 켰다. 5초마다 8765를 잡은 프로세스, collector-app이 아닌 uvicorn, `/health`, Research 프로세스를 기록했다.
+  - **결과(통과):**
+    - 21:11:07에는 포트가 비었고 `/health`는 응답이 없었으며, 다른 uvicorn도 없었다.
+    - 21:11:14에 상주 API(pid 90976, collector-app)가 포트를 잡아 `/health` 200이 됐다.
+    - 21:11:51까지 collector-app이 아닌 uvicorn은 끝내 뜨지 않았다. Research(pid 91029)는 계속 살아 있었다.
+    - API 로그에서 Research가 봉·세션·스크리닝 후보·흐름을 200으로 받았다. API가 돌아온 뒤 화면 데이터도 이어서 받은 것이다.
+  - **미확인(mondash #427):** 이번에는 API가 약 14초 만에 떴다. 그래서 상주 API가 6분 안에 뜨지 않을 때의 오류 창은 시험하지 못했다. API 시작이 1분 넘게 걸리는 다음 배포에서 확인한다.
