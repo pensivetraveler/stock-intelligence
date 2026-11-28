@@ -5464,3 +5464,119 @@ details.ledger tbody > tr:only-child > td[colspan] {
 .symbol-band-stat b {
   font-family: var(--siw-font-num);
 }
+
+/* ---------------------------------------------------------------------------
+   디자인-siw-7: 옆 패널 안 표 — 글자·칸 버튼을 패널 크기로(siw-4 G10을 표까지)
+   --------------------------------------------------------------------------- */
+.side-panel .quote-trades {
+  font-size: var(--siw-font-size-sm);
+}
+
+.side-panel .quote-trades td,
+.side-panel .quote-trades th {
+  padding: 2px 4px;
+}
+
+.side-panel .quote-trades th {
+  color: var(--siw-ink-dim);
+  font-size: var(--siw-font-size-xs);
+  font-weight: 500;
+}
+
+.side-panel .quote-trades td button {
+  min-height: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0 6px;
+  font-size: var(--siw-font-size-xs);
+}
+
+/* 계좌·원장: 접기 제목·대사 제목·도구 버튼도 패널 크기로 */
+.side-panel details.ledger > summary,
+.side-panel details.import-panel > summary,
+.side-panel .reconciliation h2 {
+  font-size: var(--siw-font-size-md);
+}
+
+.side-panel .reconciliation-toolbar button,
+.side-panel .trade-actions button {
+  min-height: 26px;
+  height: 26px;
+  margin: 0;
+  padding: 0 10px;
+  font-size: var(--siw-font-size-sm);
+}
+
+.side-panel .ledger > p {
+  font-size: var(--siw-font-size-sm);
+}
+
+/* 오늘의 후보 표 — siw-4 r2 B1 시안: 티커 | 2 재료 | 3 수급 | 4 정보, 값은 색 칩,
+   편입 횟수·검사 버튼은 펼친 행에서만 */
+.cand-table th,
+.cand-table td {
+  text-align: left;
+}
+
+.cand-table .cand-main td {
+  padding-top: 5px;
+  padding-bottom: 5px;
+  white-space: normal;
+}
+
+.cand-table .cand-main td:last-child {
+  text-align: right;
+}
+
+.cand-table .watch-symbol {
+  font-weight: 700;
+}
+
+.cand-table .chip,
+.side-panel .cand-table td button.chip {
+  display: inline-block;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--siw-edge);
+  border-radius: var(--siw-radius-control);
+  color: var(--siw-ink-dim);
+  background: transparent;
+  font-size: var(--siw-font-size-xs);
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  word-break: keep-all;
+}
+
+.cand-table .chip.clear,
+.side-panel .cand-table td button.chip.clear {
+  border-color: var(--siw-clear-edge);
+  color: var(--siw-clear-ink);
+  background: var(--siw-clear-fill);
+}
+
+.cand-table .chip.caution,
+.side-panel .cand-table td button.chip.caution {
+  border-color: var(--siw-caution-edge);
+  color: var(--siw-caution-ink);
+  background: var(--siw-caution-fill);
+}
+
+.cand-table .chip.alert,
+.side-panel .cand-table td button.chip.alert {
+  border-color: var(--siw-alert-edge);
+  color: var(--siw-alert-ink);
+  background: var(--siw-alert-fill);
+}
+
+.cand-table .cand-actions td {
+  white-space: normal;
+  background: var(--siw-raised);
+}
+
+.cand-table .cand-sub {
+  white-space: normal;
+  word-break: keep-all;
+}

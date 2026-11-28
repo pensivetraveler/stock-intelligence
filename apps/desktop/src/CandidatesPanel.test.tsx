@@ -420,6 +420,10 @@ describe("CandidatesPanel", () => {
     );
     expect(api.runDilutionCheck).toHaveBeenCalledTimes(1);
     // Incomplete only because it ran on rules: said as "rules only" (mondash -353).
+    // Per-row checks sit in the opened row (디자인-siw-4 r2 B1, siw-7).
+    fireEvent.click(
+      await screen.findByRole("button", { name: "AAPL stage progress" }),
+    );
     fireEvent.click(
       await screen.findByRole("button", {
         name: "AAPL Dilution supply: rules only",
@@ -477,6 +481,10 @@ describe("CandidatesPanel", () => {
       ...unused(),
     } as ScreeningApi;
     render(<CandidatesPanel api={api} onPick={vi.fn()} />);
+    // Per-row checks sit in the opened row (디자인-siw-4 r2 B1, siw-7).
+    fireEvent.click(
+      await screen.findByRole("button", { name: "AAPL stage progress" }),
+    );
     fireEvent.click(
       await screen.findByRole("button", {
         name: "AAPL Dilution supply: partial",
@@ -601,6 +609,10 @@ describe("CandidatesPanel", () => {
       20,
     );
 
+    // Per-row checks sit in the opened row (디자인-siw-4 r2 B1, siw-7).
+    fireEvent.click(
+      await screen.findByRole("button", { name: "AAPL stage progress" }),
+    );
     fireEvent.click(
       await screen.findByRole("button", { name: "AAPL News: catalyst" }),
     );
@@ -692,6 +704,10 @@ describe("CandidatesPanel", () => {
     fireEvent.change(await screen.findByLabelText("Off-exchange sessions"), {
       target: { value: "10" },
     });
+    // Per-row checks sit in the opened row (디자인-siw-4 r2 B1, siw-7).
+    fireEvent.click(
+      await screen.findByRole("button", { name: "AAPL stage progress" }),
+    );
     fireEvent.click(
       await screen.findByRole("button", { name: "AAPL Off-exchange: waiting" }),
     );
@@ -774,6 +790,10 @@ describe("CandidatesPanel", () => {
     ).toBeTruthy();
     // AAPL was in the opening list: only a range, not an entry time.
     expect(screen.getByText("04:00–04:01?")).toBeTruthy();
+    // Entry counts sit in the opened row (디자인-siw-4 r2 B1, siw-7).
+    fireEvent.click(
+      screen.getByRole("button", { name: "ZZZQ stage progress" }),
+    );
     expect(screen.getByText("16× · 14 min")).toBeTruthy();
     expect(screen.getByText("Entered after noon (New York)")).toBeTruthy();
 
@@ -788,6 +808,9 @@ describe("CandidatesPanel", () => {
     );
     // ZZZQ is not chartable, so it is not measured.
     expect(api.runMomentumCheck).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      screen.getByRole("button", { name: "AAPL stage progress" }),
+    );
     fireEvent.click(
       await screen.findByRole("button", { name: "AAPL At entry (Alpaca)" }),
     );
