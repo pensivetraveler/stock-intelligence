@@ -1697,8 +1697,12 @@ describe("chart workspace", () => {
     render(<Workspace api={offline} storage={memoryStorage()} />);
     await screen.findByTestId("chart-chart-1");
     openPanel("Live quote");
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "register an enabled real-account Toss key",
+    // A missing key is a setting to make, not an error: a status notice, titled.
+    const notice = await screen.findByText(
+      /register an enabled real-account Toss key/,
+    );
+    expect(notice.closest('[role="status"]')).toHaveTextContent(
+      "Toss key needed",
     );
   });
 
@@ -1964,6 +1968,10 @@ describe("chart workspace", () => {
     expect(within(account).getByText("309.6")).toBeVisible();
     // The sellable check is a Toss query; Meritz rows have none.
     expect(within(account).queryByRole("button", { name: "Check" })).toBeNull();
+    // Kiwoom and Meritz syncs sit behind the sync button's menu (디자인-siw-4 A1).
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Other broker syncs" }),
+    );
     fireEvent.change(within(panel).getByLabelText("From (Kiwoom, Meritz)"), {
       target: { value: "2026-01-02" },
     });

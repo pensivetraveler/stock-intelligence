@@ -2,6 +2,7 @@ import type { MarketQuote } from "@siw/contracts/types";
 import { useEffect, useState } from "react";
 
 import { useI18n } from "./i18n";
+import { Notice, PanelBar } from "./PanelParts";
 import { MarketApiError, type LiveSource, type MarketApi } from "./market-api";
 import type { LiveSymbol } from "./realtime";
 import { zoneFormat, zoneOf, type MarketZone } from "./market-zone";
@@ -32,6 +33,8 @@ interface QuotePanelProps {
   /** Which broker the quote and the relay come from (ADR 0043); never mixed. */
   source?: LiveSource;
   onSourceChange?: (source: LiveSource) => void;
+  /** Opens Settings › Connections & keys (shown when a broker key is missing). */
+  onOpenKeys?: () => void;
 }
 
 /**
@@ -48,6 +51,7 @@ export function QuotePanel({
   liveConnected = false,
   source = "toss",
   onSourceChange,
+  onOpenKeys,
 }: QuotePanelProps) {
   const { t } = useI18n();
   const zone = zoneOf(instrumentId);
@@ -82,7 +86,7 @@ export function QuotePanel({
   if (replayOn) {
     return (
       <section className="quote-panel" aria-label={t("quote.title")}>
-        <h2>{t("quote.title")}</h2>
+        <PanelBar title={t("quote.title")} />
         <p className="workspace-note" role="status">
           {t("quote.replay")}
         </p>
@@ -102,6 +106,15 @@ export function QuotePanel({
       : null;
   const book = liveBook ?? quote?.orderbook ?? null;
   const asks = book ? [...book.asks].reverse() : [];
+  // Quantity bars share one scale across both sides of the book.
+  const deepest = Math.max(
+    0,
+    ...[...(book?.asks ?? []), ...(book?.bids ?? [])].map((level) =>
+      Number(level.volume),
+    ),
+  );
+  const depthWidth = (volume: string | number) =>
+    deepest > 0 ? `${(Number(volume) / deepest) * 100}%` : "0";
   const newestLive = live?.trades[0];
   const last =
     newestLive &&
@@ -127,31 +140,44 @@ export function QuotePanel({
     .slice(0, 30);
   return (
     <section className="quote-panel" aria-label={t("quote.title")}>
-      <h2>
-        {t("quote.title")} · {symbol}
-      </h2>
-      {onSourceChange ? (
-        <label className="quote-source">
-          {t("quote.sourcePick")}{" "}
-          <select
-            value={source}
-            onChange={(event) =>
-              onSourceChange(event.target.value as LiveSource)
-            }
-          >
-            <option value="toss">{t("quote.sourceToss")}</option>
-            <option value="meritz">{t("quote.sourceMeritz")}</option>
-          </select>
-        </label>
-      ) : null}
+      <PanelBar title={`${t("quote.title")} · ${symbol}`}>
+        {onSourceChange ? (
+          <label className="quote-source">
+            {t("quote.sourcePick")}{" "}
+            <select
+              value={source}
+              onChange={(event) =>
+                onSourceChange(event.target.value as LiveSource)
+              }
+            >
+              <option value="toss">{t("quote.sourceToss")}</option>
+              <option value="meritz">{t("quote.sourceMeritz")}</option>
+            </select>
+          </label>
+        ) : null}
+      </PanelBar>
       {error ? (
-        <p className="chart-error" role="alert">
-          {unavailable
-            ? t(source === "meritz" ? "quote.noMeritzKey" : "quote.noKey")
-            : t("quote.failed", {
-                error: error instanceof Error ? error.message : String(error),
-              })}
-        </p>
+        unavailable ? (
+          <Notice
+            tone="need"
+            title={t("parts.needKey", {
+              provider: t(
+                source === "meritz"
+                  ? "parts.provider.meritz"
+                  : "parts.provider.toss",
+              ),
+            })}
+            onOpenKeys={onOpenKeys}
+          >
+            {t(source === "meritz" ? "quote.noMeritzKey" : "quote.noKey")}
+          </Notice>
+        ) : (
+          <Notice tone="fail" title={t("parts.failed")}>
+            {t("quote.failed", {
+              error: error instanceof Error ? error.message : String(error),
+            })}
+          </Notice>
+        )
       ) : null}
       {quote === null && !error ? (
         <p className="workspace-note">{t("quote.loading")}</p>
@@ -190,13 +216,19 @@ export function QuotePanel({
               {asks.map((level) => (
                 <tr key={`ask-${level.price}`} className="ask">
                   <td>{level.price}</td>
-                  <td>{level.volume}</td>
+                  <td className="qty-cell">
+                    <i style={{ width: depthWidth(level.volume) }} />
+                    <span>{level.volume}</span>
+                  </td>
                 </tr>
               ))}
               {(book?.bids ?? []).map((level) => (
                 <tr key={`bid-${level.price}`} className="bid">
                   <td>{level.price}</td>
-                  <td>{level.volume}</td>
+                  <td className="qty-cell">
+                    <i style={{ width: depthWidth(level.volume) }} />
+                    <span>{level.volume}</span>
+                  </td>
                 </tr>
               ))}
             </tbody>

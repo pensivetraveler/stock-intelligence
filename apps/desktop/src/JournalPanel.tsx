@@ -85,6 +85,9 @@ export function JournalPanel({
             />{" "}
             {t("journal.manualTitle")}
           </h2>
+          <span className="ledger-count">
+            {t("journal.count", { n: manual?.executions.length ?? 0 })}
+          </span>
         </summary>
         {manual && manual.positions.length > 0 ? (
           <ul className="ledger-summary">
@@ -151,6 +154,9 @@ export function JournalPanel({
             />{" "}
             {t("journal.importedTitle")}
           </h2>
+          <span className="ledger-count">
+            {t("journal.count", { n: imported?.executions.length ?? 0 })}
+          </span>
         </summary>
         {imported && imported.positions.length > 0 ? (
           <ul className="ledger-summary">
@@ -216,6 +222,11 @@ export function JournalPanel({
             />{" "}
             {t("journal.brokerTitle")}
           </h2>
+          <span className="ledger-count">
+            {t("journal.count", {
+              n: broker?.execution_count ?? broker?.executions.length ?? 0,
+            })}
+          </span>
         </summary>
         <p className="workspace-note">{t("journal.brokerNote")}</p>
         {broker &&
@@ -297,6 +308,9 @@ export function JournalPanel({
             />{" "}
             {t("journal.hypoTitle")}
           </h2>
+          <span className="ledger-count">
+            {t("journal.count", { n: scenarios?.scenarios.length ?? 0 })}
+          </span>
         </summary>
         <table>
           <thead>

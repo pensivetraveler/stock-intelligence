@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { accountLabel } from "./account-label";
 import { useI18n } from "./i18n";
+import { Notice } from "./PanelParts";
 import type { InstrumentListing, MarketApi } from "./market-api";
 import { exchangeTime } from "./chart-data";
 import { zoneOf } from "./market-zone";
@@ -100,6 +101,7 @@ export function TradeReviewScreen({
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [moreFilters, setMoreFilters] = useState(false);
   const [principlesOpen, setPrinciplesOpen] = useState(false);
   const [periodOpen, setPeriodOpen] = useState(false);
   // Bumped when principles are saved, so the open trade's check reloads.
@@ -259,11 +261,7 @@ export function TradeReviewScreen({
             ✕
           </button>
         </header>
-        {problem ? (
-          <p className="bt-problem" role="alert">
-            {problem}
-          </p>
-        ) : null}
+        {problem ? <Notice tone="fail">{problem}</Notice> : null}
         {principlesOpen ? (
           <PrinciplesPanel
             api={api}
@@ -271,7 +269,12 @@ export function TradeReviewScreen({
             onSaved={() => setPrinciplesSaved(principlesSaved + 1)}
           />
         ) : null}
-        {settingsOpen ? <ReviewSettingsPanel api={api} today={today} /> : null}
+        {/* 디자인-siw-4 G12: report settings float over the list instead of pushing it down. */}
+        {settingsOpen ? (
+          <div className="rv-settings-pop" aria-label={t("rv.settings")}>
+            <ReviewSettingsPanel api={api} today={today} />
+          </div>
+        ) : null}
         {periodOpen ? (
           <PeriodReview
             api={api}
@@ -340,47 +343,68 @@ export function TradeReviewScreen({
                   <option value="no">{t("rv.reviewed.no")}</option>
                 </select>
               </label>
-              <label className="bt-inline">
-                {t("rv.tag")}
-                <select
-                  value={filters.tag}
-                  onChange={(event) => set("tag", event.target.value)}
+              {moreFilters ||
+              filters.tag ||
+              filters.principles ||
+              filters.onlyActive ? (
+                <>
+                  <label className="bt-inline">
+                    {t("rv.tag")}
+                    <select
+                      value={filters.tag}
+                      onChange={(event) => set("tag", event.target.value)}
+                    >
+                      <option value="">{t("rv.all")}</option>
+                      {(list?.tags ?? []).map((tag) => (
+                        <option key={tag} value={tag}>
+                          {tag}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="bt-inline">
+                    {t("rv.col.principles")}
+                    <select
+                      value={filters.principles}
+                      onChange={(event) =>
+                        set(
+                          "principles",
+                          event.target.value as Filters["principles"],
+                        )
+                      }
+                    >
+                      <option value="">{t("rv.all")}</option>
+                      <option value="broken">
+                        {t("rv.principles.broken")}
+                      </option>
+                      <option value="kept">{t("rv.principles.kept")}</option>
+                      <option value="unchecked">
+                        {t("rv.principles.unchecked")}
+                      </option>
+                    </select>
+                  </label>
+                  <label className="bt-inline">
+                    <input
+                      type="checkbox"
+                      checked={filters.onlyActive}
+                      onChange={(event) =>
+                        set("onlyActive", event.target.checked)
+                      }
+                    />
+                    {t("rv.onlyActive", {
+                      symbol: symbolOf(activeInstrumentId),
+                    })}
+                  </label>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="tb-button"
+                  onClick={() => setMoreFilters(true)}
                 >
-                  <option value="">{t("rv.all")}</option>
-                  {(list?.tags ?? []).map((tag) => (
-                    <option key={tag} value={tag}>
-                      {tag}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="bt-inline">
-                {t("rv.col.principles")}
-                <select
-                  value={filters.principles}
-                  onChange={(event) =>
-                    set(
-                      "principles",
-                      event.target.value as Filters["principles"],
-                    )
-                  }
-                >
-                  <option value="">{t("rv.all")}</option>
-                  <option value="broken">{t("rv.principles.broken")}</option>
-                  <option value="kept">{t("rv.principles.kept")}</option>
-                  <option value="unchecked">
-                    {t("rv.principles.unchecked")}
-                  </option>
-                </select>
-              </label>
-              <label className="bt-inline">
-                <input
-                  type="checkbox"
-                  checked={filters.onlyActive}
-                  onChange={(event) => set("onlyActive", event.target.checked)}
-                />
-                {t("rv.onlyActive", { symbol: symbolOf(activeInstrumentId) })}
-              </label>
+                  {t("rv.moreFilters")}
+                </button>
+              )}
             </div>
             <ChecksBar api={api} today={today} onProgress={reload} />
             <div className="rv-body">
