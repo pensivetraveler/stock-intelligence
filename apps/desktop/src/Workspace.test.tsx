@@ -2318,6 +2318,47 @@ describe("watchlist quotes", () => {
     expect(within(panel).getByText("202.50")).toBeInTheDocument();
     expect(quote).toHaveBeenCalledTimes(instruments);
   });
+
+  it("asks for no watchlist quotes while its stacked section is folded, and keeps the fold", async () => {
+    const api = fakeApi();
+    const quote = vi.spyOn(api, "quote");
+    const liveQuote = vi.spyOn(api, "liveQuote");
+    const brokerAccount = vi.spyOn(api, "brokerAccount");
+    const storage = memoryStorage();
+    storage.setItem(
+      "siw.sideStack",
+      JSON.stringify({ watch: false, quote: false, account: false }),
+    );
+    render(<Workspace api={api} storage={storage} />);
+    const panel = await screen.findByRole("complementary", {
+      name: "Watchlist",
+    });
+    const toggle = within(panel).getByRole("button", { name: "Watchlist" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // Only the symbol band asks, and only for the chart's own instrument.
+    await waitFor(() => expect(quote).toHaveBeenCalledTimes(1));
+    const active = quote.mock.calls[0][0];
+    expect(within(panel).queryByText("202.50")).not.toBeInTheDocument();
+    // Folded live-quote and account sections ask their brokers nothing.
+    expect(liveQuote).not.toHaveBeenCalled();
+    expect(brokerAccount).not.toHaveBeenCalled();
+
+    fireEvent.click(toggle);
+    expect(await within(panel).findByText("202.50")).toBeInTheDocument();
+    const instruments = (await api.instruments()).length;
+    expect(quote).toHaveBeenCalledTimes(1 + instruments);
+    expect(quote.mock.calls.slice(1).map((call) => call[0])).toContain(active);
+    expect(JSON.parse(storage.getItem("siw.sideStack") ?? "{}")).toEqual({
+      watch: true,
+      quote: false,
+      account: false,
+    });
+
+    // Opening the live-quote section starts its own requests; the watchlist's stay as they were.
+    fireEvent.click(within(panel).getByRole("button", { name: /Live quote/ }));
+    await waitFor(() => expect(liveQuote).toHaveBeenCalled());
+    expect(quote).toHaveBeenCalledTimes(1 + instruments);
+  });
 });
 
 describe("indicators", () => {

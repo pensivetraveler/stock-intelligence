@@ -91,3 +91,50 @@ export function Step({
     </section>
   );
 }
+
+/**
+ * One section of the stacked side column (디자인-siw-3 r3): its heading toggles it. A folded
+ * section's body is not rendered at all, so whatever it would request is not requested.
+ */
+export function FoldSection({
+  id,
+  title,
+  open,
+  onToggle,
+  actions,
+  children,
+}: {
+  id: string;
+  title: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  actions?: ReactNode;
+  children?: ReactNode;
+}) {
+  const body = `fold-${id}`;
+  return (
+    <section className="fold-section" aria-labelledby={`${body}-head`}>
+      <div className="panel-bar fold-bar">
+        <h2>
+          <button
+            id={`${body}-head`}
+            type="button"
+            aria-expanded={open}
+            aria-controls={open ? body : undefined}
+            onClick={onToggle}
+          >
+            {title}
+          </button>
+        </h2>
+        {open && actions ? (
+          <div className="panel-bar-actions">{actions}</div>
+        ) : null}
+      </div>
+      {open ? (
+        <div id={body} className="fold-body">
+          {children}
+        </div>
+      ) : null}
+    </section>
+  );
+}

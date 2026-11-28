@@ -5377,3 +5377,90 @@ details.ledger tbody > tr:only-child > td[colspan] {
       no-repeat,
     var(--siw-panel);
 }
+
+/* ---- 디자인-siw-3 r3 다음 patch: 오른쪽 열 쌓기(구역 접기)·종목 띠 숫자 격자 칸 ---- */
+.side-panel-watchlist {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.fold-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-bottom: 1px solid var(--siw-rule);
+}
+
+.fold-section:has(> .fold-body) {
+  padding-bottom: var(--siw-space-4);
+}
+
+.fold-bar {
+  margin: 0;
+}
+
+.fold-bar > h2 > button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--siw-space-2);
+  height: var(--siw-size-control-sm);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.fold-bar > h2 > button::after {
+  content: "▸" / "";
+  color: var(--siw-ink-dim);
+  font-size: var(--siw-font-size-xs);
+}
+
+.fold-bar > h2 > button[aria-expanded="true"]::after {
+  content: "▾" / "";
+}
+
+.fold-bar > h2 > button:focus-visible {
+  outline: 2px solid var(--siw-focus);
+  outline-offset: 2px;
+}
+
+/* 펼친 실시간 시세 구역: 구역 머리가 제목을 맡으므로 안쪽 제목 글자만 숨김(원천 고르기는 남김) */
+.fold-body > .quote-panel > .panel-bar > h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 종목 띠 숫자 — 1px 선으로 나눈 격자 칸(라벨 위 작게, 값 고정폭) */
+.symbol-band-numbers {
+  gap: 0;
+  align-items: stretch;
+}
+
+.symbol-band-price,
+.symbol-band-stat {
+  padding: 0 var(--siw-space-5);
+  border-left: 1px solid var(--siw-rule);
+}
+
+.symbol-band-price {
+  align-items: baseline;
+}
+
+.symbol-band-stat {
+  flex-direction: column;
+  gap: 0;
+  justify-content: center;
+  line-height: 1.2;
+}
+
+.symbol-band-stat b {
+  font-family: var(--siw-font-num);
+}

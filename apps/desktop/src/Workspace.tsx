@@ -126,6 +126,7 @@ import { JournalPanel } from "./JournalPanel";
 import { ReconciliationView } from "./ReconciliationView";
 import { useSessionQuotes } from "./session-quotes";
 import { Watchlist } from "./Watchlist";
+import { FoldSection } from "./PanelParts";
 import {
   MarketApiError,
   type InstrumentListing,
@@ -237,6 +238,35 @@ function loadWatchlistWindow(storage: Storage | null | undefined): {
     // Unreadable or unavailable storage: start docked.
   }
   return { open: false, geometry: DEFAULT_WATCHLIST_WINDOW };
+}
+/** Which sections of the stacked side column are open (디자인-siw-3 r3). Folded ones fetch nothing. */
+interface SideStack {
+  watch: boolean;
+  quote: boolean;
+  account: boolean;
+}
+const SIDE_STACK_KEY = "siw.sideStack";
+/** The watchlist opens as before; the live quote polls a broker and the account asks one, so both start folded. */
+const DEFAULT_SIDE_STACK: SideStack = {
+  watch: true,
+  quote: false,
+  account: false,
+};
+function loadSideStack(storage: Storage | null | undefined): SideStack {
+  try {
+    const saved = JSON.parse(storage?.getItem(SIDE_STACK_KEY) ?? "null");
+    if (
+      saved &&
+      (["watch", "quote", "account"] as const).every(
+        (name) => typeof saved[name] === "boolean",
+      )
+    ) {
+      return { watch: saved.watch, quote: saved.quote, account: saved.account };
+    }
+  } catch {
+    // Unreadable or unavailable storage: the defaults.
+  }
+  return DEFAULT_SIDE_STACK;
 }
 const NO_TOOLS: ChartTools = { magnet: false, logScale: false, fitRequest: 0 };
 
@@ -507,6 +537,18 @@ export function Workspace({
   const [floating, setFloatingState] = useState(() =>
     loadWatchlistWindow(storage),
   );
+  const [sideStack, setSideStack] = useState<SideStack>(() =>
+    loadSideStack(storage),
+  );
+  const toggleStack = (name: keyof SideStack) => {
+    const next = { ...sideStack, [name]: !sideStack[name] };
+    setSideStack(next);
+    try {
+      storage?.setItem(SIDE_STACK_KEY, JSON.stringify(next));
+    } catch {
+      // Not kept, but still folded or opened for this run.
+    }
+  };
   const [liveSource, setLiveSourceState] = useState<LiveSource>(() => {
     try {
       return storage?.getItem(LIVE_SOURCE_KEY) === "meritz" ? "meritz" : "toss";
@@ -1160,7 +1202,9 @@ export function Workspace({
       : layoutMode === "2"
         ? [0, 1]
         : [activeChart];
-  const watchlistVisible = panel === "watchlist" || floating.open;
+  // Quotes are asked for only while the watchlist shows: its stacked section open, or its window.
+  const watchlistVisible =
+    (panel === "watchlist" && sideStack.watch) || floating.open;
 
   // Realtime relay: trades and order book of the charts on screen, plus order events.
   const [live, setLive] = useState<Record<string, LiveSymbol>>({});
@@ -2157,38 +2201,82 @@ export function Workspace({
           className={`side-panel side-panel-${panel}`}
           aria-label={t(`panel.${panel}`)}
         >
-          {panel === "watchlist" && replayOn ? (
-            <p className="workspace-note" role="status">
-              {t("replay.watchlistHidden")}
-            </p>
-          ) : null}
-          {panel === "watchlist" && !replayOn ? (
-            <Watchlist
-              instruments={instruments}
-              rows={quoteRows}
-              sessionDate={activeConfig.sessionDate}
-              activeInstrumentId={activeConfig.instrumentId}
-              onPick={(instrumentId) => updateActive({ instrumentId })}
-              removable={addedIds}
-              onRemove={(instrumentId) =>
-                changeAdded(
-                  added.filter(
-                    (item) => item.instrument.instrument_id !== instrumentId,
-                  ),
-                )
-              }
-              actions={
-                <button
-                  type="button"
-                  className="tb-button"
-                  aria-label={t("watch.popOut")}
-                  title={t("watch.popOut")}
-                  onClick={popOutWatchlist}
-                >
-                  <PopOutIcon />
-                </button>
-              }
-            />
+          {panel === "watchlist" ? (
+            <>
+              <FoldSection
+                id="watch"
+                title={t("panel.watchlist")}
+                open={sideStack.watch}
+                onToggle={() => toggleStack("watch")}
+                actions={
+                  replayOn ? null : (
+                    <button
+                      type="button"
+                      className="tb-button"
+                      aria-label={t("watch.popOut")}
+                      title={t("watch.popOut")}
+                      onClick={popOutWatchlist}
+                    >
+                      <PopOutIcon />
+                    </button>
+                  )
+                }
+              >
+                {replayOn ? (
+                  <p className="workspace-note" role="status">
+                    {t("replay.watchlistHidden")}
+                  </p>
+                ) : (
+                  <Watchlist
+                    hideTitle
+                    instruments={instruments}
+                    rows={quoteRows}
+                    sessionDate={activeConfig.sessionDate}
+                    activeInstrumentId={activeConfig.instrumentId}
+                    onPick={(instrumentId) => updateActive({ instrumentId })}
+                    removable={addedIds}
+                    onRemove={(instrumentId) =>
+                      changeAdded(
+                        added.filter(
+                          (item) =>
+                            item.instrument.instrument_id !== instrumentId,
+                        ),
+                      )
+                    }
+                  />
+                )}
+              </FoldSection>
+              <FoldSection
+                id="quote"
+                title={`${t("panel.quote")} · ${activeSymbol}`}
+                open={sideStack.quote}
+                onToggle={() => toggleStack("quote")}
+              >
+                <QuotePanel
+                  onOpenKeys={openKeys}
+                  api={api}
+                  instrumentId={activeConfig.instrumentId}
+                  symbol={activeSymbol}
+                  replayOn={replayOn}
+                  live={live[activeSymbol] ?? null}
+                  liveConnected={liveConnected}
+                  source={liveSource}
+                  onSourceChange={setLiveSource}
+                />
+              </FoldSection>
+              <FoldSection
+                id="account"
+                title={t("panel.account")}
+                open={sideStack.account}
+                onToggle={() => toggleStack("account")}
+              >
+                <AccountPanel
+                  api={api}
+                  onSynced={refreshJournal}
+                  onOpenKeys={openKeys}
+                />
+              </FoldSection>
+            </>
           ) : null}
           {panel === "symbol" ? (
             <>
