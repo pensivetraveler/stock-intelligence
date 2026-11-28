@@ -228,6 +228,22 @@ def _request_id(request: Request) -> str:
     return value if isinstance(value, str) else str(uuid4())
 
 
+def _unexpected_error_response(request: Request, exc: BaseException) -> JSONResponse:
+    """A 500 for an error nothing else handled: details go to the log, never to the client.
+
+    The request ID ties the log line to the envelope the caller saw. Only the method and
+    path are logged, not the query string or body, which can carry account details.
+    """
+    LOG.error(
+        "unexpected error %s %s (request %s)",
+        request.method,
+        request.url.path,
+        _request_id(request),
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+    return _error_response(request, 500, "internal_error", "Internal server error")
+
+
 def _error_response(request: Request, status_code: int, code: str, message: str) -> JSONResponse:
     request_id = _request_id(request)
     return JSONResponse(
@@ -972,8 +988,8 @@ def create_app(
         # Converting the error here, inside CORSMiddleware, keeps the envelope readable.
         try:
             return await call_next(request)
-        except Exception:
-            return _error_response(request, 500, "internal_error", "Internal server error")
+        except Exception as exc:
+            return _unexpected_error_response(request, exc)
 
     application.add_middleware(BaseHTTPMiddleware, dispatch=unexpected_errors_inside_cors)
     application.add_middleware(
@@ -1006,8 +1022,8 @@ def create_app(
         return _error_response(request, 422, "validation_error", "Request validation failed")
 
     @application.exception_handler(Exception)
-    async def unexpected_error(request: Request, _exc: Exception) -> JSONResponse:
-        return _error_response(request, 500, "internal_error", "Internal server error")
+    async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+        return _unexpected_error_response(request, exc)
 
     @application.get("/health")
     async def health() -> dict[str, str]:
