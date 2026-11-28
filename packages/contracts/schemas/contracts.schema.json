@@ -14303,6 +14303,11 @@
               "$ref": "#/$defs/UtcTimestamp"
             }
           ]
+        },
+        "retry_of_check_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Set when the runner asked again because the analysis it points at failed (analyzer state `failed`, which always says to ask again)."
         }
       }
     }
