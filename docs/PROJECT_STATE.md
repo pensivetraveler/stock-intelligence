@@ -3587,3 +3587,11 @@
 - **한 일:** 키움 미국주식 일봉·분봉(usa06012·usa06011)을 읽기 전용으로 조회해 Alpaca SIP와 비교했다. 코드 변경 없음. 결과는 ADR 0055 "키움 봉으로 원인 확인".
 - **확인:** 키움 영업일은 뉴욕 04:00–17:59이고, 야간 거래(20:00–03:59)는 앞 영업일에 붙는다. 키움 분봉에는 SIP 1분봉에 없는 체결가가 있다(SDA 11-09 08시대 저가 0.2447). 이것으로 SDA·HRTX의 가격 조건이 설명된다. 키움 분봉 거래량은 SIP보다 적고, 일봉 거래량은 SIP 하루 합과 같다.
 - **미확인:** 조건식이 프리마켓에 쓰는 "[일]거래량"(당일 누적으로는 HRTX 07:01 편입이 안 됨). 편입 순간의 키움 실시간 값을 기록해야 가를 수 있다(기록기 변경 필요, 범위 밖).
+
+## 2026-11-28 조건 기록기: 편입 순간 키움 시세 기록(ADR 0051·0055, mondash #393)
+
+- **한 일:** 사용자 지시("#393 기록기 변경 진행해줘")로 `watch-condition`이 편입(`enter`)마다 키움 usa20100(미국주식 현재가 종목정보)을 작업 스레드에서 조회해 `kiwoom_condition_watch.sqlite3`의 새 표 `entry_quotes`에 원본 그대로 남긴다. 요청·응답 시각을 함께 남기고, 실패하거나 대기열(500)이 차면 `error` 행으로 남긴다. 이탈·목록은 조회하지 않는다. `export-condition`은 이벤트에 `entry_quote`를 붙인다.
+- **변경:** `services/market_data/kiwoom_quotes.py`(새 파일, usa20100만 부르는 REST 클라이언트), `services/collector/condition_watch.py`(`EntryQuoter`, 표·내보내기), `services/collector/cli.py`.
+- **시험:** `tests/market_data/test_kiwoom_quotes.py` 4개, `tests/collector/test_condition_watch.py` 2개 추가. 전체 pytest 통과, ruff·mypy 통과(시험 파일의 기존 mypy 오류 4개는 main에도 있다).
+- **실확인:** 2026-11-28 kwcli로 SDA usa20100 응답 필드 확인(`acc_trde_qty`, `mac` 천USD 등). 수정본 기록기로 실제 편입을 받은 기록은 아직 없다.
+- **할 일:** 돌고 있는 기록기(미니PC 또는 Mac)를 수정본으로 다시 배포·재시작해야 반영된다. 그 뒤 프리마켓 편입 몇 세션으로 "[일]거래량"을 가린다.
