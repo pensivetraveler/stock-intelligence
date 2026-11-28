@@ -169,10 +169,14 @@ CI의 `agent-linux` 작업(`.github/workflows/ci.yml`)과 같은 구성이다. �
 1. **키 (기기 앞이나 원격 화면에서):** SIW Agent "키" 탭에서 다음을 등록한다.
    - **키움 실계좌 키**: `watch-condition`은 실계좌 키로 조건검색을 구독한다(조회만 하고 주문은 없다). 키움에 등록한 IP에서만 통한다.
    - **Alpaca 키**: `watch-halts`가 쓴다.
-2. **Mac의 수집기를 멈춘다 (iMac 터미널):** plist는 남겨 둔다. 되돌릴 때 다시 올린다.
+2. **Mac의 수집기를 멈추고 자동 시작을 막는다 (iMac 터미널):** plist는 남겨 둔다. 되돌릴 때 다시 올린다. `bootout`만 하면 plist의 `RunAtLoad`·`KeepAlive` 때문에 Mac을 재부팅하거나 다시 로그인할 때 다시 떠서 미니PC와 연결을 다툰다(2026-11-28 확인). 그래서 `disable`도 한다.
 
    ```bash
    launchctl bootout gui/$(id -u)/com.siw.collector.watch-condition; launchctl bootout gui/$(id -u)/com.siw.collector.watch-halts
+   ```
+
+   ```bash
+   launchctl disable gui/$(id -u)/com.siw.collector.watch-condition; launchctl disable gui/$(id -u)/com.siw.collector.watch-halts
    ```
 
 3. **미니PC에 설치한다 (SSH 가능):** 데이터 폴더는 `.env`의 `SIW_DATA_DIR`이다. 키 탭이 쓰는 API와 같은 곳이어야 키 목록을 읽는다. 먼저 `print`로 유닛을 확인하고 설치한다.
@@ -198,7 +202,11 @@ CI의 `agent-linux` 작업(`.github/workflows/ci.yml`)과 같은 구성이다. �
 
 5. 정상이면 Mac의 LaunchAgent plist를 지운다(`~/Library/LaunchAgents/com.siw.collector.watch-*.plist`). Mac Research로 기록을 가져오는 경로는 ADR 0059 2단계다. 그때까지 Mac 화면에는 미니PC 기록이 보이지 않는다.
 
-**되돌리기:** 미니PC에서 `uv run python -m services.collector.systemd uninstall`을 실행하고, Mac에서 다시 올린다.
+**되돌리기:** 미니PC에서 `uv run python -m services.collector.systemd uninstall`을 실행하고, Mac에서 막은 것을 풀고 다시 올린다.
+
+```bash
+launchctl enable gui/$(id -u)/com.siw.collector.watch-condition; launchctl enable gui/$(id -u)/com.siw.collector.watch-halts
+```
 
 ```bash
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.siw.collector.watch-condition.plist; launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.siw.collector.watch-halts.plist
