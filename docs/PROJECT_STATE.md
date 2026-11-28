@@ -3595,4 +3595,3 @@
 - **변경:** `services/stop_signal.py`가 atexit에서 그 신호들을 SIG_IGN으로 바꾼다(종료 처리는 SIG_IGN을 되돌리지 않는다). 바꾸는 순간 이미 잡힌 신호에 CPython이 찍는 "ignored due to race condition"은 그 순간에만 건 `sys.unraisablehook`으로 숨기고 바로 되돌린다. hook을 계속 걸어 두면 600회 중 3회 SIGSEGV가 나서 그렇게 하지 않았다. 수정 뒤 같은 시험 600회 모두 종료 코드 0, stderr 없음.
 - **실제 운영 영향:** `KillMode=mixed` 유닛에서는 python이 SIGTERM을 한 번만 받으므로 이 구간에 늦게 오는 신호가 없다. 옛 유닛(control-group)에서도 SIGTERM에 의한 종료는 systemd가 정상 종료로 보고, `... runner stopped` 로그는 그 전에 남는다. 이번 수정은 그 경우도 종료 코드 0으로 만든다.
 - **시험:** `tests/test_stop_signal.py::test_signals_until_exit_do_not_kill_a_stopped_process`(종료할 때까지 SIGTERM을 퍼부어도 0·stderr 없음, 10회). 수정 전 코드로 돌리면 -15로 실패함을 확인했다.
-
