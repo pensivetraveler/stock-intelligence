@@ -316,6 +316,7 @@ class CardStore:
                 "rechecked_at",
                 "members",
                 "created_at",
+                "withdrawn",
             )
         }
         empty: dict[str, dict[str, Any]] = {"conditions": {}, "ambiguities": {}}
@@ -333,7 +334,9 @@ class CardStore:
                     " card = ?, checks = ?, resolutions = ?, usage = ?, attempts = ?,"
                     " versions = ?, context_ref = ?, revision_ref = ?, transcript_sha256 = ?,"
                     " verification_status = ?, recheck_outcome = ?, rechecked_at = ?,"
-                    " members = ?, updated_at = ? WHERE card_id = ?",
+                    # The new version is from a source `extract` just found usable, so the
+                    # old version's withdrawn evidence does not carry over (2026-11-28).
+                    " members = ?, withdrawn = 0, updated_at = ? WHERE card_id = ?",
                     (
                         fields["title"],
                         fields["url"],
