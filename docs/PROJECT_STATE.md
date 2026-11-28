@@ -3536,3 +3536,10 @@
 - **사용자 결정("지우지마", 대시보드 86):** 구독이 끝나도 `screening.sqlite3` 뉴스 검사 문서 안의 Finnhub 기사 글과 판정은 지우지 않는다. 앞으로 들어오는 검사도 지금처럼 복사해 둔다. 약관의 삭제 조항과 어긋난다는 점을 사용자에게 보인 뒤 받은 답이다. 기록은 [ADR 0052](decisions/0052-daily-candidate-screening.md) "삭제"에 있다.
 - **당시 범위:** 뉴스 검사 544건 가운데 354건(세션 11-13~11-27)에 Finnhub 기사가 들어 있다. `public_sources.sqlite3`에는 Finnhub 기록이 0건이다. 원본 저장본은 news-analysis가 맡는다.
 - **변경:** 문서만 바꿨다. 기능 시험은 미실행.
+
+## 스크립트 변환이 "하지 않는다" 규칙을 반대로 옮기던 결함 고침 — 2026-11-28
+
+- **발견:** 카드 1b7a80be 2판 항목 2 "상단에서 떨어져도 중심선 위에 머무는 한 팔지 않는다"의 칸이 `close cross_below bollinger_upper`(청산)로 뽑혀, 스크립트 초안이 "종가가 상단 아래로 내려가면 청산"을 넣었다. 원문과 반대다. 그 백테스트에서는 이 항목을 빼고 돌렸다.
+- **고침:** `script_rules.convert`가 진입·청산 규칙이 될 항목의 문장에 부정("지 않/지 말/안 사·팔", do not·don't·never)이 있으면 옮기지 않고 이유("the text says when not to act; the slots read as when to act")를 남긴다. 그런 항목은 모델 초안으로 가거나 "못 옮김"이 된다. "목표가는 두지 않는다" 같은 쓰지 않음(absent) 항목은 그대로 옮긴다.
+- **영향 확인:** 저장된 카드 조건 54개를 옛 코드·새 코드로 옮겨 보니 바뀌는 것은 1b7a80be 항목 2 하나뿐이다. 부정이 들어간 나머지 6개는 원래 못 옮기던 것이거나 absent다. 이미 저장한 초안·전략은 바뀌지 않는다.
+- **시험:** `tests/technique_cards/test_script_rules.py`에 3개(부정 규칙 3문장은 남김, 평범한 규칙은 옮김, absent는 옮김), `tests/technique_cards` 전부 통과, ruff·mypy 통과. `docs/FEATURES.md` L3 줄에 한 문장 더함.
