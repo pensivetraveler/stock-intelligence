@@ -36,7 +36,7 @@ import { thinLabels, type ChartMarker } from "./journal-markers";
 import { hasGraphics } from "./pine-drawings";
 import { PineGraphicsPrimitive } from "./pine-graphics";
 import type { PremarketBar } from "./premarket-high";
-import { CHART_CHROME } from "./theme";
+import { chartChrome, followTheme } from "./theme";
 
 /** A horizontal price line drawn on the candles, e.g. a screening check's level. */
 export interface ChartPriceLevel {
@@ -205,19 +205,20 @@ export function PriceChart({
     if (!container.current) {
       return;
     }
+    const chrome = chartChrome();
     const instance = createChart(container.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: CHART_CHROME.background },
-        textColor: CHART_CHROME.text,
+        background: { type: ColorType.Solid, color: chrome.background },
+        textColor: chrome.text,
       },
       grid: {
-        vertLines: { color: CHART_CHROME.grid },
-        horzLines: { color: CHART_CHROME.grid },
+        vertLines: { color: chrome.grid },
+        horzLines: { color: chrome.grid },
       },
-      rightPriceScale: { borderColor: CHART_CHROME.border },
+      rightPriceScale: { borderColor: chrome.border },
       timeScale: {
-        borderColor: CHART_CHROME.border,
+        borderColor: chrome.border,
         timeVisible: true,
         secondsVisible: false,
         // Times are shown in the instrument's exchange zone (ET or KST).
@@ -339,7 +340,9 @@ export function PriceChart({
         applyingSyncedRange.current = false;
       }
     });
+    const stopTheme = followTheme(instance);
     return () => {
+      stopTheme();
       unregister();
       observer?.disconnect();
       setReady(false);

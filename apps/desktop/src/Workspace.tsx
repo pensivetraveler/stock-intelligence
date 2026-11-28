@@ -90,7 +90,7 @@ import { desktopBridge } from "./desktop-bridge";
 import { Dialog, PanelTabs, SideNav } from "./Shell";
 import { SymbolBandNumbers } from "./SymbolBand";
 import { ReviewSettingsPanel } from "./ReviewSettingsPanel";
-import { TechniqueDefaultModel } from "./SettingsSections";
+import { TechniqueDefaultModel, ThemeSection } from "./SettingsSections";
 import {
   KR_ZONE,
   todayIn,
@@ -466,7 +466,9 @@ export function Workspace({
   const [symbolTab, setSymbolTab] = useState<SymbolTab>("quote");
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>("candidates");
   const [labTab, setLabTab] = useState<LabTab>("backtest");
-  const [settingsSection, setSettingsSection] = useState<"keys" | "ai">("keys");
+  const [settingsSection, setSettingsSection] = useState<
+    "keys" | "ai" | "display"
+  >("keys");
   // "Needs a key" notices in the panels open Settings › Connections & keys.
   const openKeys = keysPanel
     ? () => {
@@ -2113,9 +2115,17 @@ export function Workspace({
                   {t("settings.ai")}
                 </button>
               ) : null}
+              <button
+                type="button"
+                aria-pressed={settingsSection === "display"}
+                onClick={() => setSettingsSection("display")}
+              >
+                {t("settings.display")}
+              </button>
             </nav>
             <div className="settings-main">
               {settingsSection === "keys" ? keysPanel : null}
+              {settingsSection === "display" ? <ThemeSection /> : null}
               {settingsSection === "ai" ? (
                 <>
                   {reviewApi ? (
