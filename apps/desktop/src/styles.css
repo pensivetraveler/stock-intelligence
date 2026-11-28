@@ -4912,8 +4912,9 @@ details.ledger > summary {
 }
 
 .account-figures {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* 칸은 나란히 같은 폭, 값이 안 들어가면 다음 줄로 내린다(말줄임 없음) — 디자인-siw-6 */
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 6px 0 10px;
 }
@@ -4921,9 +4922,10 @@ details.ledger > summary {
 .account-figures > div {
   /* 전역 "dl div"(110px | 나머지 두 칸 grid)를 끊고 세로로 쌓는다 — 디자인-siw-5 1번 */
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   gap: 1px;
-  min-width: 0;
+  min-width: min(100%, max-content);
 }
 
 .account-figures dt {
@@ -4933,12 +4935,10 @@ details.ledger > summary {
 
 .account-figures dd {
   margin: 0;
-  overflow: hidden;
   font-size: var(--siw-font-size-sm);
   font-variant-numeric: tabular-nums;
   font-family: var(--siw-font-num);
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .account-figures dd:first-of-type {
