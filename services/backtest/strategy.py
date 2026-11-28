@@ -101,7 +101,8 @@ def _custom_operand(value: dict[str, Any], custom: CustomLookup | None) -> dict[
 def _operand(
     value: object, custom: CustomLookup | None = None, base_ok: bool = False
 ) -> dict[str, Any]:
-    """An operand, optionally `offset` bars back; absent keeps old fingerprints.
+    """An operand, optionally `offset` bars back and scaled by `mult`; absent keeps old
+    fingerprints.
 
     `base_ok`: a setup's breakout condition may read the base bar (`{"base": "high"}`)."""
     if isinstance(value, dict) and "base" in value:
@@ -110,6 +111,14 @@ def _operand(
         if set(value) != {"base"} or value["base"] not in BASE_FIELDS:
             raise StrategyError(f"base must be one of {', '.join(BASE_FIELDS)}, alone")
         return {"base": value["base"]}
+    if isinstance(value, dict) and "mult" in value:
+        # "1.3 times the 20-day average volume", "0.65 of the 52-week high": an indicator or
+        # price operand scaled by a fixed number (card 841c304b, 2026-11-28).
+        if "value" in value:
+            raise StrategyError("a fixed value takes no mult; write the product")
+        mult = _decimal(value["mult"], "mult", Decimal("0.0001"), Decimal(1000))
+        rest = {name: item for name, item in value.items() if name != "mult"}
+        return {**_operand(rest, custom, base_ok), "mult": mult}
     if not isinstance(value, dict) or "offset" not in value:
         return _current_operand(value, custom)
     offset = value["offset"]
@@ -483,6 +492,10 @@ class RuleEvaluator:
             if operand["base"] == "value":
                 return bar.close * bar.volume
             return float(getattr(bar, operand["base"]))
+        if "mult" in operand:
+            unscaled = {name: item for name, item in operand.items() if name != "mult"}
+            found = self._value(unscaled, i)
+            return None if found is None else found * float(operand["mult"])
         i -= operand.get("offset", 0)
         if i < 0:
             return None
