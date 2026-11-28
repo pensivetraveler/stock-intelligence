@@ -14,6 +14,7 @@ The planned native shell is Tauri (Phase 0), but it has never been built: `cargo
 - **Serving the screen:** the screen is served from a custom privileged scheme, `siw://app`. It is registered as standard, secure, fetch-capable and CORS-enabled, so the screen behaves like a normal web origin. The API always allows that origin, even when `SIW_CORS_ORIGINS` replaces the defaults: no web page can send a `siw://` origin. Realtime WebSocket connections use the same origin check.
 - **API:** not bundled, because it needs this repository's Python environment, `.env` and the OS keychain.
   - On launch, the shell uses an API that already answers on 127.0.0.1:8765.
+  - 2026-11-28 개정: 상주 API 서비스(`~/Library/LaunchAgents/com.siw.api.serve.plist`)가 설치돼 있으면 앱은 API를 띄우지 않는다. 창을 먼저 열고 상주 API를 최대 6분 기다리며, 그래도 응답이 없으면 확인 명령을 담은 오류 창을 띄운다. 배포(`launchctl kickstart -k`)로 상주 API가 재시작하는 동안 앱이 저장소 코드로 8765를 먼저 잡아, 배포한 코드가 뜨지 못한 일이 있었다(mondash #423).
   - Otherwise it starts `uv run uvicorn …` from the repository found in this order (2026-10-22 개정, `repo-location.cjs`):
     1. `SIW_REPO_DIR` — 지정했으면 최종값이다. 틀려도 다른 폴더로 조용히 바꾸지 않고 오류를 보인다.
     2. 사용자가 고른 폴더 — 앱 사용자 데이터의 `settings.json`(`~/Library/Application Support/siw-electron/settings.json`)에 경로만 저장한다.

@@ -22,7 +22,12 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 const { findAgentApp } = require("./agent-app.cjs");
-const { ensureApi, healthy } = require("./api-process.cjs");
+const {
+  ensureApi,
+  healthy,
+  residentService,
+  waitForApi,
+} = require("./api-process.cjs");
 const { helpSubmenu, showHelpIn } = require("./help-menu.cjs");
 const { settingsMenuItem, showSettingsIn } = require("./settings-menu.cjs");
 const {
@@ -57,6 +62,8 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let apiChild = null;
+// A cold restart of the resident API can take about 5 minutes (it reads a large SQLite file).
+const RESIDENT_WAIT_MS = 6 * 60_000;
 const logPath = () => path.join(app.getPath("logs"), "api.log");
 const log = (text) => {
   try {
@@ -152,6 +159,22 @@ async function resolveRepoDir() {
 async function startApi() {
   // An API that already answers needs no repository.
   if (await healthy(API_URL)) return;
+  // The resident API may be restarting (a deploy); wait for it, never take its port.
+  const resident = residentService();
+  if (resident) {
+    log(`resident API service installed (${resident}); waiting for it\n`);
+    waitForApi(API_URL, { timeoutMs: RESIDENT_WAIT_MS }).then((ok) => {
+      if (ok) return;
+      dialog.showErrorBox(
+        "Local API",
+        `상주 API(com.siw.api.serve)가 ${RESIDENT_WAIT_MS / 60_000}분 안에 응답하지 않았습니다. ` +
+          "이 앱은 상주 서비스가 설치된 Mac에서는 API를 따로 띄우지 않습니다.\n\n" +
+          "확인 명령: launchctl print gui/$(id -u)/com.siw.api.serve\n" +
+          "로그: ~/Library/Logs/siw/api.err.log",
+      );
+    });
+    return;
+  }
   try {
     const repoDir = await resolveRepoDir();
     const result = await ensureApi({ apiUrl: API_URL, repoDir, log });
