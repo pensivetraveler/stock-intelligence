@@ -3478,3 +3478,11 @@
 - **사용자 결정("이대로 확정", 대시보드 139):** (a) U-a·U-b·U-c 장중 확인 → (b) 5단계 가격대·6단계 스크립트(SIW 종목 선정)와 보호 주문 확장(SIW 주문 실행) → (c) 7단계(SIW 주문 실행) → (d) 주 1회 희석 검수 → (e) 조건 시뮬레이터·외부 검토. 자세한 내용은 [ADR 0057](decisions/0057-selection-flow-seven-stages.md) "구현 단위"의 "착수 순서"에 있다.
 - **확정 시점 상태:** 5단계 계산 모듈(358)과 7단계 구현 1은 이미 들어갔다. 6단계 스크립트·계약 승인 요청(359)은 3단계 장중 확인 뒤에 한다.
 - **변경:** 문서만 바꿨다(ADR 0057, 이 파일). 기능 시험은 미실행.
+
+## 카드 1b7a80be 한국어 자막 2판과 새 판의 근거 철회 이어받기 고침 — 2026-11-28
+
+- **한 일:** 도서관 [회신 #SIW-lib-24]로 DQ84IeyzntQ 자막이 한국어 원어 자막(ko-orig)으로 바뀌었다(옛 층 superseded). 사용자 승인("Re-extract")으로 카드 1b7a80be를 2판으로 다시 뽑았다. `google/gemini-4-argon` 1회, 입력 10,425·출력 2,399 토큰, $0.04484. 조건 4개(진입 2·청산 1·손절 1), 인용은 한국어, 모호함 3개(상단 근처 범위·중심선 거리·스퀴즈 폭 기준). 1판은 `technique_card_extractions`에 남는다. 첫 시도(job c5c9a611…)는 API가 다른 세션 시험으로 멈춰 "app closed during the extraction"으로 끝났고 카드는 바뀌지 않았다.
+- **발견한 결함:** 새 판을 넣는 `CardStore.replace`가 `withdrawn`을 그대로 두어, 옛 층 재확인(`unknown`)으로 켜진 "evidence withdrawn"이 새 자료(재확인 `conditional`)에서 뽑은 2판에도 남아 카드가 영영 준비되지 못했다.
+- **고침:** `replace`가 `withdrawn = 0`으로 시작하고, 이전 판의 값은 추출 기록에 남긴다. ADR 0056 §3 "새 판"에 한 줄을 더했다.
+- **시험:** `tests/technique_cards` 전부 통과(새 시험 `test_a_new_version_from_usable_evidence_clears_the_old_withdrawal`, 고치기 전에는 실패 확인), ruff·mypy 통과.
+- **남은 것:** 배포 전까지 실행 중인 API의 카드 1b7a80be는 여전히 "evidence withdrawn"으로 막혀 있다. 배포 뒤 이미 저장된 행은 이 고침으로 바뀌지 않으므로, 한 번 더 새 판을 뽑거나 저장소 행을 고쳐야 한다(사용자 결정).
