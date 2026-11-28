@@ -192,7 +192,7 @@ describe("rule builder model", () => {
           {
             op: "gt",
             left: { price: "close" },
-            right: { price: "close", offset: 1 },
+            right: { price: "close", offset: 1, mult: "0.65" },
           },
           {
             op: "gt",
@@ -201,6 +201,7 @@ describe("rule builder model", () => {
               params: { length: 5 },
               output: "value",
               offset: 2,
+              mult: "1.3",
             },
             right: { value: "10" },
           },
@@ -229,6 +230,9 @@ describe("rule builder model", () => {
     expect(definition).not.toHaveProperty("trailing_stop");
     expect((definition.entry as { left: object }).left).not.toHaveProperty(
       "offset",
+    );
+    expect((definition.entry as { left: object }).left).not.toHaveProperty(
+      "mult",
     );
     const saved = rulesDraftOf(definition)!;
     expect(rulesDefinition(saved)).toEqual(definition);

@@ -85,8 +85,10 @@ export type OperandDraft =
       output: string;
       /** This many bars back; absent means the current bar. */
       offset?: number;
+      /** A fixed multiple of the value ("1.3" x the average volume); absent means 1. */
+      mult?: string;
     }
-  | { kind: "price"; price: PriceField; offset?: number }
+  | { kind: "price"; price: PriceField; offset?: number; mult?: string }
   | { kind: "value"; value: string };
 
 export interface ConditionDraft {
@@ -205,15 +207,18 @@ function operandJson(operand: OperandDraft): Record<string, unknown> {
   if (operand.kind === "value") return { value: operand.value };
   // Left out on the current bar, so saved strategies keep their fingerprints.
   const back = operand.offset ? { offset: operand.offset } : {};
+  const mult = operand.mult?.trim();
+  const scaled = mult ? { mult } : {};
   if (operand.kind === "indicator") {
     return {
       indicator: operand.indicator,
       params: operand.params,
       output: operand.output,
       ...back,
+      ...scaled,
     };
   }
-  return { price: operand.price, ...back };
+  return { price: operand.price, ...back, ...scaled };
 }
 
 function group(
@@ -303,7 +308,13 @@ export function rulesDefinition(draft: RulesDraft): StrategyDefinition {
 function operandDraft(value: unknown): OperandDraft | null {
   if (typeof value !== "object" || value === null) return null;
   const item = value as Record<string, unknown>;
-  const back = typeof item.offset === "number" ? { offset: item.offset } : {};
+  const back = {
+    ...(typeof item.offset === "number" ? { offset: item.offset } : {}),
+    // Saved by the engine as a string; kept so a re-save does not drop it.
+    ...(typeof item.mult === "string" || typeof item.mult === "number"
+      ? { mult: String(item.mult) }
+      : {}),
+  };
   if (typeof item.indicator === "string") {
     if (!INDICATOR_BY_ID.has(item.indicator)) return null;
     const base = indicatorOperand(item.indicator);
