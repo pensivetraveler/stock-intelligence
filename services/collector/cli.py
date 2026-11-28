@@ -3,11 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import signal
-import threading
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+from services.stop_signal import stop_on_signals
 
 # The user's choice (2026-11-05): the condition watched in realtime.
 WATCHED = "SIW_당일급등주"
@@ -79,13 +79,7 @@ def _run(config: Path | None) -> int:
     if not _valid_config(config):
         return _doctor(config)
 
-    stop = threading.Event()
-
-    def handle_stop(_signum: int, _frame: object) -> None:
-        stop.set()
-
-    signal.signal(signal.SIGINT, handle_stop)
-    signal.signal(signal.SIGTERM, handle_stop)
+    stop = stop_on_signals()
     _print({"external_calls": False, "service": "collector", "status": "running"})
     stop.wait()
     _print({"service": "collector", "status": "stopped"})
@@ -120,9 +114,7 @@ def _backfill(args: argparse.Namespace) -> int:
         _error("invalid_config", "backfill requires --data-dir or SIW_DATA_DIR")
         return 2
 
-    stop = threading.Event()
-    signal.signal(signal.SIGINT, lambda _signum, _frame: stop.set())
-    signal.signal(signal.SIGTERM, lambda _signum, _frame: stop.set())
+    stop = stop_on_signals()
     request = BackfillRequest(
         instrument_id=args.instrument_id,
         start_utc=args.start_utc,
@@ -183,9 +175,7 @@ def _watch_condition(args: argparse.Namespace) -> int:
     if session is None:
         _error("invalid_config", "no enabled real-account Kiwoom key is registered")
         return 2
-    stop = threading.Event()
-    signal.signal(signal.SIGINT, lambda _signum, _frame: stop.set())
-    signal.signal(signal.SIGTERM, lambda _signum, _frame: stop.set())
+    stop = stop_on_signals()
     store = ConditionWatchStore.in_data_dir(data_dir)
     try:
         return run_watch(
@@ -239,9 +229,7 @@ def _watch_halts(args: argparse.Namespace) -> int:
         _error("invalid_config", "no enabled Alpaca key is registered")
         return 2
     secrets = credentials.secrets(record)
-    stop = threading.Event()
-    signal.signal(signal.SIGINT, lambda _signum, _frame: stop.set())
-    signal.signal(signal.SIGTERM, lambda _signum, _frame: stop.set())
+    stop = stop_on_signals()
     store = StatusWatchStore.in_data_dir(data_dir)
     try:
         return run_halt_watch(

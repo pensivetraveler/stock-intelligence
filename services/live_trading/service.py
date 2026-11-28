@@ -12,9 +12,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import signal
 import sys
-import threading
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +23,7 @@ from services.live_trading.kiwoom_live import KiwoomLiveBroker, live_account_ref
 from services.live_trading.runner import LiveRunner
 from services.live_trading.store import LiveOrderStore
 from services.paper_trading.service import RunnerService, default_feed, load_env_file
+from services.stop_signal import stop_on_signals
 
 LOG = logging.getLogger("siw.live_runner")
 # The live adapter offers US listings only (ADR 0047 §3); no verification record gates it.
@@ -71,9 +70,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         runner_class=LiveRunner,
         missing_key="no enabled Kiwoom real key matches the approved account",
     )
-    stop = threading.Event()
-    signal.signal(signal.SIGTERM, lambda *_: stop.set())
-    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    stop = stop_on_signals()
     LOG.info("live runner started (data dir %s)", data_dir)
     previous = ""
     while not stop.is_set():
