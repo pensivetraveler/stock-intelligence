@@ -15,8 +15,11 @@ candidates panel lists them) every `INTERVAL_SECONDS`. A candidate whose stage 2
   background reader) runs again once that reader has nothing left for the symbol.
 
 A symbol that already has a result of that check for the session (from this runner or from
-the panel) is not run again; an `error` is not retried by itself. Short interest has no
-source yet and is not asked for. Read-only: nothing is ordered.
+the panel) is not run again. An analysis the analyzer reports `failed` (SEC 503/504 after
+its own retries, its time budget, a stopped worker: each says to ask again) is asked for
+again, at most `DILUTION_RETRIES` times a session and `DILUTION_RETRY_AFTER` after the
+failure; any other `error` is not retried by itself. Short interest has no source yet and
+is not asked for. Read-only: nothing is ordered.
 """
 
 from __future__ import annotations
@@ -25,14 +28,14 @@ import logging
 import os
 import threading
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from services.api.screening_off_exchange_routes import OffExchangeChecks
 from services.api.screening_routes import SYMBOL, DilutionChecks
 from services.market_data.calendar import NEW_YORK, UsEquityCalendar
-from services.screening.candidates import read_watched, watch_path
+from services.screening.candidates import read_watched, utc_text, watch_path
 from services.screening.material import stage2_by_symbol, stage2_verdict
 from services.screening.stage4 import pick, request_note, rules_only
 from services.screening.store import ScreeningStore
@@ -44,6 +47,10 @@ INTERVAL_SECONDS = 30.0
 FIRST_DELAY_SECONDS = 60.0
 #: The runner waits this long for an analysis before looking again on the next tick.
 DILUTION_WAIT_SECONDS = 5.0
+#: A failed analysis is asked for again this many times a session (mondash 430).
+DILUTION_RETRIES = 2
+#: ... once this long has passed since it failed, so a busy SEC has time to recover.
+DILUTION_RETRY_AFTER = timedelta(minutes=5)
 OFF_EXCHANGE_PER_TICK = 2
 
 
@@ -73,6 +80,8 @@ class Stage4Runner:
         clock: Callable[[], datetime],
         condition_name: str,
         off_exchange_per_tick: int = OFF_EXCHANGE_PER_TICK,
+        dilution_retries: int = DILUTION_RETRIES,
+        dilution_retry_after: timedelta = DILUTION_RETRY_AFTER,
     ) -> None:
         self._store = store
         self._data_dir = data_dir
@@ -84,6 +93,8 @@ class Stage4Runner:
         self._clock = clock
         self._condition_name = condition_name
         self._per_tick = off_exchange_per_tick
+        self._retries = dilution_retries
+        self._retry_after = dilution_retry_after
         self._calendar = UsEquityCalendar("XNAS")
 
     def _candidates(self, screening: ScreeningStore, root: Path, window: Any) -> list[str]:
@@ -107,6 +118,7 @@ class Stage4Runner:
             "unknown_symbol": [],
             "dilution_refreshed": [],
             "dilution_asked": None,
+            "dilution_retried": None,
             "dilution_blocked": None,
             "off_exchange_ran": [],
             "off_exchange_skipped": None,
@@ -141,11 +153,13 @@ class Stage4Runner:
                 by_symbol.setdefault(str(document["symbol"]), []).append(document)
         waiting = False
         for symbol, _instrument_id, _verdict in due:
-            chosen = pick(by_symbol.get(symbol, []))
-            if chosen is None or chosen["status"] != "pending" or stop():
+            documents = by_symbol.get(symbol, [])
+            # The newest row: a retry waits behind the failure it replaces.
+            latest = documents[-1] if documents else None
+            if latest is None or latest["status"] != "pending" or stop():
                 continue
-            fresh = self._dilution.refresh(screening, dict(chosen))
-            if fresh["check_id"] != chosen["check_id"]:
+            fresh = self._dilution.refresh(screening, dict(latest))
+            if fresh["check_id"] != latest["check_id"]:
                 report["dilution_refreshed"].append(symbol)
             if fresh["status"] == "pending":
                 waiting = True
@@ -153,18 +167,36 @@ class Stage4Runner:
             report["dilution_blocked"] = "an analysis is still waiting"
             return
         for symbol, instrument_id, verdict in due:
-            if symbol in by_symbol or stop():
-                continue
-            self._dilution.run(
-                screening,
-                window,
-                symbol,
-                instrument_id,
-                False,
-                {"stage4": request_note(verdict, self._clock())},
-            )
+            if stop():
+                return
+            note = request_note(verdict, self._clock())
+            earlier = by_symbol.get(symbol)
+            if earlier:
+                retry_of = self._retry_of(earlier)
+                if retry_of is None:
+                    continue
+                note["retry_of_check_id"] = retry_of
+            self._dilution.run(screening, window, symbol, instrument_id, False, {"stage4": note})
             report["dilution_asked"] = symbol
+            if earlier:
+                report["dilution_retried"] = symbol
             return
+
+    def _retry_of(self, documents: list[dict[str, Any]]) -> int | None:
+        """The failed check to ask again for, or None (settled, used up or too soon)."""
+        latest = documents[-1]
+        if latest["status"] != "error" or latest["result"].get("service_state") != "failed":
+            return None
+        failures = sum(
+            1
+            for document in documents
+            if document["status"] == "error" and document["result"].get("service_state") == "failed"
+        )
+        if failures > self._retries:
+            return None
+        if latest["created_at_utc"] > utc_text(self._clock() - self._retry_after):
+            return None
+        return int(latest["check_id"])
 
     def _off_exchange_pass(
         self,
