@@ -3684,4 +3684,7 @@
   - `BacktestScreen.test.tsx`: 배수 칸 입력이 저장 정의의 `mult`로 가는지 본다.
   - desktop vitest 542개 통과, `tsc --noEmit`·eslint 통과.
   - 브라우저 미리보기(`web`, 상주 API 사용)에서 전략 연구 화면에 칸이 보이고 값이 들어가는 것을 확인했다. 저장은 하지 않았다.
-- **남은 것:** 설치된 SIW Research에는 다시 빌드·설치해야 반영된다.
+- **설치(2026-11-28, 사용자 지시 "병합하고 설치"):** PR #277을 병합(8fc14bb)했다. 그 커밋으로 SIW Research를 다시 빌드해 `/Applications/SIW Research.app`에 설치했고, 예전 앱은 휴지통으로 옮겼다.
+  - `repoDir`는 메인 체크아웃이고, app.asar sha256은 `7d699512…`이다. 서명은 하지 않았다. 설치본 app.asar에 `bt.multHint` 문구가 들어 있는 것을 확인했다.
+  - 실행 확인: 앱을 연 뒤에도 8765는 상주 API(pid 90976, collector-app) 그대로였다. Research가 봉·스크리닝 흐름을 200으로 받았다.
+  - 미확인: 설치본 화면에서 배수 칸을 직접 열어 보지는 않았다(같은 코드의 브라우저 미리보기에서는 확인했다).
