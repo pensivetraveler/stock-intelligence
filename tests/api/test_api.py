@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import re
 import subprocess
@@ -249,6 +250,22 @@ async def test_unexpected_failure_uses_error_envelope_without_details() -> None:
         }
     }
     assert response.headers["X-Request-ID"] == "boom"
+
+
+async def test_unexpected_failure_is_logged_with_its_request_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.ERROR, logger="siw.api"):
+        async with _raising_client(RuntimeError("secret internal detail")) as test_client:
+            response = await test_client.get(
+                "/v1/market/bars", params=BARS_PARAMS, headers={"X-Request-ID": "trace-me"}
+            )
+
+    assert "secret internal detail" not in response.text
+    [record] = [r for r in caplog.records if r.name == "siw.api"]
+    assert "trace-me" in record.getMessage() and "/v1/market/bars" in record.getMessage()
+    assert "instrument_id" not in record.getMessage(), "the query string stays out of the log"
+    assert record.exc_info is not None and "secret internal detail" in str(record.exc_info[1])
 
 
 async def test_blocking_market_data_call_does_not_stall_other_requests() -> None:
