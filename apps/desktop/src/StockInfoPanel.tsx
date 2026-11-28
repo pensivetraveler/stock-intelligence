@@ -6,6 +6,7 @@ import type {
 import { useCallback, useEffect, useState } from "react";
 
 import { useI18n, type MessageKey } from "./i18n";
+import { Notice, PanelBar } from "./PanelParts";
 import { MarketApiError, type MarketApi } from "./market-api";
 import { zoneFormat, zoneOf } from "./market-zone";
 
@@ -19,6 +20,8 @@ interface StockInfoPanelProps {
   api: MarketApi;
   instrumentId: string;
   symbol: string;
+  /** Opens Settings › Connections & keys (shown when a broker key is missing). */
+  onOpenKeys?: () => void;
 }
 
 type Loaded<T> = { value: T | null; error: unknown };
@@ -32,6 +35,7 @@ export function StockInfoPanel({
   api,
   instrumentId,
   symbol,
+  onOpenKeys,
 }: StockInfoPanelProps) {
   const { t } = useI18n();
   const zone = zoneOf(instrumentId);
@@ -81,15 +85,21 @@ export function StockInfoPanel({
   const today = hours.value?.days.find((day) => day.role === "today");
   return (
     <section className="quote-panel" aria-label={t("info.title")}>
-      <h2>
-        {t("info.title")} · {symbol}
-      </h2>
+      <PanelBar title={`${t("info.title")} · ${symbol}`}>
+        <button type="button" className="secondary" onClick={() => load()}>
+          {t("info.refresh")}
+        </button>
+      </PanelBar>
       {noKey ? (
-        <p className="chart-error" role="alert">
+        <Notice
+          tone="need"
+          title={t("parts.needKey", { provider: t("parts.provider.toss") })}
+          onOpenKeys={onOpenKeys}
+        >
           {t("info.noKey")}
-        </p>
+        </Notice>
       ) : errors.length > 0 ? (
-        <p className="chart-error" role="alert">
+        <Notice tone="fail" title={t("parts.failed")}>
           {t("info.failed", {
             error: errors
               .map((error) =>
@@ -97,7 +107,7 @@ export function StockInfoPanel({
               )
               .join(" · "),
           })}
-        </p>
+        </Notice>
       ) : null}
       {stock ? (
         <dl className="info-list">
@@ -186,12 +196,7 @@ export function StockInfoPanel({
           </table>
         </>
       ) : null}
-      <p className="workspace-note">
-        {t("info.source")}{" "}
-        <button type="button" className="secondary" onClick={() => load()}>
-          {t("info.refresh")}
-        </button>
-      </p>
+      <p className="workspace-note panel-foot">{t("info.source")}</p>
     </section>
   );
 }

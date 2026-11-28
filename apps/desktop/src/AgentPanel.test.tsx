@@ -193,7 +193,11 @@ describe("review Agent panel", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Ask Claude for commentary" }),
     );
-    expect(await screen.findByRole("alert")).toHaveTextContent("Keys screen");
+    // A missing key is a setting to make: a status notice, not an alert (디자인-siw-4).
+    const notice = await screen.findByText(/Keys screen/);
+    expect(notice.closest('[role="status"]')).toHaveTextContent(
+      "Claude (Anthropic) key needed",
+    );
   });
 
   it("reviews FINRA weekly ATS volume at the chart's time and says what it is not", async () => {

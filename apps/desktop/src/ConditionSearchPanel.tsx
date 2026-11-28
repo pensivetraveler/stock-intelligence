@@ -5,6 +5,7 @@ import type {
 import { useEffect, useState } from "react";
 
 import { useI18n } from "./i18n";
+import { Notice, PanelBar } from "./PanelParts";
 import {
   MarketApiError,
   type InstrumentListing,
@@ -15,6 +16,8 @@ interface ConditionSearchPanelProps {
   api: MarketApi;
   /** Show a matched ticker on the active chart, as a search result would. */
   onPick: (listing: InstrumentListing) => void;
+  /** Opens Settings › Connections & keys (shown when a broker key is missing). */
+  onOpenKeys?: () => void;
 }
 
 function errorText(error: unknown): string {
@@ -29,6 +32,7 @@ function errorText(error: unknown): string {
 export function ConditionSearchPanel({
   api,
   onPick,
+  onOpenKeys,
 }: ConditionSearchPanelProps) {
   const { t } = useI18n();
   const [list, setList] = useState<BrokerConditionList | null>(null);
@@ -72,22 +76,33 @@ export function ConditionSearchPanel({
       className="quote-panel research-panel"
       aria-label={t("screener.title")}
     >
-      <h2>{t("screener.title")}</h2>
+      <PanelBar title={t("screener.title")} />
       {listError ? (
-        <p className="chart-error" role="alert">
-          {noKey
-            ? t("screener.noKey")
-            : t("screener.listFailed", { error: errorText(listError) })}{" "}
-          {noKey ? null : (
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => setReload(reload + 1)}
-            >
-              {t("screener.retry")}
-            </button>
-          )}
-        </p>
+        noKey ? (
+          <Notice
+            tone="need"
+            title={t("parts.needKey", { provider: t("parts.provider.kiwoom") })}
+            onOpenKeys={onOpenKeys}
+          >
+            {t("screener.noKey")}
+          </Notice>
+        ) : (
+          <Notice
+            tone="fail"
+            title={t("parts.failed")}
+            action={
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setReload(reload + 1)}
+              >
+                {t("screener.retry")}
+              </button>
+            }
+          >
+            {t("screener.listFailed", { error: errorText(listError) })}
+          </Notice>
+        )
       ) : null}
       {list === null && !listError ? (
         <p className="workspace-note">{t("screener.loading")}</p>
@@ -120,9 +135,9 @@ export function ConditionSearchPanel({
         </div>
       ) : null}
       {runError ? (
-        <p className="chart-error" role="alert">
+        <Notice tone="fail">
           {t("screener.runFailed", { error: errorText(runError) })}
-        </p>
+        </Notice>
       ) : null}
       {result ? (
         <>
@@ -134,9 +149,7 @@ export function ConditionSearchPanel({
             })}
           </p>
           {result.complete ? null : (
-            <p className="chart-error" role="status">
-              {t("screener.incomplete")}
-            </p>
+            <Notice tone="caution">{t("screener.incomplete")}</Notice>
           )}
           <div className="research-scroll">
             <table className="quote-trades research-table">

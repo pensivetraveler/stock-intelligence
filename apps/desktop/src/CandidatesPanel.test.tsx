@@ -406,10 +406,10 @@ describe("CandidatesPanel", () => {
       ...unused(["runDilutionCheck"]),
     } as ScreeningApi;
     render(<CandidatesPanel api={api} onPick={vi.fn()} />);
+    // The bulk checks sit behind "Check all ▾" in the panel bar (디자인-siw-4 B1).
+    fireEvent.click(await screen.findByRole("button", { name: /Check all/ }));
     fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Dilution for all (rules only)",
-      }),
+      screen.getByRole("button", { name: "Dilution for all (rules only)" }),
     );
     await waitFor(() =>
       expect(api.runDilutionCheck).toHaveBeenCalledWith(
@@ -586,8 +586,10 @@ describe("CandidatesPanel", () => {
     render(
       <CandidatesPanel api={api} onPick={onPick} onShowLevels={onShowLevels} />,
     );
+    // The bulk checks sit behind "Check all ▾" in the panel bar (디자인-siw-4 B1).
+    fireEvent.click(await screen.findByRole("button", { name: /Check all/ }));
     fireEvent.click(
-      await screen.findByRole("button", {
+      screen.getByRole("button", {
         name: "News, off-exchange and structure for all",
       }),
     );
@@ -775,6 +777,9 @@ describe("CandidatesPanel", () => {
     expect(screen.getByText("16× · 14 min")).toBeTruthy();
     expect(screen.getByText("Entered after noon (New York)")).toBeTruthy();
 
+    if (!screen.queryByRole("button", { name: "Values at entry for all" })) {
+      fireEvent.click(screen.getByRole("button", { name: /Check all/ }));
+    }
     fireEvent.click(
       screen.getByRole("button", { name: "Values at entry for all" }),
     );

@@ -467,6 +467,13 @@ export function Workspace({
   const [discoverTab, setDiscoverTab] = useState<DiscoverTab>("candidates");
   const [labTab, setLabTab] = useState<LabTab>("backtest");
   const [settingsSection, setSettingsSection] = useState<"keys" | "ai">("keys");
+  // "Needs a key" notices in the panels open Settings › Connections & keys.
+  const openKeys = keysPanel
+    ? () => {
+        setSettingsSection("keys");
+        setPanel("settings");
+      }
+    : undefined;
   const [navCollapsed, setNavCollapsed] = useState<boolean>(() => {
     try {
       return storage?.getItem(NAV_COLLAPSED_KEY) === "1";
@@ -2129,9 +2136,9 @@ export function Workspace({
                   <p className="workspace-note">{t("settings.aiNote")}</p>
                 </>
               ) : null}
-              <p className="workspace-note">{t("settings.about")}</p>
             </div>
           </div>
+          <p className="workspace-note settings-foot">{t("settings.about")}</p>
         </Dialog>
       ) : null}
 
@@ -2186,6 +2193,7 @@ export function Workspace({
               />
               {symbolTab === "quote" ? (
                 <QuotePanel
+                  onOpenKeys={openKeys}
                   api={api}
                   instrumentId={activeConfig.instrumentId}
                   symbol={activeSymbol}
@@ -2197,6 +2205,7 @@ export function Workspace({
                 />
               ) : (
                 <StockInfoPanel
+                  onOpenKeys={openKeys}
                   api={api}
                   instrumentId={activeConfig.instrumentId}
                   symbol={activeSymbol}
@@ -2231,13 +2240,17 @@ export function Workspace({
               (discoverTab === "candidates" &&
                 !(screeningApi && backtestApi)) ? (
                 <ConditionSearchPanel
+                  onOpenKeys={openKeys}
                   api={api}
                   onPick={(listing) => chooseListing(listing)}
                 />
               ) : null}
-              {discoverTab === "research" ? <ResearchPanel api={api} /> : null}
+              {discoverTab === "research" ? (
+                <ResearchPanel api={api} onOpenKeys={openKeys} />
+              ) : null}
               {discoverTab === "rankings" ? (
                 <RankingsPanel
+                  onOpenKeys={openKeys}
                   api={api}
                   activeInstrumentId={activeConfig.instrumentId}
                   onPick={(listing) => chooseListing(listing)}
@@ -2249,7 +2262,11 @@ export function Workspace({
             <>
               <details className="ledger-fold" open>
                 <summary>{t("panel.account")}</summary>
-                <AccountPanel api={api} onSynced={refreshJournal} />
+                <AccountPanel
+                  api={api}
+                  onSynced={refreshJournal}
+                  onOpenKeys={openKeys}
+                />
               </details>
               <JournalPanel
                 manual={ledgers.manual}
@@ -2277,6 +2294,7 @@ export function Workspace({
           {panel === "notes" && agentApi ? (
             <AgentPanel
               api={agentApi}
+              onOpenKeys={openKeys}
               instrumentId={activeConfig.instrumentId}
               timeframe={activeConfig.timeframe}
               cutoffUtc={() =>

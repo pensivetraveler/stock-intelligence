@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import { useI18n, type MessageKey } from "./i18n";
 import { MarketApiError, type MarketApi } from "./market-api";
+import { Notice, PanelBar } from "./PanelParts";
 import {
   datasetById,
   INDICATORS,
@@ -12,6 +13,27 @@ import {
 
 interface ResearchPanelProps {
   api: MarketApi;
+  /** Opens Settings › Connections & keys (shown when the Toss key is missing). */
+  onOpenKeys?: () => void;
+}
+
+/** Labels for the Toss query parameters (the request still sends the raw names and values). */
+const OPTION_LABELS: Record<string, MessageKey> = {
+  type: "rank.kind",
+  marketCountry: "rank.market",
+  duration: "rank.duration",
+  interval: "research.interval",
+};
+
+function optionLabel(name: string): MessageKey {
+  return OPTION_LABELS[name] ?? ("research.dataset" as MessageKey);
+}
+
+function valueLabel(name: string, value: string): MessageKey {
+  if (name === "type") return `rank.kind.${value}` as MessageKey;
+  if (name === "marketCountry") return `rank.market.${value}` as MessageKey;
+  if (name === "interval" && value === "1m") return "research.interval.1m";
+  return `rank.duration.${value}` as MessageKey;
 }
 
 /**
@@ -19,7 +41,7 @@ interface ResearchPanelProps {
  * and investor flows, sectors, and Korean stock trading trends. Values are shown exactly
  * as Toss sent them.
  */
-export function ResearchPanel({ api }: ResearchPanelProps) {
+export function ResearchPanel({ api, onOpenKeys }: ResearchPanelProps) {
   const { t } = useI18n();
   const [datasetId, setDatasetId] = useState<string>("rankings");
   const [choices, setChoices] = useState<Record<string, string>>({});
@@ -75,7 +97,7 @@ export function ResearchPanel({ api }: ResearchPanelProps) {
       className="quote-panel research-panel"
       aria-label={t("research.title")}
     >
-      <h2>{t("research.title")}</h2>
+      <PanelBar title={t("research.title")} />
       <div className="trade-fields">
         <label>
           {t("research.dataset")}
@@ -124,7 +146,7 @@ export function ResearchPanel({ api }: ResearchPanelProps) {
         ) : null}
         {dataset.options.map((option) => (
           <label key={option.name}>
-            {option.name}
+            {t(optionLabel(option.name))}
             <select
               value={choices[option.name] ?? option.values[0]}
               onChange={(event) => {
@@ -133,7 +155,9 @@ export function ResearchPanel({ api }: ResearchPanelProps) {
               }}
             >
               {option.values.map((value) => (
-                <option key={value}>{value}</option>
+                <option key={value} value={value}>
+                  {t(valueLabel(option.name, value))}
+                </option>
               ))}
             </select>
           </label>
@@ -146,13 +170,21 @@ export function ResearchPanel({ api }: ResearchPanelProps) {
         <p className="workspace-note">{t("research.sectorHint")}</p>
       ) : null}
       {error ? (
-        <p className="chart-error" role="alert">
-          {noKey
-            ? t("research.noKey")
-            : t("research.failed", {
-                error: error instanceof Error ? error.message : String(error),
-              })}
-        </p>
+        noKey ? (
+          <Notice
+            tone="need"
+            title={t("parts.needKey", { provider: t("parts.provider.toss") })}
+            onOpenKeys={onOpenKeys}
+          >
+            {t("research.noKey")}
+          </Notice>
+        ) : (
+          <Notice tone="fail" title={t("parts.failed")}>
+            {t("research.failed", {
+              error: error instanceof Error ? error.message : String(error),
+            })}
+          </Notice>
+        )
       ) : null}
       {loading ? (
         <p className="workspace-note">{t("research.loading")}</p>

@@ -2,6 +2,7 @@ import type { StockRankingsResponse } from "@siw/contracts/types";
 import { useEffect, useState } from "react";
 
 import { useI18n, type MessageKey } from "./i18n";
+import { Notice, PanelBar } from "./PanelParts";
 import {
   MarketApiError,
   type InstrumentListing,
@@ -29,6 +30,8 @@ interface RankingsPanelProps {
   activeInstrumentId: string;
   /** Show the ranked stock in the active chart (as the watchlist and search do). */
   onPick: (listing: InstrumentListing) => void;
+  /** Opens Settings › Connections & keys (shown when a broker key is missing). */
+  onOpenKeys?: () => void;
 }
 
 /**
@@ -40,6 +43,7 @@ export function RankingsPanel({
   api,
   activeInstrumentId,
   onPick,
+  onOpenKeys,
 }: RankingsPanelProps) {
   const { t } = useI18n();
   const [kind, setKind] = useState<RankingKind>("MARKET_TRADING_AMOUNT");
@@ -101,7 +105,7 @@ export function RankingsPanel({
       className="quote-panel rankings-panel"
       aria-label={t("rank.title")}
     >
-      <h2>{t("rank.title")}</h2>
+      <PanelBar title={t("rank.title")} />
       <div className="trade-fields">
         <label>
           {t("rank.kind")}
@@ -200,13 +204,21 @@ export function RankingsPanel({
         )}
       </p>
       {error ? (
-        <p className="chart-error" role="alert">
-          {noKey
-            ? t("rank.noKey")
-            : t("rank.failed", {
-                error: error instanceof Error ? error.message : String(error),
-              })}
-        </p>
+        noKey ? (
+          <Notice
+            tone="need"
+            title={t("parts.needKey", { provider: t("parts.provider.toss") })}
+            onOpenKeys={onOpenKeys}
+          >
+            {t("rank.noKey")}
+          </Notice>
+        ) : (
+          <Notice tone="fail" title={t("parts.failed")}>
+            {t("rank.failed", {
+              error: error instanceof Error ? error.message : String(error),
+            })}
+          </Notice>
+        )
       ) : null}
       {loading ? (
         <p className="workspace-note">{t("research.loading")}</p>

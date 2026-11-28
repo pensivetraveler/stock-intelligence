@@ -8,6 +8,7 @@ import { exchangeTime } from "./chart-data";
 import { PanelTabs } from "./Shell";
 import { accountLabel } from "./account-label";
 import { useI18n } from "./i18n";
+import { Notice, PanelBar, Step } from "./PanelParts";
 import { MarketApiError } from "./market-api";
 import { zoneOf } from "./market-zone";
 
@@ -34,6 +35,7 @@ export function AgentPanel({
   request,
   onRequestHandled,
   symbolOf,
+  onOpenKeys,
 }: {
   api: AgentApi;
   instrumentId: string;
@@ -45,6 +47,8 @@ export function AgentPanel({
   request: ChartReviewRequest | null;
   onRequestHandled: () => void;
   symbolOf: (instrumentId: string) => string;
+  /** Opens Settings › Connections & keys when the Claude key is missing. */
+  onOpenKeys?: () => void;
 }) {
   const { t } = useI18n();
   const [analyses, setAnalyses] = useState<AgentAnalysis[]>([]);
@@ -143,13 +147,9 @@ export function AgentPanel({
   ] as const;
   return (
     <section className="quote-panel agent-panel" aria-label={t("agent.title")}>
-      <h2>{t("agent.title")}</h2>
+      <PanelBar title={t("agent.title")} />
       <p className="workspace-note">{t("agent.readOnly")}</p>
-      {problem ? (
-        <p className="bt-problem" role="alert">
-          {problem}
-        </p>
-      ) : null}
+      {problem ? <Notice tone="fail">{problem}</Notice> : null}
 
       <PanelTabs
         label={t("agent.title")}
@@ -300,8 +300,24 @@ export function AgentPanel({
           analysis={current}
           onUpdated={show}
           symbolOf={symbolOf}
+          onOpenKeys={onOpenKeys}
         />
-      ) : null}
+      ) : busy ? null : (
+        // 디자인-siw-4 N2: before an analysis the next steps show, locked.
+        <>
+          <Step n={1} title={t("agent.stepFacts")} locked>
+            <p className="step-placeholder">{t("agent.stepFactsLocked")}</p>
+          </Step>
+          <Step n={2} title={t("agent.stepSend")} locked>
+            <p className="step-placeholder">{t("agent.stepSendLocked")}</p>
+          </Step>
+          <Step n={3} title={t("agent.stepCommentary")} locked>
+            <p className="step-placeholder">
+              {t("agent.stepCommentaryLocked")}
+            </p>
+          </Step>
+        </>
+      )}
 
       {analyses.length > 0 ? (
         <details>

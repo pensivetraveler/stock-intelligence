@@ -11,6 +11,7 @@ import type {
   KeyedProvider,
 } from "./credential-api";
 import { useI18n, type Translate } from "./i18n";
+import { Notice } from "./PanelParts";
 import { MarketApiError } from "./market-api";
 
 type ProviderSpec = CredentialListResponse["providers"][number];
@@ -56,6 +57,11 @@ export function KeysPanel({ api }: KeysPanelProps) {
   const [replacing, setReplacing] = useState<string | null>(null);
   const [replacement, setReplacement] = useState<Record<string, string>>({});
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  // The add form is folded under the key list; with no key yet it starts open.
+  const [addOpen, setAddOpen] = useState(false);
+  useEffect(() => {
+    if (listing && listing.credentials.length === 0) setAddOpen(true);
+  }, [listing]);
 
   const refresh = useCallback(() => {
     api
@@ -126,90 +132,7 @@ export function KeysPanel({ api }: KeysPanelProps) {
         {t("keys.note", { provider: listing?.active_provider ?? "…" })}
       </p>
       <p className="workspace-note">{t("keys.environmentNote")}</p>
-      {error ? (
-        <p className="chart-error" role="alert">
-          {describe(t, error.cause)}
-        </p>
-      ) : null}
-
-      <form
-        className="trade-fields"
-        aria-label={t("keys.addForm")}
-        onSubmit={(e) => void submit(e)}
-      >
-        <label>
-          {t("keys.provider")}
-          <select
-            value={provider}
-            onChange={(event) => {
-              setProvider(event.target.value as KeyedProvider);
-              setSecrets({});
-              setSuffix("");
-            }}
-          >
-            {specs.map((item) => (
-              <option key={item.provider} value={item.provider}>
-                {item.display_name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {t("keys.label")}
-          <input
-            value={label}
-            maxLength={60}
-            required
-            onChange={(event) => setLabel(event.target.value)}
-          />
-        </label>
-        {spec?.per_account ? (
-          <label>
-            {t("keys.environment")}
-            <select
-              value={environment}
-              onChange={(event) =>
-                setEnvironment(event.target.value as AccountEnvironment)
-              }
-            >
-              <option value="demo">{t("env.demo")}</option>
-              <option value="real">{t("env.real")}</option>
-            </select>
-          </label>
-        ) : null}
-        {spec?.per_account ? (
-          <label>
-            {t("keys.account")}
-            <input
-              value={suffix}
-              inputMode="numeric"
-              pattern="[0-9]{4}"
-              maxLength={4}
-              onChange={(event) => setSuffix(event.target.value)}
-            />
-          </label>
-        ) : null}
-        {(spec?.fields ?? []).map((field) => (
-          <label key={field.name}>
-            {field.label}
-            <input
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              required
-              value={secrets[field.name] ?? ""}
-              onChange={(event) =>
-                setSecrets({ ...secrets, [field.name]: event.target.value })
-              }
-            />
-          </label>
-        ))}
-        <div className="trade-actions wide">
-          <button type="submit" disabled={busy || !spec}>
-            {t("keys.add")}
-          </button>
-        </div>
-      </form>
+      {error ? <Notice tone="fail">{describe(t, error.cause)}</Notice> : null}
 
       {specs.map((item) => {
         const keys = (listing?.credentials ?? []).filter(
@@ -403,6 +326,91 @@ export function KeysPanel({ api }: KeysPanelProps) {
           </div>
         );
       })}
+      <details
+        className="keys-add"
+        open={addOpen}
+        onToggle={(event) => setAddOpen(event.currentTarget.open)}
+      >
+        <summary>{t("keys.addForm")}</summary>
+        <form
+          className="trade-fields"
+          aria-label={t("keys.addForm")}
+          onSubmit={(e) => void submit(e)}
+        >
+          <label>
+            {t("keys.provider")}
+            <select
+              value={provider}
+              onChange={(event) => {
+                setProvider(event.target.value as KeyedProvider);
+                setSecrets({});
+                setSuffix("");
+              }}
+            >
+              {specs.map((item) => (
+                <option key={item.provider} value={item.provider}>
+                  {item.display_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            {t("keys.label")}
+            <input
+              value={label}
+              maxLength={60}
+              required
+              onChange={(event) => setLabel(event.target.value)}
+            />
+          </label>
+          {spec?.per_account ? (
+            <label>
+              {t("keys.environment")}
+              <select
+                value={environment}
+                onChange={(event) =>
+                  setEnvironment(event.target.value as AccountEnvironment)
+                }
+              >
+                <option value="demo">{t("env.demo")}</option>
+                <option value="real">{t("env.real")}</option>
+              </select>
+            </label>
+          ) : null}
+          {spec?.per_account ? (
+            <label>
+              {t("keys.account")}
+              <input
+                value={suffix}
+                inputMode="numeric"
+                pattern="[0-9]{4}"
+                maxLength={4}
+                onChange={(event) => setSuffix(event.target.value)}
+              />
+            </label>
+          ) : null}
+          {(spec?.fields ?? []).map((field) => (
+            <label key={field.name}>
+              {field.label}
+              <input
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                required
+                value={secrets[field.name] ?? ""}
+                onChange={(event) =>
+                  setSecrets({ ...secrets, [field.name]: event.target.value })
+                }
+              />
+            </label>
+          ))}
+          <div className="trade-actions wide">
+            <button type="submit" disabled={busy || !spec}>
+              {t("keys.add")}
+            </button>
+          </div>
+        </form>
+      </details>
     </section>
   );
 }
