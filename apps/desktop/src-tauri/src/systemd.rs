@@ -59,6 +59,10 @@ fn quote_environment(text: &str) -> String {
 }
 
 /// The runner's user service: started at login, restarted after a crash, never given keys.
+///
+/// `KillMode=mixed` sends the stop SIGTERM to uv alone, which forwards it to python once; the
+/// default (`control-group`) signalled both and python saw it twice (2026-11-28 mini PC hang).
+/// Anything still running after the stop timeout is killed as before.
 pub fn runner_unit(kind: RunnerKind, uv: &Path, repo: &Path, log_dir: &Path) -> String {
     let description = kind.description();
     let program = crate::runner_arguments(uv, repo, kind)
@@ -78,6 +82,7 @@ Type=simple
 WorkingDirectory={repo_text}
 Environment={cache}
 ExecStart={program}
+KillMode=mixed
 Restart=on-failure
 RestartSec=30
 StandardOutput=append:{log}
@@ -174,7 +179,7 @@ mod tests {
         assert!(text.contains(
             "ExecStart=\"/home/me/.local/bin/uv\" \"run\" \"python\" \"-m\" \"services.paper_trading.service\""
         ));
-        assert!(text.contains("Restart=on-failure\nRestartSec=30\n"));
+        assert!(text.contains("KillMode=mixed\nRestart=on-failure\nRestartSec=30\n"));
         assert!(text.contains("StandardOutput=append:/home/me/logs/runner.log\n"));
         assert!(text.contains("WantedBy=default.target\n"));
         for secret in ["APP_KEY", "SECRET", "app_key", "secretkey"] {
