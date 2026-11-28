@@ -200,6 +200,12 @@ describe("backtest screen", () => {
         target: { value: "2" },
       },
     );
+    fireEvent.change(
+      screen.getAllByLabelText("Condition 1 right multiple")[0],
+      {
+        target: { value: "1.3" },
+      },
+    );
     fireEvent.click(
       screen.getAllByRole("button", { name: "Add time condition" })[0],
     );
@@ -219,9 +225,14 @@ describe("backtest screen", () => {
     await waitFor(() => expect(api.saveStrategy).toHaveBeenCalled());
     const [, definition] = vi.mocked(api.saveStrategy).mock.calls[0];
     const { all } = definition.entry as {
-      all: [{ left: { offset: number } }, { time: object }];
+      all: [
+        { left: { offset: number }; right: { mult?: string } },
+        { time: object },
+      ];
     };
     expect(all[0].left.offset).toBe(2);
+    expect(all[0].right.mult).toBe("1.3");
+    expect(all[0].left).not.toHaveProperty("mult");
     expect(all[1].time).toEqual({ from: "09:45", to: "16:00" });
     expect(definition.stop_loss_atr).toEqual({ length: 14, mult: "1.5" });
     expect(definition.trailing_stop).toEqual({ mode: "pct", value: "5" });
