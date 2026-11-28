@@ -39,6 +39,9 @@ RUNNER_LOOP = textwrap.dedent(
     """
 )
 
+# Many objects make interpreter finalization slow enough for late signals to land inside it.
+SLOW_EXIT_LOOP = "junk = [dict(a=i) for i in range(200_000)]\n" + RUNNER_LOOP
+
 
 @pytest.fixture
 def restore_handlers() -> Iterator[None]:
@@ -87,6 +90,27 @@ def test_repeated_sigterm_always_stops_the_runner_loop() -> None:
         assert stdout.strip() == "stopped"
         assert stderr == ""
     assert hung == 0
+
+
+def test_signals_until_exit_do_not_kill_a_stopped_process() -> None:
+    # CI 2026-11-28 (main @80b8405): one burst ended with -15 after the loop had stopped.
+    # Finalization puts Python-handled signals back to SIG_DFL, so a late copy killed the
+    # process; without the SIG_IGN-at-exit step every run here ended with -15.
+    for _ in range(10):
+        process = _start(["-c", SLOW_EXIT_LOOP])
+        assert process.stdout is not None
+        assert process.stdout.readline().strip() == "ready"
+        sent = 0
+        while process.poll() is None and sent < 1_000_000:
+            try:
+                os.kill(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                break
+            sent += 1
+        stdout, stderr = process.communicate(timeout=10)
+        assert process.returncode == 0, stderr
+        assert stdout.strip() == "stopped"
+        assert stderr == ""
 
 
 def test_signal_sets_the_event_while_its_lock_is_held(restore_handlers: None) -> None:

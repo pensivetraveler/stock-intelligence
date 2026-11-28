@@ -3587,3 +3587,12 @@
 - **한 일:** 키움 미국주식 일봉·분봉(usa06012·usa06011)을 읽기 전용으로 조회해 Alpaca SIP와 비교했다. 코드 변경 없음. 결과는 ADR 0055 "키움 봉으로 원인 확인".
 - **확인:** 키움 영업일은 뉴욕 04:00–17:59이고, 야간 거래(20:00–03:59)는 앞 영업일에 붙는다. 키움 분봉에는 SIP 1분봉에 없는 체결가가 있다(SDA 11-09 08시대 저가 0.2447). 이것으로 SDA·HRTX의 가격 조건이 설명된다. 키움 분봉 거래량은 SIP보다 적고, 일봉 거래량은 SIP 하루 합과 같다.
 - **미확인:** 조건식이 프리마켓에 쓰는 "[일]거래량"(당일 누적으로는 HRTX 07:01 편입이 안 됨). 편입 순간의 키움 실시간 값을 기록해야 가를 수 있다(기록기 변경 필요, 범위 밖).
+
+## 2026-11-28 정지 신호 헬퍼: 종료 중에 늦게 온 신호로 -15 종료 수정
+
+- **요청:** SIW 총괄 [요청 #SIW-main-2]. main CI(@80b8405, run 46136853321)에서 `test_repeated_sigterm_always_stops_the_runner_loop`가 `-15 == 0`으로 가끔 실패.
+- **원인(Mac에서 확인):** CPython은 인터프리터 종료(finalize) 때 Python 처리기가 달린 신호를 SIG_DFL로 되돌린다. 루프가 끝난 뒤 이 구간에 늦게 온 SIGTERM이 프로세스를 기본 동작으로 죽였다. 끝날 때까지 SIGTERM을 계속 보내면 수정 전 코드는 400회 모두 -15였다.
+- **변경:** `services/stop_signal.py`가 atexit에서 그 신호들을 SIG_IGN으로 바꾼다(종료 처리는 SIG_IGN을 되돌리지 않는다). 바꾸는 순간 이미 잡힌 신호에 CPython이 찍는 "ignored due to race condition"은 그 순간에만 건 `sys.unraisablehook`으로 숨기고 바로 되돌린다. hook을 계속 걸어 두면 600회 중 3회 SIGSEGV가 나서 그렇게 하지 않았다. 수정 뒤 같은 시험 600회 모두 종료 코드 0, stderr 없음.
+- **실제 운영 영향:** `KillMode=mixed` 유닛에서는 python이 SIGTERM을 한 번만 받으므로 이 구간에 늦게 오는 신호가 없다. 옛 유닛(control-group)에서도 SIGTERM에 의한 종료는 systemd가 정상 종료로 보고, `... runner stopped` 로그는 그 전에 남는다. 이번 수정은 그 경우도 종료 코드 0으로 만든다.
+- **시험:** `tests/test_stop_signal.py::test_signals_until_exit_do_not_kill_a_stopped_process`(종료할 때까지 SIGTERM을 퍼부어도 0·stderr 없음, 10회). 수정 전 코드로 돌리면 -15로 실패함을 확인했다.
+
