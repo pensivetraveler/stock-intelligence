@@ -158,10 +158,11 @@ def _data_dir(args: argparse.Namespace) -> Path | None:
 
 def _watch_condition(args: argparse.Namespace) -> int:
     """Record one Kiwoom condition in realtime, every US session, until stopped."""
-    from services.collector.condition_watch import ConditionWatchStore, run_watch
+    from services.collector.condition_watch import ConditionWatchStore, EntryQuoter, run_watch
     from services.credentials.store import CredentialStore, KeyringSecretBackend
     from services.market_data.kiwoom_account import real_account_session
     from services.market_data.kiwoom_conditions import CONNECTED_CONDITIONS, KiwoomConditionSearch
+    from services.market_data.kiwoom_quotes import KiwoomQuoteInfo
 
     name = args.name or WATCHED
     if name not in CONNECTED_CONDITIONS:
@@ -177,6 +178,11 @@ def _watch_condition(args: argparse.Namespace) -> int:
         return 2
     stop = stop_on_signals()
     store = ConditionWatchStore.in_data_dir(data_dir)
+
+    def clock() -> datetime:
+        return datetime.now(timezone.utc)
+
+    quoter = EntryQuoter(store, KiwoomQuoteInfo(session.access_token, "real").info, clock)
     try:
         return run_watch(
             KiwoomConditionSearch(session.access_token, "real"),
@@ -184,10 +190,12 @@ def _watch_condition(args: argparse.Namespace) -> int:
             name,
             "real",
             stop=stop,
-            clock=lambda: datetime.now(timezone.utc),
+            clock=clock,
             report=lambda payload: _print({**payload, "service": "collector"}),
+            quoter=quoter,
         )
     finally:
+        quoter.close()
         store.close()
 
 

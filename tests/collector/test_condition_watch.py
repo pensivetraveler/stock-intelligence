@@ -18,6 +18,7 @@ import pytest
 from services.collector.cli import main
 from services.collector.condition_watch import (
     ConditionWatchStore,
+    EntryQuoter,
     run_watch,
     watch_once,
     window_around,
@@ -433,3 +434,83 @@ def test_the_cli_refuses_an_unconnected_name_and_exports_a_date(
     document = json.loads(capsys.readouterr().out)
     assert document["from_utc"] == "2026-11-05T05:00:00.000Z"
     assert [item["end_reason"] for item in document["watches"]] == ["window_closed"]
+
+
+def test_an_entry_gets_kiwoom_s_quote_and_a_failed_one_is_kept(tmp_path: Path) -> None:
+    store = ConditionWatchStore.in_data_dir(tmp_path)
+    clock = Clock(utc(2026, 11, 9, 12))
+    asked: list[tuple[str, str]] = []
+
+    def quote(symbol: str, exchange: str) -> dict[str, str]:
+        asked.append((symbol, exchange))
+        if symbol == "SDA":
+            raise ProviderUnavailableError("the provider did not answer in time")
+        return {"stk_cd": symbol, "acc_trde_qty": "1234567", "mac": "21014"}
+
+    quoter = EntryQuoter(store, quote, clock)
+    outcome = watch_once(
+        searcher(
+            Server(
+                [
+                    real(s2("HRTX", "I")),
+                    real(s2("HRTX", "D")),
+                    real(s2("SDA", "I")),
+                    ConnectionResetError(),
+                ]
+            )
+        ),
+        store,
+        "SIW_당일급등주",
+        "real",
+        until=utc(2026, 11, 10, 1),
+        stop=threading.Event(),
+        clock=clock,
+        quoter=quoter,
+    )
+    quoter.close()
+    assert outcome.reason == "error"
+    # Only entries are quoted, with the exchange code the event carried.
+    assert asked == [("HRTX", "ND"), ("SDA", "ND")]
+    events = store.export(utc(2026, 11, 9), utc(2026, 11, 10))["watches"][0]["events"]
+    by_kind = {(item["kind"], item["symbol"]): item.get("entry_quote") for item in events}
+    hrtx = by_kind[("enter", "HRTX")]
+    assert hrtx is not None and hrtx["status"] == "ok" and hrtx["error"] is None
+    assert hrtx["raw"] == {"stk_cd": "HRTX", "acc_trde_qty": "1234567", "mac": "21014"}
+    assert hrtx["requested_at_utc"] <= hrtx["received_at_utc"]
+    sda = by_kind[("enter", "SDA")]
+    assert sda is not None and sda["status"] == "error" and sda["raw"] is None
+    assert sda["error"].startswith("ProviderUnavailableError")
+    assert by_kind[("leave", "HRTX")] is None
+    assert by_kind[("listed", "GPUS")] is None
+    store.close()
+
+
+def test_a_full_quote_queue_records_the_entry_instead_of_blocking(tmp_path: Path) -> None:
+    store = ConditionWatchStore.in_data_dir(tmp_path)
+    clock = Clock(utc(2026, 11, 9, 12))
+    release, started = threading.Event(), threading.Event()
+
+    def slow(symbol: str, _exchange: str) -> dict[str, str]:
+        started.set()
+        release.wait(5)
+        return {"stk_cd": symbol}
+
+    quoter = EntryQuoter(store, slow, clock, max_pending=1)
+    watch_id = store.start(Condition("2", "SIW_당일급등주"), "real", clock(), ())
+    ids = {
+        symbol: store.add(watch_id, clock(), ConditionEvent("enter", symbol, "ND", None, {}))
+        for symbol in ("AAA", "BBB", "CCC")
+    }
+    quoter.submit(ids["AAA"], "AAA", "ND", clock())
+    assert started.wait(5)
+    # The worker holds AAA and BBB waits in the queue, so CCC finds it full.
+    quoter.submit(ids["BBB"], "BBB", "ND", clock())
+    quoter.submit(ids["CCC"], "CCC", "ND", clock())
+    release.set()
+    quoter.close()
+    events = store.export(utc(2026, 11, 9), utc(2026, 11, 10))["watches"][0]["events"]
+    statuses = {item["symbol"]: item["entry_quote"]["status"] for item in events}
+    errors = {item["symbol"]: item["entry_quote"]["error"] for item in events}
+    assert statuses == {"AAA": "ok", "BBB": "ok", "CCC": "error"}
+    assert errors["CCC"] == "queue_full"
+    store.close()

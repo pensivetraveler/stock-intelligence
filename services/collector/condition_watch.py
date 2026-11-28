@@ -10,11 +10,18 @@ such a silence, and its fresh list shows what the events missed (`differs_from_p
 A watch that ends without its end being recorded (the process was killed or the machine
 slept) is closed as `interrupted` the next time the store opens, so a gap in the record is
 never mistaken for a quiet market.
+
+When a ticker enters, Kiwoom's own quote of it (usa20100) is asked on a worker thread and
+kept in `entry_quotes`, so the values the condition engine worked from can be compared
+with other feeds (ADR 0055, mondash #393). The quote is asked after the event arrives, so
+`requested_at_utc` and `received_at_utc` say how far it may be from the moment of entry. A
+quote that could not be had is kept as an error, never left out.
 """
 
 from __future__ import annotations
 
 import json
+import queue
 import sqlite3
 import threading
 from collections.abc import Callable
@@ -44,6 +51,10 @@ RENEW_SECONDS = 1800.0
 # The first subscription of a window starts this long after premarket opens, so it is not
 # opened just before Kiwoom turns the condition over to the new day.
 START_DELAY_SECONDS = 60.0
+# Entry quotes waiting to be asked; beyond this an entry is recorded as `queue_full`.
+MAX_PENDING_QUOTES = 500
+# How long closing the quoter waits for quotes already asked for.
+QUOTER_CLOSE_SECONDS = 15.0
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS watches (
@@ -66,6 +77,16 @@ CREATE TABLE IF NOT EXISTS watch_events (
     raw TEXT
 );
 CREATE INDEX IF NOT EXISTS watch_events_by_time ON watch_events (received_at_utc);
+CREATE TABLE IF NOT EXISTS entry_quotes (
+    quote_id INTEGER PRIMARY KEY,
+    event_id INTEGER NOT NULL REFERENCES watch_events(event_id),
+    requested_at_utc TEXT NOT NULL,
+    received_at_utc TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('ok', 'error')),
+    error TEXT,
+    raw TEXT
+);
+CREATE INDEX IF NOT EXISTS entry_quotes_by_event ON entry_quotes (event_id);
 """
 
 
@@ -131,9 +152,9 @@ class ConditionWatchStore:
                 raise
         return watch_id
 
-    def add(self, watch_id: int, at: datetime, event: ConditionEvent) -> None:
+    def add(self, watch_id: int, at: datetime, event: ConditionEvent) -> int:
         with self._lock:
-            self._db.execute(
+            cursor = self._db.execute(
                 "INSERT INTO watch_events (watch_id, received_at_utc, kind, symbol, "
                 "kiwoom_exchange, kiwoom_time, raw) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
@@ -144,6 +165,32 @@ class ConditionWatchStore:
                     event.kiwoom_exchange,
                     event.kiwoom_time,
                     json.dumps(event.values, ensure_ascii=False, sort_keys=True),
+                ),
+            )
+        return int(cursor.lastrowid or 0)
+
+    def add_quote(
+        self,
+        event_id: int,
+        requested: datetime,
+        received: datetime,
+        values: dict[str, str] | None,
+        error: str | None = None,
+    ) -> None:
+        """Kiwoom's quote of the ticker of entry `event_id`, or why there is none."""
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO entry_quotes (event_id, requested_at_utc, received_at_utc, "
+                "status, error, raw) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    event_id,
+                    _utc(requested),
+                    _utc(received),
+                    "error" if values is None else "ok",
+                    None if error is None else error[:300],
+                    None
+                    if values is None
+                    else json.dumps(values, ensure_ascii=False, sort_keys=True),
                 ),
             )
 
@@ -171,6 +218,20 @@ class ConditionWatchStore:
                 ).fetchall()
                 for item in watches
             }
+            quotes: dict[int, dict[str, Any]] = {}
+            for item in watches:
+                for row in self._db.execute(
+                    "SELECT q.* FROM entry_quotes q JOIN watch_events e USING (event_id) "
+                    "WHERE e.watch_id = ? ORDER BY q.quote_id",
+                    (item["watch_id"],),
+                ):
+                    quotes[int(row["event_id"])] = {
+                        "requested_at_utc": row["requested_at_utc"],
+                        "received_at_utc": row["received_at_utc"],
+                        "status": row["status"],
+                        "error": row["error"],
+                        "raw": json.loads(row["raw"]) if row["raw"] else None,
+                    }
         return {
             "kind": "kiwoom_condition_watch_export",
             "from_utc": low,
@@ -192,6 +253,11 @@ class ConditionWatchStore:
                             "kiwoom_exchange": row["kiwoom_exchange"],
                             "kiwoom_time": row["kiwoom_time"],
                             "raw": json.loads(row["raw"]) if row["raw"] else None,
+                            **(
+                                {"entry_quote": quotes[int(row["event_id"])]}
+                                if int(row["event_id"]) in quotes
+                                else {}
+                            ),
                         }
                         for row in events[int(item["watch_id"])]
                         if low <= row["received_at_utc"] < high
@@ -231,6 +297,57 @@ class ConditionWatchStore:
         return {"entered": sorted(listed - expected), "left": sorted(expected - listed)}
 
 
+Quote = Callable[[str, str], dict[str, str]]
+
+
+class EntryQuoter:
+    """Asks `quote(symbol, kiwoom_exchange)` for each entry on one worker thread, so a slow
+    answer never holds up the condition's connection, and records the result."""
+
+    def __init__(
+        self,
+        store: ConditionWatchStore,
+        quote: Quote,
+        clock: Callable[[], datetime],
+        *,
+        max_pending: int = MAX_PENDING_QUOTES,
+    ) -> None:
+        self._store = store
+        self._quote = quote
+        self._clock = clock
+        self._pending: queue.Queue[tuple[int, str, str, datetime] | None] = queue.Queue(
+            maxsize=max_pending
+        )
+        self._thread = threading.Thread(target=self._work, name="entry-quotes", daemon=True)
+        self._thread.start()
+
+    def submit(self, event_id: int, symbol: str, kiwoom_exchange: str, at: datetime) -> None:
+        try:
+            self._pending.put_nowait((event_id, symbol, kiwoom_exchange, at))
+        except queue.Full:
+            self._store.add_quote(event_id, at, self._clock(), None, "queue_full")
+
+    def close(self, timeout: float = QUOTER_CLOSE_SECONDS) -> None:
+        """Finish the quotes already asked for, waiting at most `timeout` seconds."""
+        try:
+            self._pending.put(None, timeout=timeout)
+        except queue.Full:
+            return
+        self._thread.join(timeout)
+
+    def _work(self) -> None:
+        while (item := self._pending.get()) is not None:
+            event_id, symbol, exchange, at = item
+            try:
+                values = self._quote(symbol, exchange)
+            except Exception as exc:  # recorded, never allowed to stop the worker
+                self._store.add_quote(
+                    event_id, at, self._clock(), None, f"{type(exc).__name__}: {exc}"
+                )
+            else:
+                self._store.add_quote(event_id, at, self._clock(), values)
+
+
 def window_around(moment: datetime, calendar: ExchangeCalendar) -> tuple[datetime, datetime]:
     """The watch window containing `moment`, or the next one: premarket open to aftermarket
     close of a US session (04:00-20:00 New York time, 17:00 on an early close). Days without
@@ -261,6 +378,7 @@ def watch_once(
     stop: threading.Event,
     clock: Callable[[], datetime],
     renew_at: datetime | None = None,
+    quoter: EntryQuoter | None = None,
 ) -> WatchOutcome:
     """One connection: subscribe, record, and close the watch with why it ended. It ends at
     `until` (the window's close) or, earlier, at `renew_at` as `renewed`."""
@@ -271,7 +389,10 @@ def watch_once(
         watch.append(store.start(condition, environment, clock(), tickers))
 
     def on_event(event: ConditionEvent) -> None:
-        store.add(watch[0], clock(), event)
+        at = clock()
+        event_id = store.add(watch[0], at, event)
+        if quoter is not None and event.kind == "enter":
+            quoter.submit(event_id, event.symbol, event.kiwoom_exchange, at)
 
     try:
         search.watch(
@@ -304,6 +425,7 @@ def run_watch(
     clock: Callable[[], datetime],
     report: Callable[[dict[str, object]], None],
     calendar: ExchangeCalendar | None = None,
+    quoter: EntryQuoter | None = None,
 ) -> int:
     """Watch `name` in every window until `stop` is set. Returns 2 for a condition that is
     not saved (or saved twice), which retrying cannot fix; otherwise 0 when stopped."""
@@ -328,6 +450,7 @@ def run_watch(
             stop=stop,
             clock=clock,
             renew_at=began + timedelta(seconds=RENEW_SECONDS),
+            quoter=quoter,
         )
         if outcome.error is None:
             delay = MIN_RETRY_SECONDS
