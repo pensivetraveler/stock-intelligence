@@ -1305,6 +1305,30 @@ def test_a_second_extraction_asks_new_version_or_new_card(
     assert len(client.get("/v1/technique-cards").json()["cards"]) == 2
 
 
+def test_a_new_version_from_usable_evidence_clears_the_old_withdrawal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The library replaced the source's layers: the old version's recheck said `unknown`,
+    # and the new version is extracted from the new, usable revision (2026-11-28).
+    client, service = _app(tmp_path)
+    monkeypatch.setattr(
+        "services.technique_cards.service.extract_card", _fake_extract_with(_card())
+    )
+    first = client.post("/v1/technique-cards", json={"item_ref": ITEM}).json()
+    card_id = client.get(f"/v1/technique-cards/jobs/{first['job_id']}").json()["card_id"]
+    service.store.rechecked(card_id, "unknown")
+    assert "evidence withdrawn" in client.get(f"/v1/technique-cards/{card_id}").json()["blocks"]
+
+    again = client.post(
+        "/v1/technique-cards", json={"item_ref": ITEM, "mode": "new_version", "card_id": card_id}
+    ).json()
+    assert client.get(f"/v1/technique-cards/jobs/{again['job_id']}").json()["state"] == "done"
+    card = client.get(f"/v1/technique-cards/{card_id}").json()
+    assert card["version"] == 2 and card["withdrawn"] is False
+    assert "evidence withdrawn" not in card["blocks"]
+    assert service.store.extractions(card_id)[0]["withdrawn"] in (1, True)
+
+
 def test_the_user_withdraws_one_card_and_it_is_kept_but_not_used(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
