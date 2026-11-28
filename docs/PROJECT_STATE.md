@@ -3514,3 +3514,14 @@
 
 - **사용자 결정:** 질문 카드 "C Mac 서명·미니PC 검증", "끌 때까지", 보안 키 "아직 안 삼", 단계 2 "무인 무장에만". 같은 날 먼저 낸 "B로 하고 만료는 하루"는 다시 물어 "C·끌 때까지"로 확정했다. ADR 0060 §5에 기록했고, ADR은 proposed 그대로, 코드 없음.
 - **남은 구현 단위(0060 accepted 뒤 별도 승인):** Mac Secure Enclave 서명, 미니PC 공개키 등록·매 주기 검증, Mac → 미니PC 전달 경로(끄기·킬 포함).
+
+## 2026-11-28 systemd 정지 때 신호 처리기 교착 수정
+
+- **증상(미니PC 실측):** SIW Agent "설치하고 시작"이 `systemctl --user restart com.pensivetraveler.siw.agent.runner.service`를 부를 때 90초 동안 `stop-sigterm`에 머물다 SIGKILL로 끝났다. `paper runner stopped` 로그가 없었고 uv·python 둘 다 `futex_do_wait`였다. 그동안 앱이 systemctl을 기다려 "응답 없음" 창이 떴다.
+- **원인:** `signal.signal(SIGTERM, lambda *_: stop.set())`. `Event.set()`은 내부 잠금을 잡는다. 처리기는 주 스레드에서 돌므로, 그 잠금을 주 스레드가 쥔 사이(처리기 안이나 `Event.wait()` 안)에 신호가 오면 같은 스레드가 자기 잠금을 기다려 멈춘다. systemd 기본 `KillMode=control-group`은 uv와 python 모두에 SIGTERM을 보내고 uv가 자기 몫을 python에 넘겨 python이 두 번 받는다. Mac 재현: SIGTERM 세 번에 100회 중 1회 멈춤(작업 지시의 측정은 200회 중 15회). 잠금을 쥔 채 신호를 받으면 매번 멈춘다.
+- **변경:**
+  - `services/stop_signal.py`(새 파일) `stop_on_signals()`: 처리기는 파이프에 1바이트만 쓰고(잠금 없음), 파이프를 기다리는 데몬 스레드가 Event를 설정한다. 신호가 몇 번 와도 처리기는 바로 끝난다.
+  - 적용: `services/paper_trading/service.py`, `services/live_trading/service.py`, `services/collector/cli.py`(`run`·`backfill`·`watch-condition`·`watch-halts`).
+  - 유닛에 `KillMode=mixed`: 실행기(`apps/desktop/src-tauri/src/systemd.rs`)·수집기(`services/collector/systemd.py`). SIGTERM은 uv에만 가고 uv가 python에 한 번 넘긴다(Mac에서 uv 0.12.23으로 확인). 정지 시간 초과 뒤에는 전처럼 모두 SIGKILL. 이미 설치된 유닛은 다시 설치해야 바뀐다. ADR 0045 표에 "정지" 행을 더했다.
+- **시험:** `tests/test_stop_signal.py` 3개(실행기 모양 루프에 SIGTERM 5번씩 40회 모두 5초 안 종료, Event 잠금을 쥔 채 신호 3번에도 설정됨, `siw-collector run`이 SIGTERM 3번에 `stopped`로 끝남). 유닛 시험 두 개에 `KillMode=mixed` 확인 추가.
+- **미검증:** 미니PC에서 수정본으로 `systemctl --user restart` 반복(PR 본문의 명령).

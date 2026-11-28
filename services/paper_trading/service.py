@@ -16,9 +16,7 @@ import argparse
 import hashlib
 import logging
 import os
-import signal
 import sys
-import threading
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +34,7 @@ from services.paper_trading.intent import FxRate
 from services.paper_trading.paper_client import LiveDomainBlockedError, PaperOperationBlockedError
 from services.paper_trading.runner import BarFeed, PaperRunner, plan_from_approval
 from services.paper_trading.store import PaperOrderStore
+from services.stop_signal import stop_on_signals
 
 LOG = logging.getLogger("siw.paper_runner")
 BLOCKED_REQUEST = "blocked request"
@@ -257,9 +256,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         feed=lambda: default_feed(data_dir, credentials),
         fx_rate=ecos_fx(credentials),
     )
-    stop = threading.Event()
-    signal.signal(signal.SIGTERM, lambda *_: stop.set())
-    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    stop = stop_on_signals()
     LOG.info("paper runner started (data dir %s)", data_dir)
     previous = ""
     while not stop.is_set():
