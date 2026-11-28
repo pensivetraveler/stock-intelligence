@@ -3472,3 +3472,8 @@
 - **변경:** `services/paper_trading/limits.py`(새 한도 3개, 이유 `daily_new_instrument_limit_exceeded`·`daily_loss_exceeded`/`daily_loss_unknown`·`position_amount_exceeded`), 새 `services/paper_trading/daily.py`(평균 원가 손익·하루 요약), `runner.py`(사실 계산, 하루 손실 도달 시 킬 스위치), `store.py`(계좌 체결·당일 매수 종목·미체결 매수 금액), `__main__.py`(`summary`), `services/api/paper_routes.py`(승인 필드, `GET /v1/paper/day-summary`), 계약 `PaperOrderLimits` 선택 필드 3개·`PaperDaySummary`, SIW Agent 승인 마법사 한도 칸(기본 20건·3종목·$300·$2,000, 1건 200만 원).
 - **시험:** `scripts/verify.sh` 통과(ruff·mypy, pytest 1,586개, 계약 생성 일치, 화면 vitest 542개). 새 시험 `tests/paper_trading/test_stage7_limits.py`, API 시험 2개, 화면 vitest 승인 마법사 시험 갱신.
 - **미확인:** 실제 키움 모의 체결로 하루 손실·킬 스위치를 확인하지 않았다(모의 무장 운영 때 확인). 하루 요약 화면은 없다(API·CLI만).
+
+## 2026-11-28 ADR 0060 열기 조건 3: 보안 키·하루 만료 선택
+
+- **사용자 결정:** "B로 하고 만료는 하루". ADR 0060 §5에 기록(FIDO2 보안 키 서명 무장, 그날 장 마감 만료). ADR은 proposed 그대로, 코드 없음.
+- **남은 결정:** 보안 키 구입·꽂을 장비, 단계 2에도 적용할지(mondash 348).
