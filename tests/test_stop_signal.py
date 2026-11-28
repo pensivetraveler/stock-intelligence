@@ -3,6 +3,9 @@
 systemd stops a unit by sending SIGTERM to uv and python, and uv forwards its copy, so python sees
 the signal twice. The old `lambda *_: stop.set()` handler could re-enter `Event.set()` and wait on a
 lock its own thread held; the reproduction hung about once in 100 stops with three signals.
+A first fix that ran the handler in Python still slept until the `wait()` timeout whenever the OS
+handed the signal to a thread other than the main one (2 of 300 here), so the burst test below
+also catches that.
 """
 
 from __future__ import annotations
@@ -40,9 +43,12 @@ RUNNER_LOOP = textwrap.dedent(
 @pytest.fixture
 def restore_handlers() -> Iterator[None]:
     saved = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGINT)}
+    wakeup = signal.set_wakeup_fd(-1)
+    signal.set_wakeup_fd(wakeup)
     yield
     for signum, handler in saved.items():
         signal.signal(signum, handler)
+    signal.set_wakeup_fd(wakeup)
 
 
 def _start(arguments: list[str]) -> subprocess.Popen[str]:
@@ -83,11 +89,11 @@ def test_repeated_sigterm_always_stops_the_runner_loop() -> None:
     assert hung == 0
 
 
-def test_handler_takes_no_lock_and_sets_the_event(restore_handlers: None) -> None:
+def test_signal_sets_the_event_while_its_lock_is_held(restore_handlers: None) -> None:
     stop = threading.Event()
     assert stop_on_signals(stop) is stop
     # Signals delivered while the main thread holds the event's own lock: the old handler
-    # (`stop.set()`) would wait on that lock forever right here.
+    # (`stop.set()`) waited on that lock forever right here.
     with stop._cond:  # type: ignore[attr-defined]
         for _ in range(3):
             os.kill(os.getpid(), signal.SIGTERM)

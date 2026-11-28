@@ -3520,8 +3520,8 @@
 - **증상(미니PC 실측):** SIW Agent "설치하고 시작"이 `systemctl --user restart com.pensivetraveler.siw.agent.runner.service`를 부를 때 90초 동안 `stop-sigterm`에 머물다 SIGKILL로 끝났다. `paper runner stopped` 로그가 없었고 uv·python 둘 다 `futex_do_wait`였다. 그동안 앱이 systemctl을 기다려 "응답 없음" 창이 떴다.
 - **원인:** `signal.signal(SIGTERM, lambda *_: stop.set())`. `Event.set()`은 내부 잠금을 잡는다. 처리기는 주 스레드에서 돌므로, 그 잠금을 주 스레드가 쥔 사이(처리기 안이나 `Event.wait()` 안)에 신호가 오면 같은 스레드가 자기 잠금을 기다려 멈춘다. systemd 기본 `KillMode=control-group`은 uv와 python 모두에 SIGTERM을 보내고 uv가 자기 몫을 python에 넘겨 python이 두 번 받는다. Mac 재현: SIGTERM 세 번에 100회 중 1회 멈춤(작업 지시의 측정은 200회 중 15회). 잠금을 쥔 채 신호를 받으면 매번 멈춘다.
 - **변경:**
-  - `services/stop_signal.py`(새 파일) `stop_on_signals()`: 처리기는 파이프에 1바이트만 쓰고(잠금 없음), 파이프를 기다리는 데몬 스레드가 Event를 설정한다. 신호가 몇 번 와도 처리기는 바로 끝난다.
+  - `services/stop_signal.py`(새 파일) `stop_on_signals()`: `signal.set_wakeup_fd`로 CPython의 C 처리기가 신호 번호를 파이프에 쓰고, 파이프를 기다리는 데몬 스레드가 Event를 설정한다. Python 처리기는 아무것도 하지 않는다(잠금 없음). 처음 시도한 "Python 처리기가 파이프에 쓰기"는 OS가 신호를 주 스레드가 아닌 스레드에 주면 주 스레드가 `wait()` 시간 초과까지 깨지 않아 300회 중 2회 5초를 넘겼다. 이 방식으로 300회 중 0회.
   - 적용: `services/paper_trading/service.py`, `services/live_trading/service.py`, `services/collector/cli.py`(`run`·`backfill`·`watch-condition`·`watch-halts`).
   - 유닛에 `KillMode=mixed`: 실행기(`apps/desktop/src-tauri/src/systemd.rs`)·수집기(`services/collector/systemd.py`). SIGTERM은 uv에만 가고 uv가 python에 한 번 넘긴다(Mac에서 uv 0.12.23으로 확인). 정지 시간 초과 뒤에는 전처럼 모두 SIGKILL. 이미 설치된 유닛은 다시 설치해야 바뀐다. ADR 0045 표에 "정지" 행을 더했다.
-- **시험:** `tests/test_stop_signal.py` 3개(실행기 모양 루프에 SIGTERM 5번씩 40회 모두 5초 안 종료, Event 잠금을 쥔 채 신호 3번에도 설정됨, `siw-collector run`이 SIGTERM 3번에 `stopped`로 끝남). 유닛 시험 두 개에 `KillMode=mixed` 확인 추가.
+- **시험:** `tests/test_stop_signal.py` 3개(실행기 모양 루프에 SIGTERM 5번씩 40회 모두 5초 안 종료, Event 잠금을 쥔 채 신호 3번에도 설정됨(옛 처리기는 여기서 매번 멈춤), `siw-collector run`이 SIGTERM 3번에 `stopped`로 끝남). 유닛 시험 두 개에 `KillMode=mixed` 확인 추가.
 - **미검증:** 미니PC에서 수정본으로 `systemctl --user restart` 반복(PR 본문의 명령).
