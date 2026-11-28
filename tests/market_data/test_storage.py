@@ -72,9 +72,9 @@ def test_migration_is_versioned_and_idempotent(tmp_path: Path) -> None:
     database = tmp_path / "metadata.sqlite3"
     runner = MigrationRunner(database)
 
-    assert runner.apply() == ("0001", "0002")
+    assert runner.apply() == ("0001", "0002", "0003")
     assert runner.apply() == ()
-    assert scalar(database, "SELECT COUNT(*) FROM schema_migrations") == 2
+    assert scalar(database, "SELECT COUNT(*) FROM schema_migrations") == 3
     tables = {
         row[0]
         for row in sqlite3.connect(database).execute(
@@ -88,6 +88,24 @@ def test_migration_is_versioned_and_idempotent(tmp_path: Path) -> None:
         "revision_pins",
         "write_journal",
     } <= tables
+
+
+def test_opening_a_store_finds_unfinished_work_without_scanning_the_journal(
+    tmp_path: Path,
+) -> None:
+    # Finished journal rows grow without bound; the startup look must use an index.
+    database = tmp_path / "metadata.sqlite3"
+    MigrationRunner(database).apply()
+    with sqlite3.connect(database) as connection:
+        plans = [
+            " ".join(str(row[3]) for row in connection.execute(f"EXPLAIN QUERY PLAN {sql}"))
+            for sql in (
+                "SELECT * FROM write_journal WHERE state IN ('pending', 'renamed')",
+                "SELECT job_key, owner_id FROM acquisition_jobs WHERE status = 'running'",
+            )
+        ]
+    assert "USING INDEX write_journal_open_idx" in plans[0]
+    assert "USING INDEX acquisition_jobs_running_idx" in plans[1]
 
 
 def test_existing_0001_database_upgrades_and_recovers_legacy_running_job(
@@ -113,7 +131,7 @@ def test_existing_0001_database_upgrades_and_recovers_legacy_running_job(
 
     with store(root) as upgraded:
         assert upgraded.job_state("legacy")["status"] == "interrupted"
-        assert scalar(upgraded.database_path, "SELECT COUNT(*) FROM schema_migrations") == 2
+        assert scalar(upgraded.database_path, "SELECT COUNT(*) FROM schema_migrations") == 3
 
 
 def test_parquet_write_is_idempotent_and_survives_restart(tmp_path: Path) -> None:
