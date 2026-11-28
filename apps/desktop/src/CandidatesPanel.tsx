@@ -1436,6 +1436,8 @@ const NEWS_CATEGORIES = [
   "offering_announcement",
   "offering_completion",
   "financing_announcement",
+  "court_debt",
+  "securities_litigation",
 ] as const;
 
 /** Check B's LLM digest, always marked as inference; or a "rules only" note. */

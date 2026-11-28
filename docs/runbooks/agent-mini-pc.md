@@ -143,6 +143,8 @@ CI의 `agent-linux` 작업(`.github/workflows/ci.yml`)과 같은 구성이다. �
    cd ~/stock-intelligence && cp .env.example .env && chmod 600 .env
    ```
 
+   공백이 든 값은 큰따옴표로 감싼다(예: `SIW_SEC_USER_AGENT="이름 메일"`). 수집기 유닛은 `uv run --env-file .env`로 읽는데, uv는 따옴표 없는 공백 값에서 `Failed to parse environment file` 경고만 내고 **그 줄부터 끝까지 모든 변수를 버린다**(2026-11-25 미니PC uv 0.13.9 실측). `set -a; . ./.env`를 쓰는 스크립트는 같은 줄에서 종료 127로 끝난다. 확인: `grep -nE '^[A-Z_]+=[^"#]*[[:space:]]' .env`가 아무것도 내지 않아야 한다.
+
 6. API가 쓸 Python 환경을 미리 만든다. 앱이 처음 뜰 때 기다리는 시간이 줄어든다.
 
    ```bash
@@ -167,10 +169,14 @@ CI의 `agent-linux` 작업(`.github/workflows/ci.yml`)과 같은 구성이다. �
 1. **키 (기기 앞이나 원격 화면에서):** SIW Agent "키" 탭에서 다음을 등록한다.
    - **키움 실계좌 키**: `watch-condition`은 실계좌 키로 조건검색을 구독한다(조회만 하고 주문은 없다). 키움에 등록한 IP에서만 통한다.
    - **Alpaca 키**: `watch-halts`가 쓴다.
-2. **Mac의 수집기를 멈춘다 (iMac 터미널):** plist는 남겨 둔다. 되돌릴 때 다시 올린다.
+2. **Mac의 수집기를 멈추고 자동 시작을 막는다 (iMac 터미널):** plist는 남겨 둔다. 되돌릴 때 다시 올린다. `bootout`만 하면 plist의 `RunAtLoad`·`KeepAlive` 때문에 Mac을 재부팅하거나 다시 로그인할 때 다시 떠서 미니PC와 연결을 다툰다(2026-11-28 확인). 그래서 `disable`도 한다.
 
    ```bash
    launchctl bootout gui/$(id -u)/com.siw.collector.watch-condition; launchctl bootout gui/$(id -u)/com.siw.collector.watch-halts
+   ```
+
+   ```bash
+   launchctl disable gui/$(id -u)/com.siw.collector.watch-condition; launchctl disable gui/$(id -u)/com.siw.collector.watch-halts
    ```
 
 3. **미니PC에 설치한다 (SSH 가능):** 데이터 폴더는 `.env`의 `SIW_DATA_DIR`이다. 키 탭이 쓰는 API와 같은 곳이어야 키 목록을 읽는다. 먼저 `print`로 유닛을 확인하고 설치한다.
@@ -196,7 +202,11 @@ CI의 `agent-linux` 작업(`.github/workflows/ci.yml`)과 같은 구성이다. �
 
 5. 정상이면 Mac의 LaunchAgent plist를 지운다(`~/Library/LaunchAgents/com.siw.collector.watch-*.plist`). Mac Research로 기록을 가져오는 경로는 ADR 0059 2단계다. 그때까지 Mac 화면에는 미니PC 기록이 보이지 않는다.
 
-**되돌리기:** 미니PC에서 `uv run python -m services.collector.systemd uninstall`을 실행하고, Mac에서 다시 올린다.
+**되돌리기:** 미니PC에서 `uv run python -m services.collector.systemd uninstall`을 실행하고, Mac에서 막은 것을 풀고 다시 올린다.
+
+```bash
+launchctl enable gui/$(id -u)/com.siw.collector.watch-condition; launchctl enable gui/$(id -u)/com.siw.collector.watch-halts
+```
 
 ```bash
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.siw.collector.watch-condition.plist; launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.siw.collector.watch-halts.plist
@@ -204,18 +214,20 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.siw.collector.watch-
 
 ## 5. 실기기 확인표 (ADR 0045 미검증 항목)
 
-| 항목                                                                              | 결과                                                                               | 날짜       |
-| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------- |
-| Wayland·실제 GPU에서 화면 렌더링, 한글 표시                                       | 통과(Wayland, AMD Phoenix3, 사용자 눈 확인)                                        | 2026-11-20 |
-| 로그인 직후 실행기와 키링의 시작 순서, 키 읽기 성공                               | 미실행                                                                             |            |
-| 키링이 잠겼을 때 비밀번호 창 동작                                                 | 미실행                                                                             |            |
-| 재부팅 → 로그인 뒤 실행기 자동 재기동                                             | 미실행                                                                             |            |
-| 재부팅 → 원격 로그인(3389, FreeRDP), 키링 열림, 끊어도 세션 유지·같은 세션 재접속 | 통과(원격 Wayland 세션, 키링 `Locked=false`). 실행기 미설치 상태라 재기동은 미확인 | 2026-11-23 |
-| 앱 종료 때 앱이 띄운 API 정지                                                     | 통과(종료 뒤 uv·uvicorn 프로세스 사라짐, 재실행 때 새로 뜸)                        | 2026-11-20 |
-| Linux에서 키움 모의 서버 호출(IP 등록 포함)                                       | 미실행                                                                             |            |
-| 킬 스위치: 화면 버튼, SSH의 `systemctl --user stop`                               | 미실행                                                                             |            |
-| 장중 수집기 설치, 미니PC 공인 IP에서 키움 실계좌 조건검색 구독                    | 미실행                                                                             |            |
-| 미니PC 수집기로 첫 장 세션 기록(프리마켓~애프터마켓)                              | 미실행                                                                             |            |
+| 항목                                                                              | 결과                                                                                                                                                                                                                | 날짜       |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Wayland·실제 GPU에서 화면 렌더링, 한글 표시                                       | 통과(Wayland, AMD Phoenix3, 사용자 눈 확인)                                                                                                                                                                         | 2026-11-20 |
+| 로그인 직후 실행기와 키링의 시작 순서, 키 읽기 성공                               | 미실행                                                                                                                                                                                                              |            |
+| 키링이 잠겼을 때 비밀번호 창 동작                                                 | 미실행                                                                                                                                                                                                              |            |
+| 재부팅 → 로그인 뒤 실행기 자동 재기동                                             | 미실행                                                                                                                                                                                                              |            |
+| 재부팅 → 원격 로그인(3389, FreeRDP), 키링 열림, 끊어도 세션 유지·같은 세션 재접속 | 통과(원격 Wayland 세션, 키링 `Locked=false`). 실행기 미설치 상태라 재기동은 미확인                                                                                                                                  | 2026-11-23 |
+| 앱 종료 때 앱이 띄운 API 정지                                                     | 통과(종료 뒤 uv·uvicorn 프로세스 사라짐, 재실행 때 새로 뜸)                                                                                                                                                         | 2026-11-20 |
+| Linux에서 키움 모의 서버 호출(IP 등록 포함)                                       | 통과(키 탭 등록 키를 키링에서 읽어 `mockapi.kiwoom.com` 토큰 발급, 공인 IP는 iMac과 같음)                                                                                                                           | 2026-11-28 |
+| 킬 스위치: 화면 버튼, SSH의 `systemctl --user stop`                               | SSH stop 통과(1초, `paper runner stopped`). 화면 버튼 통과(`POST /v1/paper/kill` 200, 상태 `halted=true`, 실행기 heartbeat 계속). 앱 "설치하고 시작"의 `restart`가 한 번 90초 멈췄던 문제는 PR #268로 고침(아래 주) | 2026-11-28 |
+| 장중 수집기 설치, 미니PC 공인 IP에서 키움 실계좌 조건검색 구독                    | 설치 통과(두 유닛 active, 키링에서 키 읽고 `waiting`). 실계좌 구독은 첫 장 세션에서 확인                                                                                                                            | 2026-11-28 |
+| 미니PC 수집기로 첫 장 세션 기록(프리마켓~애프터마켓)                              | 미실행                                                                                                                                                                                                              |            |
+
+주(2026-11-28): systemd 기본 `KillMode=control-group`은 SIGTERM을 `uv`와 Python 자식 모두에 보내고, `uv`가 받은 신호를 자식에게 다시 넘긴다. 그래서 Python은 SIGTERM을 두 번 받는다. 신호 처리기가 `threading.Event.set()`을 부르던 고치기 전 코드(모의·실계좌 실행기, 수집기)는 두 번째 신호가 첫 처리기 안에서 끼어들면 Event 잠금에서 교착한다. Mac 재현: SIGTERM 세 번이면 200회 중 15회 멈춤, 한 번이면 0회. 멈추면 `TimeoutStopSec`(90초) 뒤 SIGKILL로 끝나고 종료 기록이 남지 않는다. macOS launchd는 주 프로세스에만 보내 해당하지 않는다. PR #268(머지 576951a)에서 고쳤다. 미니PC 확인(2026-11-28): `git pull` 뒤 실행기 `restart` 20회 모두 0.1초 안, 정지 로그 남음, SIGKILL 없음(실행기 유닛은 아직 `KillMode` 없는 옛 앱이 쓴 것이라 신호 두 번 받는 조건 그대로 시험했다). 수집기는 `install`로 `KillMode=mixed`가 들어갔고 restart 0.1초. 실행기 유닛은 앱을 새로 빌드해(576951a, `tauri build` 19초) `.deb`를 다시 설치하고 "설치하고 시작"을 눌러 `KillMode=mixed`가 들어갔고, restart 0.09초였다(2026-11-28). 반복 시험 때 알아 둘 것: 10초 안에 다섯 번 넘게 시작하면 systemd가 `start-limit-hit`으로 멈춘다. `systemctl --user reset-failed <유닛> && systemctl --user start <유닛>`으로 되살린다.
 
 ## 6. 2026-12 하드웨어 증설 (사용자)
 
