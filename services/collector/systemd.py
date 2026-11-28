@@ -142,6 +142,9 @@ def exec_arguments(collector: Collector, uv: Path, repo: Path, data_dir: Path) -
 
 
 def unit_text(collector: Collector, uv: Path, repo: Path, data_dir: Path, logs: Path) -> str:
+    # `KillMode=mixed`: the stop SIGTERM goes to uv alone, which forwards it to python once. The
+    # default (`control-group`) signalled both, python saw it twice and once hung until SIGKILL
+    # (2026-11-28 mini PC). Whatever outlives the stop timeout is still killed.
     for path in (uv, repo, data_dir, logs):
         if "\n" in str(path) or "\r" in str(path):
             # A line break would end the value and start another unit setting.
@@ -159,6 +162,7 @@ Type=simple
 WorkingDirectory={_escape_line(str(repo))}
 Environment={cache}
 ExecStart={program}
+KillMode=mixed
 Restart=always
 RestartSec=60
 StandardOutput=append:{log}

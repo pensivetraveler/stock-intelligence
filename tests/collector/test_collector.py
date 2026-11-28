@@ -1,7 +1,6 @@
 import json
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 from services.collector.cli import main
@@ -25,13 +24,16 @@ def test_missing_config_is_usage_error(tmp_path: Path, capsys: object) -> None:
 
 def test_run_stops_cleanly_on_sigterm() -> None:
     process = subprocess.Popen(
-        [sys.executable, "-m", "services.collector", "run"],
+        [sys.executable, "-u", "-m", "services.collector", "run"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
     try:
-        time.sleep(0.2)
+        # Wait for "running" (handlers installed) rather than a fixed sleep: under load the
+        # signal used to land before the handlers and kill the process with -15.
+        assert process.stdout is not None
+        first = process.stdout.readline()
         process.terminate()
         stdout, stderr = process.communicate(timeout=3)
     finally:
@@ -39,7 +41,7 @@ def test_run_stops_cleanly_on_sigterm() -> None:
             process.kill()
     assert process.returncode == 0
     assert stderr == ""
-    assert [json.loads(line)["status"] for line in stdout.splitlines()] == [
+    assert [json.loads(line)["status"] for line in [first, *stdout.splitlines()]] == [
         "running",
         "stopped",
     ]

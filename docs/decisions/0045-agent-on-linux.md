@@ -22,6 +22,7 @@
 | 상주 실행 | LaunchAgent (`launchd.rs`)             | systemd 사용자 서비스 (`systemd.rs`)                   |
 | 서비스    | `~/Library/LaunchAgents/<label>.plist` | `~/.config/systemd/user/<label>.service`               |
 | 재시작    | `KeepAlive`(실패 시), 30초 간격        | `Restart=on-failure`, `RestartSec=30`                  |
+| 정지      | 주 프로세스에 SIGTERM                  | `KillMode=mixed`(2026-11-28, uv에만 SIGTERM)           |
 | 설정 파일 | `~/Library/Application Support/...`    | `$XDG_CONFIG_HOME/com.pensivetraveler.siw.agent/`      |
 | 로그      | `~/Library/Logs/siw-agent`             | `$XDG_STATE_HOME/siw-agent`                            |
 | 키        | macOS 키체인                           | Secret Service(gnome-keyring), `keyring` 패키지 그대로 |

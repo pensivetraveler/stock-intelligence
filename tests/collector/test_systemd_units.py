@@ -49,7 +49,8 @@ def test_unit_runs_the_collector_from_the_repository_without_keys(tmp_path: Path
         'ExecStart="/home/u/.local/bin/uv" "run" "--env-file" ".env" "python" "-u" "-m" '
         f'"services.collector" "watch-condition" "--data-dir" "{repo / "data"}"'
     ) in text
-    assert "Restart=always" in text
+    # SIGTERM goes to uv alone, which forwards it once (2026-11-28: python saw it twice and hung).
+    assert "KillMode=mixed\nRestart=always" in text
     assert f"StandardOutput=append:{tmp_path / 'logs' / 'watch-condition.log'}" in text
     assert "WantedBy=default.target" in text
     lowered = text.lower()
