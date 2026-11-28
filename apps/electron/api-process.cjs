@@ -45,6 +45,30 @@ async function startFailure(apiUrl, exitCode) {
   return `the local API stopped while starting (exit ${exitCode})`;
 }
 
+/**
+ * The resident API service (launchd com.siw.api.serve), when it is installed. That API
+ * runs the deployed copy (collector-app) and is down for up to a few minutes while it
+ * restarts; starting one here then would take its port with this checkout's code.
+ */
+const RESIDENT_PLIST = path.join(
+  os.homedir(),
+  "Library/LaunchAgents/com.siw.api.serve.plist",
+);
+
+function residentService(plistPath = RESIDENT_PLIST) {
+  return fs.existsSync(plistPath) ? plistPath : null;
+}
+
+/** True once the API answers within timeoutMs. */
+async function waitForApi(apiUrl, { timeoutMs, intervalMs = 1000 }) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (await healthy(apiUrl)) return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
+
 /** uv in the usual places: apps opened from Finder do not get the shell's PATH. */
 function findUv() {
   const candidates = [
@@ -109,4 +133,10 @@ async function ensureApi({ apiUrl, repoDir, log }) {
   throw new Error("the local API did not answer within 60 seconds");
 }
 
-module.exports = { ensureApi, healthy, startFailure };
+module.exports = {
+  ensureApi,
+  healthy,
+  residentService,
+  startFailure,
+  waitForApi,
+};

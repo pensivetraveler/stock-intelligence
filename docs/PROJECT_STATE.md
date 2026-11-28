@@ -3610,3 +3610,11 @@
 - **시험:** `tests/market_data/test_kiwoom_quotes.py` 4개, `tests/collector/test_condition_watch.py` 2개 추가. 전체 pytest 통과, ruff·mypy 통과(시험 파일의 기존 mypy 오류 4개는 main에도 있다).
 - **실확인:** 2026-11-28 kwcli로 SDA usa20100 응답 필드 확인(`acc_trde_qty`, `mac` 천USD 등). 수정본 기록기로 실제 편입을 받은 기록은 아직 없다.
 - **할 일:** 돌고 있는 기록기(미니PC 또는 Mac)를 수정본으로 다시 배포·재시작해야 반영된다. 그 뒤 프리마켓 편입 몇 세션으로 "[일]거래량"을 가린다.
+
+## 2026-11-28 SIW Research: 상주 API가 재시작 중이면 API를 띄우지 않고 기다림(mondash #423)
+
+- **요청:** SIW 기법 카드·원펀치 [요청 #SIW-card-1]. 20:36:42 PR #271 배포로 `launchctl kickstart -k`를 실행했다. 2초 뒤 막 켠 SIW Research(pid 91678)가 `/health` 무응답을 보고 main 체크아웃(293a76b, #271 없음)에서 `uv run uvicorn`으로 8765를 잡았다. 상주 API는 `[Errno 48]`로 재시작을 반복했고, 그동안 `mult` 전략은 거절됐다.
+- **원인:** 앱은 켜질 때 한 번 `/health`를 보고, 응답이 없으면 패키징 때 기록한 저장소에서 API를 띄운다. 상주 API는 재시작할 때 시작 처리(lifespan)가 끝나야 포트를 잡으므로 50초~5분 동안 포트가 빈다.
+- **변경:** `apps/electron/api-process.cjs`에 `residentService()`·`waitForApi()`를 추가했다. `main.cjs`는 상주 서비스 plist가 있으면 API를 띄우지 않고, 창을 연 채 최대 6분 기다린다. 그래도 응답이 없으면 `launchctl print`·로그 위치를 담은 오류 창을 띄운다. plist가 없는 Mac에서는 예전처럼 저장소에서 띄운다. ADR 0028을 고쳤다.
+- **시험:** `apps/electron/test/api-process.test.cjs` 3개를 추가해 `npm test` 17개가 통과했다. 설치된 앱으로 배포 중 재현하는 시험은 미실행이다(새 빌드 설치 필요).
+- **남은 것:** 앱의 API를 누가 껐는지는 확인하지 못했다. 화면은 API가 돌아오면 기존 "다시 시도"로 회복된다.
