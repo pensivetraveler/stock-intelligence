@@ -58,6 +58,7 @@ function OperandEditor({
               onChange({
                 ...indicatorOperand(event.target.value),
                 ...(operand.offset ? { offset: operand.offset } : {}),
+                ...(operand.mult ? { mult: operand.mult } : {}),
               } as OperandDraft)
             }
           >
@@ -149,6 +150,22 @@ function OperandEditor({
             onChange({
               ...operand,
               offset: Number(event.target.value) || undefined,
+            })
+          }
+        />
+      )}
+      {operand.kind === "value" ? null : (
+        <input
+          className="bt-param"
+          inputMode="decimal"
+          aria-label={t("bt.mult", { side: label })}
+          title={t("bt.multHint")}
+          placeholder={t("bt.multShort")}
+          value={operand.mult ?? ""}
+          onChange={(event) =>
+            onChange({
+              ...operand,
+              mult: event.target.value || undefined,
             })
           }
         />
