@@ -61,11 +61,12 @@ The time zone of field `20` is not documented.
   - each watch, with its condition name and `seq`, start, end and why it ended;
   - the list the subscription answered (`listed`);
   - every `enter`/`leave` event, with the time SIW received it, Kiwoom's field `20` as given, and all of the event's raw values.
+  - since 2026-11-28 (mondash #393, ADR 0055), Kiwoom's quote of each entering ticker (`entry_quotes`): usa20100 (미국주식 현재가 종목정보) is asked on a worker thread right after the `enter` event, with the event's exchange code, and every field of the reply is kept as sent (current price, open, high, low, previous close, `acc_trde_qty`, `mac` in thousand USD and the rest), with when it was asked and answered. A quote that failed (or found 500 already waiting, `queue_full`) is kept as an `error` row. Leaves and listed tickers are not quoted. The export adds it to the event as `entry_quote`.
   - A watch whose end was never recorded (killed process, sleeping machine) is closed as `interrupted` at its last event the next time the store opens. A gap is therefore on record and never reads as a quiet market.
 - **Missed changes are shown:** the export gives each watch `differs_from_previous`, the tickers on its fresh list that the previous watch of the same condition did not end with (`entered`), and those it ended with that are missing (`left`). These are changes no event reported, whether during a silent subscription, a reconnect or the night between two windows. The first watch has `null`.
 - **Times:** the received time (UTC) is the only time SIW vouches for. Kiwoom's field `20` is Seoul time as `HHMMSS` without a date; it is kept as text.
 - **Reading it back:** `siw-collector export-condition --date YYYY-MM-DD` prints the watches and events of one New York date as JSON. The record is a log of what Kiwoom reported. It is not a bar or evidence, and replay, backtests and agents do not read it. Using it in a strategy needs its own decision.
-- **Allowlist:** the socket can now also send `GCNSRREQ` with `search_type` `1` and `GCNSRCLR`. Nothing else is added.
+- **Allowlist:** the socket can now also send `GCNSRREQ` with `search_type` `1` and `GCNSRCLR`. The entry quote uses its own REST client that can only call `POST /api/us/mrkcond` (usa20100), with the session's existing token, on a separate connection from the subscription. Nothing else is added.
 
 ## Alternatives
 

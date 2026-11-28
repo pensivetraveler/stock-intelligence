@@ -3602,3 +3602,11 @@
 - **확인:** 키링의 모의 키로 `mockapi.kiwoom.com` 토큰 발급(공인 IP는 iMac과 같음). SSH `systemctl --user stop` 1초, 화면 킬 스위치 `halted=true` 저장. 수정본에서 실행기 restart 20회 모두 0.1초 안, SIGKILL 없음.
 - **새로 안 것:** `uv run --env-file`은 따옴표 없는 공백 값에서 그 줄부터 끝까지 변수를 버린다. `bootout`만 한 LaunchAgent는 Mac 재로그인 때 다시 뜬다. systemd는 10초에 5번 넘게 시작하면 `start-limit-hit`. 모두 런북에 적었다.
 - **미검증:** 미니PC 공인 IP에서 키움 실계좌 조건검색 구독과 첫 장 세션 기록(12-01 확인 뒤 Mac plist 삭제), 로그인 직후 실행기·키링 순서, 키링 잠김 창, 재부팅 뒤 재기동(2026-12 증설 재부팅 때).
+
+## 2026-11-28 조건 기록기: 편입 순간 키움 시세 기록(ADR 0051·0055, mondash #393)
+
+- **한 일:** 사용자 지시("#393 기록기 변경 진행해줘")로 `watch-condition`이 편입(`enter`)마다 키움 usa20100(미국주식 현재가 종목정보)을 작업 스레드에서 조회해 `kiwoom_condition_watch.sqlite3`의 새 표 `entry_quotes`에 원본 그대로 남긴다. 요청·응답 시각을 함께 남기고, 실패하거나 대기열(500)이 차면 `error` 행으로 남긴다. 이탈·목록은 조회하지 않는다. `export-condition`은 이벤트에 `entry_quote`를 붙인다.
+- **변경:** `services/market_data/kiwoom_quotes.py`(새 파일, usa20100만 부르는 REST 클라이언트), `services/collector/condition_watch.py`(`EntryQuoter`, 표·내보내기), `services/collector/cli.py`.
+- **시험:** `tests/market_data/test_kiwoom_quotes.py` 4개, `tests/collector/test_condition_watch.py` 2개 추가. 전체 pytest 통과, ruff·mypy 통과(시험 파일의 기존 mypy 오류 4개는 main에도 있다).
+- **실확인:** 2026-11-28 kwcli로 SDA usa20100 응답 필드 확인(`acc_trde_qty`, `mac` 천USD 등). 수정본 기록기로 실제 편입을 받은 기록은 아직 없다.
+- **할 일:** 돌고 있는 기록기(미니PC 또는 Mac)를 수정본으로 다시 배포·재시작해야 반영된다. 그 뒤 프리마켓 편입 몇 세션으로 "[일]거래량"을 가린다.
