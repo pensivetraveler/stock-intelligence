@@ -3596,6 +3596,13 @@
 - **실제 운영 영향:** `KillMode=mixed` 유닛에서는 python이 SIGTERM을 한 번만 받으므로 이 구간에 늦게 오는 신호가 없다. 옛 유닛(control-group)에서도 SIGTERM에 의한 종료는 systemd가 정상 종료로 보고, `... runner stopped` 로그는 그 전에 남는다. 이번 수정은 그 경우도 종료 코드 0으로 만든다.
 - **시험:** `tests/test_stop_signal.py::test_signals_until_exit_do_not_kill_a_stopped_process`(종료할 때까지 SIGTERM을 퍼부어도 0·stderr 없음, 10회). 수정 전 코드로 돌리면 -15로 실패함을 확인했다.
 
+## 2026-11-28 미니PC 장중 수집기 설치(ADR 0059 1단계, mondash #304·#270·#26)
+
+- **한 일:** 사용자가 미니PC SIW Agent 키 탭에 키움 모의·실계좌, Alpaca 키를 등록했다. Mac LaunchAgent 두 개를 `bootout`·`disable`(plist 유지)한 뒤, 미니PC에 `services.collector.systemd install`로 수집기 두 유닛을 켰다(뉴욕 2026-11-30 04:00부터 기록 대기). 모의 실행기를 "설치하고 시작"으로 등록했다. PR #268 병합 뒤 미니PC에서 앱을 다시 빌드(`tauri build --bundles deb` 19초)·설치해 실행기·수집기 유닛에 `KillMode=mixed`를 넣었다.
+- **확인:** 키링의 모의 키로 `mockapi.kiwoom.com` 토큰 발급(공인 IP는 iMac과 같음). SSH `systemctl --user stop` 1초, 화면 킬 스위치 `halted=true` 저장. 수정본에서 실행기 restart 20회 모두 0.1초 안, SIGKILL 없음.
+- **새로 안 것:** `uv run --env-file`은 따옴표 없는 공백 값에서 그 줄부터 끝까지 변수를 버린다. `bootout`만 한 LaunchAgent는 Mac 재로그인 때 다시 뜬다. systemd는 10초에 5번 넘게 시작하면 `start-limit-hit`. 모두 런북에 적었다.
+- **미검증:** 미니PC 공인 IP에서 키움 실계좌 조건검색 구독과 첫 장 세션 기록(12-01 확인 뒤 Mac plist 삭제), 로그인 직후 실행기·키링 순서, 키링 잠김 창, 재부팅 뒤 재기동(2026-12 증설 재부팅 때).
+
 ## 2026-11-28 조건 기록기: 편입 순간 키움 시세 기록(ADR 0051·0055, mondash #393)
 
 - **한 일:** 사용자 지시("#393 기록기 변경 진행해줘")로 `watch-condition`이 편입(`enter`)마다 키움 usa20100(미국주식 현재가 종목정보)을 작업 스레드에서 조회해 `kiwoom_condition_watch.sqlite3`의 새 표 `entry_quotes`에 원본 그대로 남긴다. 요청·응답 시각을 함께 남기고, 실패하거나 대기열(500)이 차면 `error` 행으로 남긴다. 이탈·목록은 조회하지 않는다. `export-condition`은 이벤트에 `entry_quote`를 붙인다.
