@@ -10,7 +10,7 @@ import { useEffect, useRef } from "react";
 
 import { toSeries } from "./chart-data";
 import type { TradeMarker } from "./trade-review";
-import { CHART_CHROME, DECK } from "./theme";
+import { chartChrome, DECK, followTheme } from "./theme";
 
 /** Candles of one trade's instrument with its entries and exits marked. */
 export function TradeChart({
@@ -24,18 +24,19 @@ export function TradeChart({
 
   useEffect(() => {
     if (!host.current) return;
+    const chrome = chartChrome();
     const chart = createChart(host.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: CHART_CHROME.background },
-        textColor: CHART_CHROME.text,
+        background: { type: ColorType.Solid, color: chrome.background },
+        textColor: chrome.text,
       },
       grid: {
-        vertLines: { color: CHART_CHROME.grid },
-        horzLines: { color: CHART_CHROME.grid },
+        vertLines: { color: chrome.grid },
+        horzLines: { color: chrome.grid },
       },
-      rightPriceScale: { borderColor: CHART_CHROME.border },
-      timeScale: { borderColor: CHART_CHROME.border, timeVisible: true },
+      rightPriceScale: { borderColor: chrome.border },
+      timeScale: { borderColor: chrome.border, timeVisible: true },
     });
     const candles = chart.addSeries(CandlestickSeries, {
       upColor: DECK.up,
@@ -58,7 +59,11 @@ export function TradeChart({
       })),
     );
     chart.timeScale().fitContent();
-    return () => chart.remove();
+    const stopTheme = followTheme(chart);
+    return () => {
+      stopTheme();
+      chart.remove();
+    };
   }, [bars, markers]);
 
   return <div ref={host} className="rv-chart" data-testid="trade-chart" />;

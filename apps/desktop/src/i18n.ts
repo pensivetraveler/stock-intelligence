@@ -394,6 +394,16 @@ const en = {
   "nav.expand": "Expand sidebar",
   "nav.workHint": "opens beside the chart",
   "settings.keys": "Connections & keys",
+  "settings.display": "Display",
+  "theme.title": "Theme",
+  "theme.a.name": "Neutral chrome",
+  "theme.a.desc":
+    "Grey frame; colour only on prices and ledgers. Panels are split by 1px lines.",
+  "theme.b.name": "Docked tiles",
+  "theme.b.desc":
+    "Panels float with gaps; the main button and selections use the violet accent.",
+  "theme.note":
+    "Applies at once and is kept on this computer. Market colours, the five ledger colours and paper/live marks are the same in both.",
   "band.open": "Open",
   "band.high": "High",
   "band.low": "Low",
@@ -2664,6 +2674,16 @@ const ko: Record<MessageKey, string> = {
   "nav.expand": "사이드바 펼치기",
   "nav.workHint": "차트 옆에 열림",
   "settings.keys": "연결·키",
+  "settings.display": "화면",
+  "theme.title": "테마",
+  "theme.a.name": "무채 크롬",
+  "theme.a.desc":
+    "틀은 회색뿐이고 색은 시세·원장에만 씁니다. 패널은 1px 선으로 나뉩니다.",
+  "theme.b.name": "도킹 타일",
+  "theme.b.desc":
+    "패널이 틈을 두고 떠 있고, 주 버튼·고른 것에 보라 강조를 씁니다.",
+  "theme.note":
+    "고르면 바로 바뀌고 이 컴퓨터에 저장됩니다. 시장 등락색, 원장 다섯 색, 모의·실계좌 표시는 두 테마가 같습니다.",
   "band.open": "시가",
   "band.high": "고가",
   "band.low": "저가",

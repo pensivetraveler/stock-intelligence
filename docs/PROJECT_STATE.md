@@ -2875,6 +2875,7 @@
 - **시험:** `tests/screening/test_stage4.py` 11개, 패널 테스트 1개, fixture `screening-candidates-stage4.json`.
 - **미확인:** 실제 분석기·Alpaca 키로 장중 실행(배포·재시작 뒤), 후보가 많은 날의 희석 처리량. 세션 뒤 실행과 오류 자동 재시도는 하지 않는다.
 - **2026-11-26 확인(mondash -192·-283 닫음):** 11-20·11-23·11-24 장중 실제 분석기·Alpaca로 자동 실행됐다(희석 55/93/84건, 대기→결과 중앙값 34~39초·최대 356초, 밀림 없음. 장외 체결 ok 94/85). 규칙만 결과는 늘 `llm_disabled` 하나로 불완전이다(설계대로, 293건 중 `ok` 0). 분석기의 공시 `index.json` 404 실패(하루 4~6건)는 분석기 67d33ae(`[요청 #SIW-dil-5]`)로 고쳤다.
+- **실패한 희석 분석 다시 요청(2026-11-28, mondash 430, 사용자 승인):** 4단계 실행기는 분석기가 `failed`로 끝낸 분석(SEC 503/504 재시도 소진 등)을 실패 5분 뒤부터 세션당 2번까지 다시 요청한다. 새 검사의 `result.stage4.retry_of_check_id`(계약 선택 필드)가 실패한 검사를 가리킨다. `blocked`·SIW 쪽 오류는 다시 요청하지 않는다. 시험 `tests/screening/test_stage4.py` 3개.
 - **'규칙만' 표시(2026-11-26, mondash -353, 사용자 승인):** 희석 결과가 `llm_disabled` 하나만으로 불완전하면 패널은 "일부만" 대신 "규칙만"이라고 한다. 다른 사유(`sec_fetch_failed` 등)가 섞이면 그대로 "일부만". 판정은 `services/screening/dilution.py`의 `rules_only_incomplete`, API는 후보 목록 `checks.dilution.rules_only_incomplete`와 `stage4.dilution.rules_only_incomplete`(계약 필드 추가). 검사 상태(`incomplete`)와 저장 문서는 바꾸지 않는다.
 
 ## 기법 자료 조회·카드 추출 백엔드(ADR 0056 L1·L2) — 2026-11-14

@@ -301,3 +301,57 @@ def test_the_summary_without_checks_says_not_started() -> None:
 def test_the_contract_fixture_is_valid() -> None:
     path = Path("tests/fixtures/contracts/valid/screening-candidates-stage4.json")
     validate_document(json.loads(path.read_text()))
+
+
+def _posted(setup: Setup, symbol: str) -> int:
+    return sum(1 for item in setup.analyzer.posted if item["ticker"] == symbol)
+
+
+def test_a_failed_analysis_is_asked_again_later_at_most_twice(setup: Setup) -> None:
+    # mondash 430: SEC 503/504 after the analyzer's own retries ends as `failed`.
+    setup.analyzer.states = ["failed"]
+    setup.runner.tick()  # PASS fails
+    setup.runner.tick()  # too soon for PASS: RATE is asked (and fails)
+    assert _posted(setup, "PASS") == 1 and _posted(setup, "RATE") == 1
+    first = setup.kinds("dilution")[0]
+    assert first["status"] == "error" and first["result"]["service_state"] == "failed"
+    for attempt in (2, 3):
+        setup.now += timedelta(minutes=5)
+        report = setup.runner.tick()
+        assert report is not None and report["dilution_retried"] == "PASS"
+        assert _posted(setup, "PASS") == attempt
+        setup.runner.tick()  # RATE's turn
+    retried = [d for d in setup.kinds("dilution") if d["symbol"] == "PASS"][-1]
+    note = retried["result"]["stage4"]
+    assert note["retry_of_check_id"] < retried["check_id"]
+    validate_document(retried)
+    setup.now += timedelta(minutes=5)
+    setup.runner.tick()
+    setup.runner.tick()
+    assert _posted(setup, "PASS") == 3, "two retries a session, no more"
+
+
+def test_a_retry_that_waits_is_looked_at_and_its_result_shown(setup: Setup) -> None:
+    setup.analyzer.states = ["failed"]
+    setup.runner.tick()
+    setup.runner.tick()
+    setup.now += timedelta(minutes=5)
+    setup.analyzer.states = ["queued"]
+    report = setup.runner.tick()
+    assert report is not None and report["dilution_retried"] == "PASS"
+    report = setup.runner.tick()
+    assert report is not None and report["dilution_blocked"], "the retry is waited for"
+    setup.analyzer.states = ["done"]
+    report = setup.runner.tick()
+    assert report is not None and "PASS" in report["dilution_refreshed"]
+    assert setup.candidates()["PASS"]["stage4"]["dilution"]["status"] == "ok"
+
+
+def test_other_errors_are_not_asked_again(setup: Setup) -> None:
+    setup.analyzer.states = ["blocked"]
+    setup.runner.tick()
+    setup.runner.tick()
+    setup.now += timedelta(minutes=30)
+    report = setup.runner.tick()
+    assert report is not None and report["dilution_retried"] is None
+    assert _posted(setup, "PASS") == 1
