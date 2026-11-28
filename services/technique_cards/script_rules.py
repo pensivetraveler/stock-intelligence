@@ -73,6 +73,19 @@ class NotScriptable(Exception):
 
 
 def _operand(slot: dict[str, Any], assumptions: list[dict[str, Any]]) -> dict[str, Any]:
+    operand = _unscaled(slot, assumptions)
+    number = slot.get("value")
+    if slot.get("kind") not in ("indicator", "price") or number is None:
+        return operand
+    if operand.get("indicator") in ("bb", "bbw"):
+        # On a band the number is its width in standard deviations (1b7a80be: upper, 2).
+        return {**operand, "params": {**operand["params"], "mult": number}}
+    # "1.3 times the 20-day average volume", "0.65 of the 52-week high" (841c304b): the
+    # number scales the operand. Dropping it read "1.3배 이상" as "at or above the average".
+    return {**operand, "mult": str(number)}
+
+
+def _unscaled(slot: dict[str, Any], assumptions: list[dict[str, Any]]) -> dict[str, Any]:
     kind, name, period = slot.get("kind"), slot.get("name"), slot.get("period")
     if name == "other":
         # The extractor found no slot for it (a Fibonacci ratio landed in a value slot as
