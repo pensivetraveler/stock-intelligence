@@ -682,6 +682,8 @@ describe("what-ifs and checks", () => {
     show(api);
     await screen.findByText("2 of 2 trades");
     expect(screen.getByText("1 broken")).toBeInTheDocument();
+    // Tag, principles and "only this symbol" sit behind "More filters" (디자인-siw-4 G11).
+    fireEvent.click(screen.getByRole("button", { name: "More filters" }));
     fireEvent.change(screen.getByLabelText("Principles"), {
       target: { value: "broken" },
     });

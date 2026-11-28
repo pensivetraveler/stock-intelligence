@@ -25,6 +25,7 @@ import {
 import type { AgentApi } from "./agent-api";
 import { BacktestResultsView, type RealFills } from "./BacktestResultsView";
 import { translateDynamic, useI18n } from "./i18n";
+import { Notice } from "./PanelParts";
 import type { InstrumentListing } from "./market-api";
 import { RuleBuilder } from "./RuleBuilder";
 import { WalkForwardFields } from "./WalkForwardFields";
@@ -356,6 +357,25 @@ export function BacktestScreen({
         <header className="modal-head">
           <h2>{t("bt.title")}</h2>
           <span className="workspace-note">{t("bt.subtitle")}</span>
+          {/* 디자인-siw-4 G14: save and run stay in the head, not under the long form. */}
+          <span className="modal-head-actions">
+            <button
+              type="button"
+              className="tb-button"
+              disabled={busy}
+              onClick={() => void saveAndRun(false)}
+            >
+              {t("bt.save")}
+            </button>
+            <button
+              type="button"
+              className="tb-button bt-primary"
+              disabled={busy || !currency || chosen.length === 0}
+              onClick={() => void saveAndRun(true)}
+            >
+              {t("bt.saveAndRun")}
+            </button>
+          </span>
           <button
             type="button"
             className="tb-button"
@@ -365,11 +385,7 @@ export function BacktestScreen({
             ✕
           </button>
         </header>
-        {problem ? (
-          <p className="bt-problem" role="alert">
-            {problem}
-          </p>
-        ) : null}
+        {problem ? <Notice tone="fail">{problem}</Notice> : null}
         <div className="bt-body">
           <div className="bt-column">
             <h3>{t("bt.strategy")}</h3>
@@ -623,24 +639,6 @@ export function BacktestScreen({
               }
               onChange={setWalkForward}
             />
-            <p className="bt-actions">
-              <button
-                type="button"
-                className="tb-button"
-                disabled={busy}
-                onClick={() => void saveAndRun(false)}
-              >
-                {t("bt.save")}
-              </button>
-              <button
-                type="button"
-                className="tb-button bt-primary"
-                disabled={busy || !currency || chosen.length === 0}
-                onClick={() => void saveAndRun(true)}
-              >
-                {t("bt.saveAndRun")}
-              </button>
-            </p>
           </div>
 
           <div className="bt-column bt-wide">

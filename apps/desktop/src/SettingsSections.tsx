@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 
 import { useI18n } from "./i18n";
+import { Notice } from "./PanelParts";
 import {
   MODEL_NAMES,
   type TechniqueCardsApi,
@@ -56,9 +57,9 @@ export function TechniqueDefaultModel({ api }: { api: TechniqueCardsApi }) {
         <p className="workspace-note">{t("research.loading")}</p>
       )}
       {problem ? (
-        <p className="chart-error" role="alert">
+        <Notice tone="fail" title={t("parts.failed")}>
           {problem}
-        </p>
+        </Notice>
       ) : null}
     </section>
   );

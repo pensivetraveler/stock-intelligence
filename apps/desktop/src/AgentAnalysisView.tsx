@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import type { AgentApi } from "./agent-api";
 import { translateDynamic, useI18n } from "./i18n";
+import { Notice, Step } from "./PanelParts";
 import { MarketApiError } from "./market-api";
 import { zoneOf, type MarketZone } from "./market-zone";
 
@@ -47,11 +48,14 @@ export function AgentAnalysisView({
   analysis,
   onUpdated,
   symbolOf,
+  onOpenKeys,
 }: {
   api: AgentApi;
   analysis: AgentAnalysis;
   onUpdated: (next: AgentAnalysis) => void;
   symbolOf: (instrumentId: string) => string;
+  /** Opens Settings › Connections & keys when the Claude key is missing. */
+  onOpenKeys?: () => void;
 }) {
   const { t, language } = useI18n();
   const [payload, setPayload] = useState<string | null>(null);
@@ -71,7 +75,7 @@ export function AgentAnalysisView({
     };
   }, [api, analysis.analysis_id, t]);
   const [state, setState] = useState<
-    { busy: false; error: string | null } | { busy: true }
+    { busy: false; error: string | null; keyMissing?: boolean } | { busy: true }
   >({ busy: false, error: null });
   const target = analysis.target;
   const label = (code: string) =>
@@ -117,6 +121,9 @@ export function AgentAnalysisView({
       .catch((error: unknown) =>
         setState({
           busy: false,
+          keyMissing:
+            error instanceof MarketApiError &&
+            error.code === "agent_key_missing",
           error:
             error instanceof MarketApiError &&
             error.code === "agent_key_missing"
@@ -130,124 +137,142 @@ export function AgentAnalysisView({
 
   return (
     <article className="agent-analysis" aria-label={title}>
-      <h3>{title}</h3>
-      <p className="workspace-note">
-        {target.type === "filings" || target.type === "dark_pool"
-          ? t("agent.factsNotePublic")
-          : t("agent.factsNote")}
-      </p>
-      <table className="bt-table agent-facts" aria-label={t("agent.facts")}>
-        <tbody>
-          {analysis.facts.map((fact, index) => (
-            <tr
-              key={`${fact.code}:${fact.subject ?? ""}:${index}`}
-              title={fact.text}
-            >
-              <td>
-                {label(fact.code)}
-                {fact.subject ? ` · ${symbolOf(fact.subject)}` : ""}
-                {fact.hindsight ? (
-                  <span className="agent-hindsight">
-                    {t("agent.hindsight")}
-                  </span>
-                ) : null}
-              </td>
-              <td>{shown(fact)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {analysis.missing.length > 0 ? (
+      <Step n={1} title={title}>
         <p className="workspace-note">
-          {t("agent.missing", {
-            items: [...new Set(analysis.missing.map(label))].join(", "),
-          })}
+          {target.type === "filings" || target.type === "dark_pool"
+            ? t("agent.factsNotePublic")
+            : t("agent.factsNote")}
         </p>
-      ) : null}
-      {analysis.uncertainty.length > 0 ? (
-        <ul className="bt-warnings" aria-label={t("agent.uncertainty")}>
-          {analysis.uncertainty.map((note) => (
-            <li key={note}>{note}</li>
-          ))}
-        </ul>
-      ) : null}
-      <details>
-        <summary>{t("agent.sources")}</summary>
-        <p className="workspace-note">
-          {analysis.agent_version} · {analysis.dataset_revisions.join(", ")}
-        </p>
-        {analysis.warnings.length > 0 ? (
-          <ul>
-            {analysis.warnings.map((warning) => (
-              <li key={warning}>{warning}</li>
+        <table className="bt-table agent-facts" aria-label={t("agent.facts")}>
+          <tbody>
+            {analysis.facts.map((fact, index) => (
+              <tr
+                key={`${fact.code}:${fact.subject ?? ""}:${index}`}
+                title={fact.text}
+              >
+                <td>
+                  {label(fact.code)}
+                  {fact.subject ? ` · ${symbolOf(fact.subject)}` : ""}
+                  {fact.hindsight ? (
+                    <span className="agent-hindsight">
+                      {t("agent.hindsight")}
+                    </span>
+                  ) : null}
+                </td>
+                <td>{shown(fact)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {analysis.missing.length > 0 ? (
+          <p className="workspace-note">
+            {t("agent.missing", {
+              items: [...new Set(analysis.missing.map(label))].join(", "),
+            })}
+          </p>
+        ) : null}
+        {analysis.uncertainty.length > 0 ? (
+          <ul className="bt-warnings" aria-label={t("agent.uncertainty")}>
+            {analysis.uncertainty.map((note) => (
+              <li key={note}>{note}</li>
             ))}
           </ul>
         ) : null}
-      </details>
-
-      <div className="agent-ask">
-        {/* 디자인-siw-1 N2: what will be sent stays open above the ask button. */}
-        <details className="agent-payload" open>
-          <summary>{t("agent.payload")}</summary>
-          <p className="workspace-note">{t("agent.payloadNote")}</p>
-          <pre className="bt-logs">{payload ?? "…"}</pre>
-        </details>
-        <button
-          type="button"
-          className="tb-button bt-primary"
-          disabled={state.busy}
-          onClick={ask}
-        >
-          {state.busy ? t("agent.asking") : t("agent.askClaude")}
-        </button>
-        {!state.busy && state.error ? (
-          <p className="bt-problem" role="alert">
-            {state.error}
-          </p>
-        ) : null}
-      </div>
-
-      {analysis.commentaries.map((commentary) => (
-        <section
-          key={commentary.created_at_utc + commentary.model}
-          className="agent-commentary"
-          aria-label={t("agent.commentary")}
-        >
+        <details>
+          <summary>{t("agent.sources")}</summary>
           <p className="workspace-note">
-            {t("agent.commentaryBy", {
-              model: commentary.model,
-              time: commentary.created_at_utc.slice(0, 16).replace("T", " "),
-            })}
+            {analysis.agent_version} · {analysis.dataset_revisions.join(", ")}
           </p>
-          <p>{commentary.summary}</p>
-          {(
-            [
-              ["inferences", commentary.inferences],
-              ["hypotheses", commentary.hypotheses],
-              ["questions", commentary.questions],
-            ] as const
-          ).map(([kind, items]) =>
-            items.length > 0 ? (
-              <div key={kind}>
-                <h4>{t(`agent.${kind}`)}</h4>
-                <ul>
-                  {items.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null,
-          )}
-          {commentary.uncertainty ? (
+          {analysis.warnings.length > 0 ? (
+            <ul>
+              {analysis.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          ) : null}
+        </details>
+      </Step>
+      <Step n={2} title={t("agent.stepSend")}>
+        <div className="agent-ask">
+          {/* 디자인-siw-1 N2: what will be sent stays open above the ask button. */}
+          <details className="agent-payload" open>
+            <summary>{t("agent.payload")}</summary>
+            <p className="workspace-note">{t("agent.payloadNote")}</p>
+            <pre className="bt-logs">{payload ?? "…"}</pre>
+          </details>
+          <button
+            type="button"
+            className="tb-button bt-primary"
+            disabled={state.busy}
+            onClick={ask}
+          >
+            {state.busy ? t("agent.asking") : t("agent.askClaude")}
+          </button>
+          {!state.busy && state.error ? (
+            <Notice
+              tone={state.keyMissing ? "need" : "fail"}
+              title={
+                state.keyMissing
+                  ? t("parts.needKey", { provider: t("parts.provider.claude") })
+                  : undefined
+              }
+              onOpenKeys={state.keyMissing ? onOpenKeys : undefined}
+            >
+              {state.error}
+            </Notice>
+          ) : null}
+        </div>
+      </Step>
+      <Step
+        n={3}
+        title={t("agent.stepCommentary")}
+        locked={analysis.commentaries.length === 0}
+      >
+        {analysis.commentaries.length === 0 ? (
+          <p className="step-placeholder">{t("agent.stepCommentaryLocked")}</p>
+        ) : null}
+        {analysis.commentaries.map((commentary) => (
+          <section
+            key={commentary.created_at_utc + commentary.model}
+            className="agent-commentary"
+            aria-label={t("agent.commentary")}
+          >
             <p className="workspace-note">
-              {t("agent.commentaryUncertainty", {
-                text: commentary.uncertainty,
+              {t("agent.commentaryBy", {
+                model: commentary.model,
+                time: commentary.created_at_utc.slice(0, 16).replace("T", " "),
               })}
             </p>
-          ) : null}
-          <p className="workspace-note">{t("agent.notAdvice")}</p>
-        </section>
-      ))}
+            <p>{commentary.summary}</p>
+            {(
+              [
+                ["inferences", commentary.inferences],
+                ["hypotheses", commentary.hypotheses],
+                ["questions", commentary.questions],
+              ] as const
+            ).map(([kind, items]) =>
+              items.length > 0 ? (
+                <div key={kind}>
+                  <h4>{t(`agent.${kind}`)}</h4>
+                  <ul>
+                    {items.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null,
+            )}
+            {commentary.uncertainty ? (
+              <p className="workspace-note">
+                {t("agent.commentaryUncertainty", {
+                  text: commentary.uncertainty,
+                })}
+              </p>
+            ) : null}
+            <p className="workspace-note">{t("agent.notAdvice")}</p>
+          </section>
+        ))}
+      </Step>
     </article>
   );
 }

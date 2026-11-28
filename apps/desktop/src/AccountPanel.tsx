@@ -7,14 +7,21 @@ import { useCallback, useEffect, useState } from "react";
 import { exchangeTime } from "./chart-data";
 import { useI18n } from "./i18n";
 import { MarketApiError, type MarketApi } from "./market-api";
+import { Notice, PanelBar } from "./PanelParts";
 
 interface AccountPanelProps {
   api: MarketApi;
   /** Called after a sync so the journal shows the new broker executions. */
   onSynced: () => void;
+  /** Opens Settings › Connections & keys (shown when the Toss key is missing). */
+  onOpenKeys?: () => void;
 }
 
 const dash = (value: string | null | undefined) => value ?? "—";
+
+/** Colours a signed figure (P&L, rate) with the market up/down colours. */
+const signClass = (value: string | null | undefined) =>
+  !value ? undefined : value.startsWith("-") ? "legend-down" : "legend-up";
 
 type Account = BrokerAccountSnapshot["accounts"][number];
 
@@ -24,7 +31,7 @@ type Account = BrokerAccountSnapshot["accounts"][number];
  * syncs of filled Toss, Kiwoom and Meritz orders into the broker ledger. Nothing here can
  * place, change or cancel an order.
  */
-export function AccountPanel({ api, onSynced }: AccountPanelProps) {
+export function AccountPanel({ api, onSynced, onOpenKeys }: AccountPanelProps) {
   const { t } = useI18n();
   const [snapshot, setSnapshot] = useState<BrokerAccountSnapshot | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -38,6 +45,7 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
   >({ state: "idle" });
   const [sellable, setSellable] = useState<Record<string, string>>({});
   const [kiwoomSince, setKiwoomSince] = useState("");
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const load = useCallback(() => {
     let current = true;
@@ -81,11 +89,21 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
 
   const describe = (reason: unknown) =>
     reason instanceof MarketApiError &&
-    reason.code === "quote_source_unavailable"
-      ? t("account.noKey")
-      : t("account.failed", {
+    reason.code === "quote_source_unavailable" ? (
+      <Notice
+        tone="need"
+        title={t("parts.needKey", { provider: t("parts.provider.toss") })}
+        onOpenKeys={onOpenKeys}
+      >
+        {t("account.noKey")}
+      </Notice>
+    ) : (
+      <Notice tone="fail" title={t("parts.failed")}>
+        {t("account.failed", {
           error: reason instanceof Error ? reason.message : String(reason),
-        });
+        })}
+      </Notice>
+    );
 
   const accountView = (account: Account, broker: "toss" | "meritz") => (
     <div className="ledger" key={account.account_ref}>
@@ -97,23 +115,31 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
               type: account.account_type,
             })}
       </h3>
-      {account.summary ? (
-        <p>
-          {t("account.summary", {
-            usd: dash(account.summary.market_value.usd),
-            krw: dash(account.summary.market_value.krw),
-            pnlUsd: dash(account.summary.profit_loss.usd),
-            pnlKrw: dash(account.summary.profit_loss.krw),
-            rate: dash(account.summary.profit_loss_rate),
-          })}
-        </p>
-      ) : null}
-      <p>
-        {t("account.buyingPower", {
-          usd: dash(account.buying_power.usd),
-          krw: dash(account.buying_power.krw),
-        })}
-      </p>
+      <dl className="account-figures">
+        {account.summary ? (
+          <>
+            <div>
+              <dt>{t("account.value")}</dt>
+              <dd>{dash(account.summary.market_value.usd)} USD</dd>
+              <dd>{dash(account.summary.market_value.krw)} KRW</dd>
+            </div>
+            <div>
+              <dt>{t("account.pnl")}</dt>
+              <dd className={signClass(account.summary.profit_loss.usd)}>
+                {dash(account.summary.profit_loss.usd)} USD
+              </dd>
+              <dd className={signClass(account.summary.profit_loss_rate)}>
+                {dash(account.summary.profit_loss_rate)}
+              </dd>
+            </div>
+          </>
+        ) : null}
+        <div>
+          <dt>{t("account.cash")}</dt>
+          <dd>{dash(account.buying_power.usd)} USD</dd>
+          <dd>{dash(account.buying_power.krw)} KRW</dd>
+        </div>
+      </dl>
       <h3>{t("account.holdings")}</h3>
       {account.holdings.length === 0 ? (
         <p className="workspace-note">{t("account.noHoldings")}</p>
@@ -231,65 +257,89 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
           .join(" · ") || "—"}
       </p>
       {account.errors.length ? (
-        <p className="chart-error">
+        <Notice tone="caution">
           {t("account.partErrors", { errors: account.errors.join(" · ") })}
-        </p>
+        </Notice>
       ) : null}
     </div>
   );
 
   return (
     <section className="quote-panel" aria-label={t("account.title")}>
-      <h2>{t("account.title")}</h2>
-      <p className="workspace-note">{t("account.readOnly")}</p>
-      <p>
-        <button
-          type="button"
-          disabled={sync.state === "busy"}
-          onClick={() => runSync("toss")}
-        >
-          {sync.state === "busy" ? t("account.syncing") : t("account.sync")}
-        </button>{" "}
-        <button
-          type="button"
-          disabled={sync.state === "busy"}
-          onClick={() => runSync("kiwoom")}
-        >
-          {t("account.syncKiwoom")}
-        </button>{" "}
-        <button
-          type="button"
-          disabled={sync.state === "busy"}
-          onClick={() => runSync("kiwoom-kr")}
-        >
-          {t("account.syncKiwoomDomestic")}
-        </button>{" "}
-        <button
-          type="button"
-          disabled={sync.state === "busy"}
-          onClick={() => runSync("kiwoom-fees")}
-        >
-          {t("account.syncKiwoomFees")}
-        </button>{" "}
-        <button
-          type="button"
-          disabled={sync.state === "busy"}
-          onClick={() => runSync("meritz")}
-        >
-          {t("account.syncMeritz")}
-        </button>{" "}
-        <label>
-          {t("account.kiwoomSince")}{" "}
-          <input
-            type="date"
-            value={kiwoomSince}
-            onChange={(event) => setKiwoomSince(event.target.value)}
-          />
-        </label>{" "}
+      <PanelBar title={t("account.title")}>
         <button type="button" className="secondary" onClick={() => load()}>
           {t("account.refresh")}
         </button>
-      </p>
+      </PanelBar>
+      <div className="account-sync">
+        <span className="split-button">
+          <button
+            type="button"
+            disabled={sync.state === "busy"}
+            onClick={() => runSync("toss")}
+          >
+            {sync.state === "busy" ? t("account.syncing") : t("account.sync")}
+          </button>
+          <button
+            type="button"
+            className="split-toggle"
+            aria-expanded={moreOpen}
+            aria-label={t("account.moreSyncs")}
+            title={t("account.moreSyncs")}
+            onClick={() => setMoreOpen(!moreOpen)}
+          >
+            ▾
+          </button>
+        </span>
+        {moreOpen ? (
+          <div
+            className="account-sync-more"
+            role="group"
+            aria-label={t("account.moreSyncs")}
+          >
+            <button
+              type="button"
+              className="secondary"
+              disabled={sync.state === "busy"}
+              onClick={() => runSync("kiwoom")}
+            >
+              {t("account.syncKiwoom")}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={sync.state === "busy"}
+              onClick={() => runSync("kiwoom-kr")}
+            >
+              {t("account.syncKiwoomDomestic")}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={sync.state === "busy"}
+              onClick={() => runSync("kiwoom-fees")}
+            >
+              {t("account.syncKiwoomFees")}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={sync.state === "busy"}
+              onClick={() => runSync("meritz")}
+            >
+              {t("account.syncMeritz")}
+            </button>
+            <label>
+              {t("account.kiwoomSince")}
+              <input
+                type="date"
+                value={kiwoomSince}
+                onChange={(event) => setKiwoomSince(event.target.value)}
+              />
+            </label>
+          </div>
+        ) : null}
+      </div>
       {sync.state === "done" ? (
         <p className="workspace-note" role="status">
           {t("account.synced", {
@@ -314,16 +364,8 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
             : null}
         </p>
       ) : null}
-      {sync.state === "failed" ? (
-        <p className="chart-error" role="alert">
-          {describe(sync.error)}
-        </p>
-      ) : null}
-      {error ? (
-        <p className="chart-error" role="alert">
-          {describe(error)}
-        </p>
-      ) : null}
+      {sync.state === "failed" ? describe(sync.error) : null}
+      {error ? describe(error) : null}
       {snapshot === null && !error ? (
         <p className="workspace-note">{t("account.loading")}</p>
       ) : null}
@@ -336,16 +378,17 @@ export function AccountPanel({ api, onSynced }: AccountPanelProps) {
         meritzError instanceof MarketApiError &&
         meritzError.code === "quote_source_unavailable"
       ) ? (
-        <p className="chart-error" role="alert">
+        <Notice tone="fail">
           {t("account.meritzFailed", {
             error:
               meritzError instanceof Error
                 ? meritzError.message
                 : String(meritzError),
           })}
-        </p>
+        </Notice>
       ) : null}
       {meritz?.accounts.map((account) => accountView(account, "meritz"))}
+      <p className="workspace-note panel-foot">{t("account.readOnly")}</p>
     </section>
   );
 }

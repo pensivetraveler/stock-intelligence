@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useI18n } from "./i18n";
+import { Notice } from "./PanelParts";
 import { TechniqueDraftPanel } from "./TechniqueDraftPanel";
 import { MarketApiError } from "./market-api";
 import {
@@ -100,6 +101,18 @@ export function TechniqueCardsScreen({
   const [sources, setSources] = useState<TechniqueSource[] | null>(null);
   const [cards, setCards] = useState<CardSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // The library not being set up is a setting to make, not an error (디자인-siw-4 G15).
+  const [libraryOff, setLibraryOff] = useState<string | null>(null);
+  const fail = (reason: unknown) => {
+    if (
+      reason instanceof MarketApiError &&
+      reason.code === "technique_library_unconfigured"
+    ) {
+      setLibraryOff(reason.message);
+      return;
+    }
+    setError(message(reason));
+  };
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<TechniquePreview | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null);
@@ -124,7 +137,7 @@ export function TechniqueCardsScreen({
           setSettings(nextSettings);
           setError(null);
         })
-        .catch((reason: unknown) => setError(message(reason)))
+        .catch((reason: unknown) => fail(reason))
         .finally(() => setLoading(false));
     },
     [api],
@@ -142,7 +155,7 @@ export function TechniqueCardsScreen({
           setAdded(next.resolutions.added ?? []);
           setError(null);
         })
-        .catch((reason: unknown) => setError(message(reason)));
+        .catch((reason: unknown) => fail(reason));
     },
     [api],
   );
@@ -164,7 +177,7 @@ export function TechniqueCardsScreen({
         })
         .catch((reason: unknown) => {
           setJob(null);
-          setError(message(reason));
+          fail(reason);
         });
     }, pollMs);
     return () => window.clearInterval(timer);
@@ -181,7 +194,7 @@ export function TechniqueCardsScreen({
         setPreview(next);
         setError(null);
       })
-      .catch((reason: unknown) => setError(message(reason)))
+      .catch((reason: unknown) => fail(reason))
       .finally(() => setPreviewing(null));
   };
 
@@ -206,7 +219,7 @@ export function TechniqueCardsScreen({
         setPreview(null);
         setError(null);
       })
-      .catch((reason: unknown) => setError(message(reason)));
+      .catch((reason: unknown) => fail(reason));
   };
 
   const flagsOf = useMemo(() => {
@@ -234,7 +247,7 @@ export function TechniqueCardsScreen({
         openCard(card.card_id);
         load();
       })
-      .catch((reason: unknown) => setError(message(reason)));
+      .catch((reason: unknown) => fail(reason));
   };
 
   const withdraw = () => {
@@ -245,7 +258,7 @@ export function TechniqueCardsScreen({
         openCard(card.card_id);
         load();
       })
-      .catch((reason: unknown) => setError(message(reason)));
+      .catch((reason: unknown) => fail(reason));
   };
 
   const recheck = () => {
@@ -253,7 +266,7 @@ export function TechniqueCardsScreen({
     api
       .recheck(card.card_id)
       .then(() => openCard(card.card_id))
-      .catch((reason: unknown) => setError(message(reason)));
+      .catch((reason: unknown) => fail(reason));
   };
 
   const setAction = (index: number, action: Resolution["action"]) => {
@@ -313,7 +326,7 @@ export function TechniqueCardsScreen({
                   api
                     .setDefaultModel(event.target.value)
                     .then(setSettings)
-                    .catch((reason: unknown) => setError(message(reason)))
+                    .catch((reason: unknown) => fail(reason))
                 }
               >
                 {settings.default_choices.map((model) => (
@@ -353,11 +366,18 @@ export function TechniqueCardsScreen({
             ✕
           </button>
         </header>
-        {error ? (
-          <p className="form-error" role="alert">
-            {error}
-          </p>
+        {libraryOff ? (
+          <Notice tone="need" title={t("tc.libraryOff")}>
+            {t("tc.libraryOffNote")}
+          </Notice>
         ) : null}
+        {libraryOff ? (
+          <details className="tc-off-details">
+            <summary>{t("parts.details")}</summary>
+            <p className="workspace-note">{libraryOff}</p>
+          </details>
+        ) : null}
+        {error ? <Notice tone="fail">{error}</Notice> : null}
         <div className="tc-body">
           <aside className="tc-list" aria-label={t("tc.sources")}>
             <h3>{t("tc.sources")}</h3>

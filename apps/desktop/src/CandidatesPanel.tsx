@@ -8,6 +8,7 @@ import type {
 import { Fragment, useEffect, useState } from "react";
 
 import { useI18n } from "./i18n";
+import { Notice, PanelBar } from "./PanelParts";
 import type { InstrumentListing } from "./market-api";
 import type { ChartPriceLevel } from "./PriceChart";
 import type { ScreeningApi } from "./screening-api";
@@ -321,6 +322,7 @@ export function CandidatesPanel({
   const [running, setRunning] = useState<string[]>([]);
   const [runError, setRunError] = useState<string | null>(null);
   const [adding, setAdding] = useState("");
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [detail, setDetail] = useState<ScreeningCheck | null>(null);
   /** Closed sessions check D reads (ADR 0052 §5); the cache holds twenty. */
   const [offSessions, setOffSessions] = useState(20);
@@ -490,21 +492,81 @@ export function CandidatesPanel({
       className="quote-panel research-panel"
       aria-label={t("candidates.title")}
     >
-      <h2>{t("candidates.title")}</h2>
-      {loadError ? (
-        <p className="chart-error" role="alert">
-          {t("candidates.loadFailed", { error: errorText(loadError) })}{" "}
+      <PanelBar title={t("candidates.title")}>
+        <span className="split-button">
           <button
             type="button"
             className="secondary"
-            onClick={() => setReload(reload + 1)}
+            aria-expanded={bulkOpen}
+            onClick={() => setBulkOpen(!bulkOpen)}
           >
-            {t("screener.retry")}
+            {t("candidates.checkAll")} ▾
           </button>
-        </p>
+        </span>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setReload(reload + 1)}
+        >
+          {t("candidates.refresh")}
+        </button>
+      </PanelBar>
+      {bulkOpen ? (
+        <div
+          className="bulk-menu"
+          role="group"
+          aria-label={t("candidates.checkAll")}
+        >
+          <button
+            type="button"
+            className="secondary"
+            disabled={running.length > 0 || chartable.length === 0}
+            onClick={() => void dilution(chartable, false)}
+          >
+            {t("candidates.dilutionAll")}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={running.length > 0 || chartable.length === 0}
+            onClick={() =>
+              void run(
+                ["news", "off_exchange", "off_exchange_structure"],
+                chartable,
+              )
+            }
+          >
+            {t("candidates.othersAll")}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={running.length > 0 || fromCondition.length === 0}
+            onClick={() => void run(["momentum"], fromCondition)}
+          >
+            {t("candidates.momentumAll")}
+          </button>
+        </div>
+      ) : null}
+      {loadError ? (
+        <Notice
+          tone="fail"
+          title={t("parts.failed")}
+          action={
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setReload(reload + 1)}
+            >
+              {t("screener.retry")}
+            </button>
+          }
+        >
+          {t("candidates.loadFailed", { error: errorText(loadError) })}
+        </Notice>
       ) : null}
       {document ? (
-        <p className="workspace-note" role="status">
+        <p className="workspace-note status-line" role="status">
           {document.recorded
             ? t("candidates.coverage", {
                 date: document.session_date,
@@ -518,7 +580,7 @@ export function CandidatesPanel({
         </p>
       ) : null}
       {coverage && coverage.gaps.length > 0 ? (
-        <p className="chart-error" role="alert">
+        <Notice tone="caution" role="alert">
           {t("candidates.gaps", {
             list: coverage.gaps
               .map(
@@ -527,9 +589,9 @@ export function CandidatesPanel({
               )
               .join(", "),
           })}
-        </p>
+        </Notice>
       ) : null}
-      <div className="trade-fields">
+      <div className="trade-fields cand-filters">
         <label>
           {t("candidates.offExchangeSessions")}
           <select
@@ -543,42 +605,6 @@ export function CandidatesPanel({
             ))}
           </select>
         </label>
-        <button
-          type="button"
-          className="secondary"
-          disabled={running.length > 0 || chartable.length === 0}
-          onClick={() => void dilution(chartable, false)}
-        >
-          {t("candidates.dilutionAll")}
-        </button>
-        <button
-          type="button"
-          className="secondary"
-          disabled={running.length > 0 || chartable.length === 0}
-          onClick={() =>
-            void run(
-              ["news", "off_exchange", "off_exchange_structure"],
-              chartable,
-            )
-          }
-        >
-          {t("candidates.othersAll")}
-        </button>
-        <button
-          type="button"
-          className="secondary"
-          disabled={running.length > 0 || fromCondition.length === 0}
-          onClick={() => void run(["momentum"], fromCondition)}
-        >
-          {t("candidates.momentumAll")}
-        </button>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => setReload(reload + 1)}
-        >
-          {t("candidates.refresh")}
-        </button>
         <label>
           <input
             type="checkbox"
@@ -598,30 +624,7 @@ export function CandidatesPanel({
           </button>
         ) : null}
       </div>
-      <form
-        className="trade-fields"
-        onSubmit={(event) => {
-          event.preventDefault();
-          add();
-        }}
-      >
-        <label>
-          {t("candidates.add")}
-          <input
-            value={adding}
-            maxLength={10}
-            onChange={(event) => setAdding(event.target.value)}
-          />
-        </label>
-        <button type="submit" className="secondary">
-          {t("candidates.addButton")}
-        </button>
-      </form>
-      {runError ? (
-        <p className="chart-error" role="alert">
-          {runError}
-        </p>
-      ) : null}
+      {runError ? <Notice tone="fail">{runError}</Notice> : null}
       {document && document.candidates.length > 0 ? (
         <div className="research-scroll">
           <table className="quote-trades research-table">
@@ -922,6 +925,25 @@ export function CandidatesPanel({
       ) : document ? (
         <p className="workspace-note">{t("candidates.empty")}</p>
       ) : null}
+      <form
+        className="trade-fields cand-add"
+        onSubmit={(event) => {
+          event.preventDefault();
+          add();
+        }}
+      >
+        <label>
+          {t("candidates.add")}
+          <input
+            value={adding}
+            maxLength={10}
+            onChange={(event) => setAdding(event.target.value)}
+          />
+        </label>
+        <button type="submit" className="secondary">
+          {t("candidates.addButton")}
+        </button>
+      </form>
       {stage2Open
         ? (() => {
             const verdict = document?.candidates.find(
@@ -975,7 +997,7 @@ export function CandidatesPanel({
           onShow={show}
         />
       ) : null}
-      <p className="workspace-note">{t("candidates.note")}</p>
+      <p className="workspace-note panel-foot">{t("candidates.note")}</p>
     </section>
   );
 }
