@@ -215,9 +215,11 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.siw.collector.watch-
 | 재부팅 → 원격 로그인(3389, FreeRDP), 키링 열림, 끊어도 세션 유지·같은 세션 재접속 | 통과(원격 Wayland 세션, 키링 `Locked=false`). 실행기 미설치 상태라 재기동은 미확인 | 2026-11-23 |
 | 앱 종료 때 앱이 띄운 API 정지                                                     | 통과(종료 뒤 uv·uvicorn 프로세스 사라짐, 재실행 때 새로 뜸)                        | 2026-11-20 |
 | Linux에서 키움 모의 서버 호출(IP 등록 포함)                                       | 통과(키 탭 등록 키를 키링에서 읽어 `mockapi.kiwoom.com` 토큰 발급, 공인 IP는 iMac과 같음) | 2026-11-28 |
-| 킬 스위치: 화면 버튼, SSH의 `systemctl --user stop`                               | 미실행                                                                             |            |
+| 킬 스위치: 화면 버튼, SSH의 `systemctl --user stop`                               | SSH stop 통과(1초, `paper runner stopped`). 화면 버튼 미실행. **문제:** 앱 "설치하고 시작"의 `restart`가 한 번 멈춰 SIGTERM 90초 시간 초과 뒤 SIGKILL, 그동안 앱 "응답 없음"(아래 주) | 2026-11-28 |
 | 장중 수집기 설치, 미니PC 공인 IP에서 키움 실계좌 조건검색 구독                    | 설치 통과(두 유닛 active, 키링에서 키 읽고 `waiting`). 실계좌 구독은 첫 장 세션에서 확인 | 2026-11-28 |
 | 미니PC 수집기로 첫 장 세션 기록(프리마켓~애프터마켓)                              | 미실행                                                                             |            |
+
+주(2026-11-28): systemd 기본 `KillMode=control-group`은 SIGTERM을 `uv`와 Python 자식 모두에 보내고, `uv`가 받은 신호를 자식에게 다시 넘긴다. 그래서 Python은 SIGTERM을 두 번 받는다. 신호 처리기가 `threading.Event.set()`을 부르는 지금 코드(모의·실계좌 실행기, 수집기)는 두 번째 신호가 첫 처리기 안에서 끼어들면 Event 잠금에서 교착한다. Mac 재현: SIGTERM 세 번이면 200회 중 15회 멈춤, 한 번이면 0회. 멈추면 `TimeoutStopSec`(90초) 뒤 SIGKILL로 끝나고 종료 기록이 남지 않는다. macOS launchd는 주 프로세스에만 보내 해당하지 않는다. 고칠 때까지 SSH 킬 스위치가 늦으면 90초를 기다리거나 `systemctl --user kill -s KILL <유닛>`을 쓴다.
 
 ## 6. 2026-12 하드웨어 증설 (사용자)
 
