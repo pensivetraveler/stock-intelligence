@@ -3466,3 +3466,9 @@
 - **변경:** `services/paper_trading/limits.py`(새 한도 3개, 이유 `daily_new_instrument_limit_exceeded`·`daily_loss_exceeded`/`daily_loss_unknown`·`position_amount_exceeded`), 새 `services/paper_trading/daily.py`(평균 원가 손익·하루 요약), `runner.py`(사실 계산, 하루 손실 도달 시 킬 스위치), `store.py`(계좌 체결·당일 매수 종목·미체결 매수 금액), `__main__.py`(`summary`), `services/api/paper_routes.py`(승인 필드, `GET /v1/paper/day-summary`), 계약 `PaperOrderLimits` 선택 필드 3개·`PaperDaySummary`, SIW Agent 승인 마법사 한도 칸(기본 20건·3종목·$300·$2,000, 1건 200만 원).
 - **시험:** `scripts/verify.sh` 통과(ruff·mypy, pytest 1,586개, 계약 생성 일치, 화면 vitest 542개). 새 시험 `tests/paper_trading/test_stage7_limits.py`, API 시험 2개, 화면 vitest 승인 마법사 시험 갱신.
 - **미확인:** 실제 키움 모의 체결로 하루 손실·킬 스위치를 확인하지 않았다(모의 무장 운영 때 확인). 하루 요약 화면은 없다(API·CLI만).
+
+## ADR 0057 구현 단위 착수 순서 확정 — 2026-11-28
+
+- **사용자 결정("이대로 확정", 대시보드 139):** (a) U-a·U-b·U-c 장중 확인 → (b) 5단계 가격대·6단계 스크립트(SIW 종목 선정)와 보호 주문 확장(SIW 주문 실행) → (c) 7단계(SIW 주문 실행) → (d) 주 1회 희석 검수 → (e) 조건 시뮬레이터·외부 검토. 자세한 내용은 [ADR 0057](decisions/0057-selection-flow-seven-stages.md) "구현 단위"의 "착수 순서"에 있다.
+- **확정 시점 상태:** 5단계 계산 모듈(358)과 7단계 구현 1은 이미 들어갔다. 6단계 스크립트·계약 승인 요청(359)은 3단계 장중 확인 뒤에 한다.
+- **변경:** 문서만 바꿨다(ADR 0057, 이 파일). 기능 시험은 미실행.
