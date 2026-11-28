@@ -106,6 +106,35 @@ def test_a_fixed_value_has_no_earlier_bar() -> None:
         )
 
 
+def test_a_mult_scales_an_operand_and_keeps_its_offset() -> None:
+    # 841c304b: "1.3 times the average volume" is one operand; here 1.1 times the prior close.
+    scaled = {"price": "close", "offset": 1, "mult": "1.1"}
+    clean = validate_definition({**CROSS, "entry": {"op": "gt", "left": CLOSE, "right": scaled}})
+    assert clean["entry"]["right"] == {"price": "close", "offset": 1, "mult": "1.1"}
+    data = bars([(c, c, c, c) for c in (10.0, 10.5, 12.0, 12.5)])
+    evaluator = RuleEvaluator(clean, _indicator_bars(data), TZ)
+    # 1.1 x the prior close: -, 11, 11.55, 13.2. Only bar 2 (12 > 11.55) is above.
+    assert [evaluator.holds(clean["entry"], i) for i in range(4)] == [False, False, True, False]
+
+
+@pytest.mark.parametrize("mult", [0, -1, "x", 1001])
+def test_bad_mults_are_refused(mult: object) -> None:
+    with pytest.raises(StrategyError, match="mult"):
+        validate_definition(
+            {
+                **CROSS,
+                "entry": {"op": "gt", "left": {"price": "close", "mult": mult}, "right": CLOSE},
+            }
+        )
+
+
+def test_a_fixed_value_takes_no_mult() -> None:
+    with pytest.raises(StrategyError, match="no mult"):
+        validate_definition(
+            {**CROSS, "entry": {"op": "gt", "left": CLOSE, "right": {"value": 1, "mult": "2"}}}
+        )
+
+
 def test_new_fields_left_out_keep_old_fingerprints() -> None:
     clean = validate_definition(CROSS)
     assert not {"stop_loss_atr", "trailing_stop"} & set(clean)

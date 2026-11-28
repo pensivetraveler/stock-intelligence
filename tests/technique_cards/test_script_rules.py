@@ -33,6 +33,27 @@ def _convert(**over: Any) -> dict[str, Any]:
     return script_rules.convert(_condition(**over), "")
 
 
+def test_a_number_on_an_indicator_or_price_scales_it() -> None:
+    # 841c304b: "1.3 times the 20-day average volume" was read as "at or above the average".
+    volume = _convert(
+        left=_op("price", "volume"),
+        comparator="at_or_above",
+        right={**_op("indicator", "volume_average", period=20), "value": 1.3},
+    )
+    assert volume["place"]["rule"]["right"] == {
+        "indicator": "volma", "params": {"length": 20}, "output": "average", "mult": "1.3"
+    }  # fmt: skip
+    high = _convert(
+        comparator="above", right={**_op("price", "highest_high", period=20), "value": 0.65}
+    )
+    assert high["place"]["rule"]["right"]["mult"] == "0.65"
+    # On a band the number is its width in standard deviations, not a scale.
+    band = _convert(right={**_op("indicator", "bollinger_upper", period=20), "value": 2.5})
+    assert band["place"]["rule"]["right"] == {
+        "indicator": "bb", "params": {"length": 20, "mult": 2.5}, "output": "upper"
+    }  # fmt: skip
+
+
 def test_slots_become_rules_and_say_what_they_assumed() -> None:
     high = _convert(comparator="above", right=_op("price", "highest_high", period=20))
     assert high["place"] == {"kind": "entry", "rule": DONCHIAN["entry"]}

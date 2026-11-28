@@ -164,7 +164,8 @@ class _Writer:
             self.unsupported.append(f"{where}: operand {operand} has no Pine form")
             return None
         offset = int(operand.get("offset") or 0)
-        return f"{expression}[{offset}]" if offset else expression
+        expression = f"{expression}[{offset}]" if offset else expression
+        return f"({expression} * {operand['mult']})" if "mult" in operand else expression
 
     def condition(self, condition: dict[str, Any] | None, where: str) -> str:
         if condition is None:
